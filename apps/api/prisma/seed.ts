@@ -1,0 +1,452 @@
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+const HOTEL_ID = "eynis-riviera-1";
+
+async function main() {
+  // ── Clear existing data for clean seed ────────────────────────────────────
+  await prisma.automationExecution.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.connectorEvent.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.serviceRequestTransition.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.serviceRequest.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.offerEvent.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.automationRule.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.auditLog.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.stay.deleteMany({ where: { hotelId: HOTEL_ID } });
+
+  // ── Hotel ──────────────────────────────────────────────────────────────────
+  const hotel = await prisma.hotel.upsert({
+    where: { id: HOTEL_ID },
+    update: { name: "The Riviera", timezone: "Asia/Kolkata" },
+    create: { id: HOTEL_ID, name: "The Riviera", timezone: "Asia/Kolkata" }
+  });
+
+  // ── Staff users ────────────────────────────────────────────────────────────
+  const staff = [
+    { email: "vikram@theriviera.com", fullName: "Vikram Mehta", role: "owner" as const },
+    { email: "sarah@theriviera.com", fullName: "Sarah Jenkins", role: "front_desk" as const },
+    { email: "amit@theriviera.com", fullName: "Amit Sharma", role: "housekeeping" as const },
+    { email: "sanya@theriviera.com", fullName: "Sanya Kapoor", role: "housekeeping" as const },
+    { email: "marcus@theriviera.com", fullName: "Marcus Vane", role: "front_desk" as const },
+    { email: "elena@theriviera.com", fullName: "Elena Rodriguez", role: "housekeeping" as const },
+    { email: "david@theriviera.com", fullName: "David Ling", role: "fnb_manager" as const }
+  ];
+
+  const userMap: Record<string, string> = {};
+  for (const s of staff) {
+    const u = await prisma.user.upsert({
+      where: { email: s.email },
+      update: {},
+      create: { hotelId: hotel.id, fullName: s.fullName, email: s.email, role: s.role }
+    });
+    userMap[s.email] = u.id;
+  }
+
+  // ── Guests ─────────────────────────────────────────────────────────────────
+  await prisma.guest.deleteMany({ where: { hotelId: HOTEL_ID } });
+
+  const guestDefs = [
+    { phone: "+919876540001", name: "Elena Soros", visits: 14 },
+    { phone: "+919876540002", name: "Julian Marc", visits: 3 },
+    { phone: "+919876540003", name: "Aria Wade", visits: 8 },
+    { phone: "+919876540004", name: "David Bloom", visits: 22 },
+    { phone: "+919876540005", name: "Priya Nair", visits: 5 },
+    { phone: "+919876540006", name: "James Thornton", visits: 1 },
+    { phone: "+919876540007", name: "Meera Pillai", visits: 9 },
+    { phone: "+919876540008", name: "Aditya Rao", visits: 2 },
+    { phone: "+919876540009", name: "Sophie Laurent", visits: 6 },
+    { phone: "+919876540010", name: "Rajan Gupta", visits: 4 }
+  ];
+
+  const guestMap: Record<string, string> = {};
+  for (const g of guestDefs) {
+    const guest = await prisma.guest.create({
+      data: { hotelId: hotel.id, fullName: g.name, phoneE164: g.phone, visitCount: g.visits }
+    });
+    guestMap[g.phone] = guest.id;
+  }
+
+  // ── Service requests ───────────────────────────────────────────────────────
+  const now = new Date();
+  const ago = (m: number) => new Date(now.getTime() - m * 60000);
+
+  type RequestDef = {
+    category: string;
+    summary: string;
+    status: "open" | "accepted" | "resolved" | "escalated";
+    priority: "normal" | "high" | "urgent";
+    guestPhone: string;
+    createdMinsAgo: number;
+    resolvedMinsAgo?: number;
+    assignedEmail?: string;
+  };
+
+  const requestDefs: RequestDef[] = [
+    {
+      category: "housekeeping",
+      summary: "2x Extra pillows and clean towels",
+      status: "open",
+      priority: "normal",
+      guestPhone: "+919876540002",
+      createdMinsAgo: 12,
+      assignedEmail: "amit@theriviera.com"
+    },
+    {
+      category: "maintenance",
+      summary: "AC leak in bedroom — water dripping from unit",
+      status: "accepted",
+      priority: "high",
+      guestPhone: "+919876540003",
+      createdMinsAgo: 28,
+      assignedEmail: "sanya@theriviera.com"
+    },
+    {
+      category: "fnb",
+      summary: "In-room dining order delayed — Order open >45 mins",
+      status: "escalated",
+      priority: "urgent",
+      guestPhone: "+919876540005",
+      createdMinsAgo: 52,
+      assignedEmail: "david@theriviera.com"
+    },
+    {
+      category: "concierge",
+      summary: "Valet pick-up request for 3 PM departure",
+      status: "open",
+      priority: "normal",
+      guestPhone: "+919876540006",
+      createdMinsAgo: 8,
+      assignedEmail: "marcus@theriviera.com"
+    },
+    {
+      category: "housekeeping",
+      summary: "Towel replacement request",
+      status: "open",
+      priority: "normal",
+      guestPhone: "+919876540001",
+      createdMinsAgo: 2,
+      assignedEmail: undefined
+    },
+    {
+      category: "maintenance",
+      summary: "TV remote not working — needs replacement",
+      status: "resolved",
+      priority: "normal",
+      guestPhone: "+919876540008",
+      createdMinsAgo: 90,
+      resolvedMinsAgo: 70,
+      assignedEmail: "marcus@theriviera.com"
+    },
+    {
+      category: "housekeeping",
+      summary: "Mini-bar restock — full restocking required",
+      status: "resolved",
+      priority: "normal",
+      guestPhone: "+919876540004",
+      createdMinsAgo: 110,
+      resolvedMinsAgo: 96,
+      assignedEmail: "sanya@theriviera.com"
+    },
+    {
+      category: "maintenance",
+      summary: "HVAC repair — heating not working in suite",
+      status: "resolved",
+      priority: "high",
+      guestPhone: "+919876540009",
+      createdMinsAgo: 200,
+      resolvedMinsAgo: 177,
+      assignedEmail: "david@theriviera.com"
+    },
+    {
+      category: "housekeeping",
+      summary: "Champagne service delivery — Suite 402",
+      status: "resolved",
+      priority: "normal",
+      guestPhone: "+919876540001",
+      createdMinsAgo: 260,
+      resolvedMinsAgo: 244,
+      assignedEmail: "sarah@theriviera.com"
+    },
+    {
+      category: "maintenance",
+      summary: "Technical: TV Setup assistance",
+      status: "resolved",
+      priority: "normal",
+      guestPhone: "+919876540007",
+      createdMinsAgo: 320,
+      resolvedMinsAgo: 298,
+      assignedEmail: "marcus@theriviera.com"
+    }
+  ];
+
+  for (const r of requestDefs) {
+    const guestId = guestMap[r.guestPhone];
+    if (!guestId) continue;
+    const assignedToUserId = r.assignedEmail ? (userMap[r.assignedEmail] ?? null) : null;
+    const createdAt = ago(r.createdMinsAgo);
+    const slaDueAt = new Date(createdAt.getTime() + 45 * 60000);
+    const resolvedAt = r.resolvedMinsAgo !== undefined ? ago(r.resolvedMinsAgo) : null;
+
+    await prisma.serviceRequest.create({
+      data: {
+        hotelId: hotel.id,
+        guestId,
+        category: r.category,
+        summary: r.summary,
+        status: r.status,
+        priority: r.priority,
+        slaDueAt,
+        assignedToUserId,
+        createdAt,
+        resolvedAt
+      }
+    });
+  }
+
+  // ── Offer events ───────────────────────────────────────────────────────────
+  const offerTypes = ["room_upgrade", "late_checkout", "fnb_offer", "spa_offer", "airport_transfer"];
+  const offerStatuses = ["sent", "opened", "accepted", "declined"];
+  const revenueByType: Record<string, number> = {
+    room_upgrade: 4200,
+    late_checkout: 1600,
+    fnb_offer: 2800,
+    spa_offer: 1900,
+    airport_transfer: 1100
+  };
+
+  const guestIds = Object.values(guestMap);
+  for (let i = 0; i < 80; i++) {
+    const offerType = offerTypes[i % offerTypes.length];
+    const hoursAgo = Math.floor((i * 17 + 3) % 720);
+    const createdAt = new Date(now.getTime() - hoursAgo * 3600000);
+    const status = offerStatuses[i % offerStatuses.length];
+    const revenueInr = status === "accepted" ? revenueByType[offerType] : 0;
+    const guestId = guestIds[i % guestIds.length];
+
+    await prisma.offerEvent.create({
+      data: {
+        hotelId: hotel.id,
+        guestId,
+        offerType,
+        channel: i % 2 === 0 ? "whatsapp" : "sms",
+        status,
+        revenueInr,
+        contextJson: JSON.stringify({ automationType: offerType, day: i }),
+        createdAt
+      }
+    });
+  }
+
+  // ── Automation rules ───────────────────────────────────────────────────────
+  // Marketing-style rules with historical stats
+  const marketingRules = [
+    { code: "pre_arrival_welcome", name: "Pre-Arrival Welcome", active: true, executions: 2450, conversions: 794, revenue: 84200,
+      trigger: { type: "checkin_within_days", params: { days: 2 } }, action: { type: "send_whatsapp", params: { template: "welcome" } } },
+    { code: "checkin_breakfast_bundle", name: "Early Check-in Breakfast Bundle", active: true, executions: 1120, conversions: 461, revenue: 32500,
+      trigger: { type: "checkin_event" }, action: { type: "send_whatsapp", params: { template: "breakfast_bundle" } } },
+    { code: "spa_happy_hour", name: "Spa Happy Hour Re-marketing", active: false, executions: 840, conversions: 155, revenue: 15100,
+      trigger: { type: "schedule", params: { cronExpr: "0 14 * * *" } }, action: { type: "send_whatsapp", params: { template: "spa_offer" } } },
+    { code: "late_checkout_upsell", name: "Late Checkout Upsell", active: true, executions: 1890, conversions: 623, revenue: 48000,
+      trigger: { type: "departure_eve" }, action: { type: "send_whatsapp", params: { template: "late_checkout" } } },
+    { code: "post_stay_review", name: "Post-Stay Review", active: true, executions: 1200, conversions: 588, revenue: 0,
+      trigger: { type: "checkout_event" }, action: { type: "send_whatsapp", params: { template: "review_request" } } }
+  ];
+
+  const ruleMap: Record<string, string> = {};
+  for (const a of marketingRules) {
+    const rule = await prisma.automationRule.create({
+      data: {
+        hotelId: hotel.id,
+        code: a.code,
+        name: a.name,
+        isActive: a.active,
+        configJson: JSON.stringify({
+          ruleType: "marketing",
+          trigger: a.trigger,
+          action: a.action,
+          stats: { executions: a.executions, conversions: a.conversions, revenueInr: a.revenue }
+        })
+      }
+    });
+    ruleMap[a.code] = rule.id;
+  }
+
+  // Operational rules — evaluated by the automation engine every 60s
+  const operationalRules = [
+    { code: "sla_breach_escalate", name: "SLA Breach → Auto-Escalate", active: true,
+      trigger: { type: "sla_breach" }, action: { type: "escalate_sr" } },
+    { code: "sentiment_low_flag", name: "Negative Sentiment → Flag for Review", active: true,
+      trigger: { type: "sentiment_low", params: { threshold: 2 } },
+      action: { type: "create_sr", params: { category: "front_desk", priority: "high" } } },
+    { code: "checkin_welcome", name: "Check-in → Welcome WhatsApp", active: true,
+      trigger: { type: "checkin_within_minutes", params: { minutes: 30 } },
+      action: { type: "send_whatsapp", params: { template: "welcome" } } },
+    { code: "upsell_followup", name: "Resolved Request → Queue Upsell", active: true,
+      trigger: { type: "sr_resolved_within_hours", params: { hours: 2 } },
+      action: { type: "queue_offer" } }
+  ];
+
+  for (const a of operationalRules) {
+    const rule = await prisma.automationRule.create({
+      data: {
+        hotelId: hotel.id,
+        code: a.code,
+        name: a.name,
+        isActive: a.active,
+        configJson: JSON.stringify({ ruleType: "operational", trigger: a.trigger, action: a.action })
+      }
+    });
+    ruleMap[a.code] = rule.id;
+  }
+
+  // ── Seed automation executions (realistic history) ─────────────────────────
+  const executionDefs = [
+    { ruleCode: "sla_breach_escalate", triggerType: "sla_breach", actionType: "escalate_sr",
+      actionResult: "success", resultDetail: "Escalated: In-room dining order delayed — Order open >45 mins", minsAgo: 52 },
+    { ruleCode: "sla_breach_escalate", triggerType: "sla_breach", actionType: "escalate_sr",
+      actionResult: "success", resultDetail: "Escalated: AC leak in bedroom — water dripping from unit", minsAgo: 130 },
+    { ruleCode: "sentiment_low_flag", triggerType: "sentiment_low", actionType: "create_sr",
+      actionResult: "success", resultDetail: "Created SR for Arjun Kapoor — urgent negative feedback", minsAgo: 8 },
+    { ruleCode: "checkin_welcome", triggerType: "checkin_welcome", actionType: "send_whatsapp",
+      actionResult: "success", resultDetail: "Welcome sent to +919876540006", minsAgo: 9 },
+    { ruleCode: "checkin_welcome", triggerType: "checkin_welcome", actionType: "send_whatsapp",
+      actionResult: "failed", resultDetail: "No WhatsApp provider configured", minsAgo: 140 },
+    { ruleCode: "upsell_followup", triggerType: "upsell_followup", actionType: "queue_offer",
+      actionResult: "success", resultDetail: "Queued room_upgrade offer", minsAgo: 72 },
+    { ruleCode: "upsell_followup", triggerType: "upsell_followup", actionType: "queue_offer",
+      actionResult: "success", resultDetail: "Queued fnb_offer offer", minsAgo: 98 },
+    { ruleCode: "upsell_followup", triggerType: "upsell_followup", actionType: "queue_offer",
+      actionResult: "success", resultDetail: "Queued late_checkout offer", minsAgo: 180 }
+  ];
+
+  for (const ex of executionDefs) {
+    const ruleId = ruleMap[ex.ruleCode];
+    if (!ruleId) continue;
+    await prisma.automationExecution.create({
+      data: {
+        hotelId: hotel.id,
+        ruleId,
+        ruleCode: ex.ruleCode,
+        triggerType: ex.triggerType,
+        actionType: ex.actionType,
+        actionResult: ex.actionResult,
+        resultDetail: ex.resultDetail,
+        executedAt: ago(ex.minsAgo)
+      }
+    });
+  }
+
+  // ── Connector events (inbound pipeline demo data) ─────────────────────────
+  const connectorEventsData = [
+    {
+      connectorKey: "whatsapp_twilio",
+      guestPhone: "+919876543210",
+      guestName: "Rahul Sharma",
+      aiCategory: "housekeeping",
+      aiPriority: "normal",
+      aiSummary: "Guest requests extra towels and blanket for room 302",
+      aiSentiment: "neutral",
+      aiRoutingHint: "Housekeeping team",
+      aiSlaMinutes: 30,
+      aiProvider: "claude",
+      replyStatus: "sent",
+      replySentAt: new Date(Date.now() - 45 * 60000),
+      replyMessage: "Hi Rahul! We've received your request and our team is on it.\n\n\"Guest requests extra towels and blanket for room 302\"\n\nRef: #A1B2C3 — The Riviera"
+    },
+    {
+      connectorKey: "whatsapp_interakt",
+      guestPhone: "+919812345678",
+      guestName: "Priya Nair",
+      aiCategory: "fnb",
+      aiPriority: "normal",
+      aiSummary: "Guest ordering dal makhani, butter naan and mango lassi via room service",
+      aiSentiment: "positive",
+      aiRoutingHint: "F&B / Room Service team",
+      aiSlaMinutes: 25,
+      aiProvider: "claude",
+      replyStatus: "sent",
+      replySentAt: new Date(Date.now() - 22 * 60000),
+      replyMessage: "Hi Priya! We've received your order and our kitchen is preparing it now.\n\nRef: #D4E5F6 — The Riviera"
+    },
+    {
+      connectorKey: "whatsapp_twilio",
+      guestPhone: "+919988776655",
+      guestName: "Arjun Kapoor",
+      aiCategory: "maintenance",
+      aiPriority: "urgent",
+      aiSummary: "AC not working in room 506 — urgent, guest very uncomfortable",
+      aiSentiment: "negative",
+      aiRoutingHint: "Maintenance team — urgent escalation",
+      aiSlaMinutes: 10,
+      aiProvider: "claude",
+      replyStatus: "sent",
+      replySentAt: new Date(Date.now() - 8 * 60000),
+      replyMessage: "Hi Arjun! We've received your urgent request and our maintenance team is on their way.\n\nRef: #G7H8I9 — The Riviera"
+    },
+    {
+      connectorKey: "whatsapp_twilio",
+      guestPhone: "+919765432109",
+      guestName: "Meera Iyer",
+      aiCategory: "concierge",
+      aiPriority: "normal",
+      aiSummary: "Guest requesting taxi to airport at 6am tomorrow morning",
+      aiSentiment: "neutral",
+      aiRoutingHint: "Concierge / Front Desk",
+      aiSlaMinutes: 60,
+      aiProvider: "openai",
+      replyStatus: "sent",
+      replySentAt: new Date(Date.now() - 3 * 60000),
+      replyMessage: "Hi Meera! We've noted your taxi request for 6am and our concierge will confirm the booking shortly.\n\nRef: #J1K2L3 — The Riviera"
+    },
+    {
+      connectorKey: "whatsapp_interakt",
+      guestPhone: "+919654321098",
+      guestName: "Vikrant Bose",
+      aiCategory: "front_desk",
+      aiPriority: "high",
+      aiSummary: "Guest requesting early check-in at 10am, arriving from Mumbai",
+      aiSentiment: "neutral",
+      aiRoutingHint: "Front Desk",
+      aiSlaMinutes: 20,
+      aiProvider: "claude",
+      replyStatus: "failed: No WhatsApp provider configured",
+      replySentAt: null,
+      replyMessage: null
+    }
+  ];
+
+  for (const ev of connectorEventsData) {
+    await prisma.connectorEvent.create({
+      data: {
+        hotelId: hotel.id,
+        connectorKey: ev.connectorKey,
+        eventType: "inbound_message",
+        guestPhone: ev.guestPhone,
+        guestName: ev.guestName,
+        rawPayload: JSON.stringify({ hotelId: hotel.id, fromPhone: ev.guestPhone, message: ev.aiSummary }),
+        aiProvider: ev.aiProvider,
+        aiCategory: ev.aiCategory,
+        aiPriority: ev.aiPriority,
+        aiSummary: ev.aiSummary,
+        aiSentiment: ev.aiSentiment,
+        aiRoutingHint: ev.aiRoutingHint,
+        aiSlaMinutes: ev.aiSlaMinutes,
+        replySentAt: ev.replySentAt ?? undefined,
+        replyStatus: ev.replyStatus,
+        replyMessage: ev.replyMessage ?? undefined,
+        createdAt: new Date(Date.now() - Math.floor(Math.random() * 120) * 60000)
+      }
+    });
+  }
+
+  console.log("✓ Seed complete — The Riviera hotel loaded with full demo data.");
+}
+
+main()
+  .then(async () => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    await prisma.$disconnect();
+    process.exit(1);
+  });

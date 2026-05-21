@@ -1,0 +1,9 @@
+{
+  "/api/sse/route": "app/api/sse/route.js",
+  "/sentiment-trends/page": "app/sentiment-trends/page.js",
+  "/automations/page": "app/automations/page.js",
+  "/guest-database/[id]/page": "app/guest-database/[id]/page.js",
+  "/night-audit/page": "app/night-audit/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
+}

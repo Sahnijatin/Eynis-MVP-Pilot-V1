@@ -1,0 +1,112 @@
+Operating Model (How we’ll work)
+I take lead on scope, implementation sequence, and technical decisions.
+For each feature slice: Build -> Self-test -> You validate -> GitHub push.
+We do small, shippable increments (no giant dump at the end).
+Every day ends with:
+working build,
+tested features,
+short changelog,
+next-day plan.
+GitHub Workflow (clean and professional)
+Branch strategy:
+main = stable validated code only
+dev = integration branch
+feature branches: feat/<module>-<short-name>
+Per slice:
+Create feature branch
+Implement + tests
+Local verification checklist
+You validate
+Merge to dev
+Tagged milestone merges to main (v0.1, v0.2, etc.)
+Commit style:
+feat: ..., fix: ..., chore: ..., test: ..., docs: ...
+PR template includes: scope, screenshots, test steps, risks.
+15-Day Development Plan (Execution First)
+Phase A — Foundation + System Skeleton (Day 1-3)
+Focus first: architecture and core plumbing so later work is fast.
+
+Day 1:
+Repo setup (frontend, backend, shared types)
+Env config, lint/format/test setup, CI pipeline
+Auth + role model scaffold (Owner, Front Desk, Housekeeping, F&B)
+Day 2:
+Core DB schema (hotel, guest, stay, request, offer, event, automation_rule)
+Multi-tenant model (hotel_id everywhere)
+Seed data + migration flow
+Day 3:
+Event bus/job runner setup
+WhatsApp inbound/outbound adapter interface (provider-agnostic)
+Audit logging foundation
+Output: stable foundation + deployable skeleton.
+
+Phase B — Ops Core (Day 4-6)
+Focus: Service Request System (highest operational value + fastest pilot trust).
+
+Omni intake: WhatsApp + manual front desk + QR form
+Routing engine (rule-based department mapping)
+SLA timers + escalations
+Staff PWA task list (accept/complete/escalate)
+Guest acknowledgement messages
+Output: full request lifecycle live.
+
+Phase C — Revenue Core (Day 7-9)
+Focus: first two monetization automations.
+
+Automation 1: Pre-arrival upgrade offer
+Automation 2: Late checkout offer
+Offer accept/decline flow + revenue event logging
+Basic anti-spam guardrails (message caps/time windows)
+Output: measurable upsell loop in production-like state.
+
+Phase D — Intelligence + Reporting (Day 10-12)
+Focus: actionable visibility and staff enablement.
+
+Management dashboard v1
+open requests, SLA %, offers sent/accepted, revenue captured
+Night audit report generation + WhatsApp delivery
+SOP assistant v1
+doc upload, chunking/embeddings, grounded Q&A with source snippets
+Output: owner visibility + staff knowledge support.
+
+Phase E — Hardening + Pilot Readiness (Day 13-15)
+Focus: reliability and go-live confidence.
+
+RBAC tightening + permissions checks
+Error handling/retries + fallback templates for AI failures
+Full E2E regression pass (critical flows)
+Pilot onboarding screens + config defaults
+Launch package:
+runbook, validation checklist, known limitations, v1 tag
+Output: pilot-ready release candidate (v1.0-pilot).
+
+Daily Step-by-Step Delivery Loop
+For every day and feature slice:
+
+Lock slice scope (small and clear)
+Build implementation
+Unit + integration tests
+Manual E2E smoke test
+Share what changed + how to validate
+You validate
+Fix feedback quickly
+Merge/push + tag milestone
+What We Focus On First (Priority Order)
+Request routing + SLA system (core ops pain)
+Upgrade + late checkout automations (quick revenue proof)
+Dashboard + night audit (manager trust + visibility)
+SOP assistant (staff productivity layer)
+Polish/hardening (for pilot confidence)
+Quality Gates (non-negotiable)
+No feature merged without:
+passing tests,
+manual validation steps documented,
+rollback approach,
+audit log visibility.
+No release push without:
+full smoke pass,
+zero blocker bugs,
+your approval.
+
+
+OUR Github Repository: https://github.com/Sahnijatin/Eynis-MVP-Pilot-V1.git

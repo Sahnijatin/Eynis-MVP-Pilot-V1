@@ -1,0 +1,15 @@
+{
+  "name": "eynis-platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @eynis/shared && npm run build -w @eynis/api && npm run build -w @eynis/web",
+    "dev": "npm run dev -w @eynis/api",
+    "lint": "npm run lint -w @eynis/api && npm run lint -w @eynis/web",
+    "test": "npm run test -w @eynis/shared && npm run test -w @eynis/api && npm run test -w @eynis/web"
+  }
+}

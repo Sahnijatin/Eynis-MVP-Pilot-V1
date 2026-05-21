@@ -1,0 +1,29 @@
+{
+  "name": "@eynis/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('No web tests yet')\""
+  },
+  "dependencies": {
+    "@eynis/shared": "0.1.0",
+    "lucide-react": "^1.14.0",
+    "next": "^15.4.7",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^3.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.9.2"
+  }
+}

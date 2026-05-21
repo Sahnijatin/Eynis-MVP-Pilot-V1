@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Hotel {
+  id              String           @id @default(cuid())
+  name            String
+  timezone        String           @default("Asia/Kolkata")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  users           User[]
+  guests          Guest[]
+  stays           Stay[]
+  serviceRequests ServiceRequest[]
+  offerEvents     OfferEvent[]
+  automationRules      AutomationRule[]
+  automationExecutions AutomationExecution[]
+  nightAuditReports    NightAuditReport[]
+  auditLogs       AuditLog[]
+  transitions     ServiceRequestTransition[]
+  connectorConfigs ConnectorConfig[]
+  connectorEvents  ConnectorEvent[]
+}
+
+model User {
+  id               String           @id @default(cuid())
+  hotelId          String
+  fullName         String
+  email            String           @unique
+  role             String
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  hotel            Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  assignedRequests ServiceRequest[] @relation("assigned_requests")
+  changedTransitions ServiceRequestTransition[] @relation("transition_actor")
+}
+
+model Guest {
+  id          String   @id @default(cuid())
+  hotelId     String
+  fullName    String
+  phoneE164   String
+  visitCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  hotel       Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  stays       Stay[]
+  serviceRequests ServiceRequest[]
+
+  @@index([hotelId])
+}
+
+model Stay {
+  id         String   @id @default(cuid())
+  hotelId    String
+  guestId    String
+  roomNumber String
+  checkInAt  DateTime
+  checkOutAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  hotel      Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  guest      Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, guestId])
+}
+
+model ServiceRequest {
+  id               String                     @id @default(cuid())
+  hotelId          String
+  guestId          String
+  category         String
+  status           String
+  source           String                     @default("whatsapp")
+  summary          String
+  assignedToUserId String?
+  priority         String                     @default("normal")
+  slaDueAt         DateTime?
+  slaBreachedAt    DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  resolvedAt       DateTime?
+  hotel            Hotel                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  guest            Guest                      @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  assignedTo       User?                      @relation("assigned_requests", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  transitions      ServiceRequestTransition[]
+
+  @@index([hotelId, status])
+}
+
+model ServiceRequestTransition {
+  id               String         @id @default(cuid())
+  hotelId          String
+  serviceRequestId String
+  fromStatus       String
+  toStatus         String
+  changedByUserId  String
+  note             String?
+  createdAt        DateTime       @default(now())
+  hotel            Hotel          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  changedBy        User           @relation("transition_actor", fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([hotelId, serviceRequestId, createdAt])
+}
+
+model OfferEvent {
+  id          String   @id @default(cuid())
+  hotelId     String
+  guestId     String?
+  offerType   String
+  channel     String   @default("whatsapp")
+  status      String
+  revenueInr  Int      @default(0)
+  contextJson String
+  createdAt   DateTime @default(now())
+  hotel       Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, status])
+}
+
+model AutomationRule {
+  id                   String                @id @default(cuid())
+  hotelId              String
+  code                 String
+  name                 String
+  isActive             Boolean               @default(true)
+  configJson           String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  hotel                Hotel                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  automationExecutions AutomationExecution[]
+
+  @@unique([hotelId, code])
+}
+
+model AutomationExecution {
+  id              String         @id @default(cuid())
+  hotelId         String
+  ruleId          String
+  ruleCode        String
+  triggerType     String
+  triggerEntityId String?
+  actionType      String
+  actionResult    String
+  resultDetail    String?
+  executedAt      DateTime       @default(now())
+  hotel           Hotel          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  rule            AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, executedAt])
+  @@index([ruleId, triggerEntityId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  hotelId    String
+  actorRole  String
+  action     String
+  entityType String
+  entityId   String?
+  metadata   String
+  createdAt  DateTime @default(now())
+  hotel      Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, createdAt])
+}
+
+model ConnectorConfig {
+  id            String   @id @default(cuid())
+  hotelId       String
+  connectorKey  String
+  enabled       Boolean  @default(false)
+  configJson    String   @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  hotel         Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelId, connectorKey])
+  @@index([hotelId, enabled])
+}
+
+model ConnectorEvent {
+  id               String    @id @default(cuid())
+  hotelId          String
+  connectorKey     String
+  eventType        String    @default("inbound_message")
+  guestPhone       String?
+  guestId          String?
+  guestName        String?
+  rawPayload       String
+  aiProvider       String?
+  aiCategory       String?
+  aiPriority       String?
+  aiSummary        String?
+  aiSentiment      String?
+  aiRoutingHint    String?
+  aiSlaMinutes     Int?
+  serviceRequestId String?
+  replyMessage     String?
+  replySentAt      DateTime?
+  replyStatus      String?
+  createdAt        DateTime  @default(now())
+  hotel            Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, connectorKey, createdAt])
+  @@index([hotelId, createdAt])
+}
+
+model NightAuditReport {
+  id          String   @id @default(cuid())
+  hotelId     String
+  reportDate  String
+  contentJson String
+  provider    String   @default("claude")
+  generatedAt DateTime @default(now())
+  hotel       Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelId, reportDate])
+  @@index([hotelId, generatedAt])
+}
