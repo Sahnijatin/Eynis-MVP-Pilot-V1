@@ -1,4 +1,4 @@
-// File: D:\Personal\E\apps\web\app\dashboard\page.tsx
+// File: C:\Users\admin\Eynis-MVP-Pilot-V1\apps\web\app\dashboard\page.tsx
 import * as entry from '../../../../app/dashboard/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
