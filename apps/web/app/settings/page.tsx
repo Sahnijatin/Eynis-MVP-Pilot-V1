@@ -1,6 +1,8 @@
 import { fetchConnectorRegistry } from "../../lib/data";
 import { Save, UserPlus, Camera, Clock, Phone } from "lucide-react";
 import { ConnectorConfigPanel } from "../../components/ui/connector-config-panel";
+import { ChangeIndustry } from "../../components/ui/change-industry";
+import { getUserWorkspace } from "../../lib/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,8 @@ export default async function SettingsPage() {
   } catch (err) {
     error = err instanceof Error ? err.message : "Failed to load connectors";
   }
+
+  const { industry } = await getUserWorkspace();
 
   const connectorItems = connectors?.items ?? [];
 
@@ -52,6 +56,13 @@ export default async function SettingsPage() {
       <div className="grid grid-cols-3 gap-4">
         {/* Main settings */}
         <div className="col-span-2 space-y-4">
+          {/* Industry workspace switcher */}
+          <div className="card">
+            <h3 className="text-base font-semibold text-slate-800 mb-1">Industry Workspace</h3>
+            <p className="text-sm text-slate-400 mb-4">Switch your workspace to a different industry. Nav, modules, and terminology will update instantly.</p>
+            <ChangeIndustry currentIndustry={industry ?? "hospitality"} />
+          </div>
+
           {/* Account Information */}
           <div className="card">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Account Information</h3>

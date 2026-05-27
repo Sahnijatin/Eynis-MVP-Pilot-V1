@@ -1,14 +1,12 @@
+import { getUserWorkspace } from "../../lib/workspace";
+import { ManufacturingDashboard } from "../../components/ui/manufacturing-dashboard";
+import { FnbDashboard } from "../../components/ui/fnb-dashboard";
+import { TravelDashboard } from "../../components/ui/travel-dashboard";
+import { HealthcareDashboard } from "../../components/ui/healthcare-dashboard";
 import { fetchDashboardData } from "../../lib/data";
 import Link from "next/link";
 import {
-  LayoutDashboard,
-  Users,
-  Bell,
-  DollarSign,
-  AlertCircle,
-  AlertTriangle,
-  ChevronRight,
-  Zap
+  LayoutDashboard, Users, Bell, DollarSign, AlertCircle, AlertTriangle, ChevronRight, Zap
 } from "lucide-react";
 import { OccupancyChart } from "../../components/ui/charts";
 import { AIMorningBriefing } from "../../components/ui/ai-morning-briefing";
@@ -25,6 +23,15 @@ export default async function DashboardPage({
   const params = searchParams ? await searchParams : {};
   const aiProvider = (typeof params.aiProvider === "string" && params.aiProvider === "openai") ? "openai" : "claude";
 
+  const { industry } = await getUserWorkspace();
+
+  // Route to industry-specific dashboards
+  if (industry === "manufacturing") return <ManufacturingDashboard />;
+  if (industry === "fnb") return <FnbDashboard />;
+  if (industry === "travel") return <TravelDashboard />;
+  if (industry === "healthcare") return <HealthcareDashboard />;
+
+  // Default: Hospitality dashboard
   let data: Awaited<ReturnType<typeof fetchDashboardData>> | null = null;
   let error = "";
   try {
@@ -40,11 +47,9 @@ export default async function DashboardPage({
   const escalated = overview?.escalatedOpenCount ?? 1;
   const resolvedToday = overview?.resolvedTodayCount ?? 6;
 
-  // Build chart data from trends
   const chartData = trendSeries.slice(-14).map((p) => ({ date: p.date.slice(5), value: Math.max(55, 60 + p.created * 3) }));
   if (chartData.length === 0) {
-    // Fallback illustrative data matching screenshot
-    const days = ["11 Nov","14 Nov","17 Nov","20 Nov","23 Nov","Today"];
+    const days = ["11 Nov", "14 Nov", "17 Nov", "20 Nov", "23 Nov", "Today"];
     const vals = [38, 52, 61, 54, 72, 68];
     days.forEach((d, i) => chartData.push({ date: d, value: vals[i] }));
   }
@@ -68,9 +73,7 @@ export default async function DashboardPage({
 
       <AIMorningBriefing provider={aiProvider} baseHref="/dashboard" />
 
-      {/* KPI row */}
       <div className="kpi-grid mb-5">
-        {/* Occupancy */}
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
@@ -83,13 +86,12 @@ export default async function DashboardPage({
             </div>
           </div>
           <div className="flex items-end gap-0.5 mt-3 h-8">
-            {[30,38,42,50,55,62,68].map((h, i) => (
+            {[30, 38, 42, 50, 55, 62, 68].map((h, i) => (
               <div key={i} className="flex-1 rounded-sm" style={{ height: `${h}%`, background: i === 6 ? "#0f766e" : `rgba(15,118,110,${0.15 + i * 0.1})` }} />
             ))}
           </div>
         </div>
 
-        {/* In-house guests */}
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
@@ -103,7 +105,6 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        {/* Open requests */}
         <div className="card" style={{ borderTop: escalated > 0 ? "3px solid #f59e0b" : undefined }}>
           <div className="flex items-start justify-between">
             <div>
@@ -125,11 +126,10 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        {/* Today's revenue */}
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <div className="kpi-label">Today's Revenue</div>
+              <div className="kpi-label">Today&apos;s Revenue</div>
               <div className="kpi-value mt-1.5">₹12,400</div>
               <div className="mt-2 flex items-center gap-1.5">
                 <span className="badge badge-teal text-xs">+₹4,200 UPSELLS</span>
@@ -143,16 +143,11 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Main two-column */}
       <div className="grid grid-cols-3 gap-4 mb-4">
-        {/* Live Request Feed — SSE powered */}
         <div className="card col-span-2">
           <LiveFeedSSE initialItems={feed} />
         </div>
-
-        {/* Right column */}
         <div className="flex flex-col gap-4">
-          {/* Upsell Performance */}
           <div className="card flex-1">
             <h3 className="card-title">Upsell Performance</h3>
             <div className="flex items-center justify-center py-2 mb-3">
@@ -164,7 +159,7 @@ export default async function DashboardPage({
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-700 inline-block" />Upgrades</span><span className="font-medium">₹{upgrades.toLocaleString()}</span></div>
               <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Late C/O</span><span className="font-medium">₹{lateCO.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />F&B</span><span className="font-medium">₹{fnb.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />F&amp;B</span><span className="font-medium">₹{fnb.toLocaleString()}</span></div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100">
               <div className="flex justify-between text-sm">
@@ -176,13 +171,11 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Second row */}
       <div className="grid grid-cols-3 gap-4 mb-4">
-        {/* Automation Activity */}
         <div className="card col-span-2">
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-4 h-4 text-teal-700" />
-            <h3 className="card-title mb-0">Today's Automation Activity</h3>
+            <h3 className="card-title mb-0">Today&apos;s Automation Activity</h3>
           </div>
           <div className="space-y-3">
             {automationItems.map((a) => (
@@ -199,7 +192,6 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        {/* Alerts + Night Audit */}
         <div className="flex flex-col gap-3">
           <div className="card flex-1">
             <h3 className="card-title">Critical Alerts</h3>
@@ -233,10 +225,8 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Inbound Pipeline */}
       <InboundPipeline />
 
-      {/* Occupancy Trend */}
       <div className="card">
         <div className="flex items-center justify-between mb-1">
           <div>

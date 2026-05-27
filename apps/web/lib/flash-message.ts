@@ -9,7 +9,7 @@ export function sanitizeFlashMessage(input: string): string {
 /** Read `{ error: string }` from API JSON body, or a short fallback. */
 export async function extractApiErrorMessage(response: Response): Promise<string> {
   const text = await response.text();
-  var raw = "";
+  let raw = "";
   try {
     const j = JSON.parse(text) as { error?: unknown };
     if (typeof j.error === "string" && j.error.length > 0) {

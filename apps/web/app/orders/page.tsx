@@ -1,0 +1,187 @@
+import { AlertTriangle, Truck, ChevronRight, TreePine, Wrench, Package } from "lucide-react";
+
+export const dynamic = "force-dynamic";
+
+const PIPELINE_STAGES = [
+  { id: "new", label: "New Order", color: "#6366f1", count: 12, value: "₹18.4L" },
+  { id: "production", label: "In Production", color: "#f59e0b", count: 18, value: "₹34.2L" },
+  { id: "qc", label: "QC Review", color: "#8b5cf6", count: 8, value: "₹14.8L" },
+  { id: "dispatch", label: "Ready to Dispatch", color: "#10b981", count: 6, value: "₹9.2L" },
+  { id: "delivered", label: "Delivered", color: "#64748b", count: 34, value: "₹58.6L" }
+];
+
+const LIVE_ORDERS = [
+  { id: "ORD-2847", client: "Sharma Interiors", sku: "Walnut Wardrobe × 4", value: "₹3,20,000", due: "2 Jun", stage: "production", priority: "high", daysLeft: 7 },
+  { id: "ORD-2851", client: "Patel Architects", sku: "Oak Dining Table × 2", value: "₹1,85,000", due: "5 Jun", stage: "qc", priority: "normal", daysLeft: 10 },
+  { id: "ORD-2839", client: "Kapoor Furnishings", sku: "Modular Sofa Set × 1", value: "₹4,50,000", due: "28 May", stage: "dispatch", priority: "urgent", daysLeft: 2 },
+  { id: "ORD-2856", client: "The Grand Hyatt", sku: "Executive Chairs × 40", value: "₹8,00,000", due: "12 Jun", stage: "new", priority: "normal", daysLeft: 17 },
+  { id: "ORD-2844", client: "Mehta Residences", sku: "Custom Bookshelf × 3", value: "₹2,10,000", due: "30 May", stage: "production", priority: "high", daysLeft: 4 },
+  { id: "ORD-2860", client: "ITC Hotels", sku: "Lobby Benches × 12", value: "₹5,40,000", due: "18 Jun", stage: "new", priority: "normal", daysLeft: 23 }
+];
+
+const BOTTLENECKS = [
+  { Icon: TreePine, title: "Wood Finishing Unit — Backlog", desc: "8 orders waiting, capacity reached. Est. delay: 2 days", severity: "high" },
+  { Icon: Wrench, title: "Upholstery Team Understaffed", desc: "3 workers on leave. 4 orders impacted.", severity: "medium" },
+  { Icon: Package, title: "Teak Veneer Out of Stock", desc: "Reorder placed. ETA: 4 Jun. 2 orders at risk.", severity: "high" }
+];
+
+const VENDOR_SLIPS = [
+  { vendor: "Rajasthan Timber Co.", item: "Burma Teak Planks", expected: "22 May", status: "3 days late", risk: "high" },
+  { vendor: "Suri Hardware", item: "Hydraulic Hinges × 200", expected: "24 May", status: "1 day late", risk: "medium" }
+];
+
+function StageBadge({ stage }: { stage: string }) {
+  const map: Record<string, { label: string; color: string; bg: string }> = {
+    new: { label: "New", color: "#6366f1", bg: "#ede9fe" },
+    production: { label: "In Production", color: "#d97706", bg: "#fef3c7" },
+    qc: { label: "QC Review", color: "#7c3aed", bg: "#f3e8ff" },
+    dispatch: { label: "Ready to Dispatch", color: "#059669", bg: "#d1fae5" },
+    delivered: { label: "Delivered", color: "#475569", bg: "#f1f5f9" }
+  };
+  const s = map[stage] ?? map.new;
+  return <span className="badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
+}
+
+function PriorityBadge({ priority }: { priority: string }) {
+  if (priority === "urgent") return <span className="badge" style={{ background: "#fee2e2", color: "#dc2626" }}>URGENT</span>;
+  if (priority === "high") return <span className="badge" style={{ background: "#fef3c7", color: "#d97706" }}>HIGH</span>;
+  return <span className="badge" style={{ background: "#f1f5f9", color: "#64748b" }}>NORMAL</span>;
+}
+
+export default function OrdersPage() {
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Live Order Command Centre</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Real-time production pipeline · {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long" })}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500">Pipeline value:</span>
+          <span className="font-bold text-lg text-slate-800">₹1.35 Cr</span>
+          <span className="badge badge-teal ml-2">44 ACTIVE</span>
+        </div>
+      </div>
+
+      {/* Pipeline board */}
+      <div className="kpi-grid mb-5" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+        {PIPELINE_STAGES.map((s) => (
+          <div key={s.id} className="card" style={{ borderTop: `3px solid ${s.color}` }}>
+            <div className="kpi-label">{s.label}</div>
+            <div className="kpi-value mt-1" style={{ color: s.color }}>{s.count}</div>
+            <div className="text-xs text-slate-500 mt-1 font-medium">{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        {/* Live orders table */}
+        <div className="card col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="card-title mb-0">Active Orders</h3>
+            <span className="text-xs text-blue-600 font-medium cursor-pointer hover:underline flex items-center gap-1">
+              View all 44 <ChevronRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Order ID</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Client</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">SKU</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Value</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Due</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Stage</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Priority</th>
+                </tr>
+              </thead>
+              <tbody>
+                {LIVE_ORDERS.map((o) => (
+                  <tr key={o.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-2 font-mono text-xs text-blue-600 font-semibold">{o.id}</td>
+                    <td className="py-2.5 px-2 font-medium text-slate-800">{o.client}</td>
+                    <td className="py-2.5 px-2 text-slate-600 text-xs">{o.sku}</td>
+                    <td className="py-2.5 px-2 font-semibold text-slate-700">{o.value}</td>
+                    <td className="py-2.5 px-2">
+                      <span className={`text-xs font-medium ${o.daysLeft <= 3 ? "text-red-600" : o.daysLeft <= 7 ? "text-amber-600" : "text-slate-500"}`}>
+                        {o.due} ({o.daysLeft}d)
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2"><StageBadge stage={o.stage} /></td>
+                    <td className="py-2.5 px-2"><PriorityBadge priority={o.priority} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right: Bottlenecks + Vendor Slips */}
+        <div className="flex flex-col gap-4">
+          {/* Bottlenecks */}
+          <div className="card">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <h3 className="card-title mb-0">Production Bottlenecks</h3>
+            </div>
+            <div className="space-y-3">
+              {BOTTLENECKS.map((b, i) => (
+                <div key={i} className={`alert-card ${b.severity === "high" ? "error" : "warning"}`}>
+                  <b.Icon className={`w-4 h-4 shrink-0 ${b.severity === "high" ? "text-red-500" : "text-amber-500"}`} />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">{b.title}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{b.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Vendor slips */}
+          <div className="card">
+            <div className="flex items-center gap-2 mb-3">
+              <Truck className="w-4 h-4 text-rose-500" />
+              <h3 className="card-title mb-0">Vendor Slip Tracker</h3>
+            </div>
+            <div className="space-y-2">
+              {VENDOR_SLIPS.map((v, i) => (
+                <div key={i} className="p-3 rounded-lg border border-rose-100 bg-rose-50">
+                  <div className="text-sm font-semibold text-rose-800">{v.vendor}</div>
+                  <div className="text-xs text-rose-600 mt-0.5">{v.item}</div>
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-xs text-slate-500">Expected: {v.expected}</span>
+                    <span className={`text-xs font-medium ${v.risk === "high" ? "text-red-600" : "text-amber-600"}`}>{v.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* On-time delivery trend */}
+      <div className="card">
+        <h3 className="card-title">On-Time Delivery Rate — Last 6 Months</h3>
+        <div className="flex items-end gap-3 mt-3" style={{ height: 100 }}>
+          {[
+            { month: "Dec", pct: 78 }, { month: "Jan", pct: 82 }, { month: "Feb", pct: 76 },
+            { month: "Mar", pct: 85 }, { month: "Apr", pct: 88 }, { month: "May", pct: 83 }
+          ].map((d) => (
+            <div key={d.month} className="flex-1 flex flex-col items-center gap-1">
+              <span className="text-xs font-semibold text-slate-600">{d.pct}%</span>
+              <div className="w-full rounded-t-sm" style={{ height: `${(d.pct - 70) * 4}px`, background: d.pct >= 85 ? "#10b981" : d.pct >= 80 ? "#f59e0b" : "#f43f5e", minHeight: 8 }} />
+              <span className="text-xs text-slate-400">{d.month}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-4 mt-3 text-xs">
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />≥ 85% Target</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />80–84%</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />&lt; 80%</span>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
@@ -13,15 +14,13 @@ import {
   classifyInboundEvent,
   generateGuestIntelligence,
   generateMorningBriefing,
-  generateRevenueInsights
+  generateRevenueInsights,
+  generateNightAuditReport,
+  type NightAuditData
 } from "./core/ai/intelligence";
 import { startAutomationWorker } from "./core/automations/engine";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
 import { checkWebhookSignature } from "./core/connectors/webhook-verify";
-import {
-  generateNightAuditReport,
-  type NightAuditData
-} from "./core/ai/intelligence";
 
 const eventBus = new InMemoryEventBus();
 

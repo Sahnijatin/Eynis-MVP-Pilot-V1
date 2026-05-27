@@ -18,7 +18,7 @@ export interface ServiceRequest {
   id: string;
   hotelId: string;
   guestId: string;
-  category: "housekeeping" | "maintenance" | "front_desk" | "concierge" | "fnb";
+  category: "housekeeping" | "maintenance" | "front_desk" | "concierge" | "fnb" | "other";
   status: "open" | "accepted" | "resolved" | "escalated";
   createdAt: string;
 }
