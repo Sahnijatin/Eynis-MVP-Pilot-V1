@@ -1,6 +1,6 @@
 # Eynis Platform
 
-Monorepo foundation for the Eynis hospitality intelligence platform.
+Monorepo foundation for the Eynis intelligence platform.
 
 ## Workspaces
 - `apps/api`: backend API
