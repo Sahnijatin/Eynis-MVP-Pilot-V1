@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { TrendingUp, TrendingDown, AlertCircle, CheckCircle, XCircle, Clock, X, Building2, Briefcase, ShoppingBag, Home, Download, Upload } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
+import { escapeCSV, parseCSVLine } from "../../lib/csv";
 
 const QUOTES_INIT = [
   { id: "QT-0412", client: "Marriott Hotels", project: "Executive Suite Furniture — 24 Rooms", value: 28_00_000, margin: 34, status: "negotiating", sent: "18 May", expiry: "2 Jun" },
@@ -28,20 +29,6 @@ interface QuoteEntry {
 
 type TabFilter = "All" | "Active" | "Won" | "Lost";
 type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
-    else { current += ch; }
-  }
-  result.push(current.trim());
-  return result;
-}
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; color: string; bg: string; icon: typeof CheckCircle }> = {
@@ -119,7 +106,7 @@ export default function QuotesPage() {
   function exportCSV() {
     const headers = ["Quote ID", "Client", "Project", "Value", "Margin %", "Status", "Sent", "Expiry"];
     const rows = quotes.map(q => [q.id, q.client, q.project, String(q.value), String(q.margin), q.status, q.sent, q.expiry]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const csv = [headers, ...rows].map(r => r.map(escapeCSV).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

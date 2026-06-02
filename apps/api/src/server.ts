@@ -24,7 +24,7 @@ import { checkWebhookSignature } from "./core/connectors/webhook-verify";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel } from "./core/rbac";
 import { enforceLicenseFeature } from "./core/license";
-import { type Permission } from "./core/permissions";
+import { type Permission, ALL_PERMISSIONS } from "./core/permissions";
 
 const eventBus = new InMemoryEventBus();
 
@@ -174,7 +174,7 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
       role: true,
       fullName: true,
       roleId: true,
-      systemRole: { select: { permissions: true, key: true } }
+      systemRole: { select: { permissions: true, key: true, hotelId: true } }
     }
   });
 
@@ -182,8 +182,12 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
     return { ok: false as const, status: 401, error: "User not found or role mismatch" };
   }
 
-  // Load permissions from the Role record if assigned; fall back to legacy mapping.
-  const permissions: string[] = user.systemRole
+  // Load permissions from the Role record if assigned AND that role belongs to the
+  // same hotel as the user. The hotel check is defense-in-depth: a User must never
+  // inherit permissions from a Role that belongs to a different tenant, even if a
+  // stale/cross-hotel roleId was somehow persisted. Fall back to the legacy mapping.
+  const roleBelongsToHotel = user.systemRole?.hotelId === user.hotelId;
+  const permissions: string[] = user.systemRole && roleBelongsToHotel
     ? parsePermissions(user.systemRole.permissions)
     : getPermissionsForLegacyRole(user.role);
 
@@ -395,8 +399,11 @@ const handleRequest = async (
     }
 
     // ── GET /auth/identify — public: look up hotelId+role+industry by email ────────
-    // Also auto-accepts any pending invitations for this email so an invited agent
-    // who signs up directly (skipping the invite-link page) still gets connected.
+    // Read-only: this endpoint MUST NOT mutate state. Invited users are connected via
+    // the token-protected invite flow (POST /team/invitations/:token/accept), which
+    // proves possession of the secret invite link. Auto-accepting by email alone here
+    // would let anyone consume a pending invitation just by knowing the address, and a
+    // GET must never have side effects.
     if (req.url?.startsWith("/auth/identify") && req.method === "GET") {
       const email = parseUrl(req.url).searchParams.get("email")?.toLowerCase().trim();
       if (!email) {
@@ -404,7 +411,7 @@ const handleRequest = async (
         return;
       }
 
-      let user = await prisma.user.findFirst({
+      const user = await prisma.user.findFirst({
         where: { email, isActive: true },
         select: {
           hotelId: true,
@@ -415,42 +422,15 @@ const handleRequest = async (
         }
       });
 
-      // No user record → check for a pending invitation and accept it on the fly.
       if (!user) {
-        const inv = await prisma.invitation.findFirst({
+        // No active user record. Report whether a pending invitation exists so the web
+        // can route the visitor to the invite-acceptance page — without creating
+        // anything or revealing tenant details.
+        const pendingInvite = await prisma.invitation.findFirst({
           where: { email, acceptedAt: null, expiresAt: { gt: new Date() } },
-          include: { role: { select: { id: true, key: true } } },
-          orderBy: { createdAt: "desc" }
+          select: { id: true }
         });
-        if (inv) {
-          const legacyRole = legacyRoleFor(inv.role.key);
-          const fallbackName = email.split("@")[0] ?? "Team Member";
-          await prisma.user.create({
-            data: {
-              hotelId: inv.hotelId,
-              email: inv.email,
-              fullName: fallbackName,
-              role: legacyRole,
-              roleId: inv.role.id,
-              isActive: true
-            }
-          });
-          await prisma.invitation.update({ where: { token: inv.token }, data: { acceptedAt: new Date() } });
-          user = await prisma.user.findFirst({
-            where: { email, isActive: true },
-            select: {
-              hotelId: true,
-              role: true,
-              fullName: true,
-              systemRole: { select: { key: true } },
-              hotel: { select: { industry: true, name: true } }
-            }
-          });
-        }
-      }
-
-      if (!user) {
-        json(res, 200, { ok: true, exists: false });
+        json(res, 200, { ok: true, exists: false, hasPendingInvite: !!pendingInvite });
         return;
       }
       json(res, 200, {
@@ -2727,6 +2707,21 @@ const handleRequest = async (
       const fullName = asTrimmedString(body.fullName) ?? inv.email.split("@")[0] ?? "New User";
       const legacyRole = legacyRoleFor(inv.role.key);
       const existing = await prisma.user.findUnique({ where: { email: inv.email } });
+      // Email is globally unique, so an existing user belongs to exactly one hotel.
+      // Accepting an invite to a *different* hotel must never silently re-point that
+      // user's role at another tenant (the user keeps their original hotelId, so they
+      // would inherit cross-tenant permissions). Reject instead.
+      if (existing && existing.hotelId !== inv.hotelId) {
+        json(res, 409, { ok: false, error: "This email is already registered to a different workspace" });
+        return;
+      }
+      // Seat enforcement at accept time: only block when this acceptance would add a
+      // new active seat (a brand-new user, or reactivating a deactivated one).
+      const willConsumeSeat = !existing || !existing.isActive;
+      if (willConsumeSeat && !(await isWithinSeatLimit(inv.hotelId))) {
+        json(res, 403, { ok: false, error: "Seat limit reached — ask an admin to upgrade the plan" });
+        return;
+      }
       let userId: string;
       if (existing) {
         await prisma.user.update({
@@ -2779,7 +2774,8 @@ const handleRequest = async (
       }
       const targetId = parseTeamUserId(req.url)!;
       const target = await prisma.user.findFirst({
-        where: { id: targetId, hotelId: auth.context.hotelId }
+        where: { id: targetId, hotelId: auth.context.hotelId },
+        include: { systemRole: { select: { key: true } } }
       });
       if (!target) { json(res, 404, { ok: false, error: "User not found" }); return; }
       if (targetId === auth.context.userId) {
@@ -2790,6 +2786,7 @@ const handleRequest = async (
       if (typeof body.isActive === "boolean") {
         updates.isActive = body.isActive;
       }
+      let newRoleKey: string | null = null;
       if (asTrimmedString(body.roleId)) {
         const newRole = await prisma.role.findFirst({
           where: { id: String(body.roleId), hotelId: auth.context.hotelId },
@@ -2798,9 +2795,30 @@ const handleRequest = async (
         if (!newRole) { json(res, 404, { ok: false, error: "Role not found" }); return; }
         updates.roleId = newRole.id;
         updates.role   = legacyRoleFor(newRole.key);
+        newRoleKey = newRole.key;
       }
       if (Object.keys(updates).length === 0) {
         json(res, 400, { ok: false, error: "Provide roleId or isActive to update" }); return;
+      }
+      // Last-admin protection: never let the final active admin be deactivated or
+      // demoted out of the admin role, or the hotel would be left with no one who can
+      // manage the team, roles, or billing.
+      const targetIsAdmin = (target.systemRole?.key ?? null) === "admin" || target.role === "owner";
+      const losesAdmin =
+        updates.isActive === false || (newRoleKey !== null && newRoleKey !== "admin");
+      if (targetIsAdmin && losesAdmin) {
+        const otherAdmins = await prisma.user.count({
+          where: {
+            hotelId: auth.context.hotelId,
+            isActive: true,
+            id: { not: targetId },
+            OR: [{ systemRole: { key: "admin" } }, { role: "owner" }]
+          }
+        });
+        if (otherAdmins === 0) {
+          json(res, 400, { ok: false, error: "Cannot remove the last admin — assign another admin first" });
+          return;
+        }
       }
       const updated = await prisma.user.update({
         where: { id: targetId },
@@ -2846,7 +2864,7 @@ const handleRequest = async (
         ok: true,
         roles: roles.map(r => ({
           id: r.id, key: r.key, displayName: r.displayName,
-          permissions: JSON.parse(r.permissions) as string[],
+          permissions: parsePermissions(r.permissions),
           isSystem: r.isSystem, isCustom: r.isCustom,
           userCount: r._count.users
         }))
@@ -2891,7 +2909,15 @@ const handleRequest = async (
       const displayName = asTrimmedString(body.displayName);
       const key = asTrimmedString(body.key)?.toLowerCase().replace(/\s+/g, "_");
       if (!displayName || !key) { json(res, 400, { ok: false, error: "displayName and key are required" }); return; }
-      const permissions = Array.isArray(body.permissions) ? body.permissions.filter((p): p is string => typeof p === "string") : [];
+      // Only allow known permissions, and never let a creator grant a permission they
+      // don't themselves hold (prevents privilege escalation via custom roles).
+      const requested = Array.isArray(body.permissions)
+        ? body.permissions.filter((p): p is string => typeof p === "string")
+        : [];
+      const grantable = new Set(ALL_PERMISSIONS as readonly string[]);
+      const permissions = requested.filter(
+        (p) => grantable.has(p) && hasPermission(auth.context.permissions, p)
+      );
       const existing = await prisma.role.findUnique({ where: { hotelId_key: { hotelId: auth.context.hotelId, key } } });
       if (existing) { json(res, 409, { ok: false, error: "A role with that key already exists" }); return; }
       const role = await prisma.role.create({

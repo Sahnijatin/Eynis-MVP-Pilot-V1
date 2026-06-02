@@ -33,7 +33,9 @@ const SYSTEM_KEY_TO_ORG_ROLE: Record<string, OrgRole> = {
 function toOrgRole(roleKey: string | null, legacyRole: string | null): OrgRole {
   if (roleKey && SYSTEM_KEY_TO_ORG_ROLE[roleKey]) return SYSTEM_KEY_TO_ORG_ROLE[roleKey];
   if (legacyRole && LEGACY_TO_ORG_ROLE[legacyRole]) return LEGACY_TO_ORG_ROLE[legacyRole];
-  return "org_admin";
+  // Unknown/unmapped role → least privilege. This only affects UI nav (the API is
+  // authoritative for permissions); defaulting to admin would over-expose nav.
+  return "org_viewer";
 }
 
 async function identifyByEmail(email: string) {

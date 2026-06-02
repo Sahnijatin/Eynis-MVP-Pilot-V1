@@ -4,6 +4,18 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import { Download, Upload, UserPlus, Star, Search, CheckCircle, X, AlertCircle } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "./client-detail-panel";
+import { escapeCSV, parseCSVLine } from "../../lib/csv";
+
+// Parse a possibly-malformed date string from an imported CSV without throwing.
+// `new Date("garbage").toISOString()` throws a RangeError, which would abort the
+// entire import; fall back to "now" for unparseable values.
+function safeIso(value: string | undefined): string {
+  if (value) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return new Date().toISOString();
+}
 
 export interface GuestRow {
   id: string;
@@ -56,20 +68,6 @@ const EMPTY_FORM: FormState = { fullName: "", phone: "", email: "", segment: "Bu
 
 type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
-    else { current += ch; }
-  }
-  result.push(current.trim());
-  return result;
-}
-
 function buildGuestDetail(g: GuestRow): ClientDetailData {
   return {
     historyLabel: "Stays & Requests",
@@ -106,7 +104,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
   function exportCSV() {
     const headers = ["Name", "Phone", "Status", "Segment", "Last Stay", "Visits"];
     const rows = guests.map(g => [g.fullName, g.phoneE164, g.status, g.segment, formatDate(g.lastStay), String(g.visitCount)]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const csv = [headers, ...rows].map(r => r.map(escapeCSV).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -157,7 +155,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             phoneE164:  cols[phoneIdx]   ?? "—",
             status:     (rawStatus === "UPCOMING" || rawStatus === "CHECK-OUT") ? rawStatus : "ACTIVE",
             segment:    cols[segmentIdx] ?? "Solo",
-            lastStay:   lastStayIdx >= 0 && cols[lastStayIdx] ? new Date(cols[lastStayIdx]).toISOString() : new Date().toISOString(),
+            lastStay:   lastStayIdx >= 0 ? safeIso(cols[lastStayIdx]) : new Date().toISOString(),
             visitCount: visitsIdx >= 0 ? (parseInt(cols[visitsIdx], 10) || 1) : 1,
           };
         });
