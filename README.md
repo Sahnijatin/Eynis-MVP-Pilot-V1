@@ -3,7 +3,7 @@
 [![CI](https://github.com/Sahnijatin/Eynis-MVP-Pilot-V1/actions/workflows/ci.yml/badge.svg)](https://github.com/Sahnijatin/Eynis-MVP-Pilot-V1/actions/workflows/ci.yml)
 
 Monorepo foundation for the Eynis intelligence platform.
-
+hhh
 ## Workspaces
 - `apps/api`: backend API
 - `apps/web`: management and staff web app
