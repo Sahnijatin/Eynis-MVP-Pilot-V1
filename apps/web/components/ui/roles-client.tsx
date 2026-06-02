@@ -1,0 +1,334 @@
+"use client";
+
+import { useState } from "react";
+import { Pencil, Check, X, Plus, Lock, Users, ShieldCheck } from "lucide-react";
+import {
+  SYSTEM_ROLES,
+  PERMISSION_LABELS,
+  type Permission,
+} from "../../lib/rbac";
+import type { TeamRole } from "../../lib/data";
+
+const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as Permission[];
+
+interface DisplayRole {
+  key: string;
+  displayName: string;
+  description: string;
+  permissions: string[];
+  isSystemRole: boolean;
+  iconColor: string;
+  iconBg: string;
+  userCount: number;
+  isCustom: boolean;
+  apiId?: string;
+}
+
+interface Props {
+  initialRoles: TeamRole[];
+  plan: string;
+  accentColor?: string;
+  propertyLabel?: string;
+  teamLabel?: string;
+}
+
+export default function RolesClient({
+  initialRoles,
+  plan,
+  accentColor = "#0f766e",
+  propertyLabel = "Property",
+  teamLabel = "Team",
+}: Props) {
+  const SETTINGS_TABS = [
+    { label: `Profile & ${propertyLabel}`, href: "/settings" },
+    { label: teamLabel, href: "/settings/team" },
+    { label: "Roles", href: "/settings/roles" },
+    { label: "Billing", href: "/settings/billing" },
+  ];
+  const [displayRoles, setDisplayRoles] = useState<DisplayRole[]>(() => {
+    const system: DisplayRole[] = SYSTEM_ROLES.map(r => {
+      // Try to match an API role by partial key
+      const apiRole = initialRoles.find(ar => ar.key.includes(r.key.replace("org_", "")));
+      return {
+        key: r.key,
+        displayName: apiRole?.displayName ?? r.defaultDisplayName,
+        description: r.description,
+        permissions: r.permissions,
+        isSystemRole: true,
+        iconColor: r.iconColor,
+        iconBg: r.iconBg,
+        userCount: apiRole?.userCount ?? 0,
+        isCustom: false,
+        apiId: apiRole?.id,
+      };
+    });
+    const custom: DisplayRole[] = initialRoles
+      .filter(ar => ar.isCustom)
+      .map(ar => ({
+        key: ar.key,
+        displayName: ar.displayName,
+        description: "Custom role",
+        permissions: ar.permissions,
+        isSystemRole: false,
+        iconColor: "#7c3aed",
+        iconBg: "#f5f3ff",
+        userCount: ar.userCount ?? 0,
+        isCustom: true,
+        apiId: ar.id,
+      }));
+    return [...system, ...custom];
+  });
+
+  const [editingKey, setEditingKey]           = useState<string | null>(null);
+  const [editName, setEditName]               = useState("");
+  const [saveLoading, setSaveLoading]         = useState(false);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customName, setCustomName]           = useState("");
+  const [customKey, setCustomKey]             = useState("");
+  const [customPerms, setCustomPerms]         = useState<Permission[]>([]);
+  const [customLoading, setCustomLoading]     = useState(false);
+  const [customError, setCustomError]         = useState<string | null>(null);
+  const [expandedKey, setExpandedKey]         = useState<string | null>("org_admin");
+
+  const isGrowth = plan !== "starter";
+
+  function startEdit(role: DisplayRole) {
+    setEditingKey(role.key);
+    setEditName(role.displayName);
+  }
+
+  async function saveRename(key: string) {
+    if (!editName.trim()) return;
+    setSaveLoading(true);
+    try {
+      const role = displayRoles.find(r => r.key === key);
+      if (role?.apiId) {
+        await fetch(`/api/team/roles/${role.apiId}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ displayName: editName.trim() }),
+        });
+      }
+      setDisplayRoles(prev => prev.map(r => r.key === key ? { ...r, displayName: editName.trim() } : r));
+    } finally {
+      setSaveLoading(false);
+      setEditingKey(null);
+    }
+  }
+
+  function toggleCustomPerm(perm: Permission) {
+    setCustomPerms(prev => prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]);
+  }
+
+  async function createCustomRole() {
+    if (!customName.trim()) { setCustomError("Role name is required"); return; }
+    setCustomLoading(true);
+    setCustomError(null);
+    try {
+      const key = customKey.trim() || customName.trim().toLowerCase().replace(/\s+/g, "_");
+      const res = await fetch("/api/team/roles", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: customName.trim(), key, permissions: customPerms }),
+      });
+      const data = (await res.json()) as { ok: boolean; role?: TeamRole; error?: string };
+      if (!data.ok) { setCustomError(data.error ?? "Failed to create role"); return; }
+      setDisplayRoles(prev => [...prev, {
+        key,
+        displayName: customName.trim(),
+        description: "Custom role",
+        permissions: customPerms,
+        isSystemRole: false,
+        iconColor: "#7c3aed",
+        iconBg: "#f5f3ff",
+        userCount: 0,
+        isCustom: true,
+        apiId: data.role?.id,
+      }]);
+      setShowCustomModal(false);
+      setCustomName(""); setCustomKey(""); setCustomPerms([]);
+    } finally {
+      setCustomLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">Manage your team, roles, and billing.</p>
+        </div>
+      </div>
+
+      <div className="flex border-b border-slate-200 mb-6">
+        {SETTINGS_TABS.map(tab => {
+          const active = tab.href === "/settings/roles";
+          return (
+            <a
+              key={tab.href}
+              href={tab.href}
+              className="px-5 py-3 text-sm font-medium border-b-2 transition-colors"
+              style={active
+                ? { borderColor: accentColor, color: accentColor }
+                : { borderColor: "transparent", color: "#64748b" }
+              }
+            >
+              {tab.label}
+            </a>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-base font-semibold text-slate-800">Roles & Permissions</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            System roles cannot be deleted. Display names are customisable per property. Custom roles require Growth plan.
+          </p>
+        </div>
+        <button
+          onClick={() => isGrowth ? setShowCustomModal(true) : undefined}
+          className={`px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${isGrowth ? "text-white" : "text-slate-400 border border-slate-200 cursor-not-allowed"}`}
+          style={isGrowth ? { background: accentColor } : {}}
+          title={isGrowth ? "Create custom role" : "Upgrade to Growth to create custom roles"}
+        >
+          {isGrowth ? <Plus className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+          {isGrowth ? "New Role" : "Custom Roles (Growth+)"}
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {displayRoles.map(role => {
+          const isExpanded = expandedKey === role.key;
+          return (
+            <div key={role.key} className="card overflow-hidden">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setExpandedKey(isExpanded ? null : role.key)}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0" style={{ background: role.iconBg, color: role.iconColor }}>
+                  {role.displayName.slice(0, 2).toUpperCase()}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  {editingKey === role.key ? (
+                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      <input
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") void saveRename(role.key); if (e.key === "Escape") setEditingKey(null); }}
+                        className="border border-slate-200 rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 w-44"
+                        autoFocus
+                      />
+                      <button onClick={() => void saveRename(role.key)} disabled={saveLoading} className="text-teal-700 hover:text-teal-800"><Check className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingKey(null)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-slate-800">{role.displayName}</span>
+                      {role.isCustom && <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">CUSTOM</span>}
+                      {role.isSystemRole && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-medium flex items-center gap-0.5">
+                          <Lock className="w-2.5 h-2.5" />SYSTEM
+                        </span>
+                      )}
+                      <button onClick={e => { e.stopPropagation(); startEdit(role); }} className="text-slate-300 hover:text-slate-500 transition-colors" title="Rename">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    <span className="text-[11px] font-mono text-slate-400">{role.key}</span>
+                    <span className="flex items-center gap-0.5 text-xs text-slate-400"><Users className="w-3 h-3" />{role.userCount} user{role.userCount !== 1 ? "s" : ""}</span>
+                    <span className="text-xs text-slate-400">{role.permissions.length}/{ALL_PERMISSIONS.length} permissions</span>
+                  </div>
+                </div>
+
+                <div className="hidden md:block text-xs text-slate-400 max-w-xs text-right shrink-0">
+                  {role.description}
+                </div>
+                <span className="text-slate-300 text-xs shrink-0">{isExpanded ? "▲" : "▼"}</span>
+              </div>
+
+              {isExpanded && (
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Permissions</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {ALL_PERMISSIONS.map(perm => {
+                      const granted = role.permissions.includes(perm);
+                      return (
+                        <div
+                          key={perm}
+                          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                          style={granted ? { background: role.iconBg, color: role.iconColor } : { background: "#f8fafc", color: "#cbd5e1" }}
+                        >
+                          <span className="text-sm leading-none shrink-0">{granted ? "✓" : "—"}</span>
+                          <span>{PERMISSION_LABELS[perm]}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {role.isSystemRole && (
+                    <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      System role — cannot be deleted. Only the display name can be customised.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Custom Role Modal */}
+      {showCustomModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-semibold text-slate-800">Create Custom Role</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Custom roles belong to your property and can be deleted.</p>
+              </div>
+              <button onClick={() => setShowCustomModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Display Name</label>
+                  <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Housekeeping" className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Key (auto)</label>
+                  <input value={customKey} onChange={e => setCustomKey(e.target.value)} placeholder={customName.toLowerCase().replace(/\s+/g, "_") || "housekeeping"} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Permissions</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_PERMISSIONS.map(perm => (
+                    <label key={perm} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-50">
+                      <input type="checkbox" checked={customPerms.includes(perm)} onChange={() => toggleCustomPerm(perm)} className="rounded text-teal-600 focus:ring-teal-500" />
+                      <span className="text-xs text-slate-700">{PERMISSION_LABELS[perm]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {customError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{customError}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setShowCustomModal(false)} className="flex-1 py-2.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button onClick={() => void createCustomRole()} disabled={customLoading} className="flex-1 py-2.5 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ background: "#0f766e" }}>
+                  {customLoading ? "Creating…" : "Create Role"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

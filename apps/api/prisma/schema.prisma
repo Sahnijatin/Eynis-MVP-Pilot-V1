@@ -10,6 +10,7 @@ datasource db {
 model Hotel {
   id              String           @id @default(cuid())
   name            String
+  industry        String           @default("hospitality")
   timezone        String           @default("Asia/Kolkata")
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -25,6 +26,9 @@ model Hotel {
   transitions     ServiceRequestTransition[]
   connectorConfigs ConnectorConfig[]
   connectorEvents  ConnectorEvent[]
+  license         License?
+  roles           Role[]
+  invitations     Invitation[]
 }
 
 model User {
@@ -33,10 +37,12 @@ model User {
   fullName         String
   email            String           @unique
   role             String
+  roleId           String?
   isActive         Boolean          @default(true)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   hotel            Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  systemRole       Role?            @relation(fields: [roleId], references: [id], onDelete: SetNull)
   assignedRequests ServiceRequest[] @relation("assigned_requests")
   changedTransitions ServiceRequestTransition[] @relation("transition_actor")
 }
@@ -224,4 +230,51 @@ model NightAuditReport {
 
   @@unique([hotelId, reportDate])
   @@index([hotelId, generatedAt])
+}
+
+model License {
+  id            String    @id @default(cuid())
+  hotelId       String    @unique
+  plan          String    @default("starter")
+  maxSeats      Int       @default(5)
+  renewsAt      DateTime?
+  razorpaySubId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  hotel         Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  hotelId     String
+  key         String
+  displayName String
+  permissions String       @default("[]")
+  isSystem    Boolean      @default(true)
+  isCustom    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  hotel       Hotel        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  users       User[]
+  invitations Invitation[]
+
+  @@unique([hotelId, key])
+  @@index([hotelId])
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  hotelId     String
+  email       String
+  roleId      String
+  token       String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String
+  createdAt   DateTime  @default(now())
+  hotel       Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  role        Role      @relation(fields: [roleId], references: [id])
+
+  @@index([hotelId, email])
+  @@index([token])
 }

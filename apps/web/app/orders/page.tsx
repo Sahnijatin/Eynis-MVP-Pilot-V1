@@ -1,6 +1,9 @@
-import { AlertTriangle, Truck, ChevronRight, TreePine, Wrench, Package } from "lucide-react";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useState } from "react";
+import { AlertTriangle, Truck, ChevronRight, TreePine, Wrench, Package } from "lucide-react";
+import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
+import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 
 const PIPELINE_STAGES = [
   { id: "new", label: "New Order", color: "#6366f1", count: 12, value: "₹18.4L" },
@@ -48,19 +51,66 @@ function PriorityBadge({ priority }: { priority: string }) {
   return <span className="badge" style={{ background: "#f1f5f9", color: "#64748b" }}>NORMAL</span>;
 }
 
+type LiveOrder = (typeof LIVE_ORDERS)[number];
+
+function buildOrderDetail(o: LiveOrder): ClientDetailData {
+  return {
+    historyLabel: "Status Timeline",
+    contact: {
+      person: o.client,
+      role: "Client",
+      extras: [
+        { label: "Order ID",   value: o.id },
+        { label: "SKU",        value: o.sku },
+        { label: "Value",      value: o.value },
+        { label: "Due",        value: o.due },
+        { label: "Days Left",  value: String(o.daysLeft) },
+        { label: "Priority",   value: o.priority.toUpperCase() },
+      ],
+    },
+    history: [
+      { id: "evt-1", title: "Order received",   date: "Day 0",  status: "Done",  statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "evt-2", title: "In production",    date: "Day 3",  status: o.stage === "new" ? "Upcoming" : "Done", statusColor: o.stage === "new" ? "#64748b" : "#059669", statusBg: o.stage === "new" ? "#f1f5f9" : "#d1fae5" },
+      { id: "evt-3", title: "QC review",        date: "Day 7",  status: ["qc", "dispatch", "delivered"].includes(o.stage) ? "Done" : "Pending", statusColor: ["qc", "dispatch", "delivered"].includes(o.stage) ? "#059669" : "#d97706", statusBg: ["qc", "dispatch", "delivered"].includes(o.stage) ? "#d1fae5" : "#fef3c7" },
+      { id: "evt-4", title: "Ready to dispatch",date: "Day 9",  status: ["dispatch", "delivered"].includes(o.stage) ? "Done" : "Pending", statusColor: ["dispatch", "delivered"].includes(o.stage) ? "#059669" : "#64748b", statusBg: ["dispatch", "delivered"].includes(o.stage) ? "#d1fae5" : "#f1f5f9" },
+      { id: "evt-5", title: "Delivered",        date: o.due,    status: o.stage === "delivered" ? "Done" : "Pending", statusColor: o.stage === "delivered" ? "#059669" : "#64748b", statusBg: o.stage === "delivered" ? "#d1fae5" : "#f1f5f9" },
+    ],
+    notes: o.priority === "urgent"
+      ? "Urgent — <3 days to due date. Flag any blockers immediately."
+      : "On schedule. Daily standup updates this status.",
+  };
+}
+
 export default function OrdersPage() {
+  const [selected, setSelected] = useState<LiveOrder | null>(null);
+
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Live Order Command Centre</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Real-time production pipeline · {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long" })}</p>
+          <p className="text-sm text-slate-500 mt-0.5">Real-time production pipeline · click an order for the full status timeline</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-sm text-slate-500">Pipeline value:</span>
           <span className="font-bold text-lg text-slate-800">₹1.35 Cr</span>
-          <span className="badge badge-teal ml-2">44 ACTIVE</span>
+          <span className="badge badge-teal">44 ACTIVE</span>
+          <ImportExportButtons
+            rows={LIVE_ORDERS}
+            columns={[
+              { label: "Order ID",  value: "id" },
+              { label: "Client",    value: "client" },
+              { label: "SKU",       value: "sku" },
+              { label: "Value",     value: "value" },
+              { label: "Due",       value: "due" },
+              { label: "Stage",     value: "stage" },
+              { label: "Priority",  value: "priority" },
+              { label: "Days Left", value: "daysLeft" },
+            ]}
+            fileBase="orders"
+            accentColor="#1d4ed8"
+          />
         </div>
       </div>
 
@@ -99,7 +149,7 @@ export default function OrdersPage() {
               </thead>
               <tbody>
                 {LIVE_ORDERS.map((o) => (
-                  <tr key={o.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                  <tr key={o.id} onClick={() => setSelected(o)} className="border-b border-slate-50 hover:bg-blue-50 transition-colors cursor-pointer">
                     <td className="py-2.5 px-2 font-mono text-xs text-blue-600 font-semibold">{o.id}</td>
                     <td className="py-2.5 px-2 font-medium text-slate-800">{o.client}</td>
                     <td className="py-2.5 px-2 text-slate-600 text-xs">{o.sku}</td>
@@ -182,6 +232,23 @@ export default function OrdersPage() {
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />&lt; 80%</span>
         </div>
       </div>
+
+      {selected && (
+        <ClientDetailPanel
+          open={!!selected}
+          onClose={() => setSelected(null)}
+          name={selected.client}
+          subtitle={`${selected.id} · ${selected.sku}`}
+          kpis={[
+            { label: "Value",      value: selected.value },
+            { label: "Due",        value: selected.due },
+            { label: "Days Left",  value: String(selected.daysLeft) },
+            { label: "Priority",   value: selected.priority.toUpperCase() },
+          ]}
+          detail={buildOrderDetail(selected)}
+          accentColor="#1d4ed8"
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, Package, X, CheckCircle } from "lucide-react";
+import { useState, useRef } from "react";
+import { AlertTriangle, Package, X, CheckCircle, Download, Upload, AlertCircle } from "lucide-react";
 
 interface Material {
   name: string; unit: string; stockIn: number; used: number; offcut: number; onHand: number; reorderLevel: number; cost: number; status: string;
@@ -33,6 +33,22 @@ const BOM_VARIANCES = [
   { order: "ORD-2844", item: "Marine Ply", expected: "18 sheets", actual: "23 sheets", variance: "+28%", impact: "₹6,000 over budget" }
 ];
 
+type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
+    else { current += ch; }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function StatusDot({ status }: { status: string }) {
   if (status === "critical") return <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium"><span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse" />Critical</span>;
   if (status === "warning") return <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Low Stock</span>;
@@ -46,11 +62,79 @@ export default function MaterialsPage() {
   const [txForm, setTxForm] = useState({ material: MATERIALS_INIT[0].name, type: "used" as "used" | "received" | "offcut", qty: "", order: "", by: "" });
   const [txError, setTxError] = useState("");
   const [txSuccess, setTxSuccess] = useState(false);
+  const [importStatus, setImportStatus] = useState<ImportStatus>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const atRisk = materials.filter(m => m.status !== "ok").length;
   const totalWaste = materials.reduce((s, m) => s + m.offcut, 0);
   const wasteValue = materials.reduce((s, m) => s + m.offcut * m.cost, 0);
   const selectedMaterial = materials.find(m => m.name === txForm.material) ?? materials[0];
+
+  function exportCSV() {
+    const headers = ["Material", "Unit", "Stock In", "Used", "Offcut", "On Hand", "Reorder Level", "Cost (₹)", "Status"];
+    const rows = materials.map(m => [m.name, m.unit, String(m.stockIn), String(m.used), String(m.offcut), String(m.onHand), String(m.reorderLevel), String(m.cost), m.status]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "materials-export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) {
+      setImportStatus({ type: "error", message: "Only .csv files are supported" });
+      setTimeout(() => setImportStatus(null), 4000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = (ev.target?.result as string) ?? "";
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { setImportStatus({ type: "error", message: "CSV has no data rows" }); setTimeout(() => setImportStatus(null), 4000); return; }
+        const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").toLowerCase().trim());
+        const nameIdx    = headers.findIndex(h => h === "material" || h === "name");
+        const unitIdx    = headers.findIndex(h => h === "unit");
+        const stockIdx   = headers.findIndex(h => h.includes("stock"));
+        const usedIdx    = headers.findIndex(h => h === "used");
+        const offcutIdx  = headers.findIndex(h => h === "offcut");
+        const onHandIdx  = headers.findIndex(h => h.includes("on hand") || h === "onhand");
+        const reorderIdx = headers.findIndex(h => h.includes("reorder"));
+        const costIdx    = headers.findIndex(h => h.includes("cost"));
+        if (nameIdx === -1) { setImportStatus({ type: "error", message: 'CSV must have a "Material" column' }); setTimeout(() => setImportStatus(null), 4000); return; }
+        const imported: Material[] = lines.slice(1).map(line => {
+          const cols = parseCSVLine(line).map(c => c.replace(/^"|"$/g, ""));
+          const onHand = onHandIdx >= 0 ? (parseInt(cols[onHandIdx], 10) || 0) : 0;
+          const reorder = reorderIdx >= 0 ? (parseInt(cols[reorderIdx], 10) || 50) : 50;
+          const status = onHand <= 0 ? "critical" : onHand <= reorder * 0.5 ? "critical" : onHand <= reorder ? "warning" : "ok";
+          return {
+            name:         cols[nameIdx]   ?? "Unknown Material",
+            unit:         unitIdx >= 0    ? cols[unitIdx] ?? "units" : "units",
+            stockIn:      stockIdx >= 0   ? (parseInt(cols[stockIdx], 10) || 0) : 0,
+            used:         usedIdx >= 0    ? (parseInt(cols[usedIdx], 10) || 0) : 0,
+            offcut:       offcutIdx >= 0  ? (parseInt(cols[offcutIdx], 10) || 0) : 0,
+            onHand,
+            reorderLevel: reorder,
+            cost:         costIdx >= 0    ? (parseInt(cols[costIdx].replace(/[^\d]/g, ""), 10) || 0) : 0,
+            status,
+          };
+        });
+        setMaterials(prev => [...imported, ...prev]);
+        setImportStatus({ type: "success", count: imported.length });
+        setTimeout(() => setImportStatus(null), 4000);
+      } catch {
+        setImportStatus({ type: "error", message: "Failed to parse CSV" });
+        setTimeout(() => setImportStatus(null), 4000);
+      }
+    };
+    reader.readAsText(file);
+  }
 
   function closeModal() {
     setModalOpen(false);
@@ -65,26 +149,13 @@ export default function MaterialsPage() {
     const qtyStr = `${txForm.qty} ${selectedMaterial.unit}`;
     const orderStr = txForm.order || (txForm.type === "received" ? "PO-????" : "ORD-????");
     const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-
     setMaterials(prev => prev.map(m => {
       if (m.name !== txForm.material) return m;
-      let onHand = txForm.type === "received" ? m.onHand + qty : Math.max(0, m.onHand - qty);
+      const onHand = txForm.type === "received" ? m.onHand + qty : Math.max(0, m.onHand - qty);
       const status = onHand <= 0 ? "critical" : onHand <= m.reorderLevel * 0.5 ? "critical" : onHand <= m.reorderLevel ? "warning" : "ok";
-      return {
-        ...m,
-        onHand,
-        status,
-        stockIn: txForm.type === "received" ? m.stockIn + qty : m.stockIn,
-        used: txForm.type === "used" ? m.used + qty : m.used,
-        offcut: txForm.type === "offcut" ? m.offcut + qty : m.offcut
-      };
+      return { ...m, onHand, status, stockIn: txForm.type === "received" ? m.stockIn + qty : m.stockIn, used: txForm.type === "used" ? m.used + qty : m.used, offcut: txForm.type === "offcut" ? m.offcut + qty : m.offcut };
     }));
-
-    setTransactions(prev => [
-      { time: now, material: txForm.material, type: txForm.type, qty: qtyStr, order: orderStr, by: txForm.by || "—" },
-      ...prev
-    ]);
-
+    setTransactions(prev => [{ time: now, material: txForm.material, type: txForm.type, qty: qtyStr, order: orderStr, by: txForm.by || "—" }, ...prev]);
     setTxSuccess(true);
     setTimeout(closeModal, 1500);
   }
@@ -96,14 +167,33 @@ export default function MaterialsPage() {
           <h1 className="text-xl font-bold text-slate-800">Material Yield Tracker</h1>
           <p className="text-sm text-slate-500 mt-0.5">BOM compliance · offcut management · procurement alerts</p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ background: "#1d4ed8" }}
-        >
-          + Log Transaction
-        </button>
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" /> Import
+          </button>
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+          <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>
+            + Log Transaction
+          </button>
+        </div>
       </div>
+
+      {importStatus && (
+        <div className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${importStatus.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+          {importStatus.type === "success"
+            ? <><CheckCircle className="w-4 h-4 shrink-0" /> {importStatus.count} material{importStatus.count !== 1 ? "s" : ""} imported successfully</>
+            : <><AlertCircle className="w-4 h-4 shrink-0" /> {importStatus.message}</>}
+        </div>
+      )}
 
       <div className="kpi-grid mb-5">
         <div className="card" style={{ borderTop: atRisk > 0 ? "3px solid #f43f5e" : undefined }}>
@@ -210,9 +300,7 @@ export default function MaterialsPage() {
                 <h2 className="font-bold text-slate-800 text-base">Log Transaction</h2>
                 <p className="text-xs text-slate-400 mt-0.5">Record material movement in or out of inventory</p>
               </div>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
 
             {txSuccess ? (
@@ -227,95 +315,46 @@ export default function MaterialsPage() {
               <div className="px-6 py-5 space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Material</label>
-                  <select
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 bg-white"
-                    value={txForm.material}
-                    onChange={e => setTxForm(f => ({ ...f, material: e.target.value }))}
-                  >
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 bg-white" value={txForm.material} onChange={e => setTxForm(f => ({ ...f, material: e.target.value }))}>
                     {materials.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Transaction Type</label>
                   <div className="grid grid-cols-3 gap-2">
                     {(["used", "received", "offcut"] as const).map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setTxForm(f => ({ ...f, type: t }))}
-                        className={`py-2.5 rounded-lg border-2 text-sm font-semibold capitalize transition-all ${
-                          txForm.type === t
-                            ? t === "used" ? "border-blue-500 bg-blue-50 text-blue-700"
-                              : t === "received" ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                              : "border-amber-500 bg-amber-50 text-amber-700"
-                            : "border-slate-200 text-slate-500 hover:border-slate-300"
-                        }`}
-                      >
-                        {t}
-                      </button>
+                      <button key={t} onClick={() => setTxForm(f => ({ ...f, type: t }))} className={`py-2.5 rounded-lg border-2 text-sm font-semibold capitalize transition-all ${txForm.type === t ? t === "used" ? "border-blue-500 bg-blue-50 text-blue-700" : t === "received" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>{t}</button>
                     ))}
                   </div>
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Quantity <span className="font-normal text-slate-400">({selectedMaterial.unit})</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                    placeholder={`Enter quantity in ${selectedMaterial.unit}`}
-                    value={txForm.qty}
-                    onChange={e => setTxForm(f => ({ ...f, qty: e.target.value }))}
-                  />
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quantity <span className="font-normal text-slate-400">({selectedMaterial.unit})</span></label>
+                  <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={`Enter quantity in ${selectedMaterial.unit}`} value={txForm.qty} onChange={e => setTxForm(f => ({ ...f, qty: e.target.value }))} />
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      {txForm.type === "received" ? "PO Reference" : "Order Reference"}
-                    </label>
-                    <input
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
-                      placeholder={txForm.type === "received" ? "PO-XXX" : "ORD-XXXX"}
-                      value={txForm.order}
-                      onChange={e => setTxForm(f => ({ ...f, order: e.target.value }))}
-                    />
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">{txForm.type === "received" ? "PO Reference" : "Order Reference"}</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400" placeholder={txForm.type === "received" ? "PO-XXX" : "ORD-XXXX"} value={txForm.order} onChange={e => setTxForm(f => ({ ...f, order: e.target.value }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Production Unit</label>
-                    <input
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
-                      placeholder="e.g. Unit 1, Receiving"
-                      value={txForm.by}
-                      onChange={e => setTxForm(f => ({ ...f, by: e.target.value }))}
-                    />
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400" placeholder="e.g. Unit 1, Receiving" value={txForm.by} onChange={e => setTxForm(f => ({ ...f, by: e.target.value }))} />
                   </div>
                 </div>
-
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Current on-hand:</span>
-                    <span className={`font-semibold ${selectedMaterial.onHand <= selectedMaterial.reorderLevel ? "text-red-600" : "text-slate-700"}`}>
-                      {selectedMaterial.onHand.toLocaleString()} {selectedMaterial.unit}
-                    </span>
+                    <span className={`font-semibold ${selectedMaterial.onHand <= selectedMaterial.reorderLevel ? "text-red-600" : "text-slate-700"}`}>{selectedMaterial.onHand.toLocaleString()} {selectedMaterial.unit}</span>
                   </div>
                   <div className="flex justify-between text-xs mt-1">
                     <span className="text-slate-500">Reorder level:</span>
                     <span className="text-slate-600">{selectedMaterial.reorderLevel.toLocaleString()} {selectedMaterial.unit}</span>
                   </div>
                 </div>
-
                 {txError && <p className="text-xs text-red-600 font-medium">{txError}</p>}
-
                 <div className="flex gap-3 pt-1">
-                  <button onClick={closeModal} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-                    Cancel
-                  </button>
-                  <button onClick={submitTransaction} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>
-                    Log Transaction
-                  </button>
+                  <button onClick={closeModal} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+                  <button onClick={submitTransaction} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>Log Transaction</button>
                 </div>
               </div>
             )}

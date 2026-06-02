@@ -33,9 +33,11 @@ export default function SignUpPage() {
       </div>
       <div className="auth-form-panel">
         <div className="auth-form-inner">
-          {/* forceRedirectUrl ensures users ALWAYS land on onboarding after sign-up,
-              regardless of any redirect_url query param Clerk might carry */}
-          <SignUp forceRedirectUrl="/onboarding" />
+          {/* Route through "/" so invited users (who already have a DB record
+              via /auth/identify auto-accept) land on /dashboard, while brand-new
+              owners fall through to /onboarding. Skipping the industry picker
+              for invitees is handled there. */}
+          <SignUp forceRedirectUrl="/" />
         </div>
       </div>
     </div>

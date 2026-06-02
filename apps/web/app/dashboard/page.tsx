@@ -23,7 +23,16 @@ export default async function DashboardPage({
   const params = searchParams ? await searchParams : {};
   const aiProvider = (typeof params.aiProvider === "string" && params.aiProvider === "openai") ? "openai" : "claude";
 
-  const { industry } = await getUserWorkspace();
+  // Resolve industry defensively. If workspace resolution fails for any reason
+  // (API down, DB hiccup, bad metadata) we fall through to the hospitality
+  // default — the user still sees a populated dashboard, never a blank page.
+  let industry: string | null = "hospitality";
+  try {
+    const ws = await getUserWorkspace();
+    industry = ws.industry ?? "hospitality";
+  } catch {
+    industry = "hospitality";
+  }
 
   // Route to industry-specific dashboards
   if (industry === "manufacturing") return <ManufacturingDashboard />;

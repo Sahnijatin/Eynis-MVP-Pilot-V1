@@ -1,12 +1,20 @@
 import { fetchConnectorRegistry } from "../../lib/data";
-import { Save, UserPlus, Camera, Clock, Phone } from "lucide-react";
+import { Save, Camera, Clock, Phone } from "lucide-react";
 import { ConnectorConfigPanel } from "../../components/ui/connector-config-panel";
 import { ChangeIndustry } from "../../components/ui/change-industry";
 import { getUserWorkspace } from "../../lib/workspace";
+import { resolveUserContext } from "../../lib/user-context";
 
 export const dynamic = "force-dynamic";
 
-const tabs = ["Profile", "Property", "Users", "Integrations"];
+function buildTabs(propertyLabel: string, teamLabel: string) {
+  return [
+    { label: `Profile & ${propertyLabel}`, href: "/settings" },
+    { label: teamLabel, href: "/settings/team" },
+    { label: "Roles", href: "/settings/roles" },
+    { label: "Billing", href: "/settings/billing" },
+  ];
+}
 
 const connectorCategoryLabel: Record<string, string> = {
   communication: "Communication",
@@ -24,7 +32,17 @@ export default async function SettingsPage() {
     error = err instanceof Error ? err.message : "Failed to load connectors";
   }
 
-  const { industry } = await getUserWorkspace();
+  const { industry, config } = await getUserWorkspace();
+  const accent = config.accentColor;
+  const tabs = buildTabs(config.terminology.property, config.terminology.team);
+
+  // Only the workspace admin can change industry — invited members are
+  // locked to the industry tied to their role in the hotel.
+  let isAdmin = true;
+  try {
+    const ctx = await resolveUserContext();
+    isAdmin = ctx.orgRole === "org_admin";
+  } catch {}
 
   const connectorItems = connectors?.items ?? [];
 
@@ -36,7 +54,7 @@ export default async function SettingsPage() {
             <h1 className="page-title">Settings</h1>
             <p className="page-subtitle">Manage your profile, property details, team access, and external integrations.</p>
           </div>
-          <button className="px-4 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: "#0f766e" }}>
+          <button className="px-4 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: accent }}>
             <Save className="w-3.5 h-3.5" /> Save Changes
           </button>
         </div>
@@ -46,21 +64,41 @@ export default async function SettingsPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 mb-6">
-        {tabs.map((tab, i) => (
-          <button key={tab} className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${i === 0 ? "border-teal-700 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
-            {tab}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const active = tab.href === "/settings";
+          return (
+            <a
+              key={tab.href}
+              href={tab.href}
+              className="px-5 py-3 text-sm font-medium border-b-2 transition-colors"
+              style={active
+                ? { borderColor: accent, color: accent }
+                : { borderColor: "transparent", color: "#64748b" }
+              }
+            >
+              {tab.label}
+            </a>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         {/* Main settings */}
         <div className="col-span-2 space-y-4">
-          {/* Industry workspace switcher */}
+          {/* Industry workspace switcher — admins only */}
           <div className="card">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Industry Workspace</h3>
-            <p className="text-sm text-slate-400 mb-4">Switch your workspace to a different industry. Nav, modules, and terminology will update instantly.</p>
-            <ChangeIndustry currentIndustry={industry ?? "hospitality"} />
+            {isAdmin ? (
+              <>
+                <p className="text-sm text-slate-400 mb-4">Switch your workspace to a different industry. Nav, modules, and terminology will update instantly.</p>
+                <ChangeIndustry currentIndustry={industry ?? "hospitality"} />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-slate-400 mb-2">Your workspace is set to <span className="font-medium text-slate-700">{config.name}</span> — this is locked by your role.</p>
+                <p className="text-xs text-slate-400">Only a workspace admin can change the industry.</p>
+              </>
+            )}
           </div>
 
           {/* Account Information */}
@@ -135,54 +173,23 @@ export default async function SettingsPage() {
             </div>
           </div>
 
-          {/* Team Access */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-semibold text-slate-800">Team Access</h3>
-                <p className="text-sm text-slate-400">Manage permissions and invitation status for your hotel staff.</p>
-              </div>
-              <button className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
-                <UserPlus className="w-3.5 h-3.5" /> Invite Member
-              </button>
-            </div>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { name: "Vikram Mehta", email: "vikram@theriviera.com", role: "Owner", active: true },
-                    { name: "Sarah Jenkins", email: "sarah@theriviera.com", role: "Front Desk", active: true },
-                    { name: "Amit Sharma", email: "amit@theriviera.com", role: "Housekeeping", active: true },
-                    { name: "David Ling", email: "david@theriviera.com", role: "F&B Manager", active: true }
-                  ].map((u) => (
-                    <tr key={u.email}>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-full bg-teal-700 flex items-center justify-center text-white text-[10px] font-semibold">
-                            {u.name.split(" ").map(w => w[0]).join("")}
-                          </span>
-                          <div>
-                            <div className="text-sm font-medium">{u.name}</div>
-                            <div className="text-xs text-slate-400">{u.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td><span className="badge badge-slate">{u.role}</span></td>
-                      <td><span className="badge badge-green">Active</span></td>
-                      <td><button className="text-sm text-slate-400 hover:text-red-500">Remove</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* Quick links to sub-pages */}
+          <div className="grid grid-cols-3 gap-3">
+            <a href="/settings/team" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
+              <div className="text-sm font-semibold text-slate-800 mb-1">Team Members</div>
+              <p className="text-xs text-slate-400">Invite staff, assign roles, manage access.</p>
+              <span className="text-xs text-teal-700 font-medium mt-2 block">Manage team →</span>
+            </a>
+            <a href="/settings/roles" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
+              <div className="text-sm font-semibold text-slate-800 mb-1">Roles & Permissions</div>
+              <p className="text-xs text-slate-400">Rename roles, view permissions, create custom roles.</p>
+              <span className="text-xs text-teal-700 font-medium mt-2 block">Manage roles →</span>
+            </a>
+            <a href="/settings/billing" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
+              <div className="text-sm font-semibold text-slate-800 mb-1">License & Billing</div>
+              <p className="text-xs text-slate-400">Seat usage, plan details, and Razorpay billing.</p>
+              <span className="text-xs text-teal-700 font-medium mt-2 block">Manage billing →</span>
+            </a>
           </div>
 
           {/* Integrations */}

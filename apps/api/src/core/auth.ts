@@ -7,6 +7,7 @@ export interface AuthTokenClaims {
   hotelId: string;
   email: string;
   role: UserRole;
+  permissions: string[];
 }
 
 const encoder = new TextEncoder();
@@ -18,7 +19,8 @@ export const createAuthToken = async (claims: AuthTokenClaims) =>
   new SignJWT({
     hotelId: claims.hotelId,
     email: claims.email,
-    role: claims.role
+    role: claims.role,
+    permissions: claims.permissions
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(claims.sub)
@@ -48,11 +50,15 @@ export const verifyAuthToken = async (token: string): Promise<AuthTokenClaims | 
     ) {
       return null;
     }
+    const permissions = Array.isArray(payload.permissions)
+      ? (payload.permissions as unknown[]).filter((p): p is string => typeof p === "string")
+      : [];
     return {
       sub: payload.sub,
       hotelId: payload.hotelId,
       email: payload.email,
-      role: payload.role
+      role: payload.role,
+      permissions
     };
   } catch {
     return null;
