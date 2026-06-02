@@ -1,0 +1,55 @@
+name: CI
+
+# Runs the same checks we validate locally — type-check, full build (incl.
+# `next build`), and the API test suite — so a broken build or failing test is
+# caught on every PR instead of slipping into main.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same branch/PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    env:
+      # Absolute path so it resolves the same regardless of working directory.
+      DATABASE_URL: "file:${{ github.workspace }}/apps/api/prisma/ci.db"
+      JWT_SECRET: "ci-test-secret"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The repo installs with legacy peer deps (see CLAUDE.md).
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npm run db:generate -w @eynis/api
+
+      - name: Type-check (api + web)
+        run: npm run lint
+
+      - name: Build (shared -> api -> web, incl. next build)
+        run: npm run build
+
+      - name: Apply migrations to a fresh CI database
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: API tests
+        run: npm run test -w @eynis/api
