@@ -6,7 +6,7 @@
   "types": "dist/server.d.ts",
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "prisma migrate deploy && node dist/server.js",
     "dev": "cross-env START_SERVER=true tsx src/server.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test --test-force-exit src/**/*.test.ts",
