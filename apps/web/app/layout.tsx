@@ -14,7 +14,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <ClerkProvider>
       <html lang="en">
         <body style={{ margin: 0, fontFamily: "Inter, system-ui, Segoe UI, Arial, sans-serif", background: "var(--color-bg)" }}>
-          <AppShell>{children}</AppShell>
+          <AppShell>
+            {children}
+          </AppShell>
         </body>
       </html>
     </ClerkProvider>

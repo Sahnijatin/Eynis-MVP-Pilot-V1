@@ -1,8 +1,10 @@
-import { fetchStaffPerformance } from "../../lib/data";
-import { AlertTriangle, AlertCircle, Download } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { AlertTriangle, AlertCircle, Download, Calendar, X } from "lucide-react";
 import { EfficiencyChart } from "../../components/ui/charts";
 
-export const dynamic = "force-dynamic";
+type Range = "24h" | "7d" | "custom";
 
 const roleLabel: Record<string, string> = {
   owner: "Management",
@@ -18,60 +20,71 @@ const deptColors: Record<string, string> = {
   owner: "#8b5cf6"
 };
 
-const efficiencyData = [
-  { day: "Mon", minutes: 22 },
-  { day: "Tue", minutes: 19 },
-  { day: "Wed", minutes: 17 },
-  { day: "Thu", minutes: 20 },
-  { day: "Fri", minutes: 15 },
-  { day: "Sat", minutes: 14 },
-  { day: "Sun", minutes: 16 }
-];
-
-const staticLeaderboard = [
-  { name: "Sarah Jenkins", dept: "Concierge", tasks: 48, avgRes: "08m 12s", rating: 4.98, bonus: 450 },
-  { name: "David Ling", dept: "F&B", tasks: 42, avgRes: "12m 45s", rating: 4.92, bonus: 320 },
-  { name: "Elena Rodriguez", dept: "Housekeeping", tasks: 64, avgRes: "15m 30s", rating: 4.88, bonus: 280 },
-  { name: "Thomas Wright", dept: "Front Desk", tasks: 38, avgRes: "06m 50s", rating: 4.85, bonus: 150 }
-];
-
 const resolutionLog = [
-  { time: "14:22 PM", staff: "Sarah Jenkins", room: "Suite 402", type: "Champagne Service", duration: "04m 15s", feedback: "Exceptionally prompt and professional." },
-  { time: "14:10 PM", staff: "David Ling", room: "Room 112", type: "HVAC Repair", duration: "22m 30s", feedback: "Fixed the issue quickly. Very polite." },
+  { time: "14:22 PM", staff: "Sarah Jenkins", room: "Suite 402",  type: "Champagne Service",  duration: "04m 15s", feedback: "Exceptionally prompt and professional." },
+  { time: "14:10 PM", staff: "David Ling",    room: "Room 112",   type: "HVAC Repair",         duration: "22m 30s", feedback: "Fixed the issue quickly. Very polite." },
   { time: "13:55 PM", staff: "Elena Rodriguez", room: "Penthouse B", type: "Turndown Service", duration: "18m 05s", feedback: "Attention to detail was incredible." }
 ];
 
-export default async function StaffPerformancePage() {
-  let data: Awaited<ReturnType<typeof fetchStaffPerformance>> | null = null;
-  let error = "";
-  try {
-    data = await fetchStaffPerformance();
-  } catch (err) {
-    error = err instanceof Error ? err.message : "Failed to load staff data";
+const workload = [
+  { role: "housekeeping", openTasks: 15, resolvedTasks: 145 },
+  { role: "fnb_manager",  openTasks: 6,  resolvedTasks: 28  },
+  { role: "front_desk",   openTasks: 0,  resolvedTasks: 92  },
+  { role: "owner",        openTasks: 4,  resolvedTasks: 47  }
+];
+
+const RANGE_DATA = {
+  "24h": {
+    summary: { avgResolutionMinutes: 14.3, completionRate: 0.94, avgGuestRating: 4.82, utilizationRate: 0.78 },
+    efficiencyData: [
+      { day: "8 AM",  minutes: 18 }, { day: "10 AM", minutes: 15 }, { day: "12 PM", minutes: 22 },
+      { day: "2 PM",  minutes: 14 }, { day: "4 PM",  minutes: 16 }, { day: "6 PM",  minutes: 20 },
+      { day: "8 PM",  minutes: 17 }, { day: "10 PM", minutes: 13 }
+    ],
+    efficiencyLabel: "Resolution time (minutes) last 24h",
+    leaderboard: [
+      { name: "Sarah Jenkins", dept: "Concierge",   tasks: 14, avgRes: "06m 40s", rating: 4.98, bonus: 140 },
+      { name: "David Ling",    dept: "F&B",          tasks: 12, avgRes: "10m 20s", rating: 4.92, bonus: 110 },
+      { name: "Elena Rodriguez", dept: "Housekeeping", tasks: 18, avgRes: "13m 10s", rating: 4.88, bonus: 85 },
+      { name: "Thomas Wright", dept: "Front Desk",   tasks: 11, avgRes: "05m 30s", rating: 4.85, bonus: 50 }
+    ]
+  },
+  "7d": {
+    summary: { avgResolutionMinutes: 16.8, completionRate: 0.91, avgGuestRating: 4.75, utilizationRate: 0.82 },
+    efficiencyData: [
+      { day: "Mon", minutes: 22 }, { day: "Tue", minutes: 19 }, { day: "Wed", minutes: 17 },
+      { day: "Thu", minutes: 20 }, { day: "Fri", minutes: 15 }, { day: "Sat", minutes: 14 }, { day: "Sun", minutes: 16 }
+    ],
+    efficiencyLabel: "Resolution time (minutes) last 7 days",
+    leaderboard: [
+      { name: "Sarah Jenkins",   dept: "Concierge",    tasks: 48, avgRes: "08m 12s", rating: 4.98, bonus: 450 },
+      { name: "David Ling",      dept: "F&B",           tasks: 42, avgRes: "12m 45s", rating: 4.92, bonus: 320 },
+      { name: "Elena Rodriguez", dept: "Housekeeping",  tasks: 64, avgRes: "15m 30s", rating: 4.88, bonus: 280 },
+      { name: "Thomas Wright",   dept: "Front Desk",    tasks: 38, avgRes: "06m 50s", rating: 4.85, bonus: 150 }
+    ]
   }
+};
 
-  const summary = data?.summary ?? { avgResolutionMinutes: 14.3, completionRate: 0.942, avgGuestRating: 4.8, utilizationRate: 0.78 };
-  const leaderboard = data?.leaderboard ?? [];
-  const workload = data?.workloadByRole ?? [];
-  const alerts = data?.alerts ?? [];
+function RangeBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+      style={active ? { background: "#0f766e", color: "#fff" } : { border: "1px solid #e2e8f0", color: "#475569" }}
+    >
+      {children}
+    </button>
+  );
+}
 
-  const displayLeaderboard = leaderboard.length > 0
-    ? leaderboard.map((l, i) => ({
-        name: l.fullName,
-        dept: roleLabel[l.role] ?? l.role,
-        tasks: l.completedTasks,
-        avgRes: `${l.avgResolutionMinutes}m`,
-        rating: 4.8 + (i === 0 ? 0.18 : i === 1 ? 0.12 : i === 2 ? 0.08 : 0.05),
-        bonus: [450, 320, 280, 150][i] ?? 100
-      }))
-    : staticLeaderboard;
+export default function StaffPerformancePage() {
+  const [range, setRange] = useState<Range>("7d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [customApplied, setCustomApplied] = useState(false);
 
-  const displayWorkload = workload.length > 0 ? workload : [
-    { role: "housekeeping", openTasks: 15, resolvedTasks: 145 },
-    { role: "fnb_manager", openTasks: 6, resolvedTasks: 28 },
-    { role: "front_desk", openTasks: 0, resolvedTasks: 92 },
-    { role: "owner", openTasks: 4, resolvedTasks: 47 }
-  ];
+  const d = RANGE_DATA[range === "custom" ? "7d" : range];
+  const { summary, efficiencyData, efficiencyLabel, leaderboard } = d;
 
   return (
     <div>
@@ -82,21 +95,54 @@ export default async function StaffPerformancePage() {
             <p className="page-subtitle">Track team efficiency and guest satisfaction metrics in real-time.</p>
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Last 24h</button>
-            <button className="px-4 py-2 text-sm font-semibold rounded-lg text-white" style={{ background: "#0f766e" }}>Last 7 Days</button>
-            <button className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Custom Range</button>
+            <RangeBtn active={range === "24h"} onClick={() => setRange("24h")}>Last 24h</RangeBtn>
+            <RangeBtn active={range === "7d"}  onClick={() => setRange("7d")}>Last 7 Days</RangeBtn>
+            <button
+              onClick={() => setRange("custom")}
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
+              style={range === "custom" ? { background: "#0f766e", color: "#fff" } : { border: "1px solid #e2e8f0", color: "#475569" }}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Custom Range
+            </button>
           </div>
         </div>
-      </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+        {range === "custom" && (
+          <div className="flex items-center gap-3 mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-slate-500">From</label>
+              <input type="date" className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-teal-400"
+                value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-slate-500">To</label>
+              <input type="date" className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-teal-400"
+                value={customTo} onChange={e => setCustomTo(e.target.value)} />
+            </div>
+            <button
+              onClick={() => setCustomApplied(true)}
+              disabled={!customFrom || !customTo}
+              className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 transition-opacity"
+              style={{ background: "#0f766e" }}
+            >
+              Apply
+            </button>
+            {customApplied && (
+              <span className="text-xs text-teal-600 font-medium">Showing {customFrom} → {customTo}</span>
+            )}
+            <button onClick={() => { setRange("7d"); setCustomApplied(false); }} className="ml-auto text-slate-400 hover:text-slate-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* KPIs */}
       <div className="kpi-grid mb-5">
         <div className="card" style={{ borderLeft: "3px solid #0f766e" }}>
           <div className="kpi-label">Avg. Resolution Time</div>
           <div className="kpi-value mt-1.5">{Math.floor(summary.avgResolutionMinutes)}m {Math.round((summary.avgResolutionMinutes % 1) * 60)}s</div>
-          <div className="kpi-delta up mt-1">↓ 2m vs LW</div>
+          <div className="kpi-delta up mt-1">↓ 2m vs prev period</div>
         </div>
         <div className="card">
           <div className="kpi-label">Task Completion Rate</div>
@@ -143,7 +189,7 @@ export default async function StaffPerformancePage() {
                 </tr>
               </thead>
               <tbody>
-                {displayLeaderboard.map((s, i) => (
+                {leaderboard.map((s, i) => (
                   <tr key={s.name}>
                     <td><span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center">{i + 1}</span></td>
                     <td>
@@ -172,20 +218,18 @@ export default async function StaffPerformancePage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          {/* Efficiency Trend */}
           <div className="card">
             <h3 className="card-title">Efficiency Trends</h3>
-            <p className="text-xs text-slate-400 -mt-2 mb-2">Resolution time (minutes) last 7 days</p>
+            <p className="text-xs text-slate-400 -mt-2 mb-2">{efficiencyLabel}</p>
             <EfficiencyChart data={efficiencyData} />
           </div>
 
-          {/* Top Rated */}
           <div className="card">
             <h3 className="card-title">Top Rated Team</h3>
             <div className="space-y-3">
               {[
                 { name: "Isabella Chen", dept: "Front Desk", rating: 5.0 },
-                { name: "Julian S.", dept: "Concierge", rating: 4.9 }
+                { name: "Julian S.",     dept: "Concierge",  rating: 4.9 }
               ].map((p) => (
                 <div key={p.name} className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-full bg-teal-700 flex items-center justify-center text-white text-xs font-semibold">
@@ -196,34 +240,24 @@ export default async function StaffPerformancePage() {
                     <div className="text-xs text-slate-400">{p.dept} • {p.rating.toFixed(1)} Rating</div>
                   </div>
                   <div className="flex gap-0.5">
-                    {[1,2,3].map(j => <span key={j} className="text-amber-400 text-xs">★</span>)}
+                    {[1, 2, 3].map(j => <span key={j} className="text-amber-400 text-xs">★</span>)}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Staffing Alerts */}
           <div className="card">
             <h3 className="card-title">Staffing Alerts</h3>
             <div className="space-y-2">
-              {alerts.length > 0 ? alerts.slice(0, 2).map((a, i) => (
-                <div key={i} className={`alert-card ${i === 0 ? "warning" : "error"}`}>
-                  {i === 0 ? <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" /> : <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />}
-                  <span className="text-sm">{a}</span>
-                </div>
-              )) : (
-                <>
-                  <div className="alert-card warning">
-                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <div><div className="text-sm font-semibold text-amber-700">Housekeeping Overload</div><div className="text-xs text-amber-600">High volume in North Wing. Consider reassigning staff.</div></div>
-                  </div>
-                  <div className="alert-card error">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    <div><div className="text-sm font-semibold text-red-700">Maintenance Critical</div><div className="text-xs text-red-500">Only 2 staff available for 12 pending emergency requests.</div></div>
-                  </div>
-                </>
-              )}
+              <div className="alert-card warning">
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div><div className="text-sm font-semibold text-amber-700">Housekeeping Overload</div><div className="text-xs text-amber-600">High volume in North Wing. Consider reassigning staff.</div></div>
+              </div>
+              <div className="alert-card error">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <div><div className="text-sm font-semibold text-red-700">Maintenance Critical</div><div className="text-xs text-red-500">Only 2 staff available for 12 pending emergency requests.</div></div>
+              </div>
             </div>
           </div>
         </div>
@@ -233,10 +267,10 @@ export default async function StaffPerformancePage() {
       <div className="card mb-4">
         <h3 className="card-title">Workload by Department</h3>
         <div className="space-y-3">
-          {displayWorkload.map((w) => {
+          {workload.map((w) => {
             const total = w.openTasks + w.resolvedTasks;
             const resolvedPct = total > 0 ? (w.resolvedTasks / total) * 100 : 0;
-            const openPct = total > 0 ? (w.openTasks / total) * 100 : 0;
+            const openPct    = total > 0 ? (w.openTasks    / total) * 100 : 0;
             const label = roleLabel[w.role] ?? w.role;
             return (
               <div key={w.role}>
@@ -263,7 +297,9 @@ export default async function StaffPerformancePage() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="card-title mb-0">Detailed Resolution Log</h3>
           <div className="flex gap-2">
-            <button className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> Export CSV</button>
+            <button className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </button>
             <button className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Filter</button>
           </div>
         </div>

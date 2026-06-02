@@ -1,0 +1,98 @@
+import { currentUser } from "@clerk/nextjs/server";
+import type { OrgRole } from "./rbac";
+
+export interface UserContext {
+  hotelId: string | null;
+  role: string | null;        // legacy role: owner / front_desk / housekeeping / fnb_manager
+  roleKey: string | null;     // system role key: admin / manager / supervisor / agent / viewer
+  orgRole: OrgRole;           // mapped UI role
+  industry: string | null;
+  propertyName: string | null;
+  fullName: string | null;
+  email: string | null;
+  exists: boolean;            // true if user has a DB record
+}
+
+const apiBase = () => process.env.EYNIS_API_BASE_URL ?? "http://localhost:4000";
+
+const LEGACY_TO_ORG_ROLE: Record<string, OrgRole> = {
+  owner:        "org_admin",
+  front_desk:   "org_manager",
+  fnb_manager:  "org_supervisor",
+  housekeeping: "org_agent",
+};
+
+const SYSTEM_KEY_TO_ORG_ROLE: Record<string, OrgRole> = {
+  admin:      "org_admin",
+  manager:    "org_manager",
+  supervisor: "org_supervisor",
+  agent:      "org_agent",
+  viewer:     "org_viewer",
+};
+
+function toOrgRole(roleKey: string | null, legacyRole: string | null): OrgRole {
+  if (roleKey && SYSTEM_KEY_TO_ORG_ROLE[roleKey]) return SYSTEM_KEY_TO_ORG_ROLE[roleKey];
+  if (legacyRole && LEGACY_TO_ORG_ROLE[legacyRole]) return LEGACY_TO_ORG_ROLE[legacyRole];
+  return "org_admin";
+}
+
+async function identifyByEmail(email: string) {
+  // Hard 3-second timeout. If the API is down or slow we MUST NOT hang the
+  // server render — that's what produced the blank-screen-on-login bug.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 3000);
+  try {
+    const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal });
+    if (!res.ok) return null;
+    const data = await res.json() as { ok: boolean; exists?: boolean; hotelId?: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; fullName?: string };
+    if (!data.ok || !data.exists) return null;
+    return {
+      hotelId: data.hotelId ?? null,
+      role: data.role ?? null,
+      roleKey: data.roleKey ?? null,
+      industry: data.industry ?? null,
+      propertyName: data.propertyName ?? null,
+      fullName: data.fullName ?? null,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function resolveUserContext(): Promise<UserContext> {
+  let clerkUser: Awaited<ReturnType<typeof currentUser>> = null;
+  try {
+    clerkUser = await currentUser();
+  } catch {
+    // Clerk not configured
+  }
+
+  if (!clerkUser) {
+    return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, fullName: null, email: null, exists: false };
+  }
+
+  const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
+
+  // DB is the single source of truth. If no DB record exists, the user is "new"
+  // regardless of what Clerk metadata says (which could be stale from a wiped hotel).
+  const dbUser = email ? await identifyByEmail(email) : null;
+
+  if (dbUser && dbUser.hotelId) {
+    return {
+      hotelId: dbUser.hotelId,
+      role: dbUser.role,
+      roleKey: dbUser.roleKey,
+      orgRole: toOrgRole(dbUser.roleKey, dbUser.role),
+      industry: dbUser.industry ?? "hospitality",
+      propertyName: dbUser.propertyName ?? null,
+      fullName: dbUser.fullName ?? null,
+      email,
+      exists: true,
+    };
+  }
+
+  // No DB record — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
+  return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, fullName: clerkUser.fullName ?? null, email, exists: false };
+}

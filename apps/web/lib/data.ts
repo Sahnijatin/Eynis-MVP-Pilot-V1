@@ -215,10 +215,61 @@ export interface UpsellCampaignsResponse {
   weeklyData: Array<{ day: string; executions: number; conversions: number }>;
 }
 
+export interface TeamUser {
+  id: string;
+  fullName: string;
+  email: string;
+  role: string;
+  roleId: string | null;
+  isActive: boolean;
+  systemRole: { id: string; key: string; displayName: string } | null;
+}
+
+export interface TeamUsersResponse {
+  ok: boolean;
+  users?: TeamUser[];
+  usedSeats?: number;
+  maxSeats?: number;
+}
+
+export interface TeamRole {
+  id: string;
+  key: string;
+  displayName: string;
+  permissions: string[];
+  isSystem: boolean;
+  isCustom: boolean;
+  userCount: number;
+}
+
+export interface TeamRolesResponse {
+  ok: boolean;
+  roles?: TeamRole[];
+}
+
+export interface TeamLicenseResponse {
+  ok: boolean;
+  license?: {
+    plan: string;
+    maxSeats: number;
+    usedSeats: number;
+    renewsAt: string | null;
+  };
+}
+
+// 5s hard timeout on every server-side API call. If the API is down or slow
+// the page must still render — never block streaming long enough for the user
+// to see a blank shell. Callers handle non-OK / aborted responses gracefully.
 async function authedFetch(path: string) {
   const token = await getApiToken();
   const headers = { Authorization: "Bearer " + token };
-  return fetch(getApiBaseUrl() + path, { headers, cache: "no-store" });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    return await fetch(getApiBaseUrl() + path, { headers, cache: "no-store", signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function fetchDashboardData() {
@@ -446,4 +497,19 @@ export async function generateNightAudit(provider: "claude" | "openai" = "claude
   } catch {
     return { ok: false, error: "Unable to generate night audit report" };
   }
+}
+
+export async function fetchTeamUsers(): Promise<TeamUsersResponse> {
+  const res = await authedFetch("/team/users");
+  return (await res.json()) as TeamUsersResponse;
+}
+
+export async function fetchTeamRoles(): Promise<TeamRolesResponse> {
+  const res = await authedFetch("/team/roles");
+  return (await res.json()) as TeamRolesResponse;
+}
+
+export async function fetchTeamLicense(): Promise<TeamLicenseResponse> {
+  const res = await authedFetch("/team/license");
+  return (await res.json()) as TeamLicenseResponse;
 }

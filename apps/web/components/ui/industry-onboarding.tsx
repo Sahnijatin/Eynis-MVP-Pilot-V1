@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { INDUSTRY_CONFIGS, type Industry } from "../../lib/industry-config";
 import { CheckCircle, ArrowRight, Loader2, Check } from "lucide-react";
@@ -13,16 +13,49 @@ export function IndustryOnboarding() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedIndustry, setSelectedIndustry] = useState<Industry | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [propertyName, setPropertyName] = useState("");
+  const [ownerName, setOwnerName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [isIdentifying, setIsIdentifying] = useState(true);
 
   const config = selectedIndustry ? INDUSTRY_CONFIGS[selectedIndustry] : null;
 
-  if (isLoaded && user?.unsafeMetadata?.onboardingCompleted) {
-    window.location.replace("/dashboard");
-    return null;
-  }
+  // Always verify against DB. If user has a DB record (owner or invited), skip the wizard.
+  // Clerk metadata alone is not trusted — it can be stale from a deleted hotel.
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) {
+      setIsIdentifying(false);
+      return;
+    }
 
-  if (!isLoaded) {
+    fetch(`/api/identify?email=${encodeURIComponent(email)}`)
+      .then((r) => r.json())
+      .then(async (data: { ok: boolean; exists?: boolean; hotelId?: string; role?: string; roleKey?: string | null; industry?: string }) => {
+        if (data.ok && data.exists && data.hotelId) {
+          // Try to update Clerk metadata as a cache, but never block the redirect on it.
+          // The dashboard reads from DB via /api/me, so Clerk metadata is optional.
+          user.update({
+            unsafeMetadata: {
+              ...user.unsafeMetadata,
+              hotelId: data.hotelId,
+              role: data.role ?? "housekeeping",
+              roleKey: data.roleKey ?? null,
+              industry: data.industry ?? "hospitality",
+              onboardingCompleted: true,
+            },
+          }).catch(() => { /* Clerk update failed — DB is source of truth, proceed anyway */ });
+          window.location.replace("/dashboard");
+        } else {
+          setIsIdentifying(false);
+        }
+      })
+      .catch(() => setIsIdentifying(false));
+  }, [isLoaded, user]);
+
+  if (!isLoaded || isIdentifying) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3 text-slate-400">
@@ -35,13 +68,41 @@ export function IndustryOnboarding() {
 
   async function handleFinish() {
     if (!selectedIndustry || !user) return;
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) return;
     setSaving(true);
+    setRegisterError(null);
     try {
-      await user.update({
-        unsafeMetadata: { industry: selectedIndustry, onboardingAnswers: answers, onboardingCompleted: true }
+      const regRes = await fetch("/api/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          propertyName: propertyName.trim() || "My Property",
+          ownerEmail: email,
+          ownerName: ownerName.trim() || user.fullName || undefined,
+          industry: selectedIndustry,
+        }),
       });
+      const regData = (await regRes.json()) as { ok: boolean; hotelId?: string; error?: string };
+      if (!regData.ok) {
+        setRegisterError(regData.error ?? "Registration failed. Please try again.");
+        setSaving(false);
+        return;
+      }
+      // Update Clerk metadata as a cache; don't block redirect if Clerk is slow.
+      user.update({
+        unsafeMetadata: {
+          industry: selectedIndustry,
+          onboardingAnswers: answers,
+          onboardingCompleted: true,
+          hotelId: regData.hotelId,
+          role: "owner",
+          roleKey: "admin",
+        },
+      }).catch(() => { /* Clerk update failed — DB has the record, proceed */ });
       window.location.href = "/dashboard";
     } catch {
+      setRegisterError("Network error — please try again.");
       setSaving(false);
     }
   }
@@ -140,7 +201,31 @@ export function IndustryOnboarding() {
             {config.name}
           </div>
           <h1 className="onboarding-title">Tell us a bit more</h1>
-          <p className="onboarding-subtitle">Two quick questions to tailor your workspace.</p>
+          <p className="onboarding-subtitle">Help us personalise your workspace.</p>
+
+          <div className="onboarding-question" style={{ marginBottom: "1.25rem" }}>
+            <div className="onboarding-question-label">What is your property or business name?</div>
+            <input
+              type="text"
+              value={propertyName}
+              onChange={(e) => setPropertyName(e.target.value)}
+              placeholder={`e.g. The Grand ${config?.name ?? "Hotel"}`}
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
+              style={{ "--tw-ring-color": config?.accentColor ?? "#0f766e" } as React.CSSProperties}
+            />
+          </div>
+
+          <div className="onboarding-question" style={{ marginBottom: "1.25rem" }}>
+            <div className="onboarding-question-label">Your full name</div>
+            <input
+              type="text"
+              value={ownerName}
+              onChange={(e) => setOwnerName(e.target.value)}
+              placeholder="e.g. Rajnandni Khokar"
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
+              style={{ "--tw-ring-color": config?.accentColor ?? "#0f766e" } as React.CSSProperties}
+            />
+          </div>
 
           <div className="onboarding-questions">
             {config.onboardingQuestions.map((q) => (
@@ -169,7 +254,7 @@ export function IndustryOnboarding() {
             <button className="onboarding-btn-secondary" onClick={() => setStep(1)}>Back</button>
             <button
               className="onboarding-btn-primary"
-              disabled={config.onboardingQuestions.some((q) => !answers[q.id])}
+              disabled={config.onboardingQuestions.some((q) => !answers[q.id]) || !propertyName.trim()}
               onClick={() => setStep(3)}
               style={{ background: config.accentColor }}
             >
@@ -186,7 +271,9 @@ export function IndustryOnboarding() {
             {(() => { const Icon = config.overviewIcon; return <Icon className="w-10 h-10" style={{ color: config.accentColor }} />; })()}
           </div>
 
-          <h1 className="onboarding-title">Your {config.name} workspace is ready</h1>
+          <h1 className="onboarding-title">
+            {propertyName.trim() ? propertyName.trim() : `Your ${config.name} workspace`} is ready
+          </h1>
           <p className="onboarding-subtitle">{config.tagline}</p>
 
           <div className="onboarding-modules-preview">
@@ -204,8 +291,14 @@ export function IndustryOnboarding() {
             </div>
           </div>
 
+          {registerError && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg text-center mb-2">
+              {registerError}
+            </p>
+          )}
+
           <div className="onboarding-actions">
-            <button className="onboarding-btn-secondary" onClick={() => setStep(2)}>Back</button>
+            <button className="onboarding-btn-secondary" onClick={() => { setStep(2); setRegisterError(null); }}>Back</button>
             <button
               className="onboarding-btn-primary"
               style={{ background: config.accentColor }}
@@ -213,7 +306,7 @@ export function IndustryOnboarding() {
               disabled={saving}
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
-              {saving ? "Launching..." : `Launch ${config.name} Workspace`}
+              {saving ? "Creating your workspace..." : `Launch ${config.name} Workspace`}
               {!saving && <ArrowRight className="w-4 h-4 inline ml-1" />}
             </button>
           </div>

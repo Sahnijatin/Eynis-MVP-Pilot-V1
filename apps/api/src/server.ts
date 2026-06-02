@@ -21,6 +21,10 @@ import {
 import { startAutomationWorker } from "./core/automations/engine";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
 import { checkWebhookSignature } from "./core/connectors/webhook-verify";
+import { randomBytes } from "node:crypto";
+import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel } from "./core/rbac";
+import { enforceLicenseFeature } from "./core/license";
+import { type Permission } from "./core/permissions";
 
 const eventBus = new InMemoryEventBus();
 
@@ -163,12 +167,25 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
       role: claims.role,
       isActive: true
     },
-    select: { id: true, hotelId: true, email: true, role: true, fullName: true }
+    select: {
+      id: true,
+      hotelId: true,
+      email: true,
+      role: true,
+      fullName: true,
+      roleId: true,
+      systemRole: { select: { permissions: true, key: true } }
+    }
   });
 
   if (!user) {
     return { ok: false as const, status: 401, error: "User not found or role mismatch" };
   }
+
+  // Load permissions from the Role record if assigned; fall back to legacy mapping.
+  const permissions: string[] = user.systemRole
+    ? parsePermissions(user.systemRole.permissions)
+    : getPermissionsForLegacyRole(user.role);
 
   return {
     ok: true as const,
@@ -178,12 +195,12 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
       email: user.email,
       userId: user.id,
       fullName: user.fullName,
-      sub: user.id
+      sub: user.id,
+      permissions
     }
   };
 };
 
-const isAllowedRole = (role: UserRole, allowedRoles: UserRole[]) => allowedRoles.includes(role);
 
 const parseServiceRequestStatusPath = (url: string | undefined): string | null => {
   if (!url) {
@@ -230,43 +247,55 @@ const parseConnectorConfigPath = (url: string | undefined): string | null => {
   return decodeURIComponent(match[1]);
 };
 
-const policyMap: Record<string, UserRole[]> = {
-  "GET /context": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "POST /events/service-request-created": ["owner", "front_desk"],
-  "POST /service-requests": ["owner", "front_desk"],
-  "GET /service-requests": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "PATCH /service-requests/:id/status": ["owner", "front_desk", "housekeeping"],
-  "PATCH /service-requests/:id/assign": ["owner", "front_desk"],
-  "POST /service-requests/sla/refresh": ["owner", "front_desk"],
-  "GET /audit": ["owner", "front_desk"],
-  "GET /dashboard/overview": ["owner", "front_desk", "fnb_manager"],
-  "GET /dashboard/queue-summary": ["owner", "front_desk", "fnb_manager"],
-  "GET /dashboard/live-feed": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "GET /users": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "GET /guests": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "GET /analytics/revenue-intelligence": ["owner", "front_desk", "fnb_manager"],
-  "GET /analytics/staff-performance": ["owner", "front_desk"],
-  "GET /analytics/sentiment": ["owner", "front_desk", "fnb_manager"],
-  "GET /analytics/upsell-campaigns": ["owner", "front_desk", "fnb_manager"],
-  "GET /automations": ["owner", "front_desk"],
-  "GET /automations/executions": ["owner", "front_desk"],
-  "GET /guests/:id": ["owner", "front_desk"],
-  "GET /connectors/registry": ["owner", "front_desk", "fnb_manager"],
-  "GET /connectors/configs": ["owner", "front_desk"],
-  "PUT /connectors/configs/:key": ["owner", "front_desk"],
-  "DELETE /connectors/configs/:key": ["owner", "front_desk"],
-  "POST /connectors/events/ingest": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "GET /connectors/events": ["owner", "front_desk", "fnb_manager"],
-  "POST /connectors/whatsapp/send": ["owner", "front_desk"],
-  "GET /ai/providers": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "GET /ai/morning-briefing": ["owner", "front_desk", "fnb_manager"],
-  "POST /ai/classify-event": ["owner", "front_desk", "housekeeping", "fnb_manager"],
-  "GET /ai/guest-intelligence/:guestId": ["owner", "front_desk"],
-  "GET /ai/revenue-insights": ["owner", "front_desk", "fnb_manager"],
-  "POST /night-audit/generate": ["owner", "front_desk"],
-  "GET /night-audit/latest": ["owner", "front_desk", "fnb_manager"],
-  "POST /connectors/pms/webhook": ["owner", "front_desk"],
-  "POST /connectors/pms/simulate": ["owner", "front_desk"]
+const permissionMap: Record<string, Permission | null> = {
+  "GET /context":                          null,
+  "POST /events/service-request-created":  "manage_requests",
+  "POST /service-requests":               "manage_requests",
+  "GET /service-requests":                "view_requests",
+  "PATCH /service-requests/:id/status":   "manage_requests",
+  "PATCH /service-requests/:id/assign":   "manage_requests",
+  "POST /service-requests/sla/refresh":   "manage_requests",
+  "GET /audit":                           "view_reports",
+  "GET /dashboard/overview":              "view_requests",
+  "GET /dashboard/queue-summary":         "view_requests",
+  "GET /dashboard/live-feed":             "view_requests",
+  "GET /users":                           "manage_users",
+  "GET /guests":                          "view_guests",
+  "GET /guests/:id":                      "view_guests",
+  "GET /analytics/revenue-intelligence":  "view_reports",
+  "GET /analytics/staff-performance":     "view_reports",
+  "GET /analytics/sentiment":             "view_reports",
+  "GET /analytics/upsell-campaigns":      "manage_campaigns",
+  "GET /automations":                     "manage_automations",
+  "GET /automations/executions":          "manage_automations",
+  "GET /connectors/registry":             "manage_connectors",
+  "GET /connectors/configs":              "manage_connectors",
+  "PUT /connectors/configs/:key":         "manage_connectors",
+  "DELETE /connectors/configs/:key":      "manage_connectors",
+  "POST /connectors/events/ingest":       "manage_requests",
+  "GET /connectors/events":              "view_requests",
+  "POST /connectors/whatsapp/send":       "manage_connectors",
+  "GET /ai/providers":                    null,
+  "GET /ai/morning-briefing":             "view_reports",
+  "POST /ai/classify-event":              "manage_requests",
+  "GET /ai/guest-intelligence/:guestId":  "view_guests",
+  "GET /ai/revenue-insights":             "view_reports",
+  "POST /night-audit/generate":           "night_audit",
+  "GET /night-audit/latest":              "view_reports",
+  "POST /connectors/pms/webhook":         "manage_connectors",
+  "POST /connectors/pms/simulate":        "manage_connectors",
+  "GET /team/users":                      "manage_users",
+  "POST /team/invitations":               "invite_users",
+  "PUT /team/users/:id":                  "manage_users",
+  "GET /team/license":                    "manage_billing",
+  "GET /team/roles":                      "manage_roles",
+  "PUT /team/roles/:id":                  "manage_roles",
+  "POST /team/roles":                     "create_custom_roles",
+};
+
+const canAccess = (permissions: string[], key: string): boolean => {
+  const req = permissionMap[key];
+  return req === null || hasPermission(permissions, req);
 };
 
 const connectorRegistry = [
@@ -342,19 +371,175 @@ const handleRequest = async (
       }
       const user = await prisma.user.findFirst({
         where: { hotelId, email, role, isActive: true },
-        select: { id: true, hotelId: true, email: true, role: true }
+        select: {
+          id: true, hotelId: true, email: true, role: true,
+          systemRole: { select: { permissions: true } }
+        }
       });
       if (!user) {
         json(res, 401, { ok: false, error: "Invalid user credentials" });
         return;
       }
+      const permissions = user.systemRole
+        ? parsePermissions(user.systemRole.permissions)
+        : getPermissionsForLegacyRole(user.role);
       const token = await createAuthToken({
         sub: user.id,
         hotelId: user.hotelId,
         email: user.email,
-        role: user.role as UserRole
+        role: user.role as UserRole,
+        permissions
       });
       json(res, 200, { ok: true, token });
+      return;
+    }
+
+    // ── GET /auth/identify — public: look up hotelId+role+industry by email ────────
+    // Also auto-accepts any pending invitations for this email so an invited agent
+    // who signs up directly (skipping the invite-link page) still gets connected.
+    if (req.url?.startsWith("/auth/identify") && req.method === "GET") {
+      const email = parseUrl(req.url).searchParams.get("email")?.toLowerCase().trim();
+      if (!email) {
+        json(res, 400, { ok: false, error: "email is required" });
+        return;
+      }
+
+      let user = await prisma.user.findFirst({
+        where: { email, isActive: true },
+        select: {
+          hotelId: true,
+          role: true,
+          fullName: true,
+          systemRole: { select: { key: true } },
+          hotel: { select: { industry: true, name: true } }
+        }
+      });
+
+      // No user record → check for a pending invitation and accept it on the fly.
+      if (!user) {
+        const inv = await prisma.invitation.findFirst({
+          where: { email, acceptedAt: null, expiresAt: { gt: new Date() } },
+          include: { role: { select: { id: true, key: true } } },
+          orderBy: { createdAt: "desc" }
+        });
+        if (inv) {
+          const legacyRole = legacyRoleFor(inv.role.key);
+          const fallbackName = email.split("@")[0] ?? "Team Member";
+          await prisma.user.create({
+            data: {
+              hotelId: inv.hotelId,
+              email: inv.email,
+              fullName: fallbackName,
+              role: legacyRole,
+              roleId: inv.role.id,
+              isActive: true
+            }
+          });
+          await prisma.invitation.update({ where: { token: inv.token }, data: { acceptedAt: new Date() } });
+          user = await prisma.user.findFirst({
+            where: { email, isActive: true },
+            select: {
+              hotelId: true,
+              role: true,
+              fullName: true,
+              systemRole: { select: { key: true } },
+              hotel: { select: { industry: true, name: true } }
+            }
+          });
+        }
+      }
+
+      if (!user) {
+        json(res, 200, { ok: true, exists: false });
+        return;
+      }
+      json(res, 200, {
+        ok: true,
+        exists: true,
+        hotelId: user.hotelId,
+        role: user.role,
+        roleKey: user.systemRole?.key ?? null,
+        industry: user.hotel.industry,
+        propertyName: user.hotel.name,
+        fullName: user.fullName
+      });
+      return;
+    }
+
+    // ── POST /hotels/register — public: create hotel, seed roles/license, issue JWT ─
+    if (req.url === "/hotels/register" && req.method === "POST") {
+      const body = (await parseBody(req)) as {
+        propertyName?: unknown;
+        ownerEmail?: unknown;
+        ownerName?: unknown;
+        timezone?: unknown;
+        industry?: unknown;
+      };
+      const propertyName = asTrimmedString(body.propertyName);
+      const ownerEmail = asTrimmedString(body.ownerEmail)?.toLowerCase();
+      const timezone = asTrimmedString(body.timezone) ?? "Asia/Kolkata";
+      const industry = asTrimmedString(body.industry) ?? "hospitality";
+      const INDUSTRY_ADMIN_TITLE: Record<string, string> = {
+        hospitality:   "Hotel Admin",
+        manufacturing: "Plant Admin",
+        fnb:           "Restaurant Admin",
+        travel:        "Travel Desk Admin",
+        healthcare:    "Clinic Admin",
+      };
+      const ownerName = asTrimmedString(body.ownerName) ?? INDUSTRY_ADMIN_TITLE[industry] ?? "Admin";
+
+      if (!propertyName || !ownerEmail) {
+        json(res, 400, { ok: false, error: "propertyName and ownerEmail are required" });
+        return;
+      }
+
+      const existingUser = await prisma.user.findFirst({
+        where: { email: ownerEmail },
+        select: { id: true }
+      });
+      if (existingUser) {
+        json(res, 409, { ok: false, error: "An account with this email already exists" });
+        return;
+      }
+
+      const hotelId = `hotel-${randomBytes(8).toString("hex")}`;
+
+      await prisma.hotel.create({ data: { id: hotelId, name: propertyName, timezone, industry } });
+
+      await seedDefaultRolesForHotel(hotelId);
+      await seedLicenseForHotel(hotelId, "starter", 5);
+
+      const adminRole = await prisma.role.findUnique({
+        where: { hotelId_key: { hotelId, key: "admin" } },
+        select: { id: true, permissions: true }
+      });
+
+      const userId = `user-${randomBytes(8).toString("hex")}`;
+      await prisma.user.create({
+        data: {
+          id: userId,
+          hotelId,
+          email: ownerEmail,
+          fullName: ownerName,
+          role: "owner",
+          roleId: adminRole?.id ?? null,
+          isActive: true
+        }
+      });
+
+      const permissions = adminRole
+        ? parsePermissions(adminRole.permissions)
+        : getPermissionsForLegacyRole("owner");
+
+      const token = await createAuthToken({
+        sub: userId,
+        hotelId,
+        email: ownerEmail,
+        role: "owner",
+        permissions
+      });
+
+      json(res, 201, { ok: true, hotelId, token, email: ownerEmail, propertyName });
       return;
     }
 
@@ -404,8 +589,8 @@ const handleRequest = async (
         return;
       }
 
-      if (!isAllowedRole(auth.context.role, policyMap["GET /context"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(auth.context.permissions, "GET /context")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
       json(res, 200, { ok: true, context: auth.context });
@@ -419,8 +604,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["POST /events/service-request-created"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "POST /events/service-request-created")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -577,8 +762,8 @@ const handleRequest = async (
     if (req.url?.startsWith("/connectors/events/ingest") && req.method === "POST") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["POST /connectors/events/ingest"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "POST /connectors/events/ingest")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
 
       const body = (await parseBody(req)) as {
@@ -612,8 +797,8 @@ const handleRequest = async (
     if (req.url?.startsWith("/connectors/events") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /connectors/events"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /connectors/events")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
 
       const qs = parseUrl(req.url).searchParams;
@@ -645,8 +830,8 @@ const handleRequest = async (
     if (req.url?.startsWith("/connectors/whatsapp/send") && req.method === "POST") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["POST /connectors/whatsapp/send"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "POST /connectors/whatsapp/send")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
 
       const body = (await parseBody(req)) as { toPhone?: unknown; message?: unknown };
@@ -674,8 +859,8 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
       }
-      if (!isAllowedRole(context.role, policyMap["POST /service-requests"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "POST /service-requests")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -792,8 +977,8 @@ const handleRequest = async (
         return;
       }
 
-      if (!isAllowedRole(context.role, policyMap["GET /service-requests"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /service-requests")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -867,8 +1052,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["POST /service-requests/sla/refresh"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "POST /service-requests/sla/refresh")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -897,8 +1082,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["PATCH /service-requests/:id/status"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "PATCH /service-requests/:id/status")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -985,8 +1170,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /dashboard/overview"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /dashboard/overview")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
       const [openCount, resolvedTodayCount, escalatedOpenCount, slaBreachedOpenCount] =
@@ -1032,8 +1217,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /dashboard/queue-summary"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /dashboard/queue-summary")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1068,8 +1253,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /dashboard/overview"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /dashboard/overview")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1125,10 +1310,12 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /analytics/revenue-intelligence"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /analytics/revenue-intelligence")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
+      const licRevenue = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      if (!licRevenue.ok) { json(res, 403, { ok: false, error: licRevenue.error }); return; }
 
       const [offerEvents, openRequests] = await Promise.all([
         prisma.offerEvent.findMany({
@@ -1206,10 +1393,12 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /analytics/staff-performance"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /analytics/staff-performance")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
+      const licStaff = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      if (!licStaff.ok) { json(res, 403, { ok: false, error: licStaff.error }); return; }
 
       const users = await prisma.user.findMany({
         where: { hotelId: context.hotelId, isActive: true },
@@ -1315,8 +1504,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /connectors/registry"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /connectors/registry")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1349,8 +1538,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /connectors/configs"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /connectors/configs")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1388,8 +1577,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["PUT /connectors/configs/:key"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "PUT /connectors/configs/:key")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
       if (!envFlagByConnectorKey.has(connectorConfigKey)) {
@@ -1454,8 +1643,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["DELETE /connectors/configs/:key"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "DELETE /connectors/configs/:key")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1483,8 +1672,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /users"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /users")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1534,8 +1723,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["PATCH /service-requests/:id/assign"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "PATCH /service-requests/:id/assign")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
 
@@ -1649,8 +1838,8 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /audit"])) {
-        json(res, 403, { ok: false, error: "Role not permitted for this action" });
+      if (!canAccess(context.permissions, "GET /audit")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
       const hasAccess = await ensureHotelAccess(context.hotelId);
@@ -1695,8 +1884,8 @@ const handleRequest = async (
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /dashboard/live-feed"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(context.permissions, "GET /dashboard/live-feed")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const items = await prisma.serviceRequest.findMany({
         where: { hotelId: context.hotelId, status: { not: "resolved" } },
@@ -1723,8 +1912,8 @@ const handleRequest = async (
     if (guestIdMatch && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /guests/:id"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /guests/:id")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const guestId = guestIdMatch[1]!;
       const { hotelId } = auth.context;
@@ -1772,8 +1961,8 @@ const handleRequest = async (
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /guests"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(context.permissions, "GET /guests")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const parsedUrl = parseUrl(req.url);
       const limit = asSafeLimit(parsedUrl.searchParams.get("limit"), 20, 100);
@@ -1830,9 +2019,11 @@ const handleRequest = async (
     if (req.url?.startsWith("/automations/executions") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /automations/executions"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /automations/executions")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licExec = await enforceLicenseFeature(auth.context.hotelId, "automations");
+      if (!licExec.ok) { json(res, 403, { ok: false, error: licExec.error }); return; }
       const u = parseUrl(req.url);
       const limit = asSafeLimit(u.searchParams.get("limit"), 20, 100);
       const offset = asSafeOffset(u.searchParams.get("offset"));
@@ -1863,9 +2054,11 @@ const handleRequest = async (
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /automations"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(context.permissions, "GET /automations")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licAuto = await enforceLicenseFeature(context.hotelId, "automations");
+      if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
       const rules = await prisma.automationRule.findMany({
         where: { hotelId: context.hotelId },
         orderBy: { createdAt: "asc" },
@@ -1926,9 +2119,11 @@ const handleRequest = async (
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /analytics/sentiment"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(context.permissions, "GET /analytics/sentiment")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licSentiment = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      if (!licSentiment.ok) { json(res, 403, { ok: false, error: licSentiment.error }); return; }
       // Compute sentiment from resolved service requests (used as proxy for feedback)
       const resolved = await prisma.serviceRequest.findMany({
         where: { hotelId: context.hotelId, status: "resolved" },
@@ -1975,9 +2170,11 @@ const handleRequest = async (
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
       const context = auth.context;
-      if (!isAllowedRole(context.role, policyMap["GET /analytics/upsell-campaigns"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(context.permissions, "GET /analytics/upsell-campaigns")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licUpsell = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
       const rules = await prisma.automationRule.findMany({
         where: { hotelId: context.hotelId },
         orderBy: { createdAt: "asc" }
@@ -2019,8 +2216,8 @@ const handleRequest = async (
     if (req.url?.startsWith("/ai/providers") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /ai/providers"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /ai/providers")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       json(res, 200, { ok: true, claude: CLAUDE_AVAILABLE, openai: OPENAI_AVAILABLE });
       return;
@@ -2030,9 +2227,11 @@ const handleRequest = async (
     if (req.url?.startsWith("/ai/morning-briefing") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /ai/morning-briefing"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /ai/morning-briefing")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licBriefing = await enforceLicenseFeature(auth.context.hotelId, "ai_features");
+      if (!licBriefing.ok) { json(res, 403, { ok: false, error: licBriefing.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
@@ -2078,8 +2277,8 @@ const handleRequest = async (
     if (req.url?.startsWith("/ai/classify-event") && req.method === "POST") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["POST /ai/classify-event"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "POST /ai/classify-event")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const body = (await parseBody(req)) as { text?: unknown; provider?: unknown };
       const text = asTrimmedString(body.text);
@@ -2098,9 +2297,11 @@ const handleRequest = async (
     if (parseGuestIntelligencePath(req.url) && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /ai/guest-intelligence/:guestId"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /ai/guest-intelligence/:guestId")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licGuest = await enforceLicenseFeature(auth.context.hotelId, "ai_features");
+      if (!licGuest.ok) { json(res, 403, { ok: false, error: licGuest.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
@@ -2161,9 +2362,11 @@ const handleRequest = async (
     if (req.url?.startsWith("/ai/revenue-insights") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /ai/revenue-insights"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /ai/revenue-insights")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licRevInsights = await enforceLicenseFeature(auth.context.hotelId, "ai_features");
+      if (!licRevInsights.ok) { json(res, 403, { ok: false, error: licRevInsights.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
@@ -2209,9 +2412,11 @@ const handleRequest = async (
     if (req.url === "/night-audit/generate" && req.method === "POST") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["POST /night-audit/generate"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "POST /night-audit/generate")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licNightGen = await enforceLicenseFeature(auth.context.hotelId, "night_audit");
+      if (!licNightGen.ok) { json(res, 403, { ok: false, error: licNightGen.error }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const body = (await parseBody(req)) as { provider?: unknown };
@@ -2307,9 +2512,11 @@ const handleRequest = async (
     if (req.url?.startsWith("/night-audit/latest") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["GET /night-audit/latest"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "GET /night-audit/latest")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
+      const licNightLatest = await enforceLicenseFeature(auth.context.hotelId, "night_audit");
+      if (!licNightLatest.ok) { json(res, 403, { ok: false, error: licNightLatest.error }); return; }
       const { hotelId } = auth.context;
       const report = await prisma.nightAuditReport.findFirst({
         where: { hotelId },
@@ -2326,8 +2533,8 @@ const handleRequest = async (
     if (req.url === "/connectors/pms/simulate" && req.method === "POST") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!isAllowedRole(auth.context.role, policyMap["POST /connectors/pms/simulate"])) {
-        json(res, 403, { ok: false, error: "Role not permitted" }); return;
+      if (!canAccess(auth.context.permissions, "POST /connectors/pms/simulate")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const { hotelId } = auth.context;
       const body = (await parseBody(req)) as { guestName?: unknown; roomNumber?: unknown };
@@ -2383,6 +2590,324 @@ const handleRequest = async (
       } else {
         json(res, 200, { ok: true, event: eventType, guestId });
       }
+      return;
+    }
+
+    // ── Team: URL helpers ─────────────────────────────────────────────────────
+    const parseTeamUserId = (u: string | undefined) => {
+      const m = /^\/team\/users\/([^/]+)$/.exec(parseUrl(u).pathname);
+      return m?.[1] ?? null;
+    };
+    const parseInviteToken = (u: string | undefined) => {
+      const m = /^\/team\/invitations\/([^/]+)$/.exec(parseUrl(u).pathname);
+      return m?.[1] ?? null;
+    };
+    const parseInviteAccept = (u: string | undefined) => {
+      const m = /^\/team\/invitations\/([^/]+)\/accept$/.exec(parseUrl(u).pathname);
+      return m?.[1] ?? null;
+    };
+    const parseTeamRoleId = (u: string | undefined) => {
+      const m = /^\/team\/roles\/([^/]+)$/.exec(parseUrl(u).pathname);
+      return m?.[1] ?? null;
+    };
+
+    // ── GET /team/users — list team members with role + seat usage ────────────
+    if (req.url === "/team/users" && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "manage_users")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const users = await prisma.user.findMany({
+        where: { hotelId: auth.context.hotelId },
+        select: {
+          id: true, fullName: true, email: true, role: true,
+          roleId: true, isActive: true, createdAt: true,
+          systemRole: { select: { id: true, key: true, displayName: true } }
+        },
+        orderBy: { createdAt: "asc" }
+      });
+      const license = await prisma.license.findUnique({ where: { hotelId: auth.context.hotelId } });
+      const usedSeats = users.filter(u => u.isActive).length;
+      json(res, 200, {
+        ok: true,
+        users: users.map(u => ({
+          id: u.id, fullName: u.fullName, email: u.email,
+          role: u.role, roleId: u.roleId,
+          systemRole: u.systemRole ? { id: u.systemRole.id, key: u.systemRole.key, displayName: u.systemRole.displayName } : null,
+          isActive: u.isActive, createdAt: u.createdAt
+        })),
+        seats: { used: usedSeats, max: license?.maxSeats ?? null, plan: license?.plan ?? "starter" }
+      });
+      return;
+    }
+
+    // ── POST /team/invitations — generate invite link ─────────────────────────
+    if (req.url === "/team/invitations" && req.method === "POST") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "invite_users")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const body = (await parseBody(req)) as { email?: unknown; roleId?: unknown };
+      const email = asTrimmedString(body.email)?.toLowerCase();
+      const roleId = asTrimmedString(body.roleId);
+      if (!email || !roleId) {
+        json(res, 400, { ok: false, error: "email and roleId are required" }); return;
+      }
+      const role = await prisma.role.findFirst({
+        where: { id: roleId, hotelId: auth.context.hotelId },
+        select: { id: true, key: true, displayName: true }
+      });
+      if (!role) { json(res, 404, { ok: false, error: "Role not found" }); return; }
+      const within = await isWithinSeatLimit(auth.context.hotelId);
+      if (!within) {
+        json(res, 403, { ok: false, error: "Seat limit reached — upgrade your plan to invite more users" }); return;
+      }
+      // Expire any existing pending invite for the same email
+      await prisma.invitation.updateMany({
+        where: { hotelId: auth.context.hotelId, email, acceptedAt: null },
+        data: { expiresAt: new Date() }
+      });
+      const token = randomBytes(32).toString("hex");
+      const inv = await prisma.invitation.create({
+        data: {
+          hotelId: auth.context.hotelId,
+          email,
+          roleId: role.id,
+          token,
+          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+          invitedById: auth.context.userId
+        }
+      });
+      const webBase = process.env.EYNIS_WEB_BASE_URL ?? "http://localhost:3000";
+      json(res, 201, {
+        ok: true,
+        inviteUrl: `${webBase}/invite/${token}`,
+        token,
+        expiresAt: inv.expiresAt
+      });
+      return;
+    }
+
+    // ── GET /team/invitations/:token — verify invite (public) ─────────────────
+    if (parseInviteToken(req.url) && req.method === "GET") {
+      const token = parseInviteToken(req.url)!;
+      const inv = await prisma.invitation.findUnique({
+        where: { token },
+        include: {
+          role: { select: { displayName: true, key: true } },
+          hotel: { select: { name: true } }
+        }
+      });
+      if (!inv) { json(res, 404, { ok: false, error: "Invitation not found" }); return; }
+      json(res, 200, {
+        ok: true,
+        email: inv.email,
+        hotelName: inv.hotel.name,
+        roleName: inv.role.displayName,
+        roleKey: inv.role.key,
+        expired: inv.expiresAt < new Date(),
+        accepted: !!inv.acceptedAt
+      });
+      return;
+    }
+
+    // ── POST /team/invitations/:token/accept — create account (public) ────────
+    if (parseInviteAccept(req.url) && req.method === "POST") {
+      const token = parseInviteAccept(req.url)!;
+      const inv = await prisma.invitation.findUnique({
+        where: { token },
+        include: { role: { select: { id: true, key: true, permissions: true } } }
+      });
+      if (!inv)         { json(res, 404, { ok: false, error: "Invitation not found" }); return; }
+      if (inv.acceptedAt) { json(res, 409, { ok: false, error: "Invitation already accepted" }); return; }
+      if (inv.expiresAt < new Date()) { json(res, 410, { ok: false, error: "Invitation expired" }); return; }
+      const body = (await parseBody(req)) as { fullName?: unknown };
+      const fullName = asTrimmedString(body.fullName) ?? inv.email.split("@")[0] ?? "New User";
+      const legacyRole = legacyRoleFor(inv.role.key);
+      const existing = await prisma.user.findUnique({ where: { email: inv.email } });
+      let userId: string;
+      if (existing) {
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: { roleId: inv.role.id, role: legacyRole, isActive: true, fullName }
+        });
+        userId = existing.id;
+      } else {
+        const newUser = await prisma.user.create({
+          data: {
+            hotelId: inv.hotelId,
+            fullName,
+            email: inv.email,
+            role: legacyRole,
+            roleId: inv.role.id,
+            isActive: true
+          }
+        });
+        userId = newUser.id;
+      }
+      await prisma.invitation.update({
+        where: { token },
+        data: { acceptedAt: new Date() }
+      });
+      // Issue a JWT so the invitee is immediately logged in
+      const invPerms = parsePermissions(inv.role.permissions);
+      const jwt = await createAuthToken({
+        sub: userId,
+        hotelId: inv.hotelId,
+        email: inv.email,
+        role: legacyRole as UserRole,
+        permissions: invPerms
+      });
+      json(res, 200, {
+        ok: true,
+        token: jwt,
+        hotelId: inv.hotelId,
+        email: inv.email,
+        role: legacyRole
+      });
+      return;
+    }
+
+    // ── PUT /team/users/:id — change role or active status ───────────────────
+    if (parseTeamUserId(req.url) && req.method === "PUT") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "manage_users")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const targetId = parseTeamUserId(req.url)!;
+      const target = await prisma.user.findFirst({
+        where: { id: targetId, hotelId: auth.context.hotelId }
+      });
+      if (!target) { json(res, 404, { ok: false, error: "User not found" }); return; }
+      if (targetId === auth.context.userId) {
+        json(res, 400, { ok: false, error: "Cannot modify your own account" }); return;
+      }
+      const body = (await parseBody(req)) as { roleId?: unknown; isActive?: unknown };
+      const updates: { roleId?: string; role?: string; isActive?: boolean } = {};
+      if (typeof body.isActive === "boolean") {
+        updates.isActive = body.isActive;
+      }
+      if (asTrimmedString(body.roleId)) {
+        const newRole = await prisma.role.findFirst({
+          where: { id: String(body.roleId), hotelId: auth.context.hotelId },
+          select: { id: true, key: true }
+        });
+        if (!newRole) { json(res, 404, { ok: false, error: "Role not found" }); return; }
+        updates.roleId = newRole.id;
+        updates.role   = legacyRoleFor(newRole.key);
+      }
+      if (Object.keys(updates).length === 0) {
+        json(res, 400, { ok: false, error: "Provide roleId or isActive to update" }); return;
+      }
+      const updated = await prisma.user.update({
+        where: { id: targetId },
+        data: updates,
+        select: { id: true, fullName: true, email: true, role: true, isActive: true,
+                  systemRole: { select: { key: true, displayName: true } } }
+      });
+      json(res, 200, { ok: true, user: updated });
+      return;
+    }
+
+    // ── GET /team/license — plan info + seat usage ────────────────────────────
+    if (req.url === "/team/license" && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "manage_billing")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const license = await prisma.license.findUnique({ where: { hotelId: auth.context.hotelId } });
+      const usedSeats = await prisma.user.count({ where: { hotelId: auth.context.hotelId, isActive: true } });
+      json(res, 200, {
+        ok: true,
+        license: license
+          ? { plan: license.plan, maxSeats: license.maxSeats, usedSeats, renewsAt: license.renewsAt }
+          : { plan: "starter", maxSeats: 5, usedSeats, renewsAt: null }
+      });
+      return;
+    }
+
+    // ── GET /team/roles — list roles with user counts ─────────────────────────
+    if (req.url === "/team/roles" && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "manage_roles")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const roles = await prisma.role.findMany({
+        where: { hotelId: auth.context.hotelId },
+        include: { _count: { select: { users: true } } },
+        orderBy: { createdAt: "asc" }
+      });
+      json(res, 200, {
+        ok: true,
+        roles: roles.map(r => ({
+          id: r.id, key: r.key, displayName: r.displayName,
+          permissions: JSON.parse(r.permissions) as string[],
+          isSystem: r.isSystem, isCustom: r.isCustom,
+          userCount: r._count.users
+        }))
+      });
+      return;
+    }
+
+    // ── PUT /team/roles/:id — rename a role's displayName ────────────────────
+    if (parseTeamRoleId(req.url) && req.method === "PUT") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "manage_roles")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const roleId = parseTeamRoleId(req.url)!;
+      const role = await prisma.role.findFirst({ where: { id: roleId, hotelId: auth.context.hotelId } });
+      if (!role) { json(res, 404, { ok: false, error: "Role not found" }); return; }
+      const body = (await parseBody(req)) as { displayName?: unknown };
+      const displayName = asTrimmedString(body.displayName);
+      if (!displayName) { json(res, 400, { ok: false, error: "displayName is required" }); return; }
+      const updated = await prisma.role.update({
+        where: { id: roleId },
+        data: { displayName }
+      });
+      json(res, 200, {
+        ok: true,
+        role: { id: updated.id, key: updated.key, displayName: updated.displayName }
+      });
+      return;
+    }
+
+    // ── POST /team/roles — create a custom role ───────────────────────────────
+    if (req.url === "/team/roles" && req.method === "POST") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!hasPermission(auth.context.permissions, "create_custom_roles")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const licCustomRoles = await enforceLicenseFeature(auth.context.hotelId, "custom_roles");
+      if (!licCustomRoles.ok) { json(res, 403, { ok: false, error: licCustomRoles.error }); return; }
+      const body = (await parseBody(req)) as { displayName?: unknown; key?: unknown; permissions?: unknown };
+      const displayName = asTrimmedString(body.displayName);
+      const key = asTrimmedString(body.key)?.toLowerCase().replace(/\s+/g, "_");
+      if (!displayName || !key) { json(res, 400, { ok: false, error: "displayName and key are required" }); return; }
+      const permissions = Array.isArray(body.permissions) ? body.permissions.filter((p): p is string => typeof p === "string") : [];
+      const existing = await prisma.role.findUnique({ where: { hotelId_key: { hotelId: auth.context.hotelId, key } } });
+      if (existing) { json(res, 409, { ok: false, error: "A role with that key already exists" }); return; }
+      const role = await prisma.role.create({
+        data: {
+          hotelId: auth.context.hotelId,
+          key,
+          displayName,
+          permissions: JSON.stringify(permissions),
+          isSystem: false,
+          isCustom: true
+        }
+      });
+      json(res, 201, {
+        ok: true,
+        role: { id: role.id, key: role.key, displayName: role.displayName, permissions, isSystem: false, isCustom: true, userCount: 0 }
+      });
       return;
     }
 

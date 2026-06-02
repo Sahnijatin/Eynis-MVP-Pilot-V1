@@ -1,6 +1,8 @@
-import { CalendarDays, Clock, UserCheck, AlertCircle } from "lucide-react";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useState } from "react";
+import { CalendarDays, X } from "lucide-react";
+import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 
 const TODAY_SLOTS = [
   { time: "09:00 AM", patient: "Rahul Sharma", type: "Consultation", doctor: "Dr. Patel", status: "checked_in", duration: "30 min" },
@@ -26,9 +28,23 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
 }
 
+const EMPTY_FORM = { time: "", patient: "", type: "Consultation", doctor: "", duration: "30 min" };
+
 export default function AppointmentsPage() {
-  const active = TODAY_SLOTS.filter(s => ["checked_in", "in_progress", "waiting"].includes(s.status)).length;
-  const noShows = TODAY_SLOTS.filter(s => s.status === "no_show").length;
+  const [slots, setSlots] = useState(TODAY_SLOTS);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const active = slots.filter(s => ["checked_in", "in_progress", "waiting"].includes(s.status)).length;
+  const noShows = slots.filter(s => s.status === "no_show").length;
+
+  function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.patient.trim() || !form.time.trim()) return;
+    setSlots(prev => [...prev, { ...form, status: "confirmed" }]);
+    setForm(EMPTY_FORM);
+    setModalOpen(false);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
@@ -36,17 +52,46 @@ export default function AppointmentsPage() {
           <h1 className="text-xl font-bold text-slate-800">Appointments</h1>
           <p className="text-sm text-slate-500 mt-0.5">Today's schedule · patient flow · no-show tracking</p>
         </div>
-        <button className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "#0891b2" }}>+ Book Appointment</button>
+        <div className="flex items-center gap-2">
+          <ImportExportButtons
+            rows={slots}
+            columns={[
+              { label: "Time",     value: "time" },
+              { label: "Patient",  value: "patient" },
+              { label: "Type",     value: "type" },
+              { label: "Doctor",   value: "doctor" },
+              { label: "Duration", value: "duration" },
+              { label: "Status",   value: "status" },
+            ]}
+            fileBase="appointments"
+            accentColor="#0891b2"
+            onImport={(rows) => {
+              const next = rows
+                .map(r => ({
+                  time: r["Time"] ?? "",
+                  patient: r["Patient"] ?? "",
+                  type: r["Type"] ?? "Consultation",
+                  doctor: r["Doctor"] ?? "",
+                  duration: r["Duration"] ?? "30 min",
+                  status: r["Status"] || "confirmed",
+                }))
+                .filter(a => a.patient);
+              if (next.length) setSlots(prev => [...prev, ...next]);
+              return { count: next.length };
+            }}
+          />
+          <button onClick={() => setModalOpen(true)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "#0891b2" }}>+ Book Appointment</button>
+        </div>
       </div>
       <div className="kpi-grid mb-5">
         <div className="card">
           <div className="kpi-label">Today's Appointments</div>
-          <div className="kpi-value mt-1.5">{TODAY_SLOTS.filter(s => s.status !== "blocked").length}</div>
+          <div className="kpi-value mt-1.5">{slots.filter(s => s.status !== "blocked").length}</div>
           <div className="kpi-delta neutral mt-1.5">{active} active now</div>
         </div>
         <div className="card">
           <div className="kpi-label">Waiting Room</div>
-          <div className="kpi-value mt-1.5" style={{ color: "#d97706" }}>{TODAY_SLOTS.filter(s => s.status === "waiting").length}</div>
+          <div className="kpi-value mt-1.5" style={{ color: "#d97706" }}>{slots.filter(s => s.status === "waiting").length}</div>
           <div className="kpi-delta down mt-1.5">Avg. wait: 12 min</div>
         </div>
         <div className="card">
@@ -66,7 +111,7 @@ export default function AppointmentsPage() {
           <h3 className="card-title mb-0">Today's Schedule — {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</h3>
         </div>
         <div className="space-y-2">
-          {TODAY_SLOTS.map((slot, i) => (
+          {slots.map((slot, i) => (
             <div key={i} className={`flex items-center gap-4 p-3 rounded-lg border ${slot.status === "in_progress" ? "border-blue-200 bg-blue-50" : slot.status === "no_show" ? "border-red-100 bg-red-50" : slot.status === "blocked" ? "border-slate-100 bg-slate-50" : "border-slate-100 hover:bg-slate-50"} transition-colors`}>
               <span className="text-sm font-mono font-semibold text-slate-500 w-20 shrink-0">{slot.time}</span>
               <div className="flex-1">
@@ -78,6 +123,38 @@ export default function AppointmentsPage() {
           ))}
         </div>
       </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
+          <form onSubmit={handleCreate} className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-800">Book Appointment</h2>
+              <button type="button" onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              {([
+                ["patient", "Patient name", "Rahul Sharma"],
+                ["time", "Slot time", "10:30 AM"],
+                ["type", "Visit type", "Consultation / Follow-up / ECG"],
+                ["doctor", "Doctor", "Dr. Patel"],
+                ["duration", "Duration", "30 min"],
+              ] as const).map(([key, label, placeholder]) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
+                  <input
+                    value={form[key]}
+                    onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+                    style={{ "--tw-ring-color": "#0891b2" } as React.CSSProperties}
+                  />
+                </div>
+              ))}
+              <button type="submit" className="w-full py-2.5 text-sm font-semibold text-white rounded-lg mt-2" style={{ background: "#0891b2" }}>Book Appointment</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

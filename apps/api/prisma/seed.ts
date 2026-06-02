@@ -5,6 +5,27 @@ const prisma = new PrismaClient();
 
 const HOTEL_ID = "eynis-riviera-1";
 
+// Permission sets per role key
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: [
+    "invite_users","manage_users","manage_roles","create_custom_roles","manage_billing",
+    "manage_settings","view_reports","manage_requests","view_requests","manage_automations",
+    "view_guests","manage_guests","night_audit","manage_connectors","manage_campaigns"
+  ],
+  manager: [
+    "invite_users","view_reports","manage_requests","view_requests","manage_automations",
+    "view_guests","manage_guests","night_audit","manage_connectors","manage_campaigns","manage_settings"
+  ],
+  supervisor: ["view_reports","manage_requests","view_requests","view_guests","manage_guests","manage_campaigns"],
+  agent:  ["view_requests","manage_requests","view_guests"],
+  viewer: ["view_reports","view_requests","view_guests"],
+};
+
+// Old UserRole → new Role.key (for mapping staff users)
+const LEGACY_TO_KEY: Record<string, string> = {
+  owner: "admin", front_desk: "manager", fnb_manager: "supervisor", housekeeping: "agent"
+};
+
 async function main() {
   // ── Clear existing data for clean seed ────────────────────────────────────
   await prisma.automationExecution.deleteMany({ where: { hotelId: HOTEL_ID } });
@@ -23,23 +44,64 @@ async function main() {
     create: { id: HOTEL_ID, name: "The Riviera", timezone: "Asia/Kolkata" }
   });
 
-  // ── Staff users ────────────────────────────────────────────────────────────
+  // ── License (Growth, 25 seats, 1-year term) ───────────────────────────────
+  await prisma.license.upsert({
+    where: { hotelId: HOTEL_ID },
+    update: { plan: "growth", maxSeats: 25 },
+    create: {
+      hotelId: HOTEL_ID,
+      plan: "growth",
+      maxSeats: 25,
+      renewsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    }
+  });
+
+  // ── System roles (5 defaults) ──────────────────────────────────────────────
+  const ROLE_DISPLAY: Record<string, string> = {
+    admin: "Admin", manager: "Manager", supervisor: "Supervisor",
+    agent: "Agent", viewer: "Viewer"
+  };
+  const roleIdMap: Record<string, string> = {};
+  for (const [key, perms] of Object.entries(ROLE_PERMISSIONS)) {
+    const r = await prisma.role.upsert({
+      where: { hotelId_key: { hotelId: HOTEL_ID, key } },
+      update: {},
+      create: {
+        hotelId: HOTEL_ID,
+        key,
+        displayName: ROLE_DISPLAY[key] ?? key,
+        permissions: JSON.stringify(perms),
+        isSystem: true,
+        isCustom: false
+      }
+    });
+    roleIdMap[key] = r.id;
+  }
+
+  // ── Staff users (with roleId wired to new system roles) ───────────────────
   const staff = [
-    { email: "vikram@theriviera.com", fullName: "Vikram Mehta", role: "owner" as const },
-    { email: "sarah@theriviera.com", fullName: "Sarah Jenkins", role: "front_desk" as const },
-    { email: "amit@theriviera.com", fullName: "Amit Sharma", role: "housekeeping" as const },
-    { email: "sanya@theriviera.com", fullName: "Sanya Kapoor", role: "housekeeping" as const },
-    { email: "marcus@theriviera.com", fullName: "Marcus Vane", role: "front_desk" as const },
-    { email: "elena@theriviera.com", fullName: "Elena Rodriguez", role: "housekeeping" as const },
-    { email: "david@theriviera.com", fullName: "David Ling", role: "fnb_manager" as const }
+    { email: "vikram@theriviera.com", fullName: "Vikram Mehta",    role: "owner"       as const },
+    { email: "sarah@theriviera.com",  fullName: "Sarah Jenkins",   role: "front_desk"  as const },
+    { email: "amit@theriviera.com",   fullName: "Amit Sharma",     role: "housekeeping"as const },
+    { email: "sanya@theriviera.com",  fullName: "Sanya Kapoor",    role: "housekeeping"as const },
+    { email: "marcus@theriviera.com", fullName: "Marcus Vane",     role: "front_desk"  as const },
+    { email: "elena@theriviera.com",  fullName: "Elena Rodriguez", role: "housekeeping"as const },
+    { email: "david@theriviera.com",  fullName: "David Ling",      role: "fnb_manager" as const }
   ];
 
   const userMap: Record<string, string> = {};
   for (const s of staff) {
+    const key = LEGACY_TO_KEY[s.role] ?? "agent";
     const u = await prisma.user.upsert({
       where: { email: s.email },
-      update: {},
-      create: { hotelId: hotel.id, fullName: s.fullName, email: s.email, role: s.role }
+      update: { roleId: roleIdMap[key] },
+      create: {
+        hotelId: hotel.id,
+        fullName: s.fullName,
+        email: s.email,
+        role: s.role,
+        roleId: roleIdMap[key]
+      }
     });
     userMap[s.email] = u.id;
   }

@@ -6,9 +6,11 @@ export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
   let terminology = getIndustryConfig("manufacturing").terminology;
+  let industry = "manufacturing";
   try {
     const ws = await getUserWorkspace();
     terminology = ws.config.terminology;
+    industry = ws.industry ?? "manufacturing";
   } catch { }
-  return <CustomersClient terminology={terminology} />;
+  return <CustomersClient terminology={terminology} industry={industry} />;
 }
