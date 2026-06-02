@@ -133,6 +133,7 @@ Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twi
 | `EYNIS_API_BASE_URL` | `http://localhost:4000` | Web → API base URL |
 | `EYNIS_API_TOKEN` | — | Static API token for web (skips `/auth/token` call if set) |
 | `EYNIS_DEMO_HOTEL_ID` | `eynis-riviera-1` | Demo hotel used by web to authenticate |
+| `EYNIS_ALLOW_DEMO_FALLBACK` | `false` | Web: serve the demo hotel to unresolved visitors. Set `true` for the public demo; leave off in real multi-tenant prod. A resolved real user never falls back to demo regardless. |
 
 ## Engineering Principles (from `docs/engineering-principles.md`)
 - Build → test → self-review → user validation → push
