@@ -14,3 +14,9 @@ Monorepo foundation for the Eynis intelligence platform.
 2. `npm run build`
 3. `npm run test`
 4. `npm run dev -w @eynis/api`
+
+## Deployment
+The web app deploys to Vercel on merge to `main`. On the Hobby plan, Vercel only
+builds commits authored by the account owner, so the owner should perform the
+final merge to `main` for the production deploy to trigger.
+
