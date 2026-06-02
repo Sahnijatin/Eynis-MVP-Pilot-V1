@@ -11,7 +11,33 @@ import {
   Star,
   Clock
 } from "lucide-react";
-import { fetchNightAuditLatest, generateNightAudit, type NightAuditReport } from "../../lib/data";
+import type { NightAuditReport, NightAuditResponse } from "../../lib/data";
+
+// Client-safe wrappers around the /api/night-audit proxy route. Defined here (not
+// imported from lib/data) because lib/data transitively imports server-only Clerk
+// code, which a Client Component must not pull in.
+async function fetchNightAuditLatest(): Promise<NightAuditResponse> {
+  try {
+    const res = await fetch("/api/night-audit", { cache: "no-store" });
+    return (await res.json()) as NightAuditResponse;
+  } catch {
+    return { ok: false, error: "Unable to fetch night audit report" };
+  }
+}
+
+async function generateNightAudit(provider: "claude" | "openai" = "claude"): Promise<NightAuditResponse> {
+  try {
+    const res = await fetch("/api/night-audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+      cache: "no-store"
+    });
+    return (await res.json()) as NightAuditResponse;
+  } catch {
+    return { ok: false, error: "Unable to generate night audit report" };
+  }
+}
 
 export default function NightAuditPage() {
   const [report, setReport] = useState<NightAuditReport | null>(null);

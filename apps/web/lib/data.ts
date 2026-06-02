@@ -476,28 +476,11 @@ export interface NightAuditResponse {
   error?: string;
 }
 
-export async function fetchNightAuditLatest(): Promise<NightAuditResponse> {
-  try {
-    const res = await fetch("/api/night-audit", { cache: "no-store" });
-    return (await res.json()) as NightAuditResponse;
-  } catch {
-    return { ok: false, error: "Unable to fetch night audit report" };
-  }
-}
-
-export async function generateNightAudit(provider: "claude" | "openai" = "claude"): Promise<NightAuditResponse> {
-  try {
-    const res = await fetch("/api/night-audit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }),
-      cache: "no-store"
-    });
-    return (await res.json()) as NightAuditResponse;
-  } catch {
-    return { ok: false, error: "Unable to generate night audit report" };
-  }
-}
+// NOTE: the night-audit fetch helpers (which call the relative /api/night-audit
+// proxy) live in the night-audit client component, NOT here. This module imports
+// server-only code via ./api (Clerk), so importing any runtime value from it into
+// a Client Component breaks `next build` with a "server-only" error. Only the
+// types above are safe to import from here (via `import type`).
 
 export async function fetchTeamUsers(): Promise<TeamUsersResponse> {
   const res = await authedFetch("/team/users");
