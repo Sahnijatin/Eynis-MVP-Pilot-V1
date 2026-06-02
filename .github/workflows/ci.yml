@@ -41,6 +41,11 @@ jobs:
       - name: Generate Prisma client
         run: npm run db:generate -w @eynis/api
 
+      # @eynis/shared must be built first — its dist/ (gitignored) provides the
+      # type declarations that the api and web type-checks import.
+      - name: Build shared package
+        run: npm run build -w @eynis/shared
+
       - name: Type-check (api + web)
         run: npm run lint
 
