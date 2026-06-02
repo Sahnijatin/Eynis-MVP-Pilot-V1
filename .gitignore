@@ -5,3 +5,13 @@ dist/
 coverage/
 .DS_Store
 *.log
+
+# Next.js build output (rebuilt on deploy, must not be committed)
+.next/
+
+# Local test database (the committed dev.db is intentionally kept)
+apps/api/prisma/test.db
+*.db-journal
+
+# TypeScript incremental build info
+*.tsbuildinfo
