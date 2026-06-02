@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { Package, Upload, Download, X } from "lucide-react";
+import { escapeCSV, parseCSVLine } from "../../lib/csv";
 
 const CATEGORIES = ["Specialty", "Dairy", "Meat", "Beverages", "Dry Goods", "Produce", "Other"];
 const TX_TYPES = ["received", "used", "waste"] as const;
@@ -24,19 +25,6 @@ function deriveStatus(stock: number, reorder: number): InventoryItem["status"] {
   if (stock <= reorder * 0.5) return "critical";
   if (stock <= reorder) return "warning";
   return "ok";
-}
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (const ch of line) {
-    if (ch === '"') { inQ = !inQ; }
-    else if (ch === "," && !inQ) { result.push(cur.trim()); cur = ""; }
-    else { cur += ch; }
-  }
-  result.push(cur.trim());
-  return result;
 }
 
 type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
@@ -146,7 +134,7 @@ export default function InventoryPage() {
   function exportCSV() {
     const headers = ["Item", "Category", "Stock", "Unit", "Reorder Level", "Cost", "Status"];
     const rows = inventory.map(i => [i.item, i.category, i.stock, i.unit, i.reorder, i.cost, i.status]);
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+    const csv = [headers, ...rows].map(r => r.map(escapeCSV).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

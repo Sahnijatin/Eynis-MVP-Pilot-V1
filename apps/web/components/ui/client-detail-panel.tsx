@@ -60,6 +60,17 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
   const [notes, setNotes] = useState(detail.notes);
   const [notesSaved, setNotesSaved] = useState(false);
 
+  // When the panel is reused for a different entity (the parent swaps `name`
+  // without unmounting), reset the per-entity state so we don't show the previous
+  // client's notes/active tab. React's recommended "reset state on prop change".
+  const [trackedName, setTrackedName] = useState(name);
+  if (name !== trackedName) {
+    setTrackedName(name);
+    setNotes(detail.notes);
+    setActiveTab("overview");
+    setNotesSaved(false);
+  }
+
   if (!open) return null;
 
   const tabs: Array<{ id: Tab; label: string }> = [

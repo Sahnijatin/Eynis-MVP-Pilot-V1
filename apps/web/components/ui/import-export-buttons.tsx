@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Download, Upload, CheckCircle, AlertCircle, X } from "lucide-react";
+import { escapeCSV, parseCSV } from "../../lib/csv";
 
 // Reusable CSV import/export button pair. Used on every list page that needs
 // data I/O (customers, guests, patients, bookings, orders, quotes, materials,
@@ -28,28 +29,6 @@ interface Props<T> {
   onImport?: (rows: Record<string, string>[]) => { count: number } | Promise<{ count: number }>;
   // Set to true to hide the Import button (useful for read-only logs).
   exportOnly?: boolean;
-}
-
-function parseCSVLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let q = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { q = !q; }
-    else if (ch === "," && !q) { out.push(cur.trim()); cur = ""; }
-    else { cur += ch; }
-  }
-  out.push(cur.trim());
-  return out;
-}
-
-function escapeCSV(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  const s = String(v);
-  // Quote if it contains a comma, quote, or newline.
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
 }
 
 type Toast = { type: "success"; message: string } | { type: "error"; message: string } | null;
@@ -104,18 +83,20 @@ export function ImportExportButtons<T>({
     }
     try {
       const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) { flash({ type: "error", message: "CSV has no data rows" }); return; }
-      const headers = parseCSVLine(lines[0]).map(h => h.trim());
-      const parsed = lines.slice(1).map(line => {
-        const cells = parseCSVLine(line);
+      const grid = parseCSV(text).filter(r => r.some(c => c.trim() !== ""));
+      if (grid.length < 2) { flash({ type: "error", message: "CSV has no data rows" }); return; }
+      const headers = grid[0].map(h => h.trim());
+      const parsed = grid.slice(1).map(cells => {
         const obj: Record<string, string> = {};
         headers.forEach((h, i) => { obj[h] = cells[i] ?? ""; });
         return obj;
       });
       if (onImport) {
         const result = await onImport(parsed);
-        flash({ type: "success", message: `Imported ${result.count} row${result.count === 1 ? "" : "s"}` });
+        // A handler may return nothing; fall back to the parsed row count so the
+        // success toast never throws on `result.count`.
+        const count = result?.count ?? parsed.length;
+        flash({ type: "success", message: `Imported ${count} row${count === 1 ? "" : "s"}` });
       } else {
         flash({ type: "success", message: `Parsed ${parsed.length} row${parsed.length === 1 ? "" : "s"} (import handler not wired)` });
       }

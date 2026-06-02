@@ -562,6 +562,7 @@ export function CustomersClient({ terminology, industry }: Props) {
       {/* CRM Detail Panel */}
       {selectedName && selectedDetail && (
         <ClientDetailPanel
+          key={selectedName}
           open={!!selectedName}
           onClose={() => setSelectedName(null)}
           name={selectedName}

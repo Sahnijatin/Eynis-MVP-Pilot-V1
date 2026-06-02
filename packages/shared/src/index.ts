@@ -1,5 +1,13 @@
 export type UserRole = "owner" | "front_desk" | "housekeeping" | "fnb_manager";
 
+// Plan-gated features used by the licensing layer (apps/api/src/core/license.ts).
+export type LicenseFeature =
+  | "custom_roles"
+  | "advanced_analytics"
+  | "ai_features"
+  | "automations"
+  | "night_audit";
+
 export interface Hotel {
   id: string;
   name: string;

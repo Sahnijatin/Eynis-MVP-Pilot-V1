@@ -13,6 +13,11 @@ const createHotel = async (hotelId: string) => {
       timezone: "Asia/Kolkata"
     }
   });
+  // Give the test hotel a Growth license so the plan-gated endpoints (advanced
+  // analytics, AI, automations, night audit) are exercised rather than 403'd.
+  await prisma.license.create({
+    data: { hotelId, plan: "growth", maxSeats: 25 }
+  });
 };
 
 const createUser = async (

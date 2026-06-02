@@ -65,7 +65,7 @@ export const seedDefaultRolesForHotel = async (hotelId: string): Promise<void> =
 export const seedLicenseForHotel = async (
   hotelId: string,
   plan = "starter",
-  maxSeats = 10,
+  maxSeats = 5,
 ): Promise<void> => {
   await prisma.license.upsert({
     where: { hotelId },

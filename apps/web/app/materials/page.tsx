@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { AlertTriangle, Package, X, CheckCircle, Download, Upload, AlertCircle } from "lucide-react";
+import { escapeCSV, parseCSVLine } from "../../lib/csv";
 
 interface Material {
   name: string; unit: string; stockIn: number; used: number; offcut: number; onHand: number; reorderLevel: number; cost: number; status: string;
@@ -35,20 +36,6 @@ const BOM_VARIANCES = [
 
 type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
-    else { current += ch; }
-  }
-  result.push(current.trim());
-  return result;
-}
-
 function StatusDot({ status }: { status: string }) {
   if (status === "critical") return <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium"><span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse" />Critical</span>;
   if (status === "warning") return <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Low Stock</span>;
@@ -73,7 +60,7 @@ export default function MaterialsPage() {
   function exportCSV() {
     const headers = ["Material", "Unit", "Stock In", "Used", "Offcut", "On Hand", "Reorder Level", "Cost (₹)", "Status"];
     const rows = materials.map(m => [m.name, m.unit, String(m.stockIn), String(m.used), String(m.offcut), String(m.onHand), String(m.reorderLevel), String(m.cost), m.status]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const csv = [headers, ...rows].map(r => r.map(escapeCSV).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

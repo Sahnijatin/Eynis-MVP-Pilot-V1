@@ -30,20 +30,33 @@ async function fetchToken(apiBaseUrl: string, hotelId: string, email: string, ro
   }
 }
 
+// The demo/showcase fallback is opt-in: it serves a shared demo hotel's data to any
+// caller, so it must never be reachable in a real multi-tenant deployment.
+const demoFallbackAllowed = () =>
+  String(process.env.EYNIS_ALLOW_DEMO_FALLBACK ?? "").toLowerCase() === "true";
+
 export async function getApiToken() {
   const staticToken = String(process.env.EYNIS_API_TOKEN ?? "").trim();
   if (staticToken) return staticToken;
 
-  const apiBaseUrl = process.env.EYNIS_API_BASE_URL ?? "http://localhost:4000";
+  const apiBaseUrl = getApiBaseUrl();
 
   // Resolve from Clerk metadata or DB lookup
   const ctx = await resolveUserContext();
   if (ctx.exists && ctx.hotelId && ctx.email && ctx.role) {
     const token = await fetchToken(apiBaseUrl, ctx.hotelId, ctx.email, ctx.role);
     if (token) return token;
+    // The user resolved to a real hotel but token issuance failed (API blip/timeout).
+    // We MUST NOT fall back to the demo tenant here — doing so would serve another
+    // hotel's data to a logged-in user. Surface the error to the boundary instead.
+    throw new Error("Failed to fetch auth token for the current user");
   }
 
-  // Fallback to demo env vars (dev only)
+  // No real workspace resolved. Only serve the shared demo hotel when explicitly
+  // allowed (showcase/dev); otherwise fail closed.
+  if (!demoFallbackAllowed()) {
+    throw new Error("No workspace resolved for the current user");
+  }
   const env = getDemoEnv();
   const token = await fetchToken(apiBaseUrl, env.hotelId, env.email, env.role);
   if (!token) throw new Error("Failed to fetch auth token for web route");
