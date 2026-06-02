@@ -19,9 +19,24 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    # The API uses PostgreSQL; spin one up for migrations + tests.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eynis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      # Absolute path so it resolves the same regardless of working directory.
-      DATABASE_URL: "file:${{ github.workspace }}/apps/api/prisma/ci.db"
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/eynis_test?schema=public"
       JWT_SECRET: "ci-test-secret"
 
     steps:
