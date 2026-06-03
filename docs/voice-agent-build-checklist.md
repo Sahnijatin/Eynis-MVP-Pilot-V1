@@ -120,9 +120,7 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 - [x] **#10** (security) Webhook host derived only from `API_PUBLIC_URL` (`webhookHostFromPublicUrl`); the request Host header is never trusted. Activation 500s with a clear message if `API_PUBLIC_URL` is unset.
 - [x] **#8** `maxConcurrent: 0` now preserved (dropped the `|| 5` coercion) — provision-but-don't-dial is honoured.
 
-**Deferred backlog (tracked, not yet done):**
-- [ ] **#4** (medium) `normalizeToE164` accepts `+0…`; add a leading-zero check after the `+` — *held for a future pass per request*
-- [ ] **#3** (high) Durable tenant-wide opt-out: today it reads `optedOut` lead rows, which vanish on campaign delete. Build a phone-level `DoNotContact` suppression list (survives lead/campaign deletion). Wire opt-out writes in Phase 7/8.
+**Scheduled into Phase 6:** **#3** (durable opt-out) and **#4** (E.164 `+0…`) — see the Phase 6 task list below.
 
 ---
 
@@ -136,9 +134,14 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 - [ ] Retry scheduling (no_answer + attempts < maxRetries → `nextCallAt`)
 - [ ] **Spend cap** (total dials ≥ spendCapCalls → auto-pause + SSE alert)
 - [ ] Auto-pause campaign on Vapi 5xx; manual resume
+- [ ] Pre-dial consent + DND guard: skip leads failing `canContactLead` / on the suppression list; respect `dndScrub()` for `+91` numbers
 - [ ] Wire `startCampaignWorker()` into server startup alongside `startAutomationWorker()`
 
-**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls.
+**Folded-in review fixes (from Phase 5.5 backlog):**
+- [ ] **#3** (high) Durable tenant-wide opt-out — add a phone-level `DoNotContact` model (`hotelId` + `phone`, unique, survives lead/campaign deletion). Check it at import (`bulkInsertLeads`) and pre-dial in the worker; add a `suppressContact(hotelId, phone, reason)` helper the worker/Phase 7–8 call on opt-out. Replaces the current fragile "scan `optedOut` lead rows" approach.
+- [ ] **#4** (medium) `normalizeToE164` — reject a leading zero after `+` (`+0…` is not valid E.164), so bad numbers fail at import rather than at dial time.
+
+**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed (opted-out) number even across campaign deletion. E.164 validation rejects `+0…`.
 
 ---
 
