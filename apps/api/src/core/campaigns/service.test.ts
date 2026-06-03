@@ -35,6 +35,12 @@ test("validateCampaignCreate accepts a valid body and applies defaults", () => {
   }
 });
 
+test("validateCampaignCreate preserves an explicit maxConcurrent of 0 (#8)", () => {
+  const r = validateCampaignCreate({ ...validBody, maxConcurrent: 0 });
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(r.value.maxConcurrent, 0);
+});
+
 test("validateCampaignCreate reports all missing required fields", () => {
   const r = validateCampaignCreate({ name: "x" });
   assert.equal(r.ok, false);

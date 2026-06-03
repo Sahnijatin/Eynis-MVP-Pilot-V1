@@ -117,12 +117,12 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 - [x] **#7** Removed `"cancel"` from standalone opt-out keywords
 - [x] **#9** Documented nullable-phone dedupe behaviour in schema (active leads always non-null; only erased leads are null/inert)
 - [x] **#12** Sequential A/B provisioning with orphan cleanup (`deleteAssistant` on variant-B failure)
+- [x] **#10** (security) Webhook host derived only from `API_PUBLIC_URL` (`webhookHostFromPublicUrl`); the request Host header is never trusted. Activation 500s with a clear message if `API_PUBLIC_URL` is unset.
+- [x] **#8** `maxConcurrent: 0` now preserved (dropped the `|| 5` coercion) — provision-but-don't-dial is honoured.
 
 **Deferred backlog (tracked, not yet done):**
 - [ ] **#4** (medium) `normalizeToE164` accepts `+0…`; add a leading-zero check after the `+` — *held for a future pass per request*
 - [ ] **#3** (high) Durable tenant-wide opt-out: today it reads `optedOut` lead rows, which vanish on campaign delete. Build a phone-level `DoNotContact` suppression list (survives lead/campaign deletion). Wire opt-out writes in Phase 7/8.
-- [ ] **#8** (low) `maxConcurrent: 0` is coerced to 5 by `|| 5`; preserve an explicit 0.
-- [ ] **#10** (security) Webhook `serverUrl` should come only from a configured `API_PUBLIC_URL`, never the request Host header. Groundwork laid (env var preferred when set); full enforcement = require the env var and drop the Host fallback before go-live.
 
 ---
 

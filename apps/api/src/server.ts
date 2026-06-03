@@ -3140,7 +3140,7 @@ const handleRequest = async (
           if (campaign.status !== "draft" && campaign.status !== "paused") {
             json(res, 409, { ok: false, error: `Cannot activate a campaign in '${campaign.status}' status` }); return;
           }
-          const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant } = await import("./core/campaigns/vapi");
+          const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
           const creds = await resolveVapiCredentials(hotelId);
           if (!isVapiConfigured(creds)) {
             json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
@@ -3150,9 +3150,13 @@ const handleRequest = async (
           let vapiAssistantIdA = campaign.vapiAssistantIdA;
           let vapiAssistantIdB = campaign.vapiAssistantIdB;
           if (!vapiAssistantIdA || !vapiAssistantIdB) {
-            // Webhook host: derived from the configured public URL where set,
-            // else the request host (see API_PUBLIC_URL note for the hardening task).
-            const apiDomain = asTrimmedString(process.env.API_PUBLIC_URL) ?? asTrimmedString(req.headers.host) ?? "localhost";
+            // Webhook callback host MUST come from trusted server config, never the
+            // request Host header (which a caller can spoof to exfiltrate call reports).
+            const apiDomain = webhookHostFromPublicUrl(process.env.API_PUBLIC_URL);
+            if (!apiDomain) {
+              json(res, 500, { ok: false, error: "Server misconfigured: set API_PUBLIC_URL (e.g. https://api.example.com) for the Vapi webhook callback" });
+              return;
+            }
             // Agent name the AI introduces itself with: explicit campaign value,
             // else the hotel name (never the persona label).
             const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });

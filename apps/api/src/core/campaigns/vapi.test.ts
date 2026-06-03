@@ -8,6 +8,7 @@ import {
   createAssistant,
   toVapiTemplate,
   nestVariableValues,
+  webhookHostFromPublicUrl,
   VAPI_LLM_MODEL,
   type AssistantParams,
 } from "./vapi";
@@ -22,6 +23,15 @@ test("nestVariableValues nests dotted keys into objects", () => {
     nestVariableValues({ "lead.firstName": "Sarah", "lead.company": "Acme", "tenant.name": "Riviera" }),
     { lead: { firstName: "Sarah", company: "Acme" }, tenant: { name: "Riviera" } },
   );
+});
+
+test("webhookHostFromPublicUrl extracts host from config; rejects empty (#10)", () => {
+  assert.equal(webhookHostFromPublicUrl("https://api.eynis.app"), "api.eynis.app");
+  assert.equal(webhookHostFromPublicUrl("https://api.eynis.app/ignored/path"), "api.eynis.app");
+  assert.equal(webhookHostFromPublicUrl("api.eynis.app:8080"), "api.eynis.app:8080");
+  assert.equal(webhookHostFromPublicUrl(null), null);
+  assert.equal(webhookHostFromPublicUrl(""), null);
+  assert.equal(webhookHostFromPublicUrl("   "), null);
 });
 
 const baseAssistant: AssistantParams = {

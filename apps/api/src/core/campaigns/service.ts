@@ -110,7 +110,7 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
       agentName: str(body.agentName),
       maxRetries: intOr(body.maxRetries, 2),
       retryDelayHours: intOr(body.retryDelayHours, 24),
-      maxConcurrent: intOr(body.maxConcurrent, 5) || 5,
+      maxConcurrent: intOr(body.maxConcurrent, 5), // 0 is preserved (provision but don't dial)
       spendCapCalls,
       defaultCountryCode: str(body.defaultCountryCode) ?? "+91",
     },

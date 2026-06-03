@@ -84,6 +84,21 @@ export async function resolveVapiCredentials(hotelId: string): Promise<VapiCrede
 
 export const isVapiConfigured = (creds: VapiCredentials): boolean => Boolean(creds.apiKey);
 
+// Extracts the host (host[:port]) from the configured public base URL, accepting
+// "api.eynis.app" or "https://api.eynis.app/...". Returns null if unparseable.
+// The webhook callback host MUST come from this trusted config — never from the
+// request Host header, which a caller can spoof to exfiltrate call reports.
+export function webhookHostFromPublicUrl(raw: string | null | undefined): string | null {
+  if (!raw || raw.trim().length === 0) return null;
+  try {
+    const value = raw.trim();
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return url.host || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Pure payload builders (no network, fully testable) ───────────────────────
 
 // ── Variable templating bridge (Eynis {x.y} → Vapi/LiquidJS {{x.y}}) ─────────
