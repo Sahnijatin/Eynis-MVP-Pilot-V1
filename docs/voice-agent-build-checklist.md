@@ -91,6 +91,7 @@ extended with two added capabilities:
 
 ## Phase 5 — Lead Import & Management (Day 3)
 
+- [ ] `npm install busboy csv-parse @types/busboy -w @eynis/api` (deferred here from Phase 3 — needed for multipart CSV upload + parsing)
 - [ ] Write `apps/api/src/core/campaigns/csv-import.ts` — `parseMultipart()`, `parseLeadsFromCsv()`, `bulkInsertLeads()`
 - [ ] `POST /campaigns/:id/leads/import` — column mapping, E.164 phone normalisation, dedupe by phone, **reject non-consented rows**, return `{imported, skipped, errors}`
 - [ ] Preserve all original CSV columns in `rawData` for `{lead.custom.*}` injection
