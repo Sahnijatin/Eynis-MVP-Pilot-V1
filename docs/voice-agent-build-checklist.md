@@ -43,16 +43,18 @@ extended with two added capabilities:
 
 ## Phase 2 — Data Model (Day 1)
 
-- [ ] Add `VoiceCampaign` model (status lifecycle, scriptTemplate, outcomeTypes JSON, followUpRules JSON, voice/persona A+B, vapiAssistantIds, retry/concurrency/spend caps, calendlyLink, defaultCountryCode)
-- [ ] Add `CampaignLead` model (firstName/phone/email/company/jobTitle, `rawData` JSON, abVariant, status, callAttempts, nextCallAt, **consent fields**)
-- [ ] Add `CallRecord` model (vapiCallId, abVariant, status, outcome, durationSeconds, transcript, aiSummary, **sentiment**, keyPoints JSON, whatsappSent, emailSent, meetingBooked, timestamps)
-- [ ] Add **`SentimentEvent`** model (NEW): `callRecordId`/`conversationId`, speaker, text snippet, sentiment, score, timestamp — for live in-call sentiment timeline
-- [ ] Add **`WhatsappConversation`** model (NEW): leadId, campaignId, state (open/awaiting_reply/booked/closed/opted_out), lastMessageAt, threadSummary
-- [ ] Add **`WhatsappMessage`** model (NEW): conversationId, direction (in/out), body, sentiment, score, timestamp
-- [ ] Add Hotel/tenant relations for all new models (multi-tenant scope = `hotelId`)
-- [ ] `npm run db:migrate -w @eynis/api` then `npm run db:generate -w @eynis/api`
+- [x] Add `VoiceCampaign` model (status lifecycle, scriptTemplate, outcomeTypes JSON, followUpRules JSON, voice/persona A+B, vapiAssistantIds, retry/concurrency/spend caps, calendlyLink, defaultCountryCode)
+- [x] Add `CampaignLead` model (firstName/phone/email/company/jobTitle, `rawData` JSON, abVariant, status, callAttempts, nextCallAt, **consent fields** + `optedOut`)
+- [x] Add `CallRecord` model (vapiCallId unique, abVariant, status, outcome, durationSeconds, transcript, aiSummary, **sentiment**, keyPoints JSON, whatsappSent, emailSent, meetingBooked, timestamps)
+- [x] Add **`SentimentEvent`** model (NEW): `callRecordId`/`conversationId`, speaker, text snippet, sentiment, score, timestamp — for live in-call sentiment timeline
+- [x] Add **`WhatsappConversation`** model (NEW): leadId, campaignId, state (open/awaiting_reply/booked/closed/opted_out), lastMessageAt, threadSummary
+- [x] Add **`WhatsappMessage`** model (NEW): conversationId, direction (in/out), body, sentiment, score, timestamp
+- [x] Add Hotel relations for all new models (multi-tenant scope = `hotelId`)
+- [x] Migration `20260603094958_add_voice_campaigns` created + applied; Prisma client regenerated
 
-**DoD:** Migration applies cleanly; Prisma client regenerated; every model carries `tenantId`.
+**Notes:** `tenantId` is `hotelId` in Eynis (matches existing models). `phone` is nullable to support GDPR erasure; deduped per-campaign via `@@unique([campaignId, phone])`. JSON fields stored as `String` per existing convention.
+
+**DoD:** ✅ Migration applies cleanly; ✅ Prisma client regenerated; ✅ every model carries `hotelId`. Verified by a full relation round-trip (campaign→lead→call→sentiment, conversation→message), unique-constraint enforcement, and cascade delete. Existing suite: 26/26 pass; full lint exits clean.
 
 ---
 
