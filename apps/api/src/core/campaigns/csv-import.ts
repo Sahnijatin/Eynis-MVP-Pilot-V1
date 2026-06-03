@@ -23,24 +23,41 @@ export interface MultipartResult {
   fields: Record<string, string>;
 }
 
-export function parseMultipart(req: IncomingMessage): Promise<MultipartResult> {
+export const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
+
+export function parseMultipart(
+  req: IncomingMessage,
+  opts: { maxFileBytes?: number } = {},
+): Promise<MultipartResult> {
   return new Promise((resolve, reject) => {
     const contentType = req.headers["content-type"] ?? "";
     if (!contentType.includes("multipart/form-data")) {
       reject(new Error("Expected multipart/form-data"));
       return;
     }
-    const bb = busboy({ headers: req.headers, limits: { files: 1, fileSize: 10 * 1024 * 1024 } });
+    const maxFileBytes = opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+    const bb = busboy({ headers: req.headers, limits: { files: 1, fileSize: maxFileBytes } });
     const fields: Record<string, string> = {};
     let file: { filename: string; content: Buffer } | null = null;
+    let truncated = false;
 
     bb.on("field", (name, value) => { fields[name] = value; });
     bb.on("file", (_name, stream, info) => {
       const chunks: Buffer[] = [];
       stream.on("data", (c: Buffer) => chunks.push(c));
+      // busboy emits "limit" (not an error) when fileSize is exceeded and then
+      // truncates the stream. Flag it so we reject instead of importing a
+      // silently truncated CSV.
+      stream.on("limit", () => { truncated = true; });
       stream.on("end", () => { file = { filename: info.filename, content: Buffer.concat(chunks) }; });
     });
-    bb.on("close", () => resolve({ file, fields }));
+    bb.on("close", () => {
+      if (truncated) {
+        reject(new Error(`CSV exceeds the ${Math.round(maxFileBytes / (1024 * 1024))}MB upload limit`));
+        return;
+      }
+      resolve({ file, fields });
+    });
     bb.on("error", (e) => reject(e instanceof Error ? e : new Error(String(e))));
     req.pipe(bb);
   });
@@ -119,8 +136,14 @@ export function parseLeadsFromCsv(
     const phone = normalizeToE164(val("phone"), opts.defaultCountryCode);
     if (!phone) { errors.push({ row, reason: "missing or invalid phone (need E.164)" }); return; }
 
-    // Consent: per-row column if mapped, else the file-level attestation.
-    const consentRaw = headerFor.consent ? val("consent") : opts.defaultConsent === true;
+    // Consent: per-row column if mapped AND the cell is non-empty; otherwise
+    // fall back to the file-level attestation (so a blank cell doesn't override
+    // an operator's whole-file consent confirmation).
+    let consentRaw: unknown = opts.defaultConsent === true;
+    if (headerFor.consent) {
+      const cell = val("consent");
+      if (cell !== null) consentRaw = cell;
+    }
     const consent = consentFromImport({ consentValue: consentRaw, source });
     if (!consent.consent) { errors.push({ row, reason: "no_consent" }); return; }
 

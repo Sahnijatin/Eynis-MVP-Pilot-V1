@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeToE164, parseLeadsFromCsv, type EynisLeadField } from "./csv-import";
+import { Readable } from "node:stream";
+import type { IncomingMessage } from "node:http";
+import { normalizeToE164, parseLeadsFromCsv, parseMultipart, type EynisLeadField } from "./csv-import";
 
 // ── E.164 normalisation ───────────────────────────────────────────────────────
 
@@ -72,4 +74,41 @@ test("parseLeadsFromCsv flags missing firstName and invalid phone", () => {
   const { leads, errors } = parseLeadsFromCsv(csv, { columnMap, defaultCountryCode: "+91" });
   assert.equal(leads.length, 0);
   assert.deepEqual(errors.map((e) => e.reason).sort(), ["missing firstName", "missing or invalid phone (need E.164)"].sort());
+});
+
+test("parseLeadsFromCsv: blank consent cell falls back to file-level defaultConsent (#6)", () => {
+  const csv = ["First Name,Mobile,Opted In", "Sarah,9876543210,"].join("\n"); // blank consent cell
+  const rejected = parseLeadsFromCsv(csv, { columnMap, defaultCountryCode: "+91" });
+  assert.equal(rejected.leads.length, 0); // no attestation => rejected
+
+  const accepted = parseLeadsFromCsv(csv, { columnMap, defaultCountryCode: "+91", defaultConsent: true, consentSource: "verbal" });
+  assert.equal(accepted.leads.length, 1); // blank cell uses the file-level attestation
+  assert.equal(accepted.leads[0].consent.consent, true);
+});
+
+// Build a minimal multipart/form-data request stream for parseMultipart.
+function multipartRequest(fileContent: string): IncomingMessage {
+  const boundary = "----testboundary";
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file"; filename="leads.csv"\r\n` +
+    `Content-Type: text/csv\r\n\r\n` +
+    `${fileContent}\r\n` +
+    `--${boundary}--\r\n`;
+  const req = Readable.from([Buffer.from(body)]) as unknown as IncomingMessage;
+  req.headers = { "content-type": `multipart/form-data; boundary=${boundary}` };
+  return req;
+}
+
+test("parseMultipart rejects an oversized (truncated) upload instead of silently succeeding (#2)", async () => {
+  const big = "x".repeat(5000);
+  await assert.rejects(
+    parseMultipart(multipartRequest(big), { maxFileBytes: 100 }),
+    /exceeds.*limit/i,
+  );
+});
+
+test("parseMultipart returns the file when within the size limit", async () => {
+  const result = await parseMultipart(multipartRequest("a,b,c"), { maxFileBytes: 1000 });
+  assert.equal(result.file?.content.toString(), "a,b,c");
 });

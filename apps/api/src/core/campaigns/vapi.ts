@@ -86,15 +86,43 @@ export const isVapiConfigured = (creds: VapiCredentials): boolean => Boolean(cre
 
 // ── Pure payload builders (no network, fully testable) ───────────────────────
 
+// ── Variable templating bridge (Eynis {x.y} → Vapi/LiquidJS {{x.y}}) ─────────
+// Eynis templates use single-brace {lead.firstName}; Vapi resolves double-brace
+// LiquidJS {{lead.firstName}} against a NESTED variableValues object. These two
+// helpers bridge that gap so injected values actually render on the call.
+
+export function toVapiTemplate(template: string): string {
+  // Convert single-brace placeholders to double-brace. Existing {{...}} are left
+  // untouched (the inner token would already be wrapped).
+  return template.replace(/(?<!\{)\{([a-zA-Z0-9_.]+)\}(?!\})/g, "{{$1}}");
+}
+
+// Nests flat dotted keys ({ "lead.firstName": "Sarah" }) into the object shape
+// LiquidJS dotted access needs: { lead: { firstName: "Sarah" } }.
+export function nestVariableValues(flat: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flat)) {
+    const parts = key.split(".");
+    let node = out;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (typeof node[parts[i]] !== "object" || node[parts[i]] === null) node[parts[i]] = {};
+      node = node[parts[i]] as Record<string, unknown>;
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+  return out;
+}
+
 // Builds the POST /assistant body. The script is always passed through
-// ensureDisclosure() so a compliant AI disclosure cannot be omitted.
+// ensureDisclosure() (compliant AI disclosure cannot be omitted) and then
+// converted to Vapi's double-brace placeholder syntax.
 export function buildAssistantPayload(params: AssistantParams): Record<string, unknown> {
   return {
     name: `${params.campaignName} — ${params.personaLabel} (${params.variant})`,
     model: {
       provider: "anthropic",
       model: VAPI_LLM_MODEL,
-      systemPrompt: ensureDisclosure(params.scriptTemplate),
+      systemPrompt: toVapiTemplate(ensureDisclosure(params.scriptTemplate)),
     },
     voice: { provider: "11labs", voiceId: params.elevenLabsVoiceId },
     firstMessageMode: "assistant-speaks-first",
@@ -120,7 +148,8 @@ export function buildCallPayload(params: CallParams): Record<string, unknown> {
     assistantId: params.vapiAssistantId,
     phoneNumberId: params.phoneNumberId,
     customer: { number: params.leadPhone, name: params.leadName },
-    assistantOverrides: { variableValues: params.variableValues },
+    // Nest dotted keys so {{lead.firstName}} resolves under LiquidJS.
+    assistantOverrides: { variableValues: nestVariableValues(params.variableValues) },
   };
 }
 
@@ -167,6 +196,28 @@ export async function initiateCall(
   params: CallParams,
 ): Promise<VapiResult<{ id: string }>> {
   return vapiPost<{ id: string }>(creds, "/call/phone", buildCallPayload(params));
+}
+
+// Deletes a provisioned assistant — used to clean up after a partial A/B
+// provisioning failure so no orphaned assistant is left in the Vapi account.
+export async function deleteAssistant(
+  creds: VapiCredentials,
+  assistantId: string,
+): Promise<VapiResult<{ id: string }>> {
+  if (!isVapiConfigured(creds)) return { ok: false, error: "Vapi not configured — set VAPI_API_KEY" };
+  try {
+    const res = await fetch(`${VAPI_BASE_URL}/assistant/${assistantId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${creds.apiKey}` },
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      return { ok: false, error: `Vapi API error ${res.status}: ${err}` };
+    }
+    return { ok: true, data: { id: assistantId } };
+  } catch (e) {
+    return { ok: false, error: `Vapi request failed: ${(e as Error).message}` };
+  }
 }
 
 // ── Webhook verification ──────────────────────────────────────────────────────

@@ -72,8 +72,9 @@ export const OPT_OUT_PHRASES = [
 
 // Single-word SMS/WhatsApp keywords only count when they are the WHOLE message
 // (the standard "reply STOP" convention) — so a bare "STOP" opts out but
-// "non-stop flight" does not.
-export const OPT_OUT_KEYWORDS = ["stop", "unstop", "stopall", "cancel"];
+// "non-stop flight" does not. "cancel" is deliberately excluded: on a booking
+// follow-up it usually means "cancel that slot", not "opt out of all campaigns".
+export const OPT_OUT_KEYWORDS = ["stop", "unstop", "stopall"];
 
 // Detects an opt-out intent in free text (call transcript line or WhatsApp msg).
 export function detectOptOut(text: string): boolean {

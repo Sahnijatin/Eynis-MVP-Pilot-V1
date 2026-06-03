@@ -299,6 +299,7 @@ model VoiceCampaign {
   outcomeTypes          String                 @default("[]") // JSON array of valid outcome labels
   followUpRules         String                 @default("{}") // JSON map of outcome -> [channels]
   calendlyLink          String?
+  agentName             String? // name the AI introduces itself with; falls back to the hotel name
   voiceA                String // ElevenLabs voice name for variant A
   voiceB                String // ElevenLabs voice name for variant B
   personaA              String // label, e.g. "Enthusiastic"
@@ -346,7 +347,11 @@ model CampaignLead {
   calls                 CallRecord[]
   whatsappConversations WhatsappConversation[]
 
-  @@unique([campaignId, phone]) // dedupe phone within a campaign
+  // Dedupe phone within a campaign. NOTE: Postgres treats NULLs as distinct, so
+  // this does NOT dedupe null-phone rows — acceptable because active leads always
+  // carry a non-null E.164 phone (enforced at import in csv-import.ts), and the
+  // only null-phone rows are GDPR-erased leads, which are inert (never dialled).
+  @@unique([campaignId, phone])
   @@index([campaignId, status])
   @@index([hotelId, phone]) // tenant-wide opt-out lookup by phone
 }

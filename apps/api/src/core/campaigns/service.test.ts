@@ -143,10 +143,29 @@ test("provisionCampaignAssistants returns both ids on success", async () => {
   if (r.ok) { assert.equal(r.vapiAssistantIdA, "asst_1"); assert.equal(r.vapiAssistantIdB, "asst_2"); }
 });
 
-test("provisionCampaignAssistants surfaces a variant failure", async () => {
+test("provisionCampaignAssistants surfaces a variant failure and cleans up the orphan", async () => {
   const fake = async (_c: VapiCredentials, p: AssistantParams): Promise<VapiResult<{ id: string }>> =>
     p.variant === "B" ? { ok: false, error: "boom" } : { ok: true, data: { id: "asst_a" } };
-  const r = await provisionCampaignAssistants({ campaign: provisionable, creds, apiDomain: "api.x", agentName: "Maya", createAssistant: fake });
+  const deleted: string[] = [];
+  const fakeDelete = async (_c: VapiCredentials, id: string): Promise<VapiResult<{ id: string }>> => {
+    deleted.push(id);
+    return { ok: true, data: { id } };
+  };
+  const r = await provisionCampaignAssistants({
+    campaign: provisionable, creds, apiDomain: "api.x", agentName: "Maya",
+    createAssistant: fake, deleteAssistant: fakeDelete,
+  });
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /Variant B/);
+  // variant A was created then cleaned up — no orphan left at Vapi
+  assert.deepEqual(deleted, ["asst_a"]);
+});
+
+test("validateCampaignCreate accepts optional agentName", () => {
+  const r = validateCampaignCreate({ ...validBody, agentName: "Maya" });
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(r.value.agentName, "Maya");
+  const blank = validateCampaignCreate(validBody);
+  assert.ok(blank.ok);
+  if (blank.ok) assert.equal(blank.value.agentName, null);
 });

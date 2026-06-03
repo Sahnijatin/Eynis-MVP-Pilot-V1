@@ -106,6 +106,26 @@ extended with two added capabilities:
 
 ---
 
+## Phase 5.5 — Code-review hardening (post Phases 1–5)
+
+Findings from the `/code-review` pass. **Fixed in this commit:**
+- [x] **#1** Vapi variable injection — `toVapiTemplate()` converts `{x.y}`→`{{x.y}}`; `nestVariableValues()` nests dotted keys for LiquidJS
+- [x] **#11** Real `agentName` field on `VoiceCampaign` (migration), used in the greeting; falls back to the hotel name (never the persona label)
+- [x] **#2** Oversized/truncated CSV upload now rejected (busboy `limit` event handled)
+- [x] **#5** Non-object `columnMap` returns 400, not 500
+- [x] **#6** Blank consent cell falls back to the file-level `defaultConsent` attestation
+- [x] **#7** Removed `"cancel"` from standalone opt-out keywords
+- [x] **#9** Documented nullable-phone dedupe behaviour in schema (active leads always non-null; only erased leads are null/inert)
+- [x] **#12** Sequential A/B provisioning with orphan cleanup (`deleteAssistant` on variant-B failure)
+
+**Deferred backlog (tracked, not yet done):**
+- [ ] **#4** (medium) `normalizeToE164` accepts `+0…`; add a leading-zero check after the `+` — *held for a future pass per request*
+- [ ] **#3** (high) Durable tenant-wide opt-out: today it reads `optedOut` lead rows, which vanish on campaign delete. Build a phone-level `DoNotContact` suppression list (survives lead/campaign deletion). Wire opt-out writes in Phase 7/8.
+- [ ] **#8** (low) `maxConcurrent: 0` is coerced to 5 by `|| 5`; preserve an explicit 0.
+- [ ] **#10** (security) Webhook `serverUrl` should come only from a configured `API_PUBLIC_URL`, never the request Host header. Groundwork laid (env var preferred when set); full enforcement = require the env var and drop the Host fallback before go-live.
+
+---
+
 ## Phase 6 — Dialler Worker (Day 4)
 
 - [ ] Write `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()` (30s interval, separate from the 60s automation engine)

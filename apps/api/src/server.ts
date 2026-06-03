@@ -3140,7 +3140,7 @@ const handleRequest = async (
           if (campaign.status !== "draft" && campaign.status !== "paused") {
             json(res, 409, { ok: false, error: `Cannot activate a campaign in '${campaign.status}' status` }); return;
           }
-          const { resolveVapiCredentials, isVapiConfigured, createAssistant } = await import("./core/campaigns/vapi");
+          const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant } = await import("./core/campaigns/vapi");
           const creds = await resolveVapiCredentials(hotelId);
           if (!isVapiConfigured(creds)) {
             json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
@@ -3150,7 +3150,13 @@ const handleRequest = async (
           let vapiAssistantIdA = campaign.vapiAssistantIdA;
           let vapiAssistantIdB = campaign.vapiAssistantIdB;
           if (!vapiAssistantIdA || !vapiAssistantIdB) {
-            const apiDomain = asTrimmedString(req.headers.host) ?? "localhost";
+            // Webhook host: derived from the configured public URL where set,
+            // else the request host (see API_PUBLIC_URL note for the hardening task).
+            const apiDomain = asTrimmedString(process.env.API_PUBLIC_URL) ?? asTrimmedString(req.headers.host) ?? "localhost";
+            // Agent name the AI introduces itself with: explicit campaign value,
+            // else the hotel name (never the persona label).
+            const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+            const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
             const provisioned = await provisionCampaignAssistants({
               campaign: {
                 name: campaign.name, scriptTemplate: campaign.scriptTemplate,
@@ -3158,8 +3164,8 @@ const handleRequest = async (
                 personaA: campaign.personaA, personaB: campaign.personaB,
                 outcomeTypes: serializeCampaign(campaign).outcomeTypes,
               },
-              creds, apiDomain, agentName: campaign.personaA,
-              createAssistant,
+              creds, apiDomain, agentName,
+              createAssistant, deleteAssistant,
             });
             if (!provisioned.ok) { json(res, 502, { ok: false, error: provisioned.error }); return; }
             vapiAssistantIdA = provisioned.vapiAssistantIdA;
@@ -3200,15 +3206,18 @@ const handleRequest = async (
         catch (e) { json(res, 400, { ok: false, error: `Invalid upload: ${(e as Error).message}` }); return; }
         if (!multipart.file) { json(res, 400, { ok: false, error: "CSV file is required (form field 'file')" }); return; }
 
-        let columnMap: Record<string, never>;
+        let columnMap: unknown;
         try { columnMap = JSON.parse(multipart.fields.columnMap ?? "{}"); }
         catch { json(res, 400, { ok: false, error: "columnMap must be valid JSON" }); return; }
+        if (typeof columnMap !== "object" || columnMap === null || Array.isArray(columnMap)) {
+          json(res, 400, { ok: false, error: "columnMap must be a JSON object mapping CSV headers to fields" }); return;
+        }
 
         const consentSourceRaw = asTrimmedString(multipart.fields.consentSource);
         const consentSource = consentSourceRaw && isValidConsentSource(consentSourceRaw) ? consentSourceRaw : undefined;
         const csvText = multipart.file.content.toString("utf8");
         const { leads, errors } = parseLeadsFromCsv(csvText, {
-          columnMap,
+          columnMap: columnMap as Record<string, import("./core/campaigns/csv-import").EynisLeadField>,
           defaultCountryCode: campaign.defaultCountryCode,
           defaultConsent: multipart.fields.defaultConsent === "true",
           consentSource,

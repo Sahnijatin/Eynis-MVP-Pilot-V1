@@ -24,6 +24,7 @@ export interface CampaignCreateValue {
   outcomeTypes: string[];
   followUpRules: Record<string, string[]>;
   calendlyLink: string | null;
+  agentName: string | null;
   maxRetries: number;
   retryDelayHours: number;
   maxConcurrent: number;
@@ -106,6 +107,7 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
       outcomeTypes,
       followUpRules,
       calendlyLink: str(body.calendlyLink),
+      agentName: str(body.agentName),
       maxRetries: intOr(body.maxRetries, 2),
       retryDelayHours: intOr(body.retryDelayHours, 24),
       maxConcurrent: intOr(body.maxConcurrent, 5) || 5,
@@ -134,6 +136,7 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
   }
 
   if ("calendlyLink" in body) data.calendlyLink = str(body.calendlyLink); // nullable
+  if ("agentName" in body) data.agentName = str(body.agentName); // nullable
 
   if (body.outcomeTypes !== undefined) {
     const o = validateOutcomeTypes(body.outcomeTypes);
@@ -225,22 +228,26 @@ export interface ProvisionDeps {
   apiDomain: string;
   agentName: string;
   createAssistant: (creds: VapiCredentials, params: AssistantParams) => Promise<VapiResult<{ id: string }>>;
+  // Optional cleanup hook: invoked to delete variant A if variant B fails, so a
+  // partial provisioning leaves no orphaned assistant in the Vapi account.
+  deleteAssistant?: (creds: VapiCredentials, assistantId: string) => Promise<VapiResult<{ id: string }>>;
 }
 
-// Provisions both A/B assistants. Returns both ids or the first error. If either
-// fails, no partial state is returned — the caller leaves the campaign in draft.
+// Provisions both A/B assistants sequentially. If variant B fails after A
+// succeeded, A is best-effort deleted so no orphan is left behind. Returns both
+// ids or an error — never partial state.
 export async function provisionCampaignAssistants(
   deps: ProvisionDeps,
 ): Promise<{ ok: true; vapiAssistantIdA: string; vapiAssistantIdB: string } | { ok: false; error: string }> {
   const opts = { apiDomain: deps.apiDomain, agentName: deps.agentName, webhookSecret: deps.creds.webhookSecret };
-  const paramsA = assistantParamsForVariant(deps.campaign, "A", opts);
-  const paramsB = assistantParamsForVariant(deps.campaign, "B", opts);
-  const [a, b] = await Promise.all([
-    deps.createAssistant(deps.creds, paramsA),
-    deps.createAssistant(deps.creds, paramsB),
-  ]);
+  const a = await deps.createAssistant(deps.creds, assistantParamsForVariant(deps.campaign, "A", opts));
   if (!a.ok) return { ok: false, error: `Variant A provisioning failed: ${a.error}` };
-  if (!b.ok) return { ok: false, error: `Variant B provisioning failed: ${b.error}` };
+
+  const b = await deps.createAssistant(deps.creds, assistantParamsForVariant(deps.campaign, "B", opts));
+  if (!b.ok) {
+    if (deps.deleteAssistant) await deps.deleteAssistant(deps.creds, a.data.id).catch(() => undefined);
+    return { ok: false, error: `Variant B provisioning failed: ${b.error}` };
+  }
   return { ok: true, vapiAssistantIdA: a.data.id, vapiAssistantIdB: b.data.id };
 }
 

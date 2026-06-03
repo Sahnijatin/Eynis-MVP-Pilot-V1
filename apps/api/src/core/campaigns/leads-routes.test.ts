@@ -113,6 +113,26 @@ test("import CSV: non-consented rows are rejected with reason", async () => {
   }
 });
 
+test("import CSV: scalar columnMap returns 400, not 500 (#5)", async () => {
+  const hotelId = "vc-" + uid();
+  await createHotel(hotelId);
+  const email = `owner+${hotelId}@test.local`;
+  await createUser(hotelId, "owner", email);
+  const { server, base } = await startServer();
+  try {
+    const token = await authHeaders(base, hotelId, email, "owner");
+    const campaignId = await createCampaign(base, token);
+    const fd = new FormData();
+    fd.append("columnMap", "null"); // valid JSON, but not an object
+    fd.append("file", new Blob(["First Name,Mobile\nSarah,9876543210"], { type: "text/csv" }), "leads.csv");
+    const r = await fetch(base + `/campaigns/${campaignId}/leads/import`, { method: "POST", headers: { authorization: token }, body: fd });
+    assert.equal(r.status, 400);
+    assert.equal(((await r.json()) as any).ok, false);
+  } finally {
+    await stop(server);
+  }
+});
+
 test("DELETE lead: pending removable, non-pending blocked (409)", async () => {
   const hotelId = "vc-" + uid();
   await createHotel(hotelId);

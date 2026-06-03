@@ -6,9 +6,23 @@ import {
   verifyWebhook,
   isVapiConfigured,
   createAssistant,
+  toVapiTemplate,
+  nestVariableValues,
   VAPI_LLM_MODEL,
   type AssistantParams,
 } from "./vapi";
+
+test("toVapiTemplate converts single-brace placeholders and leaves double-brace intact", () => {
+  assert.equal(toVapiTemplate("Hi {lead.firstName} from {tenant.name}"), "Hi {{lead.firstName}} from {{tenant.name}}");
+  assert.equal(toVapiTemplate("Hi {{customer.name}}"), "Hi {{customer.name}}"); // already double — untouched
+});
+
+test("nestVariableValues nests dotted keys into objects", () => {
+  assert.deepEqual(
+    nestVariableValues({ "lead.firstName": "Sarah", "lead.company": "Acme", "tenant.name": "Riviera" }),
+    { lead: { firstName: "Sarah", company: "Acme" }, tenant: { name: "Riviera" } },
+  );
+});
 
 const baseAssistant: AssistantParams = {
   campaignName: "Summer Upsell",
@@ -28,6 +42,15 @@ test("buildAssistantPayload injects the mandatory AI disclosure into the script"
   assert.ok(payload.model.systemPrompt.includes("want to upgrade your room?"));
   assert.equal(payload.model.model, VAPI_LLM_MODEL);
   assert.equal(payload.model.provider, "anthropic");
+});
+
+test("buildAssistantPayload converts {x.y} placeholders to Vapi double-brace {{x.y}}", () => {
+  const payload = buildAssistantPayload(baseAssistant) as any;
+  // single-brace {lead.firstName} in the script becomes {{lead.firstName}}
+  assert.ok(payload.model.systemPrompt.includes("{{lead.firstName}}"));
+  assert.ok(!/(?<!\{)\{lead\.firstName\}(?!\})/.test(payload.model.systemPrompt));
+  // disclosure's {tenant.name} is converted too
+  assert.ok(payload.model.systemPrompt.includes("{{tenant.name}}"));
 });
 
 test("buildAssistantPayload wires voice, webhook and outcome enum", () => {
@@ -54,7 +77,9 @@ test("buildCallPayload maps lead + assistant + injected variables", () => {
   assert.equal(payload.assistantId, "asst_1");
   assert.equal(payload.phoneNumberId, "pn_1");
   assert.equal(payload.customer.number, "+919876543210");
-  assert.equal(payload.assistantOverrides.variableValues["lead.firstName"], "Sarah");
+  // dotted keys are nested so {{lead.firstName}} resolves under LiquidJS
+  assert.equal(payload.assistantOverrides.variableValues.lead.firstName, "Sarah");
+  assert.equal(payload.assistantOverrides.variableValues.campaign.calendlyLink, "https://cal.com/x");
 });
 
 test("isVapiConfigured reflects presence of an API key", () => {
