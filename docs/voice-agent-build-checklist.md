@@ -74,18 +74,20 @@ extended with two added capabilities:
 
 ---
 
-## Phase 4 — Campaign CRUD (Day 2)
+## Phase 4 — Campaign CRUD (Day 2) ✅ DONE
 
-- [ ] Add `policyMap` entries for all `/campaigns/*` routes (role: `owner`)
-- [ ] `POST /campaigns` (create draft, validate required fields)
-- [ ] `GET /campaigns` (list with aggregated stats)
-- [ ] `GET /campaigns/:id` (single + lead/call counts + outcome breakdown)
-- [ ] `PATCH /campaigns/:id` (update allowed fields only)
-- [ ] `DELETE /campaigns/:id` (guard: no CallRecords → else 409)
-- [ ] `POST /campaigns/:id/activate` (provision 2 Vapi assistants, store IDs, status=active)
-- [ ] `POST /campaigns/:id/pause` and `POST /campaigns/:id/complete`
+- [x] Add `permissionMap` entries for all `/campaigns/*` routes (gated by existing `manage_campaigns` permission — see note)
+- [x] `POST /campaigns` (create draft; `validateCampaignCreate` enforces required fields + JSON shape)
+- [x] `GET /campaigns` (paginated list with per-campaign lead/call counts)
+- [x] `GET /campaigns/:id` (single + lead/call counts + outcome & lead-status breakdowns)
+- [x] `PATCH /campaigns/:id` (allow-listed fields only via `buildCampaignUpdate`; status & assistantIds excluded)
+- [x] `DELETE /campaigns/:id` (409 when CallRecords exist)
+- [x] `POST /campaigns/:id/activate` (resolves Vapi creds → provisions both A/B assistants → status=active; 400 if connector unconfigured, idempotent re-provision)
+- [x] `POST /campaigns/:id/pause` (active→paused) and `POST /campaigns/:id/complete` (with state guards)
 
-**DoD:** Full campaign lifecycle drivable via API with correct RBAC; activation provisions both A/B assistants.
+**RBAC note:** the codebase is permission-based (not role-based), so routes use the existing `manage_campaigns` permission rather than a hard owner-only check. This grants admin/manager/supervisor roles (owner maps to admin). If strict owner-only is required, add a dedicated `manage_voice_campaigns` permission granted only to admin.
+
+**DoD:** ✅ Full lifecycle drivable via API; ✅ RBAC + tenant isolation verified; ✅ activation provisioning tested via dependency-injected fake (live provisioning awaits real keys, Phase 0). Service unit tests 16/16, route integration tests 6/6, full API suite 64/64, lint clean.
 
 ---
 
