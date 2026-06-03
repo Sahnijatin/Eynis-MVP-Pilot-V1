@@ -26,70 +26,101 @@ extended with two added capabilities:
 
 ---
 
-## Phase 1 — Compliance Foundation (Day 1, before any calling code)
+## Phase 1 — Compliance Foundation (Day 1, before any calling code) ✅ DONE
 
-- [ ] Add `consent` + `consentSource` + `consentAt` fields to the lead model (designed in Phase 2, reserved here)
-- [ ] Add a **mandatory disclosure line** as the first sentence of every script template (AI self-identifies)
-- [ ] Define the **opt-out phrase list** and the tenant-wide `opted_out` exclusion rule
-- [ ] Reserve a **GDPR erasure** path (null phone/email, keep anonymised outcome)
-- [ ] Decide DND/TRAI scrub strategy (pre-flight scrub before dialling Indian numbers)
+- [x] Reserve `consent` + `consentSource` + `consentAt` via the `LeadConsent` type in `@eynis/shared` (schema fields wired onto `CampaignLead` in Phase 2)
+- [x] Add a **mandatory disclosure line** — `MANDATORY_DISCLOSURE` + `ensureDisclosure()` / `hasDisclosure()` in `compliance.ts`
+- [x] Define the **opt-out phrase list** (`OPT_OUT_PHRASES` + `OPT_OUT_KEYWORDS`) + `detectOptOut()`; reserve the tenant-wide `RESERVED_OUTCOME_OPTED_OUT` exclusion outcome
+- [x] Reserve a **GDPR erasure** path — `gdprErase()` (nulls identifiers, retains anonymised outcome)
+- [x] Decide DND/TRAI scrub strategy — `requiresDndScrub()` + `dndScrub()` (flags `+91` numbers, defers live registry to Phase 2)
+- [x] Consent enforcement guard `canContactLead()` + `consentFromImport()`; full unit-test coverage in `compliance.test.ts` (13 tests)
 
-**DoD:** Compliance rules documented and represented in the schema; no campaign can dial a non-consented or opted-out lead.
+**Delivered:** `apps/api/src/core/campaigns/compliance.ts`, `compliance.test.ts`, and compliance types in `packages/shared/src/index.ts`.
+
+**DoD:** Compliance rules are codified as pure, tested functions; the contact guard rejects non-consented and opted-out leads. Schema/route wiring lands in Phases 2, 5–8 and 11.
 
 ---
 
 ## Phase 2 — Data Model (Day 1)
 
-- [ ] Add `VoiceCampaign` model (status lifecycle, scriptTemplate, outcomeTypes JSON, followUpRules JSON, voice/persona A+B, vapiAssistantIds, retry/concurrency/spend caps, calendlyLink, defaultCountryCode)
-- [ ] Add `CampaignLead` model (firstName/phone/email/company/jobTitle, `rawData` JSON, abVariant, status, callAttempts, nextCallAt, **consent fields**)
-- [ ] Add `CallRecord` model (vapiCallId, abVariant, status, outcome, durationSeconds, transcript, aiSummary, **sentiment**, keyPoints JSON, whatsappSent, emailSent, meetingBooked, timestamps)
-- [ ] Add **`SentimentEvent`** model (NEW): `callRecordId`/`conversationId`, speaker, text snippet, sentiment, score, timestamp — for live in-call sentiment timeline
-- [ ] Add **`WhatsappConversation`** model (NEW): leadId, campaignId, state (open/awaiting_reply/booked/closed/opted_out), lastMessageAt, threadSummary
-- [ ] Add **`WhatsappMessage`** model (NEW): conversationId, direction (in/out), body, sentiment, score, timestamp
-- [ ] Add Hotel/tenant relations for all new models (multi-tenant scope = `hotelId`)
-- [ ] `npm run db:migrate -w @eynis/api` then `npm run db:generate -w @eynis/api`
+- [x] Add `VoiceCampaign` model (status lifecycle, scriptTemplate, outcomeTypes JSON, followUpRules JSON, voice/persona A+B, vapiAssistantIds, retry/concurrency/spend caps, calendlyLink, defaultCountryCode)
+- [x] Add `CampaignLead` model (firstName/phone/email/company/jobTitle, `rawData` JSON, abVariant, status, callAttempts, nextCallAt, **consent fields** + `optedOut`)
+- [x] Add `CallRecord` model (vapiCallId unique, abVariant, status, outcome, durationSeconds, transcript, aiSummary, **sentiment**, keyPoints JSON, whatsappSent, emailSent, meetingBooked, timestamps)
+- [x] Add **`SentimentEvent`** model (NEW): `callRecordId`/`conversationId`, speaker, text snippet, sentiment, score, timestamp — for live in-call sentiment timeline
+- [x] Add **`WhatsappConversation`** model (NEW): leadId, campaignId, state (open/awaiting_reply/booked/closed/opted_out), lastMessageAt, threadSummary
+- [x] Add **`WhatsappMessage`** model (NEW): conversationId, direction (in/out), body, sentiment, score, timestamp
+- [x] Add Hotel relations for all new models (multi-tenant scope = `hotelId`)
+- [x] Migration `20260603094958_add_voice_campaigns` created + applied; Prisma client regenerated
 
-**DoD:** Migration applies cleanly; Prisma client regenerated; every model carries `tenantId`.
+**Notes:** `tenantId` is `hotelId` in Eynis (matches existing models). `phone` is nullable to support GDPR erasure; deduped per-campaign via `@@unique([campaignId, phone])`. JSON fields stored as `String` per existing convention.
 
----
-
-## Phase 3 — Connectors & External Services (Day 1–2)
-
-- [ ] Register `voice_vapi` connector in `server.ts` registry (env flag + per-tenant `ConnectorConfig`)
-- [ ] Register `email_resend` connector (apiKey, fromAddress, fromName; secrets masked in API responses)
-- [ ] `npm install resend busboy csv-parse -w @eynis/api`
-- [ ] Write `apps/api/src/core/campaigns/vapi.ts` — `createAssistant()`, `initiateCall()`, `verifyWebhook()` with full TS types
-- [ ] Write `apps/api/src/core/email/resend.ts` — `renderTemplate()` reusing the `{variable}` namespace + `sendFollowUpEmail()`
-- [ ] Confirm webhook verification reuses the existing `x-vapi-secret` pattern from `webhook-verify.ts`
-
-**DoD:** Can provision a Vapi assistant and send a test email from a unit script; connectors visible (masked) via the connectors API.
+**DoD:** ✅ Migration applies cleanly; ✅ Prisma client regenerated; ✅ every model carries `hotelId`. Verified by a full relation round-trip (campaign→lead→call→sentiment, conversation→message), unique-constraint enforcement, and cascade delete. Existing suite: 26/26 pass; full lint exits clean.
 
 ---
 
-## Phase 4 — Campaign CRUD (Day 2)
+## Phase 3 — Connectors & External Services (Day 1–2) ✅ DONE
 
-- [ ] Add `policyMap` entries for all `/campaigns/*` routes (role: `owner`)
-- [ ] `POST /campaigns` (create draft, validate required fields)
-- [ ] `GET /campaigns` (list with aggregated stats)
-- [ ] `GET /campaigns/:id` (single + lead/call counts + outcome breakdown)
-- [ ] `PATCH /campaigns/:id` (update allowed fields only)
-- [ ] `DELETE /campaigns/:id` (guard: no CallRecords → else 409)
-- [ ] `POST /campaigns/:id/activate` (provision 2 Vapi assistants, store IDs, status=active)
-- [ ] `POST /campaigns/:id/pause` and `POST /campaigns/:id/complete`
+- [x] Register `voice_vapi` connector in `server.ts` registry (`CONNECTOR_VOICE_VAPI_ENABLED` + per-tenant `ConnectorConfig`)
+- [x] Register `email_resend` connector (apiKey/fromAddress/fromName; `apiKey` masked by existing `maskConnectorConfig`)
+- [~] `busboy` + `csv-parse` deferred to **Phase 5** (where they're used); `resend` SDK **not needed** — implemented over the Resend REST API via `fetch`, matching the Twilio/Interakt connector pattern (no new dependency)
+- [x] `apps/api/src/core/campaigns/vapi.ts` — `createAssistant()`, `initiateCall()`, `verifyWebhook()` + pure `buildAssistantPayload()`/`buildCallPayload()`, full TS types; disclosure auto-injected via Phase 1 `ensureDisclosure()`
+- [x] `apps/api/src/core/email/resend.ts` — `renderTemplate()` + `buildTemplateVars()` ({variable} namespace incl. `lead.custom.*`) + `sendFollowUpEmail()`
+- [x] Webhook verification reuses `webhook-verify.ts` — added `verifyVapiSecret()` (constant-time `x-vapi-secret` check) with the same `enforce`/`VERIFY_WEBHOOKS` semantics
+- [x] New env vars documented in `apps/api/.env.example`
 
-**DoD:** Full campaign lifecycle drivable via API with correct RBAC; activation provisions both A/B assistants.
+**Keys-last:** with no `VAPI_API_KEY` / `RESEND_API_KEY`, network calls return structured `{ ok:false / sent:false, error }` results (mirrors `whatsapp-outbound.ts`); all pure logic is unit-tested without credentials.
+
+**DoD:** ✅ Vapi assistant + call payloads build correctly and the email renders end-to-end in unit tests (16/16); ✅ both connectors registered and secret-masked. Live provisioning/send awaits real keys (Phase 0). Full API suite 42/42; lint clean.
 
 ---
 
-## Phase 5 — Lead Import & Management (Day 3)
+## Phase 4 — Campaign CRUD (Day 2) ✅ DONE
 
-- [ ] Write `apps/api/src/core/campaigns/csv-import.ts` — `parseMultipart()`, `parseLeadsFromCsv()`, `bulkInsertLeads()`
-- [ ] `POST /campaigns/:id/leads/import` — column mapping, E.164 phone normalisation, dedupe by phone, **reject non-consented rows**, return `{imported, skipped, errors}`
-- [ ] Preserve all original CSV columns in `rawData` for `{lead.custom.*}` injection
-- [ ] `GET /campaigns/:id/leads` (paginated; filter by `status`, `abVariant`)
-- [ ] `DELETE /campaigns/:id/leads/:leadId` (guard: status=pending only)
+- [x] Add `permissionMap` entries for all `/campaigns/*` routes (gated by existing `manage_campaigns` permission — see note)
+- [x] `POST /campaigns` (create draft; `validateCampaignCreate` enforces required fields + JSON shape)
+- [x] `GET /campaigns` (paginated list with per-campaign lead/call counts)
+- [x] `GET /campaigns/:id` (single + lead/call counts + outcome & lead-status breakdowns)
+- [x] `PATCH /campaigns/:id` (allow-listed fields only via `buildCampaignUpdate`; status & assistantIds excluded)
+- [x] `DELETE /campaigns/:id` (409 when CallRecords exist)
+- [x] `POST /campaigns/:id/activate` (resolves Vapi creds → provisions both A/B assistants → status=active; 400 if connector unconfigured, idempotent re-provision)
+- [x] `POST /campaigns/:id/pause` (active→paused) and `POST /campaigns/:id/complete` (with state guards)
 
-**DoD:** A real CSV imports with correct mapping, normalised phones, skipped duplicates, and a clear error report.
+**RBAC note:** the codebase is permission-based (not role-based), so routes use the existing `manage_campaigns` permission rather than a hard owner-only check. This grants admin/manager/supervisor roles (owner maps to admin). If strict owner-only is required, add a dedicated `manage_voice_campaigns` permission granted only to admin.
+
+**DoD:** ✅ Full lifecycle drivable via API; ✅ RBAC + tenant isolation verified; ✅ activation provisioning tested via dependency-injected fake (live provisioning awaits real keys, Phase 0). Service unit tests 16/16, route integration tests 6/6, full API suite 64/64, lint clean.
+
+---
+
+## Phase 5 — Lead Import & Management (Day 3) ✅ DONE
+
+- [x] `npm install busboy csv-parse @types/busboy -w @eynis/api`
+- [x] `apps/api/src/core/campaigns/csv-import.ts` — `parseMultipart()` (busboy), `parseLeadsFromCsv()` (csv-parse, pure), `bulkInsertLeads()`, `normalizeToE164()`
+- [x] `POST /campaigns/:id/leads/import` — multipart upload, column mapping, E.164 normalisation, dedupe by phone (in-batch + in-campaign), **reject non-consented rows** (via Phase 1 `consentFromImport`), skip tenant-wide opt-outs, return `{imported, skipped, errors}`
+- [x] All original CSV columns preserved in `rawData` for `{lead.custom.*}` injection
+- [x] `GET /campaigns/:id/leads` (paginated; filter by `status`, `abVariant`)
+- [x] `DELETE /campaigns/:id/leads/:leadId` (status=pending only, else 409)
+
+**Consent at import:** a row is imported only if it carries consent — either a CSV column mapped to `consent`, or a file-level `defaultConsent=true` + `consentSource` attestation (for pre-opted-in list exports). Tenant-wide opted-out phones are excluded automatically.
+
+**DoD:** ✅ Real CSV imports with correct mapping, normalised phones, deduped, consent-gated, with a per-row error report. Unit tests 5/5 (normalisation, mapping, consent, custom-field preservation, validation), integration 4/4 (import+list+dedupe, consent rejection, delete guard, tenant opt-out skip). Full API suite 74/74, lint clean.
+
+---
+
+## Phase 5.5 — Code-review hardening (post Phases 1–5)
+
+Findings from the `/code-review` pass. **Fixed in this commit:**
+- [x] **#1** Vapi variable injection — `toVapiTemplate()` converts `{x.y}`→`{{x.y}}`; `nestVariableValues()` nests dotted keys for LiquidJS
+- [x] **#11** Real `agentName` field on `VoiceCampaign` (migration), used in the greeting; falls back to the hotel name (never the persona label)
+- [x] **#2** Oversized/truncated CSV upload now rejected (busboy `limit` event handled)
+- [x] **#5** Non-object `columnMap` returns 400, not 500
+- [x] **#6** Blank consent cell falls back to the file-level `defaultConsent` attestation
+- [x] **#7** Removed `"cancel"` from standalone opt-out keywords
+- [x] **#9** Documented nullable-phone dedupe behaviour in schema (active leads always non-null; only erased leads are null/inert)
+- [x] **#12** Sequential A/B provisioning with orphan cleanup (`deleteAssistant` on variant-B failure)
+- [x] **#10** (security) Webhook host derived only from `API_PUBLIC_URL` (`webhookHostFromPublicUrl`); the request Host header is never trusted. Activation 500s with a clear message if `API_PUBLIC_URL` is unset.
+- [x] **#8** `maxConcurrent: 0` now preserved (dropped the `|| 5` coercion) — provision-but-don't-dial is honoured.
+
+**Scheduled into Phase 6:** **#3** (durable opt-out) and **#4** (E.164 `+0…`) — see the Phase 6 task list below.
 
 ---
 
@@ -103,9 +134,14 @@ extended with two added capabilities:
 - [ ] Retry scheduling (no_answer + attempts < maxRetries → `nextCallAt`)
 - [ ] **Spend cap** (total dials ≥ spendCapCalls → auto-pause + SSE alert)
 - [ ] Auto-pause campaign on Vapi 5xx; manual resume
+- [ ] Pre-dial consent + DND guard: skip leads failing `canContactLead` / on the suppression list; respect `dndScrub()` for `+91` numbers
 - [ ] Wire `startCampaignWorker()` into server startup alongside `startAutomationWorker()`
 
-**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls.
+**Folded-in review fixes (from Phase 5.5 backlog):**
+- [ ] **#3** (high) Durable tenant-wide opt-out — add a phone-level `DoNotContact` model (`hotelId` + `phone`, unique, survives lead/campaign deletion). Check it at import (`bulkInsertLeads`) and pre-dial in the worker; add a `suppressContact(hotelId, phone, reason)` helper the worker/Phase 7–8 call on opt-out. Replaces the current fragile "scan `optedOut` lead rows" approach.
+- [ ] **#4** (medium) `normalizeToE164` — reject a leading zero after `+` (`+0…` is not valid E.164), so bad numbers fail at import rather than at dial time.
+
+**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed (opted-out) number even across campaign deletion. E.164 validation rejects `+0…`.
 
 ---
 

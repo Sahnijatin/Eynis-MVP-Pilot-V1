@@ -8,55 +8,61 @@ datasource db {
 }
 
 model Hotel {
-  id              String           @id @default(cuid())
-  name            String
-  industry        String           @default("hospitality")
-  timezone        String           @default("Asia/Kolkata")
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  users           User[]
-  guests          Guest[]
-  stays           Stay[]
-  serviceRequests ServiceRequest[]
-  offerEvents     OfferEvent[]
-  automationRules      AutomationRule[]
-  automationExecutions AutomationExecution[]
-  nightAuditReports    NightAuditReport[]
-  auditLogs       AuditLog[]
-  transitions     ServiceRequestTransition[]
-  connectorConfigs ConnectorConfig[]
-  connectorEvents  ConnectorEvent[]
-  license         License?
-  roles           Role[]
-  invitations     Invitation[]
+  id                    String                     @id @default(cuid())
+  name                  String
+  industry              String                     @default("hospitality")
+  timezone              String                     @default("Asia/Kolkata")
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  users                 User[]
+  guests                Guest[]
+  stays                 Stay[]
+  serviceRequests       ServiceRequest[]
+  offerEvents           OfferEvent[]
+  automationRules       AutomationRule[]
+  automationExecutions  AutomationExecution[]
+  nightAuditReports     NightAuditReport[]
+  auditLogs             AuditLog[]
+  transitions           ServiceRequestTransition[]
+  connectorConfigs      ConnectorConfig[]
+  connectorEvents       ConnectorEvent[]
+  license               License?
+  roles                 Role[]
+  invitations           Invitation[]
+  voiceCampaigns        VoiceCampaign[]
+  campaignLeads         CampaignLead[]
+  callRecords           CallRecord[]
+  sentimentEvents       SentimentEvent[]
+  whatsappConversations WhatsappConversation[]
+  whatsappMessages      WhatsappMessage[]
 }
 
 model User {
-  id               String           @id @default(cuid())
-  hotelId          String
-  fullName         String
-  email            String           @unique
-  role             String
-  roleId           String?
-  isActive         Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  hotel            Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  systemRole       Role?            @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  assignedRequests ServiceRequest[] @relation("assigned_requests")
+  id                 String                     @id @default(cuid())
+  hotelId            String
+  fullName           String
+  email              String                     @unique
+  role               String
+  roleId             String?
+  isActive           Boolean                    @default(true)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  hotel              Hotel                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  systemRole         Role?                      @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  assignedRequests   ServiceRequest[]           @relation("assigned_requests")
   changedTransitions ServiceRequestTransition[] @relation("transition_actor")
 }
 
 model Guest {
-  id          String   @id @default(cuid())
-  hotelId     String
-  fullName    String
-  phoneE164   String
-  visitCount  Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  hotel       Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  stays       Stay[]
+  id              String           @id @default(cuid())
+  hotelId         String
+  fullName        String
+  phoneE164       String
+  visitCount      Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  hotel           Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  stays           Stay[]
   serviceRequests ServiceRequest[]
 
   @@index([hotelId])
@@ -179,14 +185,14 @@ model AuditLog {
 }
 
 model ConnectorConfig {
-  id            String   @id @default(cuid())
-  hotelId       String
-  connectorKey  String
-  enabled       Boolean  @default(false)
-  configJson    String   @default("{}")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  hotel         Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  hotelId      String
+  connectorKey String
+  enabled      Boolean  @default(false)
+  configJson   String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  hotel        Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@unique([hotelId, connectorKey])
   @@index([hotelId, enabled])
@@ -277,4 +283,160 @@ model Invitation {
 
   @@index([hotelId, email])
   @@index([token])
+}
+
+// ── Voice Campaign module (Phase 2 data model) ──────────────────────────────
+// Generic, industry-agnostic outbound AI voice calling. hotelId is the
+// multi-tenant scope (= tenantId in the BRD). JSON payloads are stored as
+// String to match the existing codebase convention (e.g. ConnectorConfig).
+
+model VoiceCampaign {
+  id                    String                 @id @default(cuid())
+  hotelId               String
+  name                  String
+  status                String                 @default("draft") // draft | active | paused | completed
+  scriptTemplate        String // system prompt with {variable} placeholders
+  outcomeTypes          String                 @default("[]") // JSON array of valid outcome labels
+  followUpRules         String                 @default("{}") // JSON map of outcome -> [channels]
+  calendlyLink          String?
+  agentName             String? // name the AI introduces itself with; falls back to the hotel name
+  voiceA                String // ElevenLabs voice name for variant A
+  voiceB                String // ElevenLabs voice name for variant B
+  personaA              String // label, e.g. "Enthusiastic"
+  personaB              String // label, e.g. "Sophisticated"
+  vapiAssistantIdA      String? // provisioned on activation
+  vapiAssistantIdB      String?
+  maxRetries            Int                    @default(2)
+  retryDelayHours       Int                    @default(24)
+  maxConcurrent         Int                    @default(5)
+  spendCapCalls         Int? // auto-pause after this many total dials
+  defaultCountryCode    String                 @default("+91") // for phone normalisation
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  leads                 CampaignLead[]
+  calls                 CallRecord[]
+  whatsappConversations WhatsappConversation[]
+
+  @@index([hotelId, status])
+}
+
+model CampaignLead {
+  id                    String                 @id @default(cuid())
+  campaignId            String
+  hotelId               String
+  firstName             String
+  lastName              String?
+  phone                 String? // E.164 normalised; nullable to support GDPR erasure
+  email                 String?
+  company               String?
+  jobTitle              String?
+  rawData               String                 @default("{}") // original CSV row JSON -> {lead.custom.*}
+  abVariant             String? // A | B, assigned on first dial
+  status                String                 @default("pending") // pending|calling|called|completed|failed|opted_out
+  callAttempts          Int                    @default(0)
+  nextCallAt            DateTime? // set on retry scheduling
+  consent               Boolean                @default(false) // Phase 1 consent fields
+  consentSource         String? // ConsentSource (@eynis/shared)
+  consentAt             DateTime?
+  optedOut              Boolean                @default(false) // tenant-wide opt-out exclusion flag
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  campaign              VoiceCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  calls                 CallRecord[]
+  whatsappConversations WhatsappConversation[]
+
+  // Dedupe phone within a campaign. NOTE: Postgres treats NULLs as distinct, so
+  // this does NOT dedupe null-phone rows — acceptable because active leads always
+  // carry a non-null E.164 phone (enforced at import in csv-import.ts), and the
+  // only null-phone rows are GDPR-erased leads, which are inert (never dialled).
+  @@unique([campaignId, phone])
+  @@index([campaignId, status])
+  @@index([hotelId, phone]) // tenant-wide opt-out lookup by phone
+}
+
+model CallRecord {
+  id              String           @id @default(cuid())
+  campaignId      String
+  leadId          String
+  hotelId         String
+  vapiCallId      String?          @unique // Vapi identifier, matches incoming webhook
+  abVariant       String // A | B
+  status          String           @default("initiated") // initiated | in_progress | ended | failed
+  outcome         String? // value from campaign.outcomeTypes
+  durationSeconds Int?
+  transcript      String?
+  aiSummary       String?
+  sentiment       String? // positive | neutral | negative (final aggregate)
+  keyPoints       String           @default("[]") // JSON array
+  whatsappSent    Boolean          @default(false)
+  emailSent       Boolean          @default(false)
+  meetingBooked   Boolean          @default(false)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime         @default(now())
+  hotel           Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  campaign        VoiceCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead            CampaignLead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sentimentEvents SentimentEvent[]
+
+  @@index([campaignId, status])
+  @@index([hotelId, createdAt])
+}
+
+// Real-time sentiment timeline — one row per analysed utterance (call) or
+// message (WhatsApp). Powers the live mood meter during a call.
+model SentimentEvent {
+  id             String                @id @default(cuid())
+  hotelId        String
+  callRecordId   String?
+  conversationId String?
+  speaker        String // agent | customer
+  text           String // analysed snippet
+  sentiment      String // positive | neutral | negative
+  score          Float? // rolling numeric score
+  createdAt      DateTime              @default(now())
+  hotel          Hotel                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  callRecord     CallRecord?           @relation(fields: [callRecordId], references: [id], onDelete: Cascade)
+  conversation   WhatsappConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([callRecordId, createdAt])
+  @@index([conversationId, createdAt])
+}
+
+// Stateful two-way WhatsApp conversation tied to a campaign lead.
+model WhatsappConversation {
+  id              String            @id @default(cuid())
+  hotelId         String
+  campaignId      String
+  leadId          String
+  state           String            @default("open") // open | awaiting_reply | booked | closed | opted_out
+  lastMessageAt   DateTime?
+  threadSummary   String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  hotel           Hotel             @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  campaign        VoiceCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead            CampaignLead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages        WhatsappMessage[]
+  sentimentEvents SentimentEvent[]
+
+  @@index([hotelId, state])
+  @@index([leadId])
+}
+
+model WhatsappMessage {
+  id             String               @id @default(cuid())
+  hotelId        String
+  conversationId String
+  direction      String // in | out
+  body           String
+  sentiment      String? // positive | neutral | negative
+  score          Float?
+  createdAt      DateTime             @default(now())
+  hotel          Hotel                @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }

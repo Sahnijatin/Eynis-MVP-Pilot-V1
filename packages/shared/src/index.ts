@@ -36,3 +36,33 @@ export const isValidRole = (role: string): role is UserRole =>
   role === "front_desk" ||
   role === "housekeeping" ||
   role === "fnb_manager";
+
+// ── Voice Campaign compliance (Phase 1 foundation) ──────────────────────────
+// These types encode the regulatory rules the voice-agent module must satisfy.
+// They are deliberately schema-agnostic: Phase 2 wires the consent fields onto
+// the CampaignLead model and the opted_out outcome into the call pipeline.
+
+// How / where a lead's consent to be contacted was captured.
+export type ConsentSource = "csv_import" | "web_form" | "api" | "verbal" | "double_opt_in";
+
+// Reserved consent fields — added to the CampaignLead model in Phase 2.
+export interface LeadConsent {
+  consent: boolean;
+  consentSource: ConsentSource | null;
+  consentAt: string | null; // ISO-8601 timestamp, null until consent recorded
+}
+
+// The opt-out outcome is reserved across every campaign regardless of the
+// tenant's custom outcome taxonomy. It is enforced tenant-wide and suppresses
+// all follow-up (voice, WhatsApp, email).
+export const RESERVED_OUTCOME_OPTED_OUT = "opted_out";
+
+// Regulations the compliance layer is designed to satisfy.
+export type ComplianceRegulation = "TCPA" | "GDPR" | "TRAI" | "CASL" | "PDPA";
+
+export const isValidConsentSource = (source: string): source is ConsentSource =>
+  source === "csv_import" ||
+  source === "web_form" ||
+  source === "api" ||
+  source === "verbal" ||
+  source === "double_opt_in";

@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
 import type { UserRole } from "@eynis/shared";
+import { isValidConsentSource } from "@eynis/shared";
 import { createAuthToken, parseBearerToken, verifyAuthToken } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
@@ -251,6 +252,32 @@ const parseConnectorConfigPath = (url: string | undefined): string | null => {
   return decodeURIComponent(match[1]);
 };
 
+// Voice campaign routing: /campaigns, /campaigns/:id, /campaigns/:id/:action
+const CAMPAIGN_ACTIONS = new Set(["activate", "pause", "complete"]);
+const parseCampaignPath = (
+  url: string | undefined,
+): { id: string; action: string | null } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  const match = /^\/campaigns\/([^/]+)(?:\/([^/]+))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  const action = match[2] ? decodeURIComponent(match[2]) : null;
+  if (action !== null && !CAMPAIGN_ACTIONS.has(action)) return null; // leave /leads, /calls etc. to later phases
+  return { id: decodeURIComponent(match[1]), action };
+};
+
+// Lead routing: /campaigns/:id/leads, /campaigns/:id/leads/import, /campaigns/:id/leads/:leadId
+const parseCampaignLeadsPath = (
+  url: string | undefined,
+): { campaignId: string; leadId: string | null; isImport: boolean } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  const match = /^\/campaigns\/([^/]+)\/leads(?:\/([^/]+))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  const sub = match[2] ? decodeURIComponent(match[2]) : null;
+  return { campaignId: decodeURIComponent(match[1]), leadId: sub === "import" ? null : sub, isImport: sub === "import" };
+};
+
 const permissionMap: Record<string, Permission | null> = {
   "GET /context":                          null,
   "POST /events/service-request-created":  "manage_requests",
@@ -295,6 +322,17 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /team/roles":                      "manage_roles",
   "PUT /team/roles/:id":                  "manage_roles",
   "POST /team/roles":                     "create_custom_roles",
+  "POST /campaigns":                      "manage_campaigns",
+  "GET /campaigns":                       "manage_campaigns",
+  "GET /campaigns/:id":                   "manage_campaigns",
+  "PATCH /campaigns/:id":                 "manage_campaigns",
+  "DELETE /campaigns/:id":                "manage_campaigns",
+  "POST /campaigns/:id/activate":         "manage_campaigns",
+  "POST /campaigns/:id/pause":            "manage_campaigns",
+  "POST /campaigns/:id/complete":         "manage_campaigns",
+  "POST /campaigns/:id/leads/import":     "manage_campaigns",
+  "GET /campaigns/:id/leads":             "manage_campaigns",
+  "DELETE /campaigns/:id/leads/:leadId":  "manage_campaigns",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -338,6 +376,18 @@ const connectorRegistry = [
     category: "payments",
     envFlag: "CONNECTOR_PAYMENTS_RAZORPAY_ENABLED",
     ingestModes: ["api", "payment_link"]
+  },
+  {
+    key: "voice_vapi",
+    category: "voice",
+    envFlag: "CONNECTOR_VOICE_VAPI_ENABLED",
+    ingestModes: ["api", "webhook"]
+  },
+  {
+    key: "email_resend",
+    category: "email",
+    envFlag: "CONNECTOR_EMAIL_RESEND_ENABLED",
+    ingestModes: ["outbound_api"]
   }
 ] as const;
 
@@ -2935,6 +2985,298 @@ const handleRequest = async (
         role: { id: role.id, key: role.key, displayName: role.displayName, permissions, isSystem: false, isCustom: true, userCount: 0 }
       });
       return;
+    }
+
+    // ── Voice Campaigns: create + list ──────────────────────────────────────
+    if (parseUrl(req.url).pathname === "/campaigns" && (req.method === "POST" || req.method === "GET")) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      if (!(await ensureHotelAccess(hotelId))) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
+
+      const { validateCampaignCreate, serializeCampaign } = await import("./core/campaigns/service");
+
+      if (req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "POST /campaigns")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const validated = validateCampaignCreate(body);
+        if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return; }
+        const v = validated.value;
+        const created = await prisma.voiceCampaign.create({
+          data: {
+            hotelId, name: v.name, scriptTemplate: v.scriptTemplate,
+            voiceA: v.voiceA, voiceB: v.voiceB, personaA: v.personaA, personaB: v.personaB,
+            outcomeTypes: JSON.stringify(v.outcomeTypes), followUpRules: JSON.stringify(v.followUpRules),
+            calendlyLink: v.calendlyLink, maxRetries: v.maxRetries, retryDelayHours: v.retryDelayHours,
+            maxConcurrent: v.maxConcurrent, spendCapCalls: v.spendCapCalls, defaultCountryCode: v.defaultCountryCode,
+          },
+        });
+        json(res, 201, { ok: true, campaign: serializeCampaign(created) });
+        return;
+      }
+
+      // GET /campaigns — list with lead/call counts
+      if (!canAccess(auth.context.permissions, "GET /campaigns")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const qs = parseUrl(req.url).searchParams;
+      const limit = asSafeLimit(qs.get("limit"), 20, 100);
+      const offset = asSafeOffset(qs.get("offset"));
+      const [rows, total] = await Promise.all([
+        prisma.voiceCampaign.findMany({
+          where: { hotelId },
+          orderBy: { createdAt: "desc" },
+          take: limit, skip: offset,
+          include: { _count: { select: { leads: true, calls: true } } },
+        }),
+        prisma.voiceCampaign.count({ where: { hotelId } }),
+      ]);
+      const items = rows.map((r) => ({
+        ...serializeCampaign(r),
+        stats: { totalLeads: r._count.leads, totalCalls: r._count.calls },
+      }));
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      return;
+    }
+
+    // ── Voice Campaigns: single / update / delete / lifecycle actions ────────
+    if (parseUrl(req.url).pathname.startsWith("/campaigns/")) {
+      const parsed = parseCampaignPath(req.url);
+      if (parsed) {
+        const auth = await getAuthenticatedContext(req);
+        if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+        const hotelId = auth.context.hotelId;
+        const { id, action } = parsed;
+
+        const { buildCampaignUpdate, serializeCampaign, outcomeBreakdown, provisionCampaignAssistants } =
+          await import("./core/campaigns/service");
+
+        // Resolve the campaign scoped to this tenant.
+        const campaign = await prisma.voiceCampaign.findFirst({ where: { id, hotelId } });
+
+        // GET /campaigns/:id
+        if (action === null && req.method === "GET") {
+          if (!canAccess(auth.context.permissions, "GET /campaigns/:id")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+          const [leadCount, callCount, outcomeRows, leadStatusRows] = await Promise.all([
+            prisma.campaignLead.count({ where: { campaignId: id } }),
+            prisma.callRecord.count({ where: { campaignId: id } }),
+            prisma.callRecord.groupBy({ by: ["outcome"], where: { campaignId: id }, _count: { _all: true } }),
+            prisma.campaignLead.groupBy({ by: ["status"], where: { campaignId: id }, _count: { _all: true } }),
+          ]);
+          json(res, 200, {
+            ok: true,
+            campaign: serializeCampaign(campaign),
+            stats: {
+              totalLeads: leadCount,
+              totalCalls: callCount,
+              outcomeBreakdown: outcomeBreakdown(outcomeRows.map((o) => ({ outcome: o.outcome, count: o._count._all }))),
+              leadStatusBreakdown: Object.fromEntries(leadStatusRows.map((s) => [s.status, s._count._all])),
+            },
+          });
+          return;
+        }
+
+        // PATCH /campaigns/:id
+        if (action === null && req.method === "PATCH") {
+          if (!canAccess(auth.context.permissions, "PATCH /campaigns/:id")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const update = buildCampaignUpdate(body);
+          if (!update.ok) { json(res, 400, { ok: false, error: update.error }); return; }
+          const updated = await prisma.voiceCampaign.update({ where: { id }, data: update.value });
+          json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
+          return;
+        }
+
+        // DELETE /campaigns/:id — only when no CallRecords exist
+        if (action === null && req.method === "DELETE") {
+          if (!canAccess(auth.context.permissions, "DELETE /campaigns/:id")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+          const callCount = await prisma.callRecord.count({ where: { campaignId: id } });
+          if (callCount > 0) {
+            json(res, 409, { ok: false, error: "Cannot delete a campaign with call records; complete it instead" });
+            return;
+          }
+          await prisma.voiceCampaign.delete({ where: { id } });
+          json(res, 200, { ok: true, deleted: id });
+          return;
+        }
+
+        // POST /campaigns/:id/activate | pause | complete
+        if (action !== null && req.method === "POST") {
+          if (!canAccess(auth.context.permissions, `POST /campaigns/:id/${action}`)) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+
+          if (action === "pause") {
+            if (campaign.status !== "active") {
+              json(res, 409, { ok: false, error: `Cannot pause a campaign in '${campaign.status}' status` }); return;
+            }
+            const updated = await prisma.voiceCampaign.update({ where: { id }, data: { status: "paused" } });
+            json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
+            return;
+          }
+
+          if (action === "complete") {
+            if (campaign.status === "completed") {
+              json(res, 409, { ok: false, error: "Campaign is already completed" }); return;
+            }
+            const updated = await prisma.voiceCampaign.update({ where: { id }, data: { status: "completed" } });
+            json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
+            return;
+          }
+
+          // action === "activate"
+          if (campaign.status !== "draft" && campaign.status !== "paused") {
+            json(res, 409, { ok: false, error: `Cannot activate a campaign in '${campaign.status}' status` }); return;
+          }
+          const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
+          const creds = await resolveVapiCredentials(hotelId);
+          if (!isVapiConfigured(creds)) {
+            json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
+            return;
+          }
+          // Re-provision only if not already provisioned (resume keeps existing assistants).
+          let vapiAssistantIdA = campaign.vapiAssistantIdA;
+          let vapiAssistantIdB = campaign.vapiAssistantIdB;
+          if (!vapiAssistantIdA || !vapiAssistantIdB) {
+            // Webhook callback host MUST come from trusted server config, never the
+            // request Host header (which a caller can spoof to exfiltrate call reports).
+            const apiDomain = webhookHostFromPublicUrl(process.env.API_PUBLIC_URL);
+            if (!apiDomain) {
+              json(res, 500, { ok: false, error: "Server misconfigured: set API_PUBLIC_URL (e.g. https://api.example.com) for the Vapi webhook callback" });
+              return;
+            }
+            // Agent name the AI introduces itself with: explicit campaign value,
+            // else the hotel name (never the persona label).
+            const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+            const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
+            const provisioned = await provisionCampaignAssistants({
+              campaign: {
+                name: campaign.name, scriptTemplate: campaign.scriptTemplate,
+                voiceA: campaign.voiceA, voiceB: campaign.voiceB,
+                personaA: campaign.personaA, personaB: campaign.personaB,
+                outcomeTypes: serializeCampaign(campaign).outcomeTypes,
+              },
+              creds, apiDomain, agentName,
+              createAssistant, deleteAssistant,
+            });
+            if (!provisioned.ok) { json(res, 502, { ok: false, error: provisioned.error }); return; }
+            vapiAssistantIdA = provisioned.vapiAssistantIdA;
+            vapiAssistantIdB = provisioned.vapiAssistantIdB;
+          }
+          const updated = await prisma.voiceCampaign.update({
+            where: { id },
+            data: { status: "active", vapiAssistantIdA, vapiAssistantIdB },
+          });
+          json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
+          return;
+        }
+      }
+    }
+
+    // ── Voice Campaign leads: import / list / delete ────────────────────────
+    const leadsPath = parseCampaignLeadsPath(req.url);
+    if (leadsPath) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      const { campaignId, leadId, isImport } = leadsPath;
+      const campaign = await prisma.voiceCampaign.findFirst({
+        where: { id: campaignId, hotelId },
+        select: { id: true, defaultCountryCode: true },
+      });
+
+      // POST /campaigns/:id/leads/import  (multipart CSV)
+      if (isImport && req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "POST /campaigns/:id/leads/import")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+
+        const { parseMultipart, parseLeadsFromCsv, bulkInsertLeads } = await import("./core/campaigns/csv-import");
+        let multipart;
+        try { multipart = await parseMultipart(req); }
+        catch (e) { json(res, 400, { ok: false, error: `Invalid upload: ${(e as Error).message}` }); return; }
+        if (!multipart.file) { json(res, 400, { ok: false, error: "CSV file is required (form field 'file')" }); return; }
+
+        let columnMap: unknown;
+        try { columnMap = JSON.parse(multipart.fields.columnMap ?? "{}"); }
+        catch { json(res, 400, { ok: false, error: "columnMap must be valid JSON" }); return; }
+        if (typeof columnMap !== "object" || columnMap === null || Array.isArray(columnMap)) {
+          json(res, 400, { ok: false, error: "columnMap must be a JSON object mapping CSV headers to fields" }); return;
+        }
+
+        const consentSourceRaw = asTrimmedString(multipart.fields.consentSource);
+        const consentSource = consentSourceRaw && isValidConsentSource(consentSourceRaw) ? consentSourceRaw : undefined;
+        const csvText = multipart.file.content.toString("utf8");
+        const { leads, errors } = parseLeadsFromCsv(csvText, {
+          columnMap: columnMap as Record<string, import("./core/campaigns/csv-import").EynisLeadField>,
+          defaultCountryCode: campaign.defaultCountryCode,
+          defaultConsent: multipart.fields.defaultConsent === "true",
+          consentSource,
+        });
+        const result = await bulkInsertLeads(campaignId, hotelId, leads, errors);
+        json(res, 200, { ok: true, ...result });
+        return;
+      }
+
+      // GET /campaigns/:id/leads  (paginated; ?status= &abVariant=)
+      if (leadId === null && !isImport && req.method === "GET") {
+        if (!canAccess(auth.context.permissions, "GET /campaigns/:id/leads")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+        const qs = parseUrl(req.url).searchParams;
+        const limit = asSafeLimit(qs.get("limit"), 50, 200);
+        const offset = asSafeOffset(qs.get("offset"));
+        const status = asTrimmedString(qs.get("status"));
+        const abVariant = asTrimmedString(qs.get("abVariant"));
+        const where = {
+          campaignId,
+          ...(status ? { status } : {}),
+          ...(abVariant ? { abVariant } : {}),
+        };
+        const [items, total] = await Promise.all([
+          prisma.campaignLead.findMany({
+            where, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
+            select: {
+              id: true, firstName: true, lastName: true, phone: true, email: true,
+              company: true, jobTitle: true, abVariant: true, status: true,
+              callAttempts: true, consent: true, optedOut: true, createdAt: true,
+            },
+          }),
+          prisma.campaignLead.count({ where }),
+        ]);
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        return;
+      }
+
+      // DELETE /campaigns/:id/leads/:leadId  (pending only)
+      if (leadId !== null && !isImport && req.method === "DELETE") {
+        if (!canAccess(auth.context.permissions, "DELETE /campaigns/:id/leads/:leadId")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, hotelId }, select: { id: true, status: true } });
+        if (!lead) { json(res, 404, { ok: false, error: "Lead not found" }); return; }
+        if (lead.status !== "pending") {
+          json(res, 409, { ok: false, error: "Only pending leads can be removed" }); return;
+        }
+        await prisma.campaignLead.delete({ where: { id: leadId } });
+        json(res, 200, { ok: true, deleted: leadId });
+        return;
+      }
     }
 
     json(res, 404, { ok: false, error: "Not found" });
