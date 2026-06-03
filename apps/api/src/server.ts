@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
 import type { UserRole } from "@eynis/shared";
+import { isValidConsentSource } from "@eynis/shared";
 import { createAuthToken, parseBearerToken, verifyAuthToken } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
@@ -265,6 +266,18 @@ const parseCampaignPath = (
   return { id: decodeURIComponent(match[1]), action };
 };
 
+// Lead routing: /campaigns/:id/leads, /campaigns/:id/leads/import, /campaigns/:id/leads/:leadId
+const parseCampaignLeadsPath = (
+  url: string | undefined,
+): { campaignId: string; leadId: string | null; isImport: boolean } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  const match = /^\/campaigns\/([^/]+)\/leads(?:\/([^/]+))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  const sub = match[2] ? decodeURIComponent(match[2]) : null;
+  return { campaignId: decodeURIComponent(match[1]), leadId: sub === "import" ? null : sub, isImport: sub === "import" };
+};
+
 const permissionMap: Record<string, Permission | null> = {
   "GET /context":                          null,
   "POST /events/service-request-created":  "manage_requests",
@@ -317,6 +330,9 @@ const permissionMap: Record<string, Permission | null> = {
   "POST /campaigns/:id/activate":         "manage_campaigns",
   "POST /campaigns/:id/pause":            "manage_campaigns",
   "POST /campaigns/:id/complete":         "manage_campaigns",
+  "POST /campaigns/:id/leads/import":     "manage_campaigns",
+  "GET /campaigns/:id/leads":             "manage_campaigns",
+  "DELETE /campaigns/:id/leads/:leadId":  "manage_campaigns",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3156,6 +3172,97 @@ const handleRequest = async (
           json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
           return;
         }
+      }
+    }
+
+    // ── Voice Campaign leads: import / list / delete ────────────────────────
+    const leadsPath = parseCampaignLeadsPath(req.url);
+    if (leadsPath) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      const { campaignId, leadId, isImport } = leadsPath;
+      const campaign = await prisma.voiceCampaign.findFirst({
+        where: { id: campaignId, hotelId },
+        select: { id: true, defaultCountryCode: true },
+      });
+
+      // POST /campaigns/:id/leads/import  (multipart CSV)
+      if (isImport && req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "POST /campaigns/:id/leads/import")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+
+        const { parseMultipart, parseLeadsFromCsv, bulkInsertLeads } = await import("./core/campaigns/csv-import");
+        let multipart;
+        try { multipart = await parseMultipart(req); }
+        catch (e) { json(res, 400, { ok: false, error: `Invalid upload: ${(e as Error).message}` }); return; }
+        if (!multipart.file) { json(res, 400, { ok: false, error: "CSV file is required (form field 'file')" }); return; }
+
+        let columnMap: Record<string, never>;
+        try { columnMap = JSON.parse(multipart.fields.columnMap ?? "{}"); }
+        catch { json(res, 400, { ok: false, error: "columnMap must be valid JSON" }); return; }
+
+        const consentSourceRaw = asTrimmedString(multipart.fields.consentSource);
+        const consentSource = consentSourceRaw && isValidConsentSource(consentSourceRaw) ? consentSourceRaw : undefined;
+        const csvText = multipart.file.content.toString("utf8");
+        const { leads, errors } = parseLeadsFromCsv(csvText, {
+          columnMap,
+          defaultCountryCode: campaign.defaultCountryCode,
+          defaultConsent: multipart.fields.defaultConsent === "true",
+          consentSource,
+        });
+        const result = await bulkInsertLeads(campaignId, hotelId, leads, errors);
+        json(res, 200, { ok: true, ...result });
+        return;
+      }
+
+      // GET /campaigns/:id/leads  (paginated; ?status= &abVariant=)
+      if (leadId === null && !isImport && req.method === "GET") {
+        if (!canAccess(auth.context.permissions, "GET /campaigns/:id/leads")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+        const qs = parseUrl(req.url).searchParams;
+        const limit = asSafeLimit(qs.get("limit"), 50, 200);
+        const offset = asSafeOffset(qs.get("offset"));
+        const status = asTrimmedString(qs.get("status"));
+        const abVariant = asTrimmedString(qs.get("abVariant"));
+        const where = {
+          campaignId,
+          ...(status ? { status } : {}),
+          ...(abVariant ? { abVariant } : {}),
+        };
+        const [items, total] = await Promise.all([
+          prisma.campaignLead.findMany({
+            where, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
+            select: {
+              id: true, firstName: true, lastName: true, phone: true, email: true,
+              company: true, jobTitle: true, abVariant: true, status: true,
+              callAttempts: true, consent: true, optedOut: true, createdAt: true,
+            },
+          }),
+          prisma.campaignLead.count({ where }),
+        ]);
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        return;
+      }
+
+      // DELETE /campaigns/:id/leads/:leadId  (pending only)
+      if (leadId !== null && !isImport && req.method === "DELETE") {
+        if (!canAccess(auth.context.permissions, "DELETE /campaigns/:id/leads/:leadId")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, hotelId }, select: { id: true, status: true } });
+        if (!lead) { json(res, 404, { ok: false, error: "Lead not found" }); return; }
+        if (lead.status !== "pending") {
+          json(res, 409, { ok: false, error: "Only pending leads can be removed" }); return;
+        }
+        await prisma.campaignLead.delete({ where: { id: leadId } });
+        json(res, 200, { ok: true, deleted: leadId });
+        return;
       }
     }
 

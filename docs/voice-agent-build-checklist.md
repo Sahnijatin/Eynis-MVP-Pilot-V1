@@ -91,16 +91,18 @@ extended with two added capabilities:
 
 ---
 
-## Phase 5 — Lead Import & Management (Day 3)
+## Phase 5 — Lead Import & Management (Day 3) ✅ DONE
 
-- [ ] `npm install busboy csv-parse @types/busboy -w @eynis/api` (deferred here from Phase 3 — needed for multipart CSV upload + parsing)
-- [ ] Write `apps/api/src/core/campaigns/csv-import.ts` — `parseMultipart()`, `parseLeadsFromCsv()`, `bulkInsertLeads()`
-- [ ] `POST /campaigns/:id/leads/import` — column mapping, E.164 phone normalisation, dedupe by phone, **reject non-consented rows**, return `{imported, skipped, errors}`
-- [ ] Preserve all original CSV columns in `rawData` for `{lead.custom.*}` injection
-- [ ] `GET /campaigns/:id/leads` (paginated; filter by `status`, `abVariant`)
-- [ ] `DELETE /campaigns/:id/leads/:leadId` (guard: status=pending only)
+- [x] `npm install busboy csv-parse @types/busboy -w @eynis/api`
+- [x] `apps/api/src/core/campaigns/csv-import.ts` — `parseMultipart()` (busboy), `parseLeadsFromCsv()` (csv-parse, pure), `bulkInsertLeads()`, `normalizeToE164()`
+- [x] `POST /campaigns/:id/leads/import` — multipart upload, column mapping, E.164 normalisation, dedupe by phone (in-batch + in-campaign), **reject non-consented rows** (via Phase 1 `consentFromImport`), skip tenant-wide opt-outs, return `{imported, skipped, errors}`
+- [x] All original CSV columns preserved in `rawData` for `{lead.custom.*}` injection
+- [x] `GET /campaigns/:id/leads` (paginated; filter by `status`, `abVariant`)
+- [x] `DELETE /campaigns/:id/leads/:leadId` (status=pending only, else 409)
 
-**DoD:** A real CSV imports with correct mapping, normalised phones, skipped duplicates, and a clear error report.
+**Consent at import:** a row is imported only if it carries consent — either a CSV column mapped to `consent`, or a file-level `defaultConsent=true` + `consentSource` attestation (for pre-opted-in list exports). Tenant-wide opted-out phones are excluded automatically.
+
+**DoD:** ✅ Real CSV imports with correct mapping, normalised phones, deduped, consent-gated, with a per-row error report. Unit tests 5/5 (normalisation, mapping, consent, custom-field preservation, validation), integration 4/4 (import+list+dedupe, consent rejection, delete guard, tenant opt-out skip). Full API suite 74/74, lint clean.
 
 ---
 
