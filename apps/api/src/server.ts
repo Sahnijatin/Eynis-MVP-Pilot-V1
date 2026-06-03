@@ -338,6 +338,18 @@ const connectorRegistry = [
     category: "payments",
     envFlag: "CONNECTOR_PAYMENTS_RAZORPAY_ENABLED",
     ingestModes: ["api", "payment_link"]
+  },
+  {
+    key: "voice_vapi",
+    category: "voice",
+    envFlag: "CONNECTOR_VOICE_VAPI_ENABLED",
+    ingestModes: ["api", "webhook"]
+  },
+  {
+    key: "email_resend",
+    category: "email",
+    envFlag: "CONNECTOR_EMAIL_RESEND_ENABLED",
+    ingestModes: ["outbound_api"]
   }
 ] as const;
 

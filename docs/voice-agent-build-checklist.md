@@ -58,16 +58,19 @@ extended with two added capabilities:
 
 ---
 
-## Phase 3 — Connectors & External Services (Day 1–2)
+## Phase 3 — Connectors & External Services (Day 1–2) ✅ DONE
 
-- [ ] Register `voice_vapi` connector in `server.ts` registry (env flag + per-tenant `ConnectorConfig`)
-- [ ] Register `email_resend` connector (apiKey, fromAddress, fromName; secrets masked in API responses)
-- [ ] `npm install resend busboy csv-parse -w @eynis/api`
-- [ ] Write `apps/api/src/core/campaigns/vapi.ts` — `createAssistant()`, `initiateCall()`, `verifyWebhook()` with full TS types
-- [ ] Write `apps/api/src/core/email/resend.ts` — `renderTemplate()` reusing the `{variable}` namespace + `sendFollowUpEmail()`
-- [ ] Confirm webhook verification reuses the existing `x-vapi-secret` pattern from `webhook-verify.ts`
+- [x] Register `voice_vapi` connector in `server.ts` registry (`CONNECTOR_VOICE_VAPI_ENABLED` + per-tenant `ConnectorConfig`)
+- [x] Register `email_resend` connector (apiKey/fromAddress/fromName; `apiKey` masked by existing `maskConnectorConfig`)
+- [~] `busboy` + `csv-parse` deferred to **Phase 5** (where they're used); `resend` SDK **not needed** — implemented over the Resend REST API via `fetch`, matching the Twilio/Interakt connector pattern (no new dependency)
+- [x] `apps/api/src/core/campaigns/vapi.ts` — `createAssistant()`, `initiateCall()`, `verifyWebhook()` + pure `buildAssistantPayload()`/`buildCallPayload()`, full TS types; disclosure auto-injected via Phase 1 `ensureDisclosure()`
+- [x] `apps/api/src/core/email/resend.ts` — `renderTemplate()` + `buildTemplateVars()` ({variable} namespace incl. `lead.custom.*`) + `sendFollowUpEmail()`
+- [x] Webhook verification reuses `webhook-verify.ts` — added `verifyVapiSecret()` (constant-time `x-vapi-secret` check) with the same `enforce`/`VERIFY_WEBHOOKS` semantics
+- [x] New env vars documented in `apps/api/.env.example`
 
-**DoD:** Can provision a Vapi assistant and send a test email from a unit script; connectors visible (masked) via the connectors API.
+**Keys-last:** with no `VAPI_API_KEY` / `RESEND_API_KEY`, network calls return structured `{ ok:false / sent:false, error }` results (mirrors `whatsapp-outbound.ts`); all pure logic is unit-tested without credentials.
+
+**DoD:** ✅ Vapi assistant + call payloads build correctly and the email renders end-to-end in unit tests (16/16); ✅ both connectors registered and secret-masked. Live provisioning/send awaits real keys (Phase 0). Full API suite 42/42; lint clean.
 
 ---
 

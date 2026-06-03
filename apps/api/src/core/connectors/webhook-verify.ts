@@ -35,6 +35,13 @@ export function verifyInteraktSignature(
   return safeCompare(computed, sig);
 }
 
+// Vapi: a shared secret echoed back in the x-vapi-secret header (no HMAC).
+// Verified by constant-time comparison against the configured secret.
+export function verifyVapiSecret(provided: string, expected: string): boolean {
+  if (!provided || !expected) return false;
+  return safeCompare(provided, expected);
+}
+
 // Returns true if verification passes or is skipped (no signature header present + not enforced)
 export function checkWebhookSignature(opts: {
   provider: "twilio" | "interakt";
