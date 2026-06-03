@@ -1,0 +1,210 @@
+# Voice Agent — Sequential Build Checklist
+
+Build order for the **Outbound AI Voice Campaign System** (per `Voice_Campaign_System_BRD.docx`),
+extended with two added capabilities:
+
+- **Real-time sentiment analysis _during_ the call** (not only post-call)
+- **A two-way conversational AI agent on WhatsApp** (not only a one-shot follow-up message)
+
+> Follow the phases **in order**. Each phase has a **Definition of Done (DoD)** — do not start the next
+> phase until the current one is green. Compliance is built in from Phase 1, not bolted on at the end.
+
+---
+
+## Phase 0 — Prerequisites & Accounts (Day 0)
+
+- [ ] Create **Vapi.ai** account; buy/register an outbound **phone number** and brand the caller ID (anti-"Spam Likely")
+- [ ] Create **ElevenLabs** account (Creator plan, $22/mo); note the **voice IDs** for the A/B personas
+- [ ] Confirm **Anthropic** API key works (already used by Eynis intelligence layer)
+- [ ] Create **Resend** account; verify the sending domain (SPF/DKIM)
+- [ ] Confirm **Twilio WhatsApp** sender is approved (already in Eynis) — needed for WhatsApp chat
+- [ ] Create a **Calendly** event link (Phase 1 booking)
+- [ ] Add all secrets to env: `VAPI_API_KEY`, `VAPI_PHONE_NUMBER_ID`, `VAPI_WEBHOOK_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`
+- [ ] **Legal sanity-check** for target countries (TCPA / GDPR / TRAI / CASL / PDPA) before any real dialling
+
+**DoD:** All accounts active, a test call placeable from the Vapi dashboard, all env vars loaded by the API on boot.
+
+---
+
+## Phase 1 — Compliance Foundation (Day 1, before any calling code)
+
+- [ ] Add `consent` + `consentSource` + `consentAt` fields to the lead model (designed in Phase 2, reserved here)
+- [ ] Add a **mandatory disclosure line** as the first sentence of every script template (AI self-identifies)
+- [ ] Define the **opt-out phrase list** and the tenant-wide `opted_out` exclusion rule
+- [ ] Reserve a **GDPR erasure** path (null phone/email, keep anonymised outcome)
+- [ ] Decide DND/TRAI scrub strategy (pre-flight scrub before dialling Indian numbers)
+
+**DoD:** Compliance rules documented and represented in the schema; no campaign can dial a non-consented or opted-out lead.
+
+---
+
+## Phase 2 — Data Model (Day 1)
+
+- [ ] Add `VoiceCampaign` model (status lifecycle, scriptTemplate, outcomeTypes JSON, followUpRules JSON, voice/persona A+B, vapiAssistantIds, retry/concurrency/spend caps, calendlyLink, defaultCountryCode)
+- [ ] Add `CampaignLead` model (firstName/phone/email/company/jobTitle, `rawData` JSON, abVariant, status, callAttempts, nextCallAt, **consent fields**)
+- [ ] Add `CallRecord` model (vapiCallId, abVariant, status, outcome, durationSeconds, transcript, aiSummary, **sentiment**, keyPoints JSON, whatsappSent, emailSent, meetingBooked, timestamps)
+- [ ] Add **`SentimentEvent`** model (NEW): `callRecordId`/`conversationId`, speaker, text snippet, sentiment, score, timestamp — for live in-call sentiment timeline
+- [ ] Add **`WhatsappConversation`** model (NEW): leadId, campaignId, state (open/awaiting_reply/booked/closed/opted_out), lastMessageAt, threadSummary
+- [ ] Add **`WhatsappMessage`** model (NEW): conversationId, direction (in/out), body, sentiment, score, timestamp
+- [ ] Add Hotel/tenant relations for all new models (multi-tenant scope = `hotelId`)
+- [ ] `npm run db:migrate -w @eynis/api` then `npm run db:generate -w @eynis/api`
+
+**DoD:** Migration applies cleanly; Prisma client regenerated; every model carries `tenantId`.
+
+---
+
+## Phase 3 — Connectors & External Services (Day 1–2)
+
+- [ ] Register `voice_vapi` connector in `server.ts` registry (env flag + per-tenant `ConnectorConfig`)
+- [ ] Register `email_resend` connector (apiKey, fromAddress, fromName; secrets masked in API responses)
+- [ ] `npm install resend busboy csv-parse -w @eynis/api`
+- [ ] Write `apps/api/src/core/campaigns/vapi.ts` — `createAssistant()`, `initiateCall()`, `verifyWebhook()` with full TS types
+- [ ] Write `apps/api/src/core/email/resend.ts` — `renderTemplate()` reusing the `{variable}` namespace + `sendFollowUpEmail()`
+- [ ] Confirm webhook verification reuses the existing `x-vapi-secret` pattern from `webhook-verify.ts`
+
+**DoD:** Can provision a Vapi assistant and send a test email from a unit script; connectors visible (masked) via the connectors API.
+
+---
+
+## Phase 4 — Campaign CRUD (Day 2)
+
+- [ ] Add `policyMap` entries for all `/campaigns/*` routes (role: `owner`)
+- [ ] `POST /campaigns` (create draft, validate required fields)
+- [ ] `GET /campaigns` (list with aggregated stats)
+- [ ] `GET /campaigns/:id` (single + lead/call counts + outcome breakdown)
+- [ ] `PATCH /campaigns/:id` (update allowed fields only)
+- [ ] `DELETE /campaigns/:id` (guard: no CallRecords → else 409)
+- [ ] `POST /campaigns/:id/activate` (provision 2 Vapi assistants, store IDs, status=active)
+- [ ] `POST /campaigns/:id/pause` and `POST /campaigns/:id/complete`
+
+**DoD:** Full campaign lifecycle drivable via API with correct RBAC; activation provisions both A/B assistants.
+
+---
+
+## Phase 5 — Lead Import & Management (Day 3)
+
+- [ ] Write `apps/api/src/core/campaigns/csv-import.ts` — `parseMultipart()`, `parseLeadsFromCsv()`, `bulkInsertLeads()`
+- [ ] `POST /campaigns/:id/leads/import` — column mapping, E.164 phone normalisation, dedupe by phone, **reject non-consented rows**, return `{imported, skipped, errors}`
+- [ ] Preserve all original CSV columns in `rawData` for `{lead.custom.*}` injection
+- [ ] `GET /campaigns/:id/leads` (paginated; filter by `status`, `abVariant`)
+- [ ] `DELETE /campaigns/:id/leads/:leadId` (guard: status=pending only)
+
+**DoD:** A real CSV imports with correct mapping, normalised phones, skipped duplicates, and a clear error report.
+
+---
+
+## Phase 6 — Dialler Worker (Day 4)
+
+- [ ] Write `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()` (30s interval, separate from the 60s automation engine)
+- [ ] Slot calc: `maxConcurrent − in_progress`
+- [ ] **Atomic `calling` lock** before `initiateCall()` (prevents double-dial race)
+- [ ] Strict A/B alternation; reuse same variant on retry
+- [ ] Stuck-call recovery (in_progress > 15 min → reset to pending)
+- [ ] Retry scheduling (no_answer + attempts < maxRetries → `nextCallAt`)
+- [ ] **Spend cap** (total dials ≥ spendCapCalls → auto-pause + SSE alert)
+- [ ] Auto-pause campaign on Vapi 5xx; manual resume
+- [ ] Wire `startCampaignWorker()` into server startup alongside `startAutomationWorker()`
+
+**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls.
+
+---
+
+## Phase 7 — Webhook, Post-Call & **Real-Time In-Call Sentiment** (Day 4–5)
+
+- [ ] `POST /webhooks/vapi` — verify `x-vapi-secret` → dispatch by event type → upsert `CallRecord` by `vapiCallId`
+- [ ] Handle `call-started` (set status, startedAt)
+- [ ] Subscribe to Vapi **streaming transcript events** (`transcript` / `conversation-update` / `speech-update`)
+- [ ] **Real-time sentiment:** on each inbound utterance, run a lightweight classifier (Claude Haiku or keyword fallback) → write a `SentimentEvent` row with a rolling score
+- [ ] **Broadcast `campaign_sentiment_update` over SSE** so the dashboard shows a live mood meter during the call
+- [ ] **Sentiment-driven safety:** if sentiment turns sharply negative or an opt-out phrase is detected, instruct the agent (via Vapi) to soften/close and log `opted_out`
+- [ ] Handle `end-of-call-report` — store transcript, `analysis.structuredData` (outcome/sentiment/keyPoints), duration, endedAt; compute final aggregate sentiment from `SentimentEvent` timeline
+- [ ] Write `apps/api/src/core/campaigns/followup.ts` — resolve variables → trigger WhatsApp + email per `followUpRules` (skip entirely for `opted_out`)
+- [ ] Broadcast `campaign_call_ended` and `campaign_followup_sent` SSE events
+
+**DoD:** Posting a simulated Vapi stream updates a live sentiment timeline; end-of-call updates the record and fires follow-ups; opted-out leads get no follow-up.
+
+---
+
+## Phase 8 — **Conversational WhatsApp Agent** (Day 5–6)
+
+> Extends Eynis's existing inbound WhatsApp ingestion into a stateful, two-way AI conversation tied to a campaign lead.
+
+- [ ] Add `whatsapp_agent` mode to the connector/ingest path (reuse existing Twilio/Interakt inbound)
+- [ ] On inbound WhatsApp, resolve/create a `WhatsappConversation` for the matching `CampaignLead`
+- [ ] Write `apps/api/src/core/campaigns/whatsapp-agent.ts` — builds context (campaign script, persona, lead vars, prior thread), calls Claude to generate the next reply, sends via the WhatsApp connector
+- [ ] **Per-message sentiment:** classify each inbound WhatsApp message → store on `WhatsappMessage` + roll into conversation sentiment
+- [ ] **Booking intent:** when the model detects intent, inject `{booking.calendlyLink}` into the reply
+- [ ] **Opt-out detection** over WhatsApp → mark conversation + lead `opted_out` tenant-wide, stop all messaging
+- [ ] Conversation state machine (open → awaiting_reply → booked / closed / opted_out); idempotency so a duplicate inbound webhook doesn't double-reply
+- [ ] Broadcast `whatsapp_message` SSE events for the live feed
+
+**DoD:** A real WhatsApp reply triggers a contextual AI response within seconds, sentiment is recorded per message, "stop" opts the lead out, and booking intent surfaces the Calendly link.
+
+---
+
+## Phase 9 — Analytics & A/B (Day 5–6)
+
+- [ ] `GET /campaigns/:id/calls` (paginated, join lead firstName + company)
+- [ ] `GET /campaigns/:id/calls/:callId` (full transcript + sentiment timeline + WhatsApp thread)
+- [ ] `GET /campaigns/:id/analytics` — per-variant funnel, answer/interest/booking rates, avg duration, **avg sentiment per variant**, two-proportion z-test for leading variant
+- [ ] Enforce ≥50 answered per arm before declaring a winner ("insufficient sample" otherwise)
+- [ ] CSV export: `GET /campaigns/:id/calls?format=csv` (Content-Disposition header)
+
+**DoD:** Analytics endpoint returns correct funnel + per-variant stats + sentiment, with winner gating.
+
+---
+
+## Phase 10 — Frontend (Day 6–9)
+
+- [ ] Add campaign fetch/mutation functions to `lib/data.ts` and `lib/api.ts`; add Next.js proxy routes under `app/api/campaigns/`
+- [ ] Add **Voice Campaigns** nav item (Mic icon) to `app-shell.tsx`
+- [ ] `/voice-campaigns` — list with status chips + per-campaign stats + New Campaign CTA
+- [ ] `/voice-campaigns/new` — basics + script editor with **variable reference panel** + A/B voice picker
+- [ ] `/voice-campaigns/[id]` — tabs: **Overview · Leads · Calls · Settings**
+  - [ ] Overview: funnel + A/B stat cards + leading-variant badge + **avg sentiment per variant**
+  - [ ] Leads: paginated table, status/variant chips, filters, remove pending
+  - [ ] Calls: SSE live log; expandable transcript with speaker labels, AI summary, **live sentiment meter / timeline**, follow-up badges, and the **WhatsApp thread view**
+  - [ ] Settings: edit script, calendly link, voices, outcomes, follow-up rules, retry/concurrency/spend caps
+- [ ] `/voice-campaigns/[id]/leads/import` — CSV drop zone → column mapping → 5-row preview → import
+- [ ] Components: `campaign-ab-chart.tsx`, `campaign-leads-table.tsx`, `campaign-call-log.tsx`, **`campaign-sentiment-meter.tsx`**, **`campaign-whatsapp-thread.tsx`**
+
+**DoD:** A campaign can be created, leads imported, activated, and watched live — including the sentiment meter and WhatsApp thread — entirely from the UI.
+
+---
+
+## Phase 11 — Compliance Hardening (Day 9)
+
+- [ ] Verify mandatory AI disclosure is present and non-removable in every script
+- [ ] Verify opt-out (voice + WhatsApp) permanently excludes the lead tenant-wide and suppresses all follow-up
+- [ ] Implement GDPR **erasure endpoint** (nulls phone/email, retains anonymised outcome)
+- [ ] Implement consent enforcement at import and pre-dial
+- [ ] (If India) wire DND/TRAI pre-flight scrub
+- [ ] Daily spend alert + failure-rate alert (>5%)
+
+**DoD:** Every compliance control from Phase 1 is live and tested; nothing can dial/message a non-consented or opted-out lead.
+
+---
+
+## Phase 12 — Testing, Validation & Launch (Day 10)
+
+- [ ] API tests: webhook → CallRecord update; no_answer retry; spend-cap auto-pause; real-time sentiment write; WhatsApp agent reply + opt-out
+- [ ] `npm run lint` and `npm run test` green across packages
+- [ ] Empty states (no campaigns / no leads / no calls) with contextual CTAs
+- [ ] Full end-to-end: create → import → activate → observe live call + sentiment → end-of-call follow-up → WhatsApp back-and-forth → analytics
+- [ ] Update `CLAUDE.md`: new env vars, new routes, campaign + sentiment + WhatsApp-agent workers, new connectors
+- [ ] Update seed script: demo VoiceCampaign for "The Riviera" with sample leads
+- [ ] Build → test → self-review → user validation → push (per engineering principles)
+
+**DoD:** Feature passes a full live run with sentiment + WhatsApp chat working, all tests pass, docs and seed updated.
+
+---
+
+## Capability Cross-Reference
+
+| Added capability | Phases that deliver it |
+|---|---|
+| Real-time in-call sentiment | Phase 2 (`SentimentEvent`), Phase 7 (stream + classify + SSE + safety), Phase 9 (per-variant avg), Phase 10 (sentiment meter) |
+| Two-way WhatsApp chat agent | Phase 2 (`WhatsappConversation`/`WhatsappMessage`), Phase 8 (agent + state + per-message sentiment + opt-out), Phase 10 (thread view) |
+| Compliance overcoming the flags | Phase 1 (foundation) + Phase 11 (hardening), enforced in Phases 5–8 |
+| Cost control | Phase 6 (spend cap, concurrency, retry limits, auto-pause) |
+| Latency control | Phase 3/7 (Haiku model, voice-carries-quality, latency monitoring) |
