@@ -193,7 +193,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [notifOpen, setNotifOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [accessDenied, setAccessDenied] = useState(false);
+  // `orgRole` is the *currently viewed* role (may be a preview); `realOrgRole`
+  // is the user's actual assigned role. Only a real admin may preview/switch.
   const [orgRole, setOrgRoleState] = useState<OrgRole>(initialOrgRole);
+  const [realOrgRole, setRealOrgRole] = useState<OrgRole>(initialOrgRole);
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
   const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
 
@@ -206,7 +209,19 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
       .then(r => r.json())
       .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null }) => {
         if (data.ok && data.exists) {
-          if (data.orgRole) setOrgRoleState(data.orgRole);
+          if (data.orgRole) {
+            setRealOrgRole(data.orgRole);
+            if (data.orgRole === "org_admin") {
+              // Admins may resume a persisted preview; otherwise show admin.
+              const saved = localStorage.getItem("eynis_org_role") as OrgRole | null;
+              setOrgRoleState(saved && SYSTEM_ROLES.some(r => r.key === saved) ? saved : data.orgRole);
+            } else {
+              // Real non-admins are always locked to their assigned role —
+              // never honour a stale preview left in localStorage.
+              localStorage.removeItem("eynis_org_role");
+              setOrgRoleState(data.orgRole);
+            }
+          }
           if (data.industry) setIndustryState(data.industry);
           if (data.propertyName) setPropertyNameState(data.propertyName);
         }
@@ -217,16 +232,18 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   // ── Load persisted preview-role (admin-only) ─────────────────────────────
   // Non-admins stay locked to their assigned role; localStorage is ignored.
   useEffect(() => {
-    if (orgRole !== "org_admin") return;
+    if (realOrgRole !== "org_admin") return;
     const saved = localStorage.getItem("eynis_org_role") as OrgRole | null;
     if (saved && SYSTEM_ROLES.some(r => r.key === saved)) {
       setOrgRoleState(saved);
     }
-  }, [orgRole]);
+  }, [realOrgRole]);
 
   function setOrgRole(r: OrgRole) {
-    // Only admins can switch role (preview-as feature)
-    if (orgRole !== "org_admin") return;
+    // Only real admins can switch role (preview-as feature). We gate on the
+    // *real* role, not the currently-viewed one — otherwise an admin who has
+    // previewed a lower role would be unable to exit the preview.
+    if (realOrgRole !== "org_admin") return;
     setOrgRoleState(r);
     localStorage.setItem("eynis_org_role", r);
     if (!canAccessRoute(r, pathname)) {
