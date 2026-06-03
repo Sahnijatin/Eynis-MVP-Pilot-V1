@@ -26,15 +26,18 @@ extended with two added capabilities:
 
 ---
 
-## Phase 1 — Compliance Foundation (Day 1, before any calling code)
+## Phase 1 — Compliance Foundation (Day 1, before any calling code) ✅ DONE
 
-- [ ] Add `consent` + `consentSource` + `consentAt` fields to the lead model (designed in Phase 2, reserved here)
-- [ ] Add a **mandatory disclosure line** as the first sentence of every script template (AI self-identifies)
-- [ ] Define the **opt-out phrase list** and the tenant-wide `opted_out` exclusion rule
-- [ ] Reserve a **GDPR erasure** path (null phone/email, keep anonymised outcome)
-- [ ] Decide DND/TRAI scrub strategy (pre-flight scrub before dialling Indian numbers)
+- [x] Reserve `consent` + `consentSource` + `consentAt` via the `LeadConsent` type in `@eynis/shared` (schema fields wired onto `CampaignLead` in Phase 2)
+- [x] Add a **mandatory disclosure line** — `MANDATORY_DISCLOSURE` + `ensureDisclosure()` / `hasDisclosure()` in `compliance.ts`
+- [x] Define the **opt-out phrase list** (`OPT_OUT_PHRASES` + `OPT_OUT_KEYWORDS`) + `detectOptOut()`; reserve the tenant-wide `RESERVED_OUTCOME_OPTED_OUT` exclusion outcome
+- [x] Reserve a **GDPR erasure** path — `gdprErase()` (nulls identifiers, retains anonymised outcome)
+- [x] Decide DND/TRAI scrub strategy — `requiresDndScrub()` + `dndScrub()` (flags `+91` numbers, defers live registry to Phase 2)
+- [x] Consent enforcement guard `canContactLead()` + `consentFromImport()`; full unit-test coverage in `compliance.test.ts` (13 tests)
 
-**DoD:** Compliance rules documented and represented in the schema; no campaign can dial a non-consented or opted-out lead.
+**Delivered:** `apps/api/src/core/campaigns/compliance.ts`, `compliance.test.ts`, and compliance types in `packages/shared/src/index.ts`.
+
+**DoD:** Compliance rules are codified as pure, tested functions; the contact guard rejects non-consented and opted-out leads. Schema/route wiring lands in Phases 2, 5–8 and 11.
 
 ---
 
