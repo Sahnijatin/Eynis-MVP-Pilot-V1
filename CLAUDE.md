@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Product Principles (read before designing anything)
+
+These are standing directives — apply them to **every** new feature, schema change, doc, and UI.
+
+1. **Industry-agnostic, not hospitality-specific.** Eynis began as a hotel product but is now a generic operations platform serving many industries (hospitality, manufacturing, F&B, travel, healthcare, and more via `apps/web/lib/industry-config.ts`). Design every new capability to work for *any* industry. Prefer neutral domain language (tenant/organization, contact/customer, request) over hospitality terms (hotel/guest) in new code, copy, and docs. NB: the existing schema is still hospitality-named (`model Hotel`, `Guest`, ~700 refs) — treat that as the tenant/contact entity conceptually, and don't add *new* hospitality-specific assumptions on top of it.
+2. **White-label by default.** Customers will rebrand and run Eynis as their own product. Anything customer-facing must be themeable per tenant (name, logo, colors, and **their own sending domain** for email — see `docs/email-deliverability-design.md`). Never hard-code "Eynis" branding or an `eynis.com` identity into customer-facing output.
+
 ## Commands
 
 ### Development
