@@ -10,10 +10,14 @@ import { prisma } from "../../db/prisma";
 import { evaluateContact } from "./guard";
 import { getSender, type ChannelSender, type SendContext } from "./senders";
 import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
+import { campaignMaySendNow } from "./schedule-gate";
 import { parseExitOn, nextRunFrom, type ExitCondition } from "./sequences";
 
 const TICK_MS = Number(process.env.SEQUENCE_RUNNER_INTERVAL_MS ?? 60_000);
 const BATCH = Number(process.env.SEQUENCE_RUNNER_BATCH ?? 200);
+// When a drip step falls outside its lead's campaign send window, defer this long
+// before re-checking (so it eventually fires once the window opens) (F-15).
+const SEND_WINDOW_DEFER_MIN = Number(process.env.SEQUENCE_DEFER_MIN ?? 30);
 
 export interface SequenceDeps {
   resolveSender?: (channel: string) => ChannelSender | null;
@@ -103,6 +107,18 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
       await logEvent(keys, step.order, step.channel, "skipped", decision.reason);
       skipped++;
       continue;
+    }
+
+    // Honour the originating campaign's send window / quiet-hours so drip steps
+    // don't fire overnight (F-15). Sequences have no schedule of their own, so we
+    // gate on the lead's campaign; if outside the window, defer without advancing.
+    const leadCampaign = await prisma.voiceCampaign.findUnique({
+      where: { id: e.lead.campaignId },
+      select: { tenantId: true, scheduledStartAt: true, sendWindowStartMin: true, sendWindowEndMin: true, sendDays: true, sendTimeZone: true },
+    });
+    if (leadCampaign && !(await campaignMaySendNow(leadCampaign, now))) {
+      await prisma.sequenceEnrollment.update({ where: { id: e.id }, data: { nextRunAt: new Date(now.getTime() + SEND_WINDOW_DEFER_MIN * 60_000) } });
+      continue; // deferred — neither sent nor skipped this tick
     }
 
     // WhatsApp steps must resolve to an approved library template.

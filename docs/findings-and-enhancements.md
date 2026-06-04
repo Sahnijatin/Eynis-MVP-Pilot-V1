@@ -62,7 +62,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ✅ fixed (#59) |
 | F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ✅ fixed (#60) |
 | F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ✅ fixed (#61) |
-| F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ☐ open |
+| F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ✅ fixed (#62) |
 | F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ✅ fixed (#63) |
 | F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ☐ open |
 | F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ☐ open |
@@ -259,6 +259,11 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-15 (#62) — sequence runner ignored quiet-hours — fixed.** The drip runner had no
+  schedule gate, so steps could fire overnight. Sequences carry no schedule of their own, so
+  each step now gates on its lead's originating campaign send-window via `campaignMaySendNow`;
+  outside the window the enrollment is **deferred** (nextRunAt pushed `SEQUENCE_DEFER_MIN`,
+  default 30m) rather than sent or stopped. Added a deferral regression test. Suite: 242 → 243.
 - **F-14 / F-16 (#61, #63) — post-call follow-up + Vapi webhook secret — fixed.** `followup.ts`
   now mirrors the dispatcher: it enforces the approved-WhatsApp-template gate, honours the
   durable `DoNotContact` + `EmailSuppression` lists, and is idempotent (per-channel
