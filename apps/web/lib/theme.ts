@@ -25,6 +25,8 @@ export interface ResolvedTheme {
   subtitle: string;
   /** Tenant logo image, or null to fall back to the industry glyph. */
   logoUrl: string | null;
+  /** Browser-tab favicon; falls back to the logo, then null. */
+  faviconUrl: string | null;
   /** Primary brand color (buttons, accents). */
   primaryColor: string;
   /** Secondary accent; defaults to primaryColor. */
@@ -42,6 +44,7 @@ export function resolveTheme(
     brandName: b.brandName ?? null,
     subtitle: b.tagline || industry.tagline,
     logoUrl: b.logoUrl ?? null,
+    faviconUrl: b.faviconUrl || b.logoUrl || null,
     primaryColor,
     accentColor: b.accentColor || primaryColor,
     hidePoweredBy: b.hidePoweredBy === true,
