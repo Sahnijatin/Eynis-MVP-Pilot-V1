@@ -42,6 +42,30 @@ model Hotel {
   whatsappMessages      WhatsappMessage[]
   messageDeliveries     MessageDelivery[]
   doNotContacts         DoNotContact[]
+  branding              TenantBranding?
+}
+
+// Per-tenant white-label branding. All fields optional — anything left null
+// falls back to the tenant's industry defaults (see apps/web/lib/theme.ts), then
+// to the Eynis defaults. This is the white-label override layer; the model is
+// still keyed on `Hotel` (the tenant entity) pending the Hotel→Tenant rename
+// (see docs/industry-agnostic-and-white-label-plan.md).
+model TenantBranding {
+  id            String   @id @default(cuid())
+  hotelId       String   @unique
+  hotel         Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  brandName     String?  // overrides the sidebar title / wordmark
+  tagline       String?  // overrides the industry tagline (sidebar subtitle)
+  logoUrl       String?  // tenant logo (sidebar; later: emails, auth)
+  faviconUrl    String?
+  primaryColor  String?  // overrides industry accentColor (primary brand color)
+  accentColor   String?  // secondary accent; defaults to primaryColor when null
+  supportEmail  String?
+  hidePoweredBy Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([hotelId])
 }
 
 model User {

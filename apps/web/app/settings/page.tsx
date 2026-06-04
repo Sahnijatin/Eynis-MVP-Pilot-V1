@@ -2,6 +2,7 @@ import { fetchConnectorRegistry } from "../../lib/data";
 import { Save, Camera, Clock, Phone } from "lucide-react";
 import { ConnectorConfigPanel } from "../../components/ui/connector-config-panel";
 import { ChangeIndustry } from "../../components/ui/change-industry";
+import { BrandingPanel } from "../../components/ui/branding-panel";
 import { getUserWorkspace } from "../../lib/workspace";
 import { resolveUserContext } from "../../lib/user-context";
 
@@ -100,6 +101,9 @@ export default async function SettingsPage() {
               </>
             )}
           </div>
+
+          {/* White-label branding — admins only */}
+          {isAdmin && <BrandingPanel />}
 
           {/* Account Information */}
           <div className="card">
