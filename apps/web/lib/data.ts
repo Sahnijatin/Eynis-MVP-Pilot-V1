@@ -605,6 +605,27 @@ export async function fetchSequences(): Promise<{ ok: boolean; items: SequenceRo
   return (await res.json()) as { ok: boolean; items: SequenceRow[] };
 }
 
+export interface MessageTemplateRow {
+  id: string;
+  name: string;
+  channel: "whatsapp" | "email";
+  category: string;
+  language: string;
+  subject: string | null;
+  body: string;
+  variables: string[];
+  status: "draft" | "submitted" | "approved" | "rejected";
+  providerTemplateId: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchTemplates(): Promise<{ ok: boolean; items: MessageTemplateRow[] }> {
+  const res = await authedFetch("/templates");
+  return (await res.json()) as { ok: boolean; items: MessageTemplateRow[] };
+}
+
 export async function fetchCampaigns(): Promise<{ ok: boolean; items: CampaignSummary[] }> {
   const res = await authedFetch("/campaigns?limit=100");
   return (await res.json()) as { ok: boolean; items: CampaignSummary[] };

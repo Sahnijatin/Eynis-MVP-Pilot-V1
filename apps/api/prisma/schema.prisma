@@ -31,6 +31,7 @@ model Hotel {
   invitations           Invitation[]
   voiceCampaigns        VoiceCampaign[]
   leadSegments          LeadSegment[]
+  messageTemplates      MessageTemplate[]
   sequences             Sequence[]
   sequenceEnrollments   SequenceEnrollment[]
   sequenceEvents        SequenceEvent[]
@@ -426,6 +427,32 @@ model SequenceEvent {
 
   @@index([sequenceId, createdAt])
   @@index([enrollmentId])
+}
+
+// Reusable message template library with approval-status tracking. WhatsApp
+// templates must be approved by Meta/Twilio before use; this records that
+// lifecycle (draft → submitted → approved/rejected) and the approved provider
+// id (Content SID) so campaigns/sequences can pick an approved template instead
+// of pasting a raw SID. Email templates need no approval.
+model MessageTemplate {
+  id                 String   @id @default(cuid())
+  hotelId            String
+  name               String
+  channel            String // whatsapp | email
+  category           String   @default("marketing") // marketing | utility | authentication
+  language           String   @default("en")
+  subject            String? // email only
+  body               String // text/HTML with {variable} or {{1}} placeholders
+  variables          String   @default("[]") // JSON ordered list of {variable} exprs
+  status             String   @default("draft") // draft | submitted | approved | rejected
+  providerTemplateId String? // approved Content SID / Meta template id
+  rejectionReason    String?
+  submittedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  hotel              Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, channel, status])
 }
 
 // Saved, tenant-wide audience filter. `rules` is a JSON SegmentRules object
