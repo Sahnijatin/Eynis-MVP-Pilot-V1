@@ -21,6 +21,11 @@ test("normalizeToE164 rejects junk and empties", () => {
   assert.equal(normalizeToE164(null, "+91"), null);
 });
 
+test("normalizeToE164 rejects a leading zero after + (invalid country code, #4)", () => {
+  assert.equal(normalizeToE164("+0123456789", "+91"), null);
+  assert.equal(normalizeToE164("+09876543210", "+1"), null);
+});
+
 // ── parseLeadsFromCsv ─────────────────────────────────────────────────────────
 
 const columnMap: Record<string, EynisLeadField> = {

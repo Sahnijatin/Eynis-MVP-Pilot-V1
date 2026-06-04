@@ -35,6 +35,8 @@ model Hotel {
   sentimentEvents       SentimentEvent[]
   whatsappConversations WhatsappConversation[]
   whatsappMessages      WhatsappMessage[]
+  messageDeliveries     MessageDelivery[]
+  doNotContacts         DoNotContact[]
 }
 
 model User {
@@ -295,27 +297,38 @@ model VoiceCampaign {
   hotelId               String
   name                  String
   status                String                 @default("draft") // draft | active | paused | completed
-  scriptTemplate        String // system prompt with {variable} placeholders
+  channels              String                 @default("[\"voice\"]") // JSON array: voice | whatsapp | email
+  // ── Voice channel (optional — only when "voice" in channels) ──
+  scriptTemplate        String? // system prompt with {variable} placeholders
   outcomeTypes          String                 @default("[]") // JSON array of valid outcome labels
   followUpRules         String                 @default("{}") // JSON map of outcome -> [channels]
   calendlyLink          String?
   agentName             String? // name the AI introduces itself with; falls back to the hotel name
-  voiceA                String // ElevenLabs voice name for variant A
-  voiceB                String // ElevenLabs voice name for variant B
-  personaA              String // label, e.g. "Enthusiastic"
-  personaB              String // label, e.g. "Sophisticated"
+  voiceA                String? // ElevenLabs voice name for variant A
+  voiceB                String? // ElevenLabs voice name for variant B
+  personaA              String? // label, e.g. "Enthusiastic"
+  personaB              String? // label, e.g. "Sophisticated"
   vapiAssistantIdA      String? // provisioned on activation
   vapiAssistantIdB      String?
+  // ── WhatsApp channel (pre-approved template) ──
+  whatsappContentSid    String? // provider-approved template id (Twilio Content SID / Meta template)
+  whatsappTemplateBody  String? // approved text with {variable} placeholders (for preview)
+  whatsappVariables     String                 @default("[]") // JSON ordered list of {variable} exprs for the template
+  // ── Email channel ──
+  emailSubjectTemplate  String? // {variable} placeholders
+  emailBodyTemplate     String? // HTML, {variable} placeholders
+  // ── Shared engine controls ──
   maxRetries            Int                    @default(2)
   retryDelayHours       Int                    @default(24)
   maxConcurrent         Int                    @default(5)
-  spendCapCalls         Int? // auto-pause after this many total dials
+  spendCapCalls         Int? // auto-pause after this many total sends/dials
   defaultCountryCode    String                 @default("+91") // for phone normalisation
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   leads                 CampaignLead[]
   calls                 CallRecord[]
+  deliveries            MessageDelivery[]
   whatsappConversations WhatsappConversation[]
 
   @@index([hotelId, status])
@@ -345,6 +358,7 @@ model CampaignLead {
   hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaign              VoiceCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   calls                 CallRecord[]
+  deliveries            MessageDelivery[]
   whatsappConversations WhatsappConversation[]
 
   // Dedupe phone within a campaign. NOTE: Postgres treats NULLs as distinct, so
@@ -365,6 +379,7 @@ model CallRecord {
   abVariant       String // A | B
   status          String           @default("initiated") // initiated | in_progress | ended | failed
   outcome         String? // value from campaign.outcomeTypes
+  error           String? // failure detail (initiation error, stuck_timeout, …)
   durationSeconds Int?
   transcript      String?
   aiSummary       String?
@@ -439,4 +454,42 @@ model WhatsappMessage {
   conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+// Per-lead outbound message record for the WhatsApp + email channels (the
+// non-voice analogue of CallRecord). One row per send attempt.
+model MessageDelivery {
+  id              String        @id @default(cuid())
+  hotelId         String
+  campaignId      String
+  leadId          String
+  channel         String // whatsapp | email
+  status          String        @default("queued") // queued | sent | failed | delivered | replied
+  renderedSubject String? // email only
+  renderedBody    String? // what was sent (audit + UI preview)
+  providerId      String? // provider message id
+  error           String?
+  sentAt          DateTime?
+  createdAt       DateTime      @default(now())
+  hotel           Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  campaign        VoiceCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead            CampaignLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, channel, status])
+  @@index([hotelId, createdAt])
+}
+
+// Durable, tenant-wide do-not-contact suppression list. Survives lead/campaign
+// deletion (unlike the optedOut flag on a lead), so an opt-out is permanent
+// across all future campaigns and channels (compliance review finding #3).
+model DoNotContact {
+  id        String   @id @default(cuid())
+  hotelId   String
+  phone     String // E.164
+  reason    String   @default("opt_out") // opt_out | dnd | manual | gdpr_erasure
+  createdAt DateTime @default(now())
+  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelId, phone])
+  @@index([hotelId])
 }

@@ -3,6 +3,7 @@ import { prisma } from "../../db/prisma";
 interface OutboundResult {
   sent: boolean;
   provider: string | null;
+  id?: string; // provider message id (e.g. Twilio message SID)
   error?: string;
 }
 
@@ -120,6 +121,52 @@ export async function sendWhatsAppReply(hotelId: string, toPhone: string, messag
   }
 
   return { sent: false, provider: null, error: "No WhatsApp provider configured" };
+}
+
+// Sends a pre-approved WhatsApp template (Twilio Content API) — required for
+// business-initiated outbound to people who haven't messaged first. Resolves
+// Twilio config from the hotel's connector config, then env. Returns the
+// message SID as `id` for delivery tracking.
+export async function sendWhatsAppTemplate(
+  hotelId: string,
+  toPhone: string,
+  contentSid: string,
+  contentVariables: Record<string, string>,
+): Promise<OutboundResult> {
+  const cfg = await prisma.connectorConfig.findUnique({
+    where: { hotelId_connectorKey: { hotelId, connectorKey: "whatsapp_twilio" } },
+    select: { configJson: true, enabled: true },
+  }).catch(() => null);
+  const parsed = cfg?.enabled ? parseConfig(cfg.configJson) : {};
+  const accountSid = asStr(parsed.accountSid) ?? asStr(process.env.TWILIO_ACCOUNT_SID);
+  const authToken = asStr(parsed.authToken) ?? asStr(process.env.TWILIO_AUTH_TOKEN);
+  const fromNumber = asStr(parsed.fromNumber) ?? asStr(process.env.TWILIO_WHATSAPP_FROM);
+  if (!accountSid || !authToken || !fromNumber) {
+    return { sent: false, provider: "twilio", error: "Twilio WhatsApp not configured" };
+  }
+
+  const to = toPhone.startsWith("whatsapp:") ? toPhone : `whatsapp:${toPhone}`;
+  const from = fromNumber.startsWith("whatsapp:") ? fromNumber : `whatsapp:${fromNumber}`;
+  const body = new URLSearchParams({ To: to, From: from, ContentSid: contentSid });
+  if (Object.keys(contentVariables).length > 0) body.set("ContentVariables", JSON.stringify(contentVariables));
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const credentials = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Authorization": `Basic ${credentials}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.statusText);
+      return { sent: false, provider: "twilio", error: `Twilio API error ${res.status}: ${err}` };
+    }
+    const data = (await res.json().catch(() => ({}))) as { sid?: string };
+    return { sent: true, provider: "twilio", id: data.sid };
+  } catch (e) {
+    return { sent: false, provider: "twilio", error: `Twilio request failed: ${(e as Error).message}` };
+  }
 }
 
 export function buildReplyMessage(guestName: string, summary: string, requestId: string): string {

@@ -1,5 +1,8 @@
 # Voice Agent — Sequential Build Checklist
 
+> 📊 **For the executive status (plan vs done vs remaining + next steps), see [`voice-agent-status.md`](./voice-agent-status.md).**
+> This file is the detailed phase-by-phase build log.
+
 Build order for the **Outbound AI Voice Campaign System** (per `Voice_Campaign_System_BRD.docx`),
 extended with two added capabilities:
 
@@ -120,28 +123,53 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 - [x] **#10** (security) Webhook host derived only from `API_PUBLIC_URL` (`webhookHostFromPublicUrl`); the request Host header is never trusted. Activation 500s with a clear message if `API_PUBLIC_URL` is unset.
 - [x] **#8** `maxConcurrent: 0` now preserved (dropped the `|| 5` coercion) — provision-but-don't-dial is honoured.
 
-**Scheduled into Phase 6:** **#3** (durable opt-out) and **#4** (E.164 `+0…`) — see the Phase 6 task list below.
+**Scheduled into Phase 6:** **#3** (durable opt-out) and **#4** (E.164 `+0…`) — done in Phase 6.0 below.
 
 ---
 
-## Phase 6 — Dialler Worker (Day 4)
+## 🔀 Direction change — Multi-channel campaigns (decided post-Phase 5)
 
-- [ ] Write `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()` (30s interval, separate from the 60s automation engine)
-- [ ] Slot calc: `maxConcurrent − in_progress`
-- [ ] **Atomic `calling` lock** before `initiateCall()` (prevents double-dial race)
-- [ ] Strict A/B alternation; reuse same variant on retry
-- [ ] Stuck-call recovery (in_progress > 15 min → reset to pending)
-- [ ] Retry scheduling (no_answer + attempts < maxRetries → `nextCallAt`)
-- [ ] **Spend cap** (total dials ≥ spendCapCalls → auto-pause + SSE alert)
-- [ ] Auto-pause campaign on Vapi 5xx; manual resume
-- [ ] Pre-dial consent + DND guard: skip leads failing `canContactLead` / on the suppression list; respect `dndScrub()` for `+91` numbers
-- [ ] Wire `startCampaignWorker()` into server startup alongside `startAutomationWorker()`
+Campaigns are no longer voice-only. A campaign now declares **channels** (`voice`, `whatsapp`, `email`, in any combination) and carries a **configurable template per channel**. The original "voice with follow-ups" model becomes "pick the channel(s), configure templates, launch." Decisions: **multi-channel per campaign**, **all three channels in parallel**, **pre-approved WhatsApp templates**.
 
-**Folded-in review fixes (from Phase 5.5 backlog):**
-- [ ] **#3** (high) Durable tenant-wide opt-out — add a phone-level `DoNotContact` model (`hotelId` + `phone`, unique, survives lead/campaign deletion). Check it at import (`bulkInsertLeads`) and pre-dial in the worker; add a `suppressContact(hotelId, phone, reason)` helper the worker/Phase 7–8 call on opt-out. Replaces the current fragile "scan `optedOut` lead rows" approach.
-- [ ] **#4** (medium) `normalizeToE164` — reject a leading zero after `+` (`+0…` is not valid E.164), so bad numbers fail at import rather than at dial time.
+### Phase 6.0 — Multi-channel foundation ✅ DONE
+- [x] Generalised `VoiceCampaign`: `channels` (JSON), nullable voice fields, WhatsApp (`whatsappContentSid` / `whatsappTemplateBody` / `whatsappVariables`) + email (`emailSubjectTemplate` / `emailBodyTemplate`) template fields (migration `multichannel_campaigns`)
+- [x] `MessageDelivery` model — per-lead outbound record for WhatsApp/email (non-voice analogue of `CallRecord`)
+- [x] **#3** Durable `DoNotContact` suppression model + `suppressContact()` / `isSuppressed()`; checked at import (survives campaign/lead deletion)
+- [x] **#4** `normalizeToE164` rejects `+0…` (country code can't start with 0)
+- [x] Channel-aware validation (`validateChannels`, per-channel required fields), update builder, and serializer; activation only provisions Vapi for the `voice` channel
+- [x] Tests: channel validation, per-channel requirements, #3 durable-suppression-across-deletion, #4 — full API suite 89/89, lint clean
 
-**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed (opted-out) number even across campaign deletion. E.164 validation rejects `+0…`.
+### Phase 6.1 — Unified send engine ✅ DONE
+- [x] `apps/api/src/core/campaigns/dispatch.ts` — 30s worker; per active campaign × messaging channel, batched (`CAMPAIGN_DISPATCH_BATCH`, default 200) so 50 or 50,000 leads are handled flat; idempotent per channel (a delivery row excludes the lead)
+- [x] Shared **pre-send guard** `guard.ts` (`evaluateContact`): consent + durable suppression + channel-aware DND (voice-only, env-gated `ENFORCE_DND_SCRUB`)
+- [x] **Channel sender registry** `senders.ts` — `ChannelSender` interface + `getSender()`; add a channel by registering a sender (reusable/dynamic)
+- [x] WhatsApp sender: approved-template send via Twilio Content API (`sendWhatsAppTemplate`), ordered `ContentVariables` rendered from the `{variable}` system
+- [x] Email sender: subject/body templates via Resend
+- [x] Per-channel **spend cap** bounds the batch + auto-pauses (`campaign_paused` SSE); `campaign_message_sent` SSE per send
+- [x] Records every send/skip/failure on `MessageDelivery`
+- [x] CSV import made scale-safe: chunked lookups + inserts (`DB_CHUNK=1000`), configurable `CSV_MAX_UPLOAD_MB` (default 25)
+- [x] Wired `startCampaignDispatchWorker()` into server startup
+- [x] Tests: guard, senders (render/registry), dispatch (send + idempotency + guard-skip + spend-cap pause), E.164/import scale — full API suite 100/100, lint clean
+
+---
+
+## Phase 6 — Voice Dialler Worker — voice channel of the unified engine ✅ DONE
+
+- [x] `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()`, `processVoiceCampaign()` (30s interval, separate from the 60s automation engine)
+- [x] Slot calc: `maxConcurrent − in-flight`
+- [x] **Atomic `calling` lock** (`updateMany where status=pending`) before `initiateCall()` — prevents double-dial race
+- [x] Balanced A/B assignment (lighter arm); variant reused on retry
+- [x] Stuck-call recovery (in-flight > 15 min → call `failed` + lead reset to pending)
+- [x] **Spend cap** (dials + sent messages ≥ spendCapCalls → auto-pause + SSE)
+- [x] Auto-pause on Vapi 5xx; failed initiation returns the lead to the queue (no silent failure)
+- [x] Pre-dial shared guard (`evaluateContact`): consent + durable suppression + DND; suppressed/opted-out → `opted_out`, no-consent → `failed`
+- [x] Vapi calls dependency-injected → fully tested without keys; added `CallRecord.error` (migration)
+- [x] Wired `startCampaignWorker()` into server startup (beside dispatch + automation workers)
+- [x] Picks due retries via `nextCallAt` (the no_answer → nextCallAt scheduling itself lands in Phase 7's webhook)
+
+_#3 (durable opt-out) and #4 (E.164 `+0…`) completed in Phase 6.0 above._
+
+**DoD:** ✅ Worker dials due pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed number. Dialler tests 7/7; full API suite 107/107, lint clean.
 
 ---
 
@@ -190,21 +218,22 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 
 ---
 
-## Phase 10 — Frontend (Day 6–9)
+## Phase 10 — Frontend (multi-channel) — core flow ✅ DONE
 
-- [ ] Add campaign fetch/mutation functions to `lib/data.ts` and `lib/api.ts`; add Next.js proxy routes under `app/api/campaigns/`
-- [ ] Add **Voice Campaigns** nav item (Mic icon) to `app-shell.tsx`
-- [ ] `/voice-campaigns` — list with status chips + per-campaign stats + New Campaign CTA
-- [ ] `/voice-campaigns/new` — basics + script editor with **variable reference panel** + A/B voice picker
-- [ ] `/voice-campaigns/[id]` — tabs: **Overview · Leads · Calls · Settings**
-  - [ ] Overview: funnel + A/B stat cards + leading-variant badge + **avg sentiment per variant**
-  - [ ] Leads: paginated table, status/variant chips, filters, remove pending
-  - [ ] Calls: SSE live log; expandable transcript with speaker labels, AI summary, **live sentiment meter / timeline**, follow-up badges, and the **WhatsApp thread view**
-  - [ ] Settings: edit script, calendly link, voices, outcomes, follow-up rules, retry/concurrency/spend caps
-- [ ] `/voice-campaigns/[id]/leads/import` — CSV drop zone → column mapping → 5-row preview → import
-- [ ] Components: `campaign-ab-chart.tsx`, `campaign-leads-table.tsx`, `campaign-call-log.tsx`, **`campaign-sentiment-meter.tsx`**, **`campaign-whatsapp-thread.tsx`**
+- [x] Campaign fetch functions in `lib/data.ts`; Next.js proxy routes under `app/api/campaigns/` (create, PATCH/DELETE, lifecycle action, multipart import forwarder)
+- [x] **Campaigns** nav item (Mic icon) added to every industry config + web route permission
+- [x] `/campaigns` — list with channel chips, status chips, per-campaign stats, inline Activate/Pause, New Campaign CTA, empty state
+- [x] `/campaigns/new` — multi-channel **CampaignBuilder**: channel toggles (voice/WhatsApp/email) revealing per-channel template editors; reusable **variable-reference panel** (click-to-insert) shared across all channels; A/B voice pickers; delivery controls (concurrency, spend cap, country)
+- [x] `/campaigns/[id]` — Overview (stats + lead-status + outcome breakdown) and Leads tabs; Activate/Pause + Import in header
+- [x] `/campaigns/[id]/leads/import` — **LeadImportWizard**: upload → auto column-mapping → 5-row preview → import, with consent attestation; parses only the first 64KB client-side so very large CSVs stay responsive (full file uploaded for server-side chunked import)
 
-**DoD:** A campaign can be created, leads imported, activated, and watched live — including the sentiment meter and WhatsApp thread — entirely from the UI.
+**Verification:** web `tsc` + `next build` clean; all 8 campaign routes compile; full API suite 100/100.
+
+**Deferred to a follow-up UI pass (need Phase 7/9 endpoints):**
+- [ ] Calls tab: SSE live log + transcript + **sentiment meter** + **WhatsApp thread view** (needs Phase 7 call/sentiment data + a deliveries/activity endpoint)
+- [ ] A/B comparison cards + leading-variant (needs Phase 9 analytics)
+- [ ] Settings tab edit form (PATCH wired; form UI pending)
+- [ ] Live activity feed of `campaign_message_sent` deliveries
 
 ---
 
