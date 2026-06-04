@@ -14,6 +14,7 @@
 import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { evaluateContact } from "./guard";
+import { campaignMaySendNow } from "./schedule-gate";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { buildTemplateVars } from "../email/resend";
 import {
@@ -64,6 +65,8 @@ export async function processVoiceCampaign(
   if (!campaign || campaign.status !== "active") return { dialed, skipped, failed };
   if (!safeArray(campaign.channels).includes("voice")) return { dialed, skipped, failed };
   if (!campaign.vapiAssistantIdA || !campaign.vapiAssistantIdB) return { dialed, skipped, failed };
+  // Respect scheduled start / send window / quiet-hours.
+  if (!(await campaignMaySendNow(campaign))) return { dialed, skipped, failed };
 
   const creds = await resolveCreds(campaign.hotelId);
   if (!isVapiConfigured(creds) || !creds.phoneNumberId) return { dialed, skipped, failed }; // not dialable yet

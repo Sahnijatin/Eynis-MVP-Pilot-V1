@@ -11,6 +11,7 @@
 import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { evaluateContact } from "./guard";
+import { campaignMaySendNow } from "./schedule-gate";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
 
@@ -49,6 +50,9 @@ export async function processCampaignChannel(
 
   const campaign = await prisma.voiceCampaign.findUnique({ where: { id: campaignId } });
   if (!campaign || campaign.status !== "active") return { sent, failed, skipped };
+
+  // Respect scheduled start / send window / quiet-hours.
+  if (!(await campaignMaySendNow(campaign))) return { sent, failed, skipped };
 
   // Spend cap: bound the batch to remaining budget; pause if exhausted.
   let batchSize = deps.batchSize ?? DEFAULT_BATCH;

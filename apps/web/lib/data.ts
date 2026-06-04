@@ -529,6 +529,11 @@ export interface CampaignDetail extends CampaignSummary {
   spendCapCalls: number | null;
   defaultCountryCode: string;
   segmentId: string | null;
+  scheduledStartAt: string | null;
+  sendWindowStartMin: number | null;
+  sendWindowEndMin: number | null;
+  sendDays: number[];
+  sendTimeZone: string | null;
 }
 
 export interface CampaignLeadRow {
