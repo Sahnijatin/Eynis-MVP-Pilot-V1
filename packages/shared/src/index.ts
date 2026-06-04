@@ -27,13 +27,17 @@ export interface Hotel {
   timezone: string;
 }
 
-export interface Guest {
+/** The end-customer a tenant engages (industry-neutral name for the Guest entity). */
+export interface Contact {
   id: string;
   hotelId: string;
   fullName: string;
   phoneE164: string;
   visitCount: number;
 }
+
+/** @deprecated Hospitality name for {@link Contact}; retained as an alias during the rename. */
+export type Guest = Contact;
 
 export interface ServiceRequest {
   id: string;

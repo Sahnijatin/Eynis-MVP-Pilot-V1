@@ -15,7 +15,7 @@ model Hotel {
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   users                 User[]
-  guests                Guest[]
+  guests                Contact[]
   stays                 Stay[]
   serviceRequests       ServiceRequest[]
   offerEvents           OfferEvent[]
@@ -101,7 +101,10 @@ model User {
   changedTransitions ServiceRequestTransition[] @relation("transition_actor")
 }
 
-model Guest {
+// The end-customer a tenant engages. Named `Contact` (industry-neutral) but
+// mapped to the existing `Guest` table — model/code rename only, no data
+// migration (see docs/industry-agnostic-and-white-label-plan.md, Plan A4).
+model Contact {
   id              String           @id @default(cuid())
   hotelId         String
   fullName        String
@@ -114,6 +117,7 @@ model Guest {
   serviceRequests ServiceRequest[]
 
   @@index([hotelId])
+  @@map("Guest")
 }
 
 model Stay {
@@ -126,7 +130,7 @@ model Stay {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   hotel      Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  guest      Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  guest      Contact  @relation(fields: [guestId], references: [id], onDelete: Cascade)
 
   @@index([hotelId, guestId])
 }
@@ -147,7 +151,7 @@ model ServiceRequest {
   updatedAt        DateTime                   @updatedAt
   resolvedAt       DateTime?
   hotel            Hotel                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  guest            Guest                      @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  guest            Contact                    @relation(fields: [guestId], references: [id], onDelete: Cascade)
   assignedTo       User?                      @relation("assigned_requests", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   transitions      ServiceRequestTransition[]
 
