@@ -16,6 +16,8 @@ model Tenant {
   name                  String
   industry              String                     @default("hospitality")
   timezone              String                     @default("Asia/Kolkata")
+  slug                  String?                    @unique // <slug>.eynis.com (white-label subdomain)
+  customDomain          String?                    @unique // e.g. app.tempus.com (CNAME → platform)
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   users                 User[]

@@ -377,6 +377,8 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /context":                          null,
   "GET /tenant/branding":                  "manage_settings",
   "PUT /tenant/branding":                  "manage_settings",
+  "GET /tenant/domains":                   "manage_settings",
+  "PUT /tenant/domains":                   "manage_settings",
   "POST /events/service-request-created":  "manage_requests",
   "POST /service-requests":               "manage_requests",
   "GET /service-requests":                "view_requests",
@@ -605,6 +607,42 @@ const handleRequest = async (
       return;
     }
 
+    // ── GET /tenant/resolve — public: map a host or slug to a tenant + branding ──
+    // Lets the web theme the sign-in page on white-label subdomains / custom
+    // domains BEFORE the user authenticates. Read-only; returns {found:false} for
+    // the platform's own hosts so the default Eynis experience is used there.
+    if (req.url?.startsWith("/tenant/resolve") && req.method === "GET") {
+      const params = parseUrl(req.url).searchParams;
+      const rawHost = params.get("host")?.toLowerCase().trim().replace(/:\d+$/, "") || null;
+      let slug = params.get("slug")?.toLowerCase().trim() || null;
+      let customDomain: string | null = null;
+
+      const platform = (process.env.PLATFORM_APP_DOMAIN ?? "eynis.com").toLowerCase();
+      if (rawHost) {
+        const isPlatformHost = rawHost === platform || rawHost === `www.${platform}` || rawHost === `demo.${platform}` || rawHost === "localhost";
+        if (isPlatformHost) { json(res, 200, { ok: true, found: false }); return; }
+        if (rawHost.endsWith(`.${platform}`)) {
+          slug = slug ?? rawHost.slice(0, rawHost.length - platform.length - 1).split(".").pop() ?? null;
+        } else {
+          customDomain = rawHost;
+        }
+      }
+      if (!slug && !customDomain) { json(res, 200, { ok: true, found: false }); return; }
+
+      const or = [customDomain ? { customDomain } : null, slug ? { slug } : null].filter(Boolean) as object[];
+      const tenant = await prisma.tenant.findFirst({
+        where: { OR: or },
+        select: { id: true, industry: true, name: true, branding: { select: BRANDING_SELECT } },
+      });
+      if (!tenant) { json(res, 200, { ok: true, found: false }); return; }
+      json(res, 200, {
+        ok: true, found: true,
+        tenantId: tenant.id, industry: tenant.industry, propertyName: tenant.name,
+        branding: tenant.branding ?? null,
+      });
+      return;
+    }
+
     // ── POST /hotels/register — public: create hotel, seed roles/license, issue JWT ─
     if (req.url === "/hotels/register" && req.method === "POST") {
       const body = (await parseBody(req)) as {
@@ -787,6 +825,60 @@ const handleRequest = async (
         select: BRANDING_SELECT,
       });
       json(res, 200, { ok: true, branding });
+      return;
+    }
+
+    // ── Tenant white-label routing identity (slug + custom domain) ──────────────
+    if (req.url === "/tenant/domains" && (req.method === "GET" || req.method === "PUT")) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const { tenantId, permissions } = auth.context;
+      if (!(await ensureTenantAccess(tenantId))) {
+        json(res, 403, { ok: false, error: "Tenant not found or access denied" });
+        return;
+      }
+      if (!canAccess(permissions, `${req.method} /tenant/domains`)) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
+        return;
+      }
+
+      if (req.method === "GET") {
+        const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, customDomain: true } });
+        json(res, 200, { ok: true, slug: t?.slug ?? null, customDomain: t?.customDomain ?? null });
+        return;
+      }
+
+      // PUT — set/clear slug and/or custom domain (blank string clears to null).
+      const body = (await parseBody(req)) as { slug?: unknown; customDomain?: unknown };
+      const data: { slug?: string | null; customDomain?: string | null } = {};
+      if ("slug" in body) {
+        const s = asTrimmedString(body.slug)?.toLowerCase() ?? null;
+        if (s !== null && !/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(s)) {
+          json(res, 400, { ok: false, error: "slug must be 2–32 chars: lowercase letters, numbers, hyphens" });
+          return;
+        }
+        data.slug = s;
+      }
+      if ("customDomain" in body) {
+        const d = asTrimmedString(body.customDomain)?.toLowerCase() ?? null;
+        const platform = (process.env.PLATFORM_APP_DOMAIN ?? "eynis.com").toLowerCase();
+        if (d !== null && (!/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d) || d.endsWith(`.${platform}`) || d === platform)) {
+          json(res, 400, { ok: false, error: "customDomain must be a valid hostname on your own domain (not an eynis.com host)" });
+          return;
+        }
+        data.customDomain = d;
+      }
+      try {
+        const updated = await prisma.tenant.update({ where: { id: tenantId }, data, select: { slug: true, customDomain: true } });
+        json(res, 200, { ok: true, slug: updated.slug, customDomain: updated.customDomain });
+      } catch (e) {
+        // Unique constraint (P2002) → slug/domain already claimed by another tenant.
+        if ((e as { code?: string }).code === "P2002") {
+          json(res, 409, { ok: false, error: "That slug or domain is already in use" });
+          return;
+        }
+        throw e;
+      }
       return;
     }
 
