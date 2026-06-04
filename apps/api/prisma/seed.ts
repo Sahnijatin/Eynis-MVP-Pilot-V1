@@ -28,17 +28,17 @@ const LEGACY_TO_KEY: Record<string, string> = {
 
 async function main() {
   // ── Clear existing data for clean seed ────────────────────────────────────
-  await prisma.automationExecution.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.connectorEvent.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.serviceRequestTransition.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.serviceRequest.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.offerEvent.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.automationRule.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.auditLog.deleteMany({ where: { hotelId: HOTEL_ID } });
-  await prisma.stay.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.automationExecution.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.connectorEvent.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.serviceRequestTransition.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.serviceRequest.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.offerEvent.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.automationRule.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.auditLog.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.stay.deleteMany({ where: { tenantId: HOTEL_ID } });
 
   // ── Hotel ──────────────────────────────────────────────────────────────────
-  const hotel = await prisma.hotel.upsert({
+  const hotel = await prisma.tenant.upsert({
     where: { id: HOTEL_ID },
     update: { name: "The Riviera", timezone: "Asia/Kolkata" },
     create: { id: HOTEL_ID, name: "The Riviera", timezone: "Asia/Kolkata" }
@@ -46,10 +46,10 @@ async function main() {
 
   // ── License (Growth, 25 seats, 1-year term) ───────────────────────────────
   await prisma.license.upsert({
-    where: { hotelId: HOTEL_ID },
+    where: { tenantId: HOTEL_ID },
     update: { plan: "growth", maxSeats: 25 },
     create: {
-      hotelId: HOTEL_ID,
+      tenantId: HOTEL_ID,
       plan: "growth",
       maxSeats: 25,
       renewsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
@@ -64,10 +64,10 @@ async function main() {
   const roleIdMap: Record<string, string> = {};
   for (const [key, perms] of Object.entries(ROLE_PERMISSIONS)) {
     const r = await prisma.role.upsert({
-      where: { hotelId_key: { hotelId: HOTEL_ID, key } },
+      where: { tenantId_key: { tenantId: HOTEL_ID, key } },
       update: {},
       create: {
-        hotelId: HOTEL_ID,
+        tenantId: HOTEL_ID,
         key,
         displayName: ROLE_DISPLAY[key] ?? key,
         permissions: JSON.stringify(perms),
@@ -96,7 +96,7 @@ async function main() {
       where: { email: s.email },
       update: { roleId: roleIdMap[key] },
       create: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         fullName: s.fullName,
         email: s.email,
         role: s.role,
@@ -107,7 +107,7 @@ async function main() {
   }
 
   // ── Guests ─────────────────────────────────────────────────────────────────
-  await prisma.guest.deleteMany({ where: { hotelId: HOTEL_ID } });
+  await prisma.contact.deleteMany({ where: { tenantId: HOTEL_ID } });
 
   const guestDefs = [
     { phone: "+919876540001", name: "Elena Soros", visits: 14 },
@@ -124,8 +124,8 @@ async function main() {
 
   const guestMap: Record<string, string> = {};
   for (const g of guestDefs) {
-    const guest = await prisma.guest.create({
-      data: { hotelId: hotel.id, fullName: g.name, phoneE164: g.phone, visitCount: g.visits }
+    const guest = await prisma.contact.create({
+      data: { tenantId: hotel.id, fullName: g.name, phoneE164: g.phone, visitCount: g.visits }
     });
     guestMap[g.phone] = guest.id;
   }
@@ -253,7 +253,7 @@ async function main() {
 
     await prisma.serviceRequest.create({
       data: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         guestId,
         category: r.category,
         summary: r.summary,
@@ -289,7 +289,7 @@ async function main() {
 
     await prisma.offerEvent.create({
       data: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         guestId,
         offerType,
         channel: i % 2 === 0 ? "whatsapp" : "sms",
@@ -320,7 +320,7 @@ async function main() {
   for (const a of marketingRules) {
     const rule = await prisma.automationRule.create({
       data: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         code: a.code,
         name: a.name,
         isActive: a.active,
@@ -353,7 +353,7 @@ async function main() {
   for (const a of operationalRules) {
     const rule = await prisma.automationRule.create({
       data: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         code: a.code,
         name: a.name,
         isActive: a.active,
@@ -388,7 +388,7 @@ async function main() {
     if (!ruleId) continue;
     await prisma.automationExecution.create({
       data: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         ruleId,
         ruleCode: ex.ruleCode,
         triggerType: ex.triggerType,
@@ -482,12 +482,12 @@ async function main() {
   for (const ev of connectorEventsData) {
     await prisma.connectorEvent.create({
       data: {
-        hotelId: hotel.id,
+        tenantId: hotel.id,
         connectorKey: ev.connectorKey,
         eventType: "inbound_message",
         guestPhone: ev.guestPhone,
         guestName: ev.guestName,
-        rawPayload: JSON.stringify({ hotelId: hotel.id, fromPhone: ev.guestPhone, message: ev.aiSummary }),
+        rawPayload: JSON.stringify({ tenantId: hotel.id, fromPhone: ev.guestPhone, message: ev.aiSummary }),
         aiProvider: ev.aiProvider,
         aiCategory: ev.aiCategory,
         aiPriority: ev.aiPriority,

@@ -2,17 +2,17 @@ import type { IncomingMessage } from "node:http";
 import { isValidRole, type UserRole } from "@eynis/shared";
 
 export interface RequestContext {
-  hotelId: string;
+  tenantId: string;
   role: UserRole;
   email: string;
 }
 
 export const getRequestContext = (req: IncomingMessage): RequestContext | null => {
-  const hotelId = req.headers["x-hotel-id"];
+  const tenantId = req.headers["x-hotel-id"];
   const roleHeader = req.headers["x-user-role"];
   const emailHeader = req.headers["x-user-email"];
 
-  if (typeof hotelId !== "string" || !hotelId.trim()) {
+  if (typeof tenantId !== "string" || !tenantId.trim()) {
     return null;
   }
 
@@ -24,7 +24,7 @@ export const getRequestContext = (req: IncomingMessage): RequestContext | null =
   }
 
   return {
-    hotelId: hotelId.trim(),
+    tenantId: tenantId.trim(),
     role: roleHeader,
     email: emailHeader.trim().toLowerCase()
   };

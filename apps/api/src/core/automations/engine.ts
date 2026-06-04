@@ -12,7 +12,7 @@ async function hasExecution(ruleId: string, triggerEntityId: string): Promise<bo
 type ActionResult = "success" | "failed" | "skipped";
 
 async function recordExecution(data: {
-  hotelId: string;
+  tenantId: string;
   ruleId: string;
   ruleCode: string;
   triggerType: string;
@@ -29,7 +29,7 @@ async function recordExecution(data: {
 async function evaluateSlaBreachEscalate() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sla_breach_escalate", isActive: true },
-    select: { id: true, hotelId: true, code: true }
+    select: { id: true, tenantId: true, code: true }
   });
 
   const now = new Date();
@@ -37,7 +37,7 @@ async function evaluateSlaBreachEscalate() {
   for (const rule of rules) {
     const breachedSRs = await prisma.serviceRequest.findMany({
       where: {
-        hotelId: rule.hotelId,
+        tenantId: rule.tenantId,
         slaDueAt: { lt: now },
         slaBreachedAt: null,
         status: { in: ["open", "accepted"] }
@@ -55,7 +55,7 @@ async function evaluateSlaBreachEscalate() {
         });
         await prisma.auditLog.create({
           data: {
-            hotelId: rule.hotelId,
+            tenantId: rule.tenantId,
             actorRole: "automation",
             action: "sla_breach_escalate",
             entityType: "service_request",
@@ -64,14 +64,14 @@ async function evaluateSlaBreachEscalate() {
           }
         });
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "sla_breach", triggerEntityId: sr.id,
           actionType: "escalate_sr", actionResult: "success",
           resultDetail: `Escalated: ${sr.summary.slice(0, 80)}`
         });
       } catch (err) {
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "sla_breach", triggerEntityId: sr.id,
           actionType: "escalate_sr", actionResult: "failed",
           resultDetail: err instanceof Error ? err.message : "Unknown error"
@@ -86,12 +86,12 @@ async function evaluateSlaBreachEscalate() {
 async function evaluateSentimentLowFlag() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sentiment_low_flag", isActive: true },
-    select: { id: true, hotelId: true, code: true }
+    select: { id: true, tenantId: true, code: true }
   });
 
   for (const rule of rules) {
     const negativeEvents = await prisma.connectorEvent.findMany({
-      where: { hotelId: rule.hotelId, aiSentiment: "negative", guestId: { not: null } },
+      where: { tenantId: rule.tenantId, aiSentiment: "negative", guestId: { not: null } },
       select: { id: true, guestId: true, guestName: true, aiSummary: true }
     });
 
@@ -102,7 +102,7 @@ async function evaluateSentimentLowFlag() {
       try {
         const sr = await prisma.serviceRequest.create({
           data: {
-            hotelId: rule.hotelId,
+            tenantId: rule.tenantId,
             guestId: event.guestId,
             category: "front_desk",
             summary: `Guest Experience Alert — negative feedback: ${(event.aiSummary ?? "Review required").slice(0, 100)}`,
@@ -113,14 +113,14 @@ async function evaluateSentimentLowFlag() {
           }
         });
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "sentiment_low", triggerEntityId: event.id,
           actionType: "create_sr", actionResult: "success",
           resultDetail: `Created SR ${sr.id} for ${event.guestName ?? event.guestId}`
         });
       } catch (err) {
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "sentiment_low", triggerEntityId: event.id,
           actionType: "create_sr", actionResult: "failed",
           resultDetail: err instanceof Error ? err.message : "Unknown error"
@@ -135,7 +135,7 @@ async function evaluateSentimentLowFlag() {
 async function evaluateCheckinWelcome() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "checkin_welcome", isActive: true },
-    select: { id: true, hotelId: true, code: true }
+    select: { id: true, tenantId: true, code: true }
   });
 
   const now = new Date();
@@ -143,7 +143,7 @@ async function evaluateCheckinWelcome() {
 
   for (const rule of rules) {
     const recentStays = await prisma.stay.findMany({
-      where: { hotelId: rule.hotelId, checkInAt: { gte: thirtyMinsAgo, lte: now } },
+      where: { tenantId: rule.tenantId, checkInAt: { gte: thirtyMinsAgo, lte: now } },
       include: { guest: { select: { id: true, fullName: true, phoneE164: true } } }
     });
 
@@ -155,9 +155,9 @@ async function evaluateCheckinWelcome() {
       const message = `Welcome to The Riviera, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — Your Concierge Team`;
 
       try {
-        const result = await sendWhatsAppReply(rule.hotelId, guest.phoneE164, message);
+        const result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "checkin_welcome", triggerEntityId: stay.id,
           actionType: "send_whatsapp",
           actionResult: result.sent ? "success" : "failed",
@@ -165,7 +165,7 @@ async function evaluateCheckinWelcome() {
         });
       } catch (err) {
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "checkin_welcome", triggerEntityId: stay.id,
           actionType: "send_whatsapp", actionResult: "failed",
           resultDetail: err instanceof Error ? err.message : "Unknown error"
@@ -180,7 +180,7 @@ async function evaluateCheckinWelcome() {
 async function evaluateUpsellFollowup() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "upsell_followup", isActive: true },
-    select: { id: true, hotelId: true, code: true }
+    select: { id: true, tenantId: true, code: true }
   });
 
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60000);
@@ -188,7 +188,7 @@ async function evaluateUpsellFollowup() {
   for (const rule of rules) {
     const recentResolved = await prisma.serviceRequest.findMany({
       where: {
-        hotelId: rule.hotelId,
+        tenantId: rule.tenantId,
         status: "resolved",
         resolvedAt: { gte: twoHoursAgo },
         guestId: { not: "" }
@@ -207,7 +207,7 @@ async function evaluateUpsellFollowup() {
       try {
         await prisma.offerEvent.create({
           data: {
-            hotelId: rule.hotelId,
+            tenantId: rule.tenantId,
             guestId: sr.guestId,
             offerType,
             channel: "whatsapp",
@@ -217,14 +217,14 @@ async function evaluateUpsellFollowup() {
           }
         });
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "upsell_followup", triggerEntityId: sr.id,
           actionType: "queue_offer", actionResult: "success",
           resultDetail: `Queued ${offerType} offer`
         });
       } catch (err) {
         await recordExecution({
-          hotelId: rule.hotelId, ruleId: rule.id, ruleCode: rule.code,
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
           triggerType: "upsell_followup", triggerEntityId: sr.id,
           actionType: "queue_offer", actionResult: "failed",
           resultDetail: err instanceof Error ? err.message : "Unknown error"

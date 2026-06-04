@@ -4,7 +4,7 @@ import { isValidRole, isSystemRoleKey, type UserRole, type SystemRoleKey } from 
 
 export interface AuthTokenClaims {
   sub: string;
-  hotelId: string;
+  tenantId: string;
   email: string;
   /** @deprecated legacy hospitality role — retained for backward compat. */
   role?: UserRole | null;
@@ -20,7 +20,8 @@ const getSecret = () => encoder.encode(process.env.JWT_SECRET ?? defaultSecret);
 
 export const createAuthToken = async (claims: AuthTokenClaims) =>
   new SignJWT({
-    hotelId: claims.hotelId,
+    tenantId: claims.tenantId,
+    hotelId: claims.tenantId, // @deprecated alias for tokens issued before the rename
     email: claims.email,
     // Emit whichever role identities are present. A modern token carries roleKey;
     // the legacy hospitality role is included only for backward compatibility.
@@ -47,9 +48,13 @@ export const verifyAuthToken = async (token: string): Promise<AuthTokenClaims | 
   try {
     const result = await jwtVerify(token, getSecret());
     const payload = result.payload;
+    // Accept `tenantId`, falling back to the legacy `hotelId` claim so tokens
+    // issued before the rename remain valid until they expire.
+    const tenantId = typeof payload.tenantId === "string" ? payload.tenantId
+      : (typeof payload.hotelId === "string" ? payload.hotelId : null);
     if (
       typeof payload.sub !== "string" ||
-      typeof payload.hotelId !== "string" ||
+      !tenantId ||
       typeof payload.email !== "string"
     ) {
       return null;
@@ -66,7 +71,7 @@ export const verifyAuthToken = async (token: string): Promise<AuthTokenClaims | 
       : [];
     return {
       sub: payload.sub,
-      hotelId: payload.hotelId,
+      tenantId,
       email: payload.email,
       role,
       roleKey,

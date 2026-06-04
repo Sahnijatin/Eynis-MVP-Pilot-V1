@@ -37,7 +37,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
   const [campaign, lead, tenant] = await Promise.all([
     prisma.voiceCampaign.findUnique({ where: { id: call.campaignId } }),
     prisma.campaignLead.findUnique({ where: { id: call.leadId } }),
-    prisma.tenant.findUnique({ where: { id: call.hotelId }, select: { name: true } }),
+    prisma.tenant.findUnique({ where: { id: call.tenantId }, select: { name: true } }),
   ]);
   if (!campaign || !lead) return { sent };
   if (lead.optedOut || lead.status === "opted_out") return { sent }; // never follow up an opt-out
@@ -48,7 +48,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
     if (!sender) continue;
 
     const ctx: SendContext = {
-      hotelId: call.hotelId,
+      tenantId: call.tenantId,
       tenantName: tenant?.name ?? null,
       campaign: {
         name: campaign.name, calendlyLink: campaign.calendlyLink,
@@ -64,7 +64,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
     const result = await sender.send(ctx);
     await prisma.messageDelivery.create({
       data: {
-        hotelId: call.hotelId, campaignId: call.campaignId, leadId: call.leadId, channel,
+        tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, channel,
         status: result.ok ? "sent" : "failed",
         providerId: result.providerId, renderedSubject: result.renderedSubject,
         renderedBody: result.renderedBody, error: result.error, sentAt: result.ok ? new Date() : null,
@@ -80,7 +80,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
   }
 
   if (sent.length > 0) {
-    broadcastSSEEvent({ type: "campaign_followup_sent", hotelId: call.hotelId, campaignId: call.campaignId, leadId: call.leadId, channels: sent });
+    broadcastSSEEvent({ type: "campaign_followup_sent", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, channels: sent });
   }
   return { sent };
 }

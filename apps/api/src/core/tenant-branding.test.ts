@@ -8,11 +8,11 @@ import { prisma } from "../db/prisma";
 
 const uid = () => "brand-hotel-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "Brand Test " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "Brand Test " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
 };
-const createUser = async (hotelId: string, role: "owner" | "housekeeping", email: string) => {
-  await prisma.user.create({ data: { hotelId, fullName: "User " + role, email, role, isActive: true } });
+const createUser = async (tenantId: string, role: "owner" | "housekeeping", email: string) => {
+  await prisma.user.create({ data: { tenantId, fullName: "User " + role, email, role, isActive: true } });
 };
 
 const listen = async (server: Server): Promise<string> => {
@@ -23,10 +23,10 @@ const listen = async (server: Server): Promise<string> => {
 };
 const closeS = (server: Server) => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
 
-const authHeaders = async (base: string, hotelId: string, email: string, role: "owner" | "housekeeping") => {
+const authHeaders = async (base: string, tenantId: string, email: string, role: "owner" | "housekeeping") => {
   const r = await fetch(base + "/auth/token", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hotelId, email, role }),
+    body: JSON.stringify({ tenantId, email, role }),
   });
   const p = (await r.json()) as { ok: boolean; token?: string };
   assert.equal(p.ok, true);
@@ -36,13 +36,13 @@ const authHeaders = async (base: string, hotelId: string, email: string, role: "
 after(async () => { await prisma.$disconnect(); });
 
 test("GET /tenant/branding returns null before any branding is set", async () => {
-  const hotelId = uid();
-  await createHotel(hotelId);
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
+  const tenantId = uid();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
   const server = buildServer();
   const base = await listen(server);
   try {
-    const headers = await authHeaders(base, hotelId, "owner+" + hotelId + "@test.local", "owner");
+    const headers = await authHeaders(base, tenantId, "owner+" + tenantId + "@test.local", "owner");
     const r = await fetch(base + "/tenant/branding", { headers });
     const p = (await r.json()) as { ok: boolean; branding: unknown };
     assert.equal(r.status, 200);
@@ -52,13 +52,13 @@ test("GET /tenant/branding returns null before any branding is set", async () =>
 });
 
 test("PUT /tenant/branding upserts, validates colors, and persists", async () => {
-  const hotelId = uid();
-  await createHotel(hotelId);
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
+  const tenantId = uid();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
   const server = buildServer();
   const base = await listen(server);
   try {
-    const headers = await authHeaders(base, hotelId, "owner+" + hotelId + "@test.local", "owner");
+    const headers = await authHeaders(base, tenantId, "owner+" + tenantId + "@test.local", "owner");
     const put = await fetch(base + "/tenant/branding", {
       method: "PUT", headers,
       body: JSON.stringify({
@@ -87,13 +87,13 @@ test("PUT /tenant/branding upserts, validates colors, and persists", async () =>
 });
 
 test("PUT /tenant/branding is forbidden without manage_settings", async () => {
-  const hotelId = uid();
-  await createHotel(hotelId);
-  await createUser(hotelId, "housekeeping", "hk+" + hotelId + "@test.local"); // maps to agent → no manage_settings
+  const tenantId = uid();
+  await createHotel(tenantId);
+  await createUser(tenantId, "housekeeping", "hk+" + tenantId + "@test.local"); // maps to agent → no manage_settings
   const server = buildServer();
   const base = await listen(server);
   try {
-    const headers = await authHeaders(base, hotelId, "hk+" + hotelId + "@test.local", "housekeeping");
+    const headers = await authHeaders(base, tenantId, "hk+" + tenantId + "@test.local", "housekeeping");
     const r = await fetch(base + "/tenant/branding", { method: "PUT", headers, body: JSON.stringify({ brandName: "Nope" }) });
     assert.equal(r.status, 403);
   } finally { await closeS(server); }

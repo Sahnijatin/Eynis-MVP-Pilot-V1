@@ -33,14 +33,14 @@ export function IndustryOnboarding() {
 
     fetch(`/api/identify?email=${encodeURIComponent(email)}`)
       .then((r) => r.json())
-      .then(async (data: { ok: boolean; exists?: boolean; hotelId?: string; role?: string; roleKey?: string | null; industry?: string }) => {
-        if (data.ok && data.exists && data.hotelId) {
+      .then(async (data: { ok: boolean; exists?: boolean; tenantId?: string; role?: string; roleKey?: string | null; industry?: string }) => {
+        if (data.ok && data.exists && data.tenantId) {
           // Try to update Clerk metadata as a cache, but never block the redirect on it.
           // The dashboard reads from DB via /api/me, so Clerk metadata is optional.
           user.update({
             unsafeMetadata: {
               ...user.unsafeMetadata,
-              hotelId: data.hotelId,
+              tenantId: data.tenantId,
               role: data.role ?? "housekeeping",
               roleKey: data.roleKey ?? null,
               industry: data.industry ?? "hospitality",
@@ -83,7 +83,7 @@ export function IndustryOnboarding() {
           industry: selectedIndustry,
         }),
       });
-      const regData = (await regRes.json()) as { ok: boolean; hotelId?: string; error?: string };
+      const regData = (await regRes.json()) as { ok: boolean; tenantId?: string; error?: string };
       if (!regData.ok) {
         setRegisterError(regData.error ?? "Registration failed. Please try again.");
         setSaving(false);
@@ -95,7 +95,7 @@ export function IndustryOnboarding() {
           industry: selectedIndustry,
           onboardingAnswers: answers,
           onboardingCompleted: true,
-          hotelId: regData.hotelId,
+          tenantId: regData.tenantId,
           role: "owner",
           roleKey: "admin",
         },

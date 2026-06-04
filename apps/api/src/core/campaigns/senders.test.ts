@@ -12,7 +12,7 @@ test("renderWhatsappContentVariables renders ordered, 1-indexed ContentVariables
 
 test("contextVars flattens lead + campaign + tenant incl. custom fields", () => {
   const ctx: SendContext = {
-    hotelId: "h1",
+    tenantId: "h1",
     tenantName: "The Riviera",
     campaign: { name: "Upsell", calendlyLink: "https://cal.com/x", whatsappContentSid: null, whatsappTemplateBody: null, whatsappVariables: [], emailSubjectTemplate: null, emailBodyTemplate: null },
     lead: { firstName: "Sarah", lastName: null, phone: "+91999", email: "s@x.com", company: "Acme", jobTitle: null, rawData: JSON.stringify({ tier: "gold" }) },
@@ -35,7 +35,7 @@ test("registry exposes whatsapp + email senders", () => {
 test("whatsapp sender fails cleanly when the lead has no phone", async () => {
   const sender = getSender("whatsapp")!;
   const result = await sender.send({
-    hotelId: "h1", tenantName: null,
+    tenantId: "h1", tenantName: null,
     campaign: { name: "C", calendlyLink: null, whatsappContentSid: "HX1", whatsappTemplateBody: null, whatsappVariables: [], emailSubjectTemplate: null, emailBodyTemplate: null },
     lead: { firstName: "A", lastName: null, phone: null, email: null, company: null, jobTitle: null, rawData: null },
   });

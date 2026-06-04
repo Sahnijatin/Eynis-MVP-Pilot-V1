@@ -5,12 +5,12 @@ import { buildServer } from "../../server";
 import { prisma } from "../../db/prisma";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "VC " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
 };
-const createUser = (hotelId: string, role: string, email: string) =>
-  prisma.user.create({ data: { hotelId, fullName: "U", email, role, isActive: true } });
+const createUser = (tenantId: string, role: string, email: string) =>
+  prisma.user.create({ data: { tenantId, fullName: "U", email, role, isActive: true } });
 
 async function startServer(): Promise<{ server: Server; base: string }> {
   const server = buildServer();
@@ -20,24 +20,24 @@ async function startServer(): Promise<{ server: Server; base: string }> {
   return { server, base: "http://127.0.0.1:" + addr.port };
 }
 const stop = (server: Server) => new Promise<void>((res, rej) => server.close((e) => (e ? rej(e) : res())));
-const auth = async (base: string, hotelId: string, email: string) => {
-  const r = await fetch(base + "/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hotelId, email, role: "owner" }) });
+const auth = async (base: string, tenantId: string, email: string) => {
+  const r = await fetch(base + "/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId, email, role: "owner" }) });
   return "Bearer " + ((await r.json()) as { token: string }).token;
 };
 
 after(async () => { await prisma.$disconnect(); });
 
 test("sequences: create with steps, enroll leads, list enrollments", async () => {
-  const hotelId = "seqr-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "seqr-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await auth(base, hotelId, email);
-    const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
-    const l1 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "A", phone: "+919000020001", consent: true } });
-    const l2 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "B", phone: "+919000020002", consent: true } });
+    const token = await auth(base, tenantId, email);
+    const campaign = await prisma.voiceCampaign.create({ data: { tenantId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
+    const l1 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "A", phone: "+919000020001", consent: true } });
+    const l2 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "B", phone: "+919000020002", consent: true } });
 
     // create
     const created = await fetch(base + "/sequences", {
@@ -76,7 +76,7 @@ test("sequences: create with steps, enroll leads, list enrollments", async () =>
     assert.equal(blocked.status, 400);
 
     // attach an approved template to the WhatsApp step → activates
-    const tpl = await prisma.messageTemplate.create({ data: { hotelId, name: "T", channel: "whatsapp", body: "Hi", status: "approved", providerTemplateId: "HXok", variables: "[]" } });
+    const tpl = await prisma.messageTemplate.create({ data: { tenantId, name: "T", channel: "whatsapp", body: "Hi", status: "approved", providerTemplateId: "HXok", variables: "[]" } });
     await prisma.sequenceStep.updateMany({ where: { sequenceId: seq.id, channel: "whatsapp" }, data: { whatsappTemplateId: tpl.id } });
     const patched = await fetch(base + `/sequences/${seq.id}`, { method: "PATCH", headers: { authorization: token, "content-type": "application/json" }, body: JSON.stringify({ status: "active" }) });
     assert.equal(((await patched.json()) as any).sequence.status, "active");
@@ -86,18 +86,18 @@ test("sequences: create with steps, enroll leads, list enrollments", async () =>
 });
 
 test("sequences: enroll by segment; tenant isolation 404", async () => {
-  const hotelId = "seqr-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "seqr-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await auth(base, hotelId, email);
-    const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
-    await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "G", phone: "+919000020101", consent: true, tags: ["gold"] } });
-    await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "S", phone: "+919000020102", consent: true, tags: ["silver"] } });
-    const segment = await prisma.leadSegment.create({ data: { hotelId, name: "Gold", rules: JSON.stringify({ tagsAny: ["gold"] }) } });
-    const seq = await prisma.sequence.create({ data: { hotelId, name: "S", status: "active", steps: { create: [{ order: 0, waitMinutes: 0, channel: "whatsapp", whatsappContentSid: "HX" }] } } });
+    const token = await auth(base, tenantId, email);
+    const campaign = await prisma.voiceCampaign.create({ data: { tenantId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
+    await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "G", phone: "+919000020101", consent: true, tags: ["gold"] } });
+    await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "S", phone: "+919000020102", consent: true, tags: ["silver"] } });
+    const segment = await prisma.leadSegment.create({ data: { tenantId, name: "Gold", rules: JSON.stringify({ tagsAny: ["gold"] }) } });
+    const seq = await prisma.sequence.create({ data: { tenantId, name: "S", status: "active", steps: { create: [{ order: 0, waitMinutes: 0, channel: "whatsapp", whatsappContentSid: "HX" }] } } });
 
     const enroll = await fetch(base + `/sequences/${seq.id}/enroll`, {
       method: "POST", headers: { authorization: token, "content-type": "application/json" },

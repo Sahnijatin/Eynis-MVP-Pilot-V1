@@ -212,7 +212,7 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
 
 export async function bulkInsertLeads(
   campaignId: string,
-  hotelId: string,
+  tenantId: string,
   parsed: ParsedLead[],
   parseErrors: ImportError[],
 ): Promise<ImportResult> {
@@ -238,8 +238,8 @@ export async function bulkInsertLeads(
   for (const phoneChunk of chunk(phones, DB_CHUNK)) {
     const [existing, suppressed, optedOut] = await Promise.all([
       prisma.campaignLead.findMany({ where: { campaignId, phone: { in: phoneChunk } }, select: { phone: true } }),
-      prisma.doNotContact.findMany({ where: { hotelId, phone: { in: phoneChunk } }, select: { phone: true } }),
-      prisma.campaignLead.findMany({ where: { hotelId, optedOut: true, phone: { in: phoneChunk } }, select: { phone: true } }),
+      prisma.doNotContact.findMany({ where: { tenantId, phone: { in: phoneChunk } }, select: { phone: true } }),
+      prisma.campaignLead.findMany({ where: { tenantId, optedOut: true, phone: { in: phoneChunk } }, select: { phone: true } }),
     ]);
     for (const e of existing) existingPhones.add(e.phone!);
     for (const s of suppressed) optedOutPhones.add(s.phone);
@@ -256,7 +256,7 @@ export async function bulkInsertLeads(
   for (const insertChunk of chunk(toInsert, DB_CHUNK)) {
     await prisma.campaignLead.createMany({
       data: insertChunk.map((l) => ({
-        campaignId, hotelId,
+        campaignId, tenantId,
         firstName: l.firstName, lastName: l.lastName, phone: l.phone,
         email: l.email, company: l.company, jobTitle: l.jobTitle,
         rawData: l.rawData,
@@ -276,25 +276,25 @@ export async function bulkInsertLeads(
 // transcript, WhatsApp reply, manual, or GDPR erasure) so the exclusion is
 // permanent across all future campaigns and channels (compliance #3).
 export async function suppressContact(
-  hotelId: string,
+  tenantId: string,
   phone: string,
   reason: "opt_out" | "dnd" | "manual" | "gdpr_erasure" = "opt_out",
 ): Promise<void> {
   await prisma.doNotContact.upsert({
-    where: { hotelId_phone: { hotelId, phone } },
-    create: { hotelId, phone, reason },
+    where: { tenantId_phone: { tenantId, phone } },
+    create: { tenantId, phone, reason },
     update: {}, // keep the original reason/createdAt
   });
   await prisma.campaignLead.updateMany({
-    where: { hotelId, phone },
+    where: { tenantId, phone },
     data: { optedOut: true, status: "opted_out" },
   });
 }
 
 // Whether a phone is on the suppression list (durable) for this tenant.
-export async function isSuppressed(hotelId: string, phone: string): Promise<boolean> {
+export async function isSuppressed(tenantId: string, phone: string): Promise<boolean> {
   const hit = await prisma.doNotContact.findUnique({
-    where: { hotelId_phone: { hotelId, phone } },
+    where: { tenantId_phone: { tenantId, phone } },
     select: { id: true },
   });
   return Boolean(hit);

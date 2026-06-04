@@ -27,7 +27,7 @@ const DEFAULT_MAX_CONCURRENT = 5;
 const STUCK_CALL_MINUTES = 15;
 
 export interface DialerDeps {
-  resolveCreds?: (hotelId: string) => Promise<VapiCredentials>;
+  resolveCreds?: (tenantId: string) => Promise<VapiCredentials>;
   initiateCall?: (creds: VapiCredentials, params: CallParams) => Promise<VapiResult<{ id: string }>>;
   now?: () => Date;
 }
@@ -68,7 +68,7 @@ export async function processVoiceCampaign(
   // Respect scheduled start / send window / quiet-hours.
   if (!(await campaignMaySendNow(campaign))) return { dialed, skipped, failed };
 
-  const creds = await resolveCreds(campaign.hotelId);
+  const creds = await resolveCreds(campaign.tenantId);
   if (!isVapiConfigured(creds) || !creds.phoneNumberId) return { dialed, skipped, failed }; // not dialable yet
 
   const ts = now();
@@ -84,7 +84,7 @@ export async function processVoiceCampaign(
     budget = campaign.spendCapCalls - (calls + deliveries);
     if (budget <= 0) {
       await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-      broadcastSSEEvent({ type: "campaign_paused", hotelId: campaign.hotelId, campaignId, reason: "spend_cap_reached" });
+      broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
       return { dialed, skipped, failed };
     }
   }
@@ -122,7 +122,7 @@ export async function processVoiceCampaign(
   // Batch-resolve suppression + balance A/B across what's already assigned.
   const phones = leads.map((l) => l.phone).filter((p): p is string => Boolean(p));
   const suppressedRows = phones.length
-    ? await prisma.doNotContact.findMany({ where: { hotelId: campaign.hotelId, phone: { in: phones } }, select: { phone: true } })
+    ? await prisma.doNotContact.findMany({ where: { tenantId: campaign.tenantId, phone: { in: phones } }, select: { phone: true } })
     : [];
   const suppressed = new Set(suppressedRows.map((s) => s.phone));
 
@@ -132,7 +132,7 @@ export async function processVoiceCampaign(
   ]);
   let a = aCount, b = bCount;
 
-  const hotel = await prisma.tenant.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
+  const hotel = await prisma.tenant.findUnique({ where: { id: campaign.tenantId }, select: { name: true } });
 
   for (const lead of leads) {
     if (slots <= 0) break;
@@ -161,7 +161,7 @@ export async function processVoiceCampaign(
     if (!lead.abVariant) { variant === "A" ? a++ : b++; }
 
     const call = await prisma.callRecord.create({
-      data: { hotelId: campaign.hotelId, campaignId, leadId: lead.id, abVariant: variant, status: "initiated" },
+      data: { tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant, status: "initiated" },
     });
 
     const vars = buildTemplateVars({
@@ -183,7 +183,7 @@ export async function processVoiceCampaign(
       await prisma.callRecord.update({ where: { id: call.id }, data: { status: "in_progress", vapiCallId: result.data.id, startedAt: ts } });
       dialed++;
       slots--;
-      broadcastSSEEvent({ type: "campaign_call_started", hotelId: campaign.hotelId, campaignId, leadId: lead.id, abVariant: variant });
+      broadcastSSEEvent({ type: "campaign_call_started", tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant });
     } else {
       // No silent failures: fail the record, return the lead to the queue.
       await prisma.callRecord.update({ where: { id: call.id }, data: { status: "failed", error: result.error } });
@@ -192,7 +192,7 @@ export async function processVoiceCampaign(
       // Provider outage → auto-pause and stop this tick (manual resume).
       if (isServerError(result.error)) {
         await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-        broadcastSSEEvent({ type: "campaign_paused", hotelId: campaign.hotelId, campaignId, reason: "provider_error" });
+        broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
         break;
       }
     }

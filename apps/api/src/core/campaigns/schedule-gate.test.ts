@@ -11,13 +11,13 @@ const deps = { resolveSender: (c: string) => fakeSender(c), batchSize: 100 };
 const TZ = "Asia/Kolkata";
 
 async function campaignWithLeads(extra: Record<string, unknown>) {
-  const hotelId = "sch-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "Sch " + hotelId.slice(-4), timezone: TZ } });
+  const tenantId = "sch-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "Sch " + tenantId.slice(-4), timezone: TZ } });
   const campaign = await prisma.voiceCampaign.create({
-    data: { hotelId, name: "Sch", status: "active", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", sendTimeZone: TZ, ...extra },
+    data: { tenantId, name: "Sch", status: "active", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", sendTimeZone: TZ, ...extra },
   });
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "A", phone: "+919000010001", consent: true, consentSource: "csv_import" } });
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "B", phone: "+919000010002", consent: true, consentSource: "csv_import" } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "A", phone: "+919000010001", consent: true, consentSource: "csv_import" } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "B", phone: "+919000010002", consent: true, consentSource: "csv_import" } });
   return campaign.id;
 }
 

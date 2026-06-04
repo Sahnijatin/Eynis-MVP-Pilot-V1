@@ -8,7 +8,7 @@ export default async function RequestPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = searchParams ? await searchParams : {};
-  const hotelId = typeof query.hotelId === "string" ? query.hotelId : "eynis-pilot-hotel-1";
+  const tenantId = typeof query.tenantId === "string" ? query.tenantId : "eynis-pilot-hotel-1";
   const result = typeof query.result === "string" ? query.result : "";
   const msg = typeof query.msg === "string" ? query.msg : "";
   const ackText =
@@ -39,7 +39,7 @@ export default async function RequestPage({
       ) : null}
       <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, background: "#fff" }}>
         <form method="POST" action="/api/public/request" style={{ display: "grid", gap: 10 }}>
-          <input type="hidden" name="hotelId" value={hotelId} />
+          <input type="hidden" name="tenantId" value={tenantId} />
           <label>
             Your Name
             <input name="guestName" required style={{ display: "block", width: "100%", marginTop: 4 }} />

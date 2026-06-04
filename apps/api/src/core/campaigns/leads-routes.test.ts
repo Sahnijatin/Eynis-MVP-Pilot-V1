@@ -6,12 +6,12 @@ import { prisma } from "../../db/prisma";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "VC " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
 };
-const createUser = async (hotelId: string, role: string, email: string) =>
-  prisma.user.create({ data: { hotelId, fullName: "U " + role, email, role, isActive: true } });
+const createUser = async (tenantId: string, role: string, email: string) =>
+  prisma.user.create({ data: { tenantId, fullName: "U " + role, email, role, isActive: true } });
 
 async function startServer(): Promise<{ server: Server; base: string }> {
   const server = buildServer();
@@ -22,10 +22,10 @@ async function startServer(): Promise<{ server: Server; base: string }> {
 }
 const stop = (server: Server) => new Promise<void>((res, rej) => server.close((e) => (e ? rej(e) : res())));
 
-const authHeaders = async (base: string, hotelId: string, email: string, role: string) => {
+const authHeaders = async (base: string, tenantId: string, email: string, role: string) => {
   const r = await fetch(base + "/auth/token", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hotelId, email, role }),
+    body: JSON.stringify({ tenantId, email, role }),
   });
   const p = (await r.json()) as { token?: string };
   if (!p.token) throw new Error("no token");
@@ -59,13 +59,13 @@ async function importCsv(base: string, token: string, campaignId: string, csv: s
 after(async () => { await prisma.$disconnect(); });
 
 test("import CSV: inserts consented leads, lists them, dedupes re-imports", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
     const campaignId = await createCampaign(base, token);
     const csv = [
       "First Name,Mobile,Company,Opted In,Tier",
@@ -95,13 +95,13 @@ test("import CSV: inserts consented leads, lists them, dedupes re-imports", asyn
 });
 
 test("import CSV: non-consented rows are rejected with reason", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
     const campaignId = await createCampaign(base, token);
     const csv = ["First Name,Mobile,Opted In", "Sarah,9876543210,yes", "Bob,9876543211,no"].join("\n");
     const map = { "First Name": "firstName", "Mobile": "phone", "Opted In": "consent" };
@@ -114,13 +114,13 @@ test("import CSV: non-consented rows are rejected with reason", async () => {
 });
 
 test("import CSV: scalar columnMap returns 400, not 500 (#5)", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
     const campaignId = await createCampaign(base, token);
     const fd = new FormData();
     fd.append("columnMap", "null"); // valid JSON, but not an object
@@ -134,16 +134,16 @@ test("import CSV: scalar columnMap returns 400, not 500 (#5)", async () => {
 });
 
 test("DELETE lead: pending removable, non-pending blocked (409)", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
     const campaignId = await createCampaign(base, token);
-    const pending = await prisma.campaignLead.create({ data: { campaignId, hotelId, firstName: "P", phone: "+9190000001", consent: true } });
-    const called = await prisma.campaignLead.create({ data: { campaignId, hotelId, firstName: "C", phone: "+9190000002", consent: true, status: "called" } });
+    const pending = await prisma.campaignLead.create({ data: { campaignId, tenantId, firstName: "P", phone: "+9190000001", consent: true } });
+    const called = await prisma.campaignLead.create({ data: { campaignId, tenantId, firstName: "C", phone: "+9190000002", consent: true, status: "called" } });
 
     const okDel = await fetch(base + `/campaigns/${campaignId}/leads/${pending.id}`, { method: "DELETE", headers: { authorization: token } });
     assert.equal(okDel.status, 200);
@@ -159,16 +159,16 @@ test("import CSV with a UTF-8 BOM + messy country code imports correctly (regres
   // Reproduces the real-world failure: Excel saves CSVs as UTF-8-with-BOM, and a
   // campaign whose defaultCountryCode had a stray space ("+91 ") used to reject
   // every row as "missing or invalid phone".
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
     // campaign with a space-padded country code
     const c = await prisma.voiceCampaign.create({
-      data: { hotelId, name: "BOM", status: "draft", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", defaultCountryCode: "+91 " },
+      data: { tenantId, name: "BOM", status: "draft", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", defaultCountryCode: "+91 " },
     });
     const csv = "﻿" + ["First Name,Last Name,Phone,Email,Consent", "Jatin,Sahni,9997497006,j@x.com,Yes", "Sanyam,Pahwa,8384826232,s@x.com,Yes"].join("\n");
     const map = { "First Name": "firstName", "Last Name": "lastName", "Phone": "phone", "Email": "email", "Consent": "consent" };
@@ -185,19 +185,19 @@ test("import CSV with a UTF-8 BOM + messy country code imports correctly (regres
 
 test("durable suppression (#3): opt-out survives campaign deletion and blocks re-import", async () => {
   const { suppressContact } = await import("./csv-import");
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
 
     // A lead opts out on campaign A, then campaign A is deleted entirely.
     const campA = await createCampaign(base, token);
     const phone = "+919" + uid().replace(/[^0-9]/g, "").padEnd(9, "0").slice(0, 9);
-    await prisma.campaignLead.create({ data: { campaignId: campA, hotelId, firstName: "X", phone, consent: true } });
-    await suppressContact(hotelId, phone, "opt_out");
+    await prisma.campaignLead.create({ data: { campaignId: campA, tenantId, firstName: "X", phone, consent: true } });
+    await suppressContact(tenantId, phone, "opt_out");
     await prisma.voiceCampaign.delete({ where: { id: campA } }); // lead row gone via cascade
 
     // Re-import the same phone into a brand-new campaign — must be suppressed.
@@ -214,17 +214,17 @@ test("durable suppression (#3): opt-out survives campaign deletion and blocks re
 });
 
 test("import CSV: tenant-wide opted-out phone is skipped", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
+    const token = await authHeaders(base, tenantId, email, "owner");
     const campaignId = await createCampaign(base, token);
     // a different campaign already opted this phone out for the tenant
     const otherCampaignId = await createCampaign(base, token);
-    await prisma.campaignLead.create({ data: { campaignId: otherCampaignId, hotelId, firstName: "X", phone: "+919999900000", consent: true, optedOut: true, status: "opted_out" } });
+    await prisma.campaignLead.create({ data: { campaignId: otherCampaignId, tenantId, firstName: "X", phone: "+919999900000", consent: true, optedOut: true, status: "opted_out" } });
 
     const csv = ["First Name,Mobile,Opted In", "Sarah,9999900000,yes", "Bob,9999900001,yes"].join("\n");
     const map = { "First Name": "firstName", "Mobile": "phone", "Opted In": "consent" };

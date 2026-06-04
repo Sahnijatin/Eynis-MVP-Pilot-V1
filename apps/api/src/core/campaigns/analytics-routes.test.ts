@@ -8,12 +8,12 @@ const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 
 let seq = 8000000000;
 const phone = () => "+1" + String(seq++);
 
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "AN " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "AN " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
 };
-const createUser = (hotelId: string, role: string, email: string) =>
-  prisma.user.create({ data: { hotelId, fullName: "U", email, role, isActive: true } });
+const createUser = (tenantId: string, role: string, email: string) =>
+  prisma.user.create({ data: { tenantId, fullName: "U", email, role, isActive: true } });
 
 async function startServer(): Promise<{ server: Server; base: string }> {
   const server = buildServer();
@@ -23,19 +23,19 @@ async function startServer(): Promise<{ server: Server; base: string }> {
   return { server, base: "http://127.0.0.1:" + a.port };
 }
 const stop = (s: Server) => new Promise<void>((res, rej) => s.close((e) => (e ? rej(e) : res())));
-const auth = async (base: string, hotelId: string, email: string, role: string) => {
-  const r = await fetch(base + "/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hotelId, email, role }) });
+const auth = async (base: string, tenantId: string, email: string, role: string) => {
+  const r = await fetch(base + "/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId, email, role }) });
   return "Bearer " + ((await r.json()) as { token: string }).token;
 };
 
 // Build a campaign with some calls split across A/B.
-async function seedCampaign(hotelId: string) {
+async function seedCampaign(tenantId: string) {
   const campaign = await prisma.voiceCampaign.create({
-    data: { hotelId, name: "C", status: "active", channels: JSON.stringify(["voice"]), scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S", vapiAssistantIdA: "a", vapiAssistantIdB: "b" },
+    data: { tenantId, name: "C", status: "active", channels: JSON.stringify(["voice"]), scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S", vapiAssistantIdA: "a", vapiAssistantIdB: "b" },
   });
   const mk = async (variant: string, outcome: string | null, sentiment: string | null) => {
-    const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "L", phone: phone(), consent: true, consentSource: "csv_import" } });
-    return prisma.callRecord.create({ data: { hotelId, campaignId: campaign.id, leadId: lead.id, abVariant: variant, status: "ended", outcome, sentiment, durationSeconds: 120, meetingBooked: outcome === "interested" } });
+    const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "L", phone: phone(), consent: true, consentSource: "csv_import" } });
+    return prisma.callRecord.create({ data: { tenantId, campaignId: campaign.id, leadId: lead.id, abVariant: variant, status: "ended", outcome, sentiment, durationSeconds: 120, meetingBooked: outcome === "interested" } });
   };
   // A: 2 answered, 1 interested · B: 2 answered, 0 interested · 1 no_answer
   await mk("A", "interested", "positive");
@@ -49,14 +49,14 @@ async function seedCampaign(hotelId: string) {
 after(async () => { await prisma.$disconnect(); });
 
 test("GET /campaigns/:id/analytics returns per-variant funnel + leader gating", async () => {
-  const hotelId = "an-" + uid();
-  await createHotel(hotelId);
-  const email = `o+${hotelId}@t.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "an-" + uid();
+  await createHotel(tenantId);
+  const email = `o+${tenantId}@t.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await auth(base, hotelId, email, "owner");
-    const campaignId = await seedCampaign(hotelId);
+    const token = await auth(base, tenantId, email, "owner");
+    const campaignId = await seedCampaign(tenantId);
     const res = await fetch(base + `/campaigns/${campaignId}/analytics`, { headers: { authorization: token } });
     const data = (await res.json()) as any;
     assert.equal(res.status, 200);
@@ -73,14 +73,14 @@ test("GET /campaigns/:id/analytics returns per-variant funnel + leader gating", 
 });
 
 test("GET /campaigns/:id/calls lists calls and exports CSV", async () => {
-  const hotelId = "an-" + uid();
-  await createHotel(hotelId);
-  const email = `o+${hotelId}@t.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "an-" + uid();
+  await createHotel(tenantId);
+  const email = `o+${tenantId}@t.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await auth(base, hotelId, email, "owner");
-    const campaignId = await seedCampaign(hotelId);
+    const token = await auth(base, tenantId, email, "owner");
+    const campaignId = await seedCampaign(tenantId);
 
     const list = await fetch(base + `/campaigns/${campaignId}/calls`, { headers: { authorization: token } });
     const data = (await list.json()) as any;
@@ -99,16 +99,16 @@ test("GET /campaigns/:id/calls lists calls and exports CSV", async () => {
 });
 
 test("GET /campaigns/:id/calls/:callId returns the call + sentiment timeline", async () => {
-  const hotelId = "an-" + uid();
-  await createHotel(hotelId);
-  const email = `o+${hotelId}@t.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "an-" + uid();
+  await createHotel(tenantId);
+  const email = `o+${tenantId}@t.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await auth(base, hotelId, email, "owner");
-    const campaignId = await seedCampaign(hotelId);
+    const token = await auth(base, tenantId, email, "owner");
+    const campaignId = await seedCampaign(tenantId);
     const call = await prisma.callRecord.findFirst({ where: { campaignId } });
-    await prisma.sentimentEvent.create({ data: { hotelId, callRecordId: call!.id, speaker: "customer", text: "great", sentiment: "positive", score: 0.8 } });
+    await prisma.sentimentEvent.create({ data: { tenantId, callRecordId: call!.id, speaker: "customer", text: "great", sentiment: "positive", score: 0.8 } });
 
     const res = await fetch(base + `/campaigns/${campaignId}/calls/${call!.id}`, { headers: { authorization: token } });
     const data = (await res.json()) as any;

@@ -8,22 +8,22 @@ let seq = 6000000000;
 const phone = () => "+1" + String(seq++);
 
 async function setup(opts: { followUpRules?: Record<string, string[]>; maxRetries?: number } = {}) {
-  const hotelId = "wh-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "WH " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  const tenantId = "wh-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "WH " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
-      hotelId, name: "C", status: "active", channels: JSON.stringify(["voice"]),
+      tenantId, name: "C", status: "active", channels: JSON.stringify(["voice"]),
       scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S",
       vapiAssistantIdA: "a", vapiAssistantIdB: "b", maxRetries: opts.maxRetries ?? 2,
       followUpRules: JSON.stringify(opts.followUpRules ?? {}),
     },
   });
   const lead = await prisma.campaignLead.create({
-    data: { campaignId: campaign.id, hotelId, firstName: "Sarah", phone: phone(), consent: true, consentSource: "csv_import", status: "calling", abVariant: "A", callAttempts: 1 },
+    data: { campaignId: campaign.id, tenantId, firstName: "Sarah", phone: phone(), consent: true, consentSource: "csv_import", status: "calling", abVariant: "A", callAttempts: 1 },
   });
   const vapiCallId = "vapi_" + uid();
-  await prisma.callRecord.create({ data: { hotelId, campaignId: campaign.id, leadId: lead.id, abVariant: "A", status: "in_progress", vapiCallId } });
-  return { hotelId, campaignId: campaign.id, leadId: lead.id, vapiCallId };
+  await prisma.callRecord.create({ data: { tenantId, campaignId: campaign.id, leadId: lead.id, abVariant: "A", status: "in_progress", vapiCallId } });
+  return { tenantId, campaignId: campaign.id, leadId: lead.id, vapiCallId };
 }
 
 // No real sender is configured in tests; follow-up sends will record "failed"
@@ -50,10 +50,10 @@ test("utterance events write a sentiment timeline", async () => {
 });
 
 test("mid-call opt-out suppresses the lead tenant-wide", async () => {
-  const { vapiCallId, hotelId, leadId } = await setup();
+  const { vapiCallId, tenantId, leadId } = await setup();
   const lead = await prisma.campaignLead.findUnique({ where: { id: leadId }, select: { phone: true } });
   await processVapiWebhook({ message: { type: "transcript", transcriptType: "final", role: "user", transcript: "Please stop calling me, remove me", call: { id: vapiCallId } } });
-  assert.equal(await prisma.doNotContact.count({ where: { hotelId, phone: lead!.phone! } }), 1);
+  assert.equal(await prisma.doNotContact.count({ where: { tenantId, phone: lead!.phone! } }), 1);
   const updatedLead = await prisma.campaignLead.findUnique({ where: { id: leadId } });
   assert.equal(updatedLead?.optedOut, true);
 });

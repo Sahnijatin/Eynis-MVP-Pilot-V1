@@ -44,14 +44,14 @@ export const legacyRoleFor = (key: string): string =>
 
 // ── DB helpers (idempotent, safe to call in seed or on-demand) ────────────────
 
-export const seedDefaultRolesForHotel = async (hotelId: string): Promise<void> => {
+export const seedDefaultRolesForHotel = async (tenantId: string): Promise<void> => {
   for (const key of SYSTEM_ROLE_KEYS) {
     const perms = DEFAULT_ROLE_PERMISSIONS[key] ?? [];
     await prisma.role.upsert({
-      where: { hotelId_key: { hotelId, key } },
+      where: { tenantId_key: { tenantId, key } },
       update: {},
       create: {
-        hotelId,
+        tenantId,
         key,
         displayName: SYSTEM_ROLE_DISPLAY_NAMES[key] ?? key,
         permissions: JSON.stringify(perms),
@@ -63,15 +63,15 @@ export const seedDefaultRolesForHotel = async (hotelId: string): Promise<void> =
 };
 
 export const seedLicenseForHotel = async (
-  hotelId: string,
+  tenantId: string,
   plan = "starter",
   maxSeats = 5,
 ): Promise<void> => {
   await prisma.license.upsert({
-    where: { hotelId },
+    where: { tenantId },
     update: {},
     create: {
-      hotelId,
+      tenantId,
       plan,
       maxSeats,
       renewsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
@@ -81,12 +81,12 @@ export const seedLicenseForHotel = async (
 
 // ── Seat-count helpers ────────────────────────────────────────────────────────
 
-export const getActiveUserCount = async (hotelId: string): Promise<number> =>
-  prisma.user.count({ where: { hotelId, isActive: true } });
+export const getActiveUserCount = async (tenantId: string): Promise<number> =>
+  prisma.user.count({ where: { tenantId, isActive: true } });
 
-export const isWithinSeatLimit = async (hotelId: string): Promise<boolean> => {
-  const license = await prisma.license.findUnique({ where: { hotelId } });
+export const isWithinSeatLimit = async (tenantId: string): Promise<boolean> => {
+  const license = await prisma.license.findUnique({ where: { tenantId } });
   if (!license) return true; // no license record → no restriction (dev/seed case)
-  const used = await getActiveUserCount(hotelId);
+  const used = await getActiveUserCount(tenantId);
   return used < license.maxSeats;
 };

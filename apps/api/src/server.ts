@@ -88,13 +88,13 @@ const asSafeOffset = (value: string | null) => {
   return parsed;
 };
 
-const ensureHotelAccess = async (hotelId: string) => {
-  const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { id: true } });
+const ensureTenantAccess = async (tenantId: string) => {
+  const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
   return Boolean(hotel);
 };
 
 // ── Tenant branding (white-label) ──────────────────────────────────────────────
-// Fields the client may read/write. `id`/`hotelId`/timestamps are never client-set.
+// Fields the client may read/write. `id`/`tenantId`/timestamps are never client-set.
 const BRANDING_SELECT = {
   brandName: true, tagline: true, logoUrl: true, faviconUrl: true,
   primaryColor: true, accentColor: true, supportEmail: true, hidePoweredBy: true,
@@ -122,23 +122,23 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
 
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
-const upsertContactByPhone = async (hotelId: string, fullName: string, phoneE164: string) => {
+const upsertContactByPhone = async (tenantId: string, fullName: string, phoneE164: string) => {
   const existing = await prisma.contact.findFirst({
-    where: { hotelId, phoneE164 },
+    where: { tenantId, phoneE164 },
     select: { id: true }
   });
   if (existing) {
     return existing.id;
   }
   const guest = await prisma.contact.create({
-    data: { hotelId, fullName, phoneE164 },
+    data: { tenantId, fullName, phoneE164 },
     select: { id: true }
   });
   return guest.id;
 };
 
 const createServiceRequestForHotel = async (input: {
-  hotelId: string;
+  tenantId: string;
   guestId: string;
   category: string;
   summary: string;
@@ -153,7 +153,7 @@ const createServiceRequestForHotel = async (input: {
       : null;
   return prisma.serviceRequest.create({
     data: {
-      hotelId: input.hotelId,
+      tenantId: input.tenantId,
       guestId: input.guestId,
       category: input.category,
       status: "open",
@@ -164,7 +164,7 @@ const createServiceRequestForHotel = async (input: {
     },
     select: {
       id: true,
-      hotelId: true,
+      tenantId: true,
       guestId: true,
       category: true,
       status: true,
@@ -194,7 +194,7 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
   const user = await prisma.user.findFirst({
     where: {
       id: claims.sub,
-      hotelId: claims.hotelId,
+      tenantId: claims.tenantId,
       email: claims.email,
       // Legacy tokens pin the hospitality role for a consistency check; modern
       // roleKey-only tokens identify by sub+hotel+email (permissions come from
@@ -204,12 +204,12 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
     },
     select: {
       id: true,
-      hotelId: true,
+      tenantId: true,
       email: true,
       role: true,
       fullName: true,
       roleId: true,
-      systemRole: { select: { permissions: true, key: true, hotelId: true } }
+      systemRole: { select: { permissions: true, key: true, tenantId: true } }
     }
   });
 
@@ -221,7 +221,7 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
   // same hotel as the user. The hotel check is defense-in-depth: a User must never
   // inherit permissions from a Role that belongs to a different tenant, even if a
   // stale/cross-hotel roleId was somehow persisted. Fall back to the legacy mapping.
-  const roleBelongsToHotel = user.systemRole?.hotelId === user.hotelId;
+  const roleBelongsToHotel = user.systemRole?.tenantId === user.tenantId;
   const permissions: string[] = user.systemRole && roleBelongsToHotel
     ? parsePermissions(user.systemRole.permissions)
     : getPermissionsForLegacyRole(user.role);
@@ -229,7 +229,7 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
   return {
     ok: true as const,
     context: {
-      hotelId: user.hotelId,
+      tenantId: user.tenantId,
       role: user.role as UserRole, // legacy; retained for audit/domain compat
       roleKey: user.systemRole?.key ?? claims.roleKey ?? null, // canonical generic role
       email: user.email,
@@ -516,24 +516,24 @@ const handleRequest = async (
 ) => {
   try {
     if (req.url === "/auth/token" && req.method === "POST") {
-      const body = (await parseBody(req)) as { hotelId?: unknown; email?: unknown; role?: unknown; roleKey?: unknown };
-      const hotelId = asTrimmedString(body.hotelId);
+      const body = (await parseBody(req)) as { tenantId?: unknown; hotelId?: unknown; email?: unknown; role?: unknown; roleKey?: unknown };
+      const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId during transition
       const email = asTrimmedString(body.email)?.toLowerCase();
       const roleKey = asTrimmedString(body.roleKey);
       const role = asTrimmedString(body.role) as UserRole | null;
-      if (!hotelId || !email || (!role && !roleKey)) {
-        json(res, 400, { ok: false, error: "hotelId, email, and one of role|roleKey are required" });
+      if (!tenantId || !email || (!role && !roleKey)) {
+        json(res, 400, { ok: false, error: "tenantId, email, and one of role|roleKey are required" });
         return;
       }
       // Match by the generic roleKey (the user's assigned system role) when given,
       // else fall back to the legacy hospitality role for backward compatibility.
       const user = await prisma.user.findFirst({
         where: {
-          hotelId, email, isActive: true,
+          tenantId, email, isActive: true,
           ...(roleKey ? { systemRole: { key: roleKey } } : { role: role ?? undefined }),
         },
         select: {
-          id: true, hotelId: true, email: true, role: true,
+          id: true, tenantId: true, email: true, role: true,
           systemRole: { select: { permissions: true, key: true } }
         }
       });
@@ -546,7 +546,7 @@ const handleRequest = async (
         : getPermissionsForLegacyRole(user.role);
       const token = await createAuthToken({
         sub: user.id,
-        hotelId: user.hotelId,
+        tenantId: user.tenantId,
         email: user.email,
         role: user.role as UserRole, // legacy claim (compat)
         roleKey: (user.systemRole?.key as SystemRoleKey | undefined) ?? null,
@@ -556,7 +556,7 @@ const handleRequest = async (
       return;
     }
 
-    // ── GET /auth/identify — public: look up hotelId+role+industry by email ────────
+    // ── GET /auth/identify — public: look up tenantId+role+industry by email ────────
     // Read-only: this endpoint MUST NOT mutate state. Invited users are connected via
     // the token-protected invite flow (POST /team/invitations/:token/accept), which
     // proves possession of the secret invite link. Auto-accepting by email alone here
@@ -572,11 +572,11 @@ const handleRequest = async (
       const user = await prisma.user.findFirst({
         where: { email, isActive: true },
         select: {
-          hotelId: true,
+          tenantId: true,
           role: true,
           fullName: true,
           systemRole: { select: { key: true } },
-          hotel: { select: { industry: true, name: true, branding: { select: BRANDING_SELECT } } }
+          tenant: { select: { industry: true, name: true, branding: { select: BRANDING_SELECT } } }
         }
       });
 
@@ -594,12 +594,12 @@ const handleRequest = async (
       json(res, 200, {
         ok: true,
         exists: true,
-        hotelId: user.hotelId,
+        tenantId: user.tenantId,
         role: user.role,
         roleKey: user.systemRole?.key ?? null,
-        industry: user.hotel.industry,
-        propertyName: user.hotel.name,
-        branding: user.hotel.branding ?? null,
+        industry: user.tenant.industry,
+        propertyName: user.tenant.name,
+        branding: user.tenant.branding ?? null,
         fullName: user.fullName
       });
       return;
@@ -641,15 +641,15 @@ const handleRequest = async (
         return;
       }
 
-      const hotelId = `hotel-${randomBytes(8).toString("hex")}`;
+      const tenantId = `hotel-${randomBytes(8).toString("hex")}`;
 
-      await prisma.tenant.create({ data: { id: hotelId, name: propertyName, timezone, industry } });
+      await prisma.tenant.create({ data: { id: tenantId, name: propertyName, timezone, industry } });
 
-      await seedDefaultRolesForHotel(hotelId);
-      await seedLicenseForHotel(hotelId, "starter", 5);
+      await seedDefaultRolesForHotel(tenantId);
+      await seedLicenseForHotel(tenantId, "starter", 5);
 
       const adminRole = await prisma.role.findUnique({
-        where: { hotelId_key: { hotelId, key: "admin" } },
+        where: { tenantId_key: { tenantId, key: "admin" } },
         select: { id: true, permissions: true }
       });
 
@@ -657,7 +657,7 @@ const handleRequest = async (
       await prisma.user.create({
         data: {
           id: userId,
-          hotelId,
+          tenantId,
           email: ownerEmail,
           fullName: ownerName,
           role: "owner",
@@ -672,14 +672,14 @@ const handleRequest = async (
 
       const token = await createAuthToken({
         sub: userId,
-        hotelId,
+        tenantId,
         email: ownerEmail,
         role: "owner",
         roleKey: "admin", // the owner is always seeded as the admin system role
         permissions
       });
 
-      json(res, 201, { ok: true, hotelId, token, email: ownerEmail, propertyName });
+      json(res, 201, { ok: true, tenantId, token, email: ownerEmail, propertyName });
       return;
     }
 
@@ -742,7 +742,7 @@ const handleRequest = async (
         return;
       }
 
-      const hasAccess = await ensureHotelAccess(auth.context.hotelId);
+      const hasAccess = await ensureTenantAccess(auth.context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
@@ -760,8 +760,8 @@ const handleRequest = async (
     if (req.url === "/tenant/branding" && (req.method === "GET" || req.method === "PUT")) {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const { hotelId, permissions } = auth.context;
-      if (!(await ensureHotelAccess(hotelId))) {
+      const { tenantId, permissions } = auth.context;
+      if (!(await ensureTenantAccess(tenantId))) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
       }
@@ -772,7 +772,7 @@ const handleRequest = async (
 
       if (req.method === "GET") {
         const branding = await prisma.tenantBranding.findUnique({
-          where: { hotelId }, select: BRANDING_SELECT,
+          where: { tenantId }, select: BRANDING_SELECT,
         });
         json(res, 200, { ok: true, branding: branding ?? null });
         return;
@@ -781,8 +781,8 @@ const handleRequest = async (
       // PUT — upsert this tenant's branding (partial overrides; blanks reset to default).
       const data = sanitizeBranding((await parseBody(req)) as Record<string, unknown>);
       const branding = await prisma.tenantBranding.upsert({
-        where: { hotelId },
-        create: { hotelId, ...data },
+        where: { tenantId },
+        create: { tenantId, ...data },
         update: data,
         select: BRANDING_SELECT,
       });
@@ -802,7 +802,7 @@ const handleRequest = async (
         return;
       }
 
-      const hasAccess = await ensureHotelAccess(context.hotelId);
+      const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
@@ -810,14 +810,14 @@ const handleRequest = async (
 
       eventBus.publish({
         type: "service_request.created",
-        hotelId: context.hotelId,
+        tenantId: context.tenantId,
         payload: { source: "api" },
         createdAt: new Date().toISOString()
       });
 
       await prisma.auditLog.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           actorRole: context.role,
           action: "service_request.created",
           entityType: "service_request",
@@ -831,14 +831,14 @@ const handleRequest = async (
 
     if (req.url === "/public/requests" && req.method === "POST") {
       const body = (await parseBody(req)) as {
-        hotelId?: unknown;
+        tenantId?: unknown;
         guestName?: unknown;
         guestPhone?: unknown;
         category?: unknown;
         summary?: unknown;
         source?: unknown;
       };
-      const hotelId = asTrimmedString(body.hotelId);
+      const tenantId = asTrimmedString(body.tenantId);
       const guestName = asTrimmedString(body.guestName);
       const guestPhoneRaw = asTrimmedString(body.guestPhone);
       const category = asTrimmedString(body.category) ?? "general";
@@ -846,23 +846,23 @@ const handleRequest = async (
       const source = asTrimmedString(body.source) ?? "qr";
       const guestPhone = guestPhoneRaw ? normalizePhone(guestPhoneRaw) : null;
 
-      if (!hotelId || !guestName || !guestPhone || !summary) {
+      if (!tenantId || !guestName || !guestPhone || !summary) {
         json(res, 400, {
           ok: false,
-          error: "hotelId, guestName, guestPhone and summary are required"
+          error: "tenantId, guestName, guestPhone and summary are required"
         });
         return;
       }
 
-      const hasAccess = await ensureHotelAccess(hotelId);
+      const hasAccess = await ensureTenantAccess(tenantId);
       if (!hasAccess) {
         json(res, 404, { ok: false, error: "Hotel not found" });
         return;
       }
 
-      const guestId = await upsertContactByPhone(hotelId, guestName, guestPhone);
+      const guestId = await upsertContactByPhone(tenantId, guestName, guestPhone);
       const serviceRequest = await createServiceRequestForHotel({
-        hotelId,
+        tenantId,
         guestId,
         category,
         summary,
@@ -872,7 +872,7 @@ const handleRequest = async (
 
       await prisma.auditLog.create({
         data: {
-          hotelId,
+          tenantId,
           actorRole: "guest",
           action: "service_request.created.public",
           entityType: "service_request",
@@ -940,12 +940,12 @@ const handleRequest = async (
       if (!normalized) {
         json(res, 400, {
           ok: false,
-          error: "Unable to normalize webhook payload. Provide provider-compatible payload with hotelId, sender phone and message."
+          error: "Unable to normalize webhook payload. Provide provider-compatible payload with tenantId, sender phone and message."
         });
         return;
       }
-      const { hotelId, fromPhone, message, guestName, provider } = normalized;
-      const hasAccess = await ensureHotelAccess(hotelId);
+      const { tenantId, fromPhone, message, guestName, provider } = normalized;
+      const hasAccess = await ensureTenantAccess(tenantId);
       if (!hasAccess) {
         json(res, 404, { ok: false, error: "Hotel not found" });
         return;
@@ -959,14 +959,14 @@ const handleRequest = async (
         asTrimmedString((body as Record<string, unknown>).messageId) ??
         asTrimmedString((body as Record<string, unknown>).id);
       const { handleInboundWhatsApp } = await import("./core/campaigns/whatsapp-agent");
-      const agentResult = await handleInboundWhatsApp({ hotelId, fromPhone, body: message, providerMessageId });
+      const agentResult = await handleInboundWhatsApp({ tenantId, fromPhone, body: message, providerMessageId });
       if (agentResult.handled) {
         json(res, 202, { ok: true, handledBy: "whatsapp_agent", reason: agentResult.reason });
         return;
       }
 
       const result = await ingestConnectorEvent({
-        hotelId,
+        tenantId,
         connectorKey: provider === "twilio" ? "whatsapp_twilio" : provider === "interakt" ? "whatsapp_interakt" : "whatsapp_generic",
         guestPhone: fromPhone,
         guestName,
@@ -1005,7 +1005,7 @@ const handleRequest = async (
       const aiProv = asTrimmedString(body.aiProvider) === "openai" ? "openai" as const : "claude" as const;
 
       const result = await ingestConnectorEvent({
-        hotelId: auth.context.hotelId,
+        tenantId: auth.context.tenantId,
         connectorKey,
         eventType: asTrimmedString(body.eventType) ?? "inbound_message",
         guestPhone: asTrimmedString(body.guestPhone) ?? undefined,
@@ -1035,7 +1035,7 @@ const handleRequest = async (
 
       const [items, total] = await Promise.all([
         prisma.connectorEvent.findMany({
-          where: { hotelId: auth.context.hotelId, ...(connectorKey ? { connectorKey } : {}) },
+          where: { tenantId: auth.context.tenantId, ...(connectorKey ? { connectorKey } : {}) },
           orderBy: { createdAt: "desc" },
           take: limit,
           skip: offset,
@@ -1046,7 +1046,7 @@ const handleRequest = async (
             serviceRequestId: true, replySentAt: true, replyStatus: true, createdAt: true
           }
         }),
-        prisma.connectorEvent.count({ where: { hotelId: auth.context.hotelId, ...(connectorKey ? { connectorKey } : {}) } })
+        prisma.connectorEvent.count({ where: { tenantId: auth.context.tenantId, ...(connectorKey ? { connectorKey } : {}) } })
       ]);
 
       json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
@@ -1069,7 +1069,7 @@ const handleRequest = async (
       }
 
       const { sendWhatsAppReply } = await import("./core/connectors/whatsapp-outbound");
-      const result = await sendWhatsAppReply(auth.context.hotelId, toPhone, message);
+      const result = await sendWhatsAppReply(auth.context.tenantId, toPhone, message);
       json(res, result.sent ? 200 : 503, { ok: result.sent, ...result });
       return;
     }
@@ -1081,7 +1081,7 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      const hasAccess = await ensureHotelAccess(context.hotelId);
+      const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
@@ -1120,7 +1120,7 @@ const handleRequest = async (
 
       if (guestIdInput) {
         const guest = await prisma.contact.findFirst({
-          where: { id: guestIdInput, hotelId: context.hotelId },
+          where: { id: guestIdInput, tenantId: context.tenantId },
           select: { id: true }
         });
         if (!guest) {
@@ -1131,7 +1131,7 @@ const handleRequest = async (
       } else if (guestNameInput && guestPhoneInput) {
         const guest = await prisma.contact.create({
           data: {
-            hotelId: context.hotelId,
+            tenantId: context.tenantId,
             fullName: guestNameInput,
             phoneE164: guestPhoneInput
           }
@@ -1147,7 +1147,7 @@ const handleRequest = async (
 
       const serviceRequest = await prisma.serviceRequest.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           guestId,
           category: categoryInput,
           status: "open",
@@ -1159,7 +1159,7 @@ const handleRequest = async (
         },
         select: {
           id: true,
-          hotelId: true,
+          tenantId: true,
           guestId: true,
           category: true,
           status: true,
@@ -1175,7 +1175,7 @@ const handleRequest = async (
 
       await prisma.auditLog.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           actorRole: context.role,
         action: "service_request.created",
         entityType: "service_request",
@@ -1198,7 +1198,7 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
-      const hasAccess = await ensureHotelAccess(context.hotelId);
+      const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
@@ -1222,11 +1222,11 @@ const handleRequest = async (
       const sortOrder = sortOrderInput === "asc" ? "asc" : "desc";
 
       const where: {
-        hotelId: string;
+        tenantId: string;
         status?: string;
         assignedToUserId?: string;
         slaDueAt?: { not: null; gte?: Date; lt?: Date };
-      } = { hotelId: context.hotelId };
+      } = { tenantId: context.tenantId };
       if (statusFilter) {
         where.status = statusFilter;
       }
@@ -1248,7 +1248,7 @@ const handleRequest = async (
           take: limit,
           select: {
             id: true,
-            hotelId: true,
+            tenantId: true,
             guestId: true,
             category: true,
             status: true,
@@ -1287,7 +1287,7 @@ const handleRequest = async (
       const now = new Date();
       const result = await prisma.serviceRequest.updateMany({
         where: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           status: { not: "resolved" },
           slaDueAt: { not: null, lt: now },
           slaBreachedAt: null
@@ -1325,7 +1325,7 @@ const handleRequest = async (
       }
 
       const existing = await prisma.serviceRequest.findFirst({
-        where: { id: requestId, hotelId: context.hotelId },
+        where: { id: requestId, tenantId: context.tenantId },
         select: { id: true, status: true }
       });
       if (!existing) {
@@ -1345,7 +1345,7 @@ const handleRequest = async (
         },
         select: {
           id: true,
-          hotelId: true,
+          tenantId: true,
           guestId: true,
           category: true,
           status: true,
@@ -1362,7 +1362,7 @@ const handleRequest = async (
 
       await prisma.auditLog.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           actorRole: context.role,
           action: "service_request.status_changed",
           entityType: "service_request",
@@ -1377,7 +1377,7 @@ const handleRequest = async (
 
       await prisma.serviceRequestTransition.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           serviceRequestId: updated.id,
           fromStatus: existing.status,
           toStatus: nextStatus,
@@ -1404,21 +1404,21 @@ const handleRequest = async (
       const [openCount, resolvedTodayCount, escalatedOpenCount, slaBreachedOpenCount] =
         await Promise.all([
           prisma.serviceRequest.count({
-            where: { hotelId: context.hotelId, status: { not: "resolved" } }
+            where: { tenantId: context.tenantId, status: { not: "resolved" } }
           }),
           prisma.serviceRequest.count({
             where: {
-              hotelId: context.hotelId,
+              tenantId: context.tenantId,
               status: "resolved",
               resolvedAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) }
             }
           }),
           prisma.serviceRequest.count({
-            where: { hotelId: context.hotelId, status: "escalated" }
+            where: { tenantId: context.tenantId, status: "escalated" }
           }),
           prisma.serviceRequest.count({
             where: {
-              hotelId: context.hotelId,
+              tenantId: context.tenantId,
               status: { not: "resolved" },
               slaDueAt: { not: null, lt: new Date() }
             }
@@ -1450,7 +1450,7 @@ const handleRequest = async (
       }
 
       const rows = await prisma.serviceRequest.findMany({
-        where: { hotelId: context.hotelId, status: { not: "resolved" } },
+        where: { tenantId: context.tenantId, status: { not: "resolved" } },
         select: { status: true, priority: true, category: true }
       });
 
@@ -1494,12 +1494,12 @@ const handleRequest = async (
 
       const [createdRows, resolvedRows] = await Promise.all([
         prisma.serviceRequest.findMany({
-          where: { hotelId: context.hotelId, createdAt: { gte: windowStart } },
+          where: { tenantId: context.tenantId, createdAt: { gte: windowStart } },
           select: { createdAt: true }
         }),
         prisma.serviceRequest.findMany({
           where: {
-            hotelId: context.hotelId,
+            tenantId: context.tenantId,
             status: "resolved",
             resolvedAt: { not: null, gte: windowStart }
           },
@@ -1541,16 +1541,16 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
-      const licRevenue = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      const licRevenue = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licRevenue.ok) { json(res, 403, { ok: false, error: licRevenue.error }); return; }
 
       const [offerEvents, openRequests] = await Promise.all([
         prisma.offerEvent.findMany({
-          where: { hotelId: context.hotelId },
+          where: { tenantId: context.tenantId },
           select: { offerType: true, status: true, revenueInr: true }
         }),
         prisma.serviceRequest.count({
-          where: { hotelId: context.hotelId, status: { not: "resolved" } }
+          where: { tenantId: context.tenantId, status: { not: "resolved" } }
         })
       ]);
 
@@ -1624,15 +1624,15 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
-      const licStaff = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      const licStaff = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licStaff.ok) { json(res, 403, { ok: false, error: licStaff.error }); return; }
 
       const users = await prisma.user.findMany({
-        where: { hotelId: context.hotelId, isActive: true },
+        where: { tenantId: context.tenantId, isActive: true },
         select: { id: true, fullName: true, role: true }
       });
       const requests = await prisma.serviceRequest.findMany({
-        where: { hotelId: context.hotelId },
+        where: { tenantId: context.tenantId },
         select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
       });
 
@@ -1737,7 +1737,7 @@ const handleRequest = async (
       }
 
       const configs = await prisma.connectorConfig.findMany({
-        where: { hotelId: context.hotelId },
+        where: { tenantId: context.tenantId },
         select: { connectorKey: true, enabled: true }
       });
       const configMap = new Map(configs.map((c) => [c.connectorKey, c.enabled]));
@@ -1771,7 +1771,7 @@ const handleRequest = async (
       }
 
       const items = await prisma.connectorConfig.findMany({
-        where: { hotelId: context.hotelId },
+        where: { tenantId: context.tenantId },
         orderBy: { connectorKey: "asc" },
         select: { connectorKey: true, enabled: true, configJson: true, updatedAt: true }
       });
@@ -1818,9 +1818,9 @@ const handleRequest = async (
       const config = body.config && typeof body.config === "object" ? body.config : {};
       const configJson = JSON.stringify(config);
       const saved = await prisma.connectorConfig.upsert({
-        where: { hotelId_connectorKey: { hotelId: context.hotelId, connectorKey: connectorConfigKey } },
+        where: { tenantId_connectorKey: { tenantId: context.tenantId, connectorKey: connectorConfigKey } },
         create: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           connectorKey: connectorConfigKey,
           enabled,
           configJson
@@ -1834,7 +1834,7 @@ const handleRequest = async (
 
       await prisma.auditLog.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           actorRole: context.role,
           action: "connector.config.updated",
           entityType: "connector_config",
@@ -1876,11 +1876,11 @@ const handleRequest = async (
       }
 
       await prisma.connectorConfig.deleteMany({
-        where: { hotelId: context.hotelId, connectorKey: connectorConfigKey }
+        where: { tenantId: context.tenantId, connectorKey: connectorConfigKey }
       });
       await prisma.auditLog.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           actorRole: context.role,
           action: "connector.config.deleted",
           entityType: "connector_config",
@@ -1910,8 +1910,8 @@ const handleRequest = async (
       const limit = asSafeLimit(parsedUrl.searchParams.get("limit"), 50, 200);
       const offset = asSafeOffset(parsedUrl.searchParams.get("offset"));
 
-      const where: { hotelId: string; role?: string; isActive?: boolean } = {
-        hotelId: context.hotelId
+      const where: { tenantId: string; role?: string; isActive?: boolean } = {
+        tenantId: context.tenantId
       };
       if (roleFilter) where.role = roleFilter;
       if (isActiveFilter === "true") where.isActive = true;
@@ -1963,7 +1963,7 @@ const handleRequest = async (
       }
 
       const assignee = await prisma.user.findFirst({
-        where: { hotelId: context.hotelId, email: assigneeEmail, isActive: true },
+        where: { tenantId: context.tenantId, email: assigneeEmail, isActive: true },
         select: { id: true, email: true }
       });
       if (!assignee) {
@@ -1972,7 +1972,7 @@ const handleRequest = async (
       }
 
       const existing = await prisma.serviceRequest.findFirst({
-        where: { id: assignRequestId, hotelId: context.hotelId },
+        where: { id: assignRequestId, tenantId: context.tenantId },
         select: { id: true, assignedToUserId: true }
       });
       if (!existing) {
@@ -1988,7 +1988,7 @@ const handleRequest = async (
 
       await prisma.auditLog.create({
         data: {
-          hotelId: context.hotelId,
+          tenantId: context.tenantId,
           actorRole: context.role,
           action: "service_request.assigned",
           entityType: "service_request",
@@ -2019,7 +2019,7 @@ const handleRequest = async (
       }
 
       const exists = await prisma.serviceRequest.findFirst({
-        where: { id: transitionRequestId, hotelId: context.hotelId },
+        where: { id: transitionRequestId, tenantId: context.tenantId },
         select: { id: true }
       });
       if (!exists) {
@@ -2032,7 +2032,7 @@ const handleRequest = async (
       const offset = asSafeOffset(parsedUrl.searchParams.get("offset"));
       const [items, total] = await Promise.all([
         prisma.serviceRequestTransition.findMany({
-          where: { hotelId: context.hotelId, serviceRequestId: transitionRequestId },
+          where: { tenantId: context.tenantId, serviceRequestId: transitionRequestId },
           orderBy: { createdAt: "desc" },
           skip: offset,
           take: limit,
@@ -2046,7 +2046,7 @@ const handleRequest = async (
           }
         }),
         prisma.serviceRequestTransition.count({
-          where: { hotelId: context.hotelId, serviceRequestId: transitionRequestId }
+          where: { tenantId: context.tenantId, serviceRequestId: transitionRequestId }
         })
       ]);
 
@@ -2069,7 +2069,7 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
-      const hasAccess = await ensureHotelAccess(context.hotelId);
+      const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
         return;
@@ -2080,13 +2080,13 @@ const handleRequest = async (
       const offset = asSafeOffset(parsedUrl.searchParams.get("offset"));
       const [items, total] = await Promise.all([
         prisma.auditLog.findMany({
-          where: { hotelId: context.hotelId },
+          where: { tenantId: context.tenantId },
           orderBy: { createdAt: "desc" },
           skip: offset,
           take: limit,
           select: {
             id: true,
-            hotelId: true,
+            tenantId: true,
             actorRole: true,
             action: true,
             entityType: true,
@@ -2095,7 +2095,7 @@ const handleRequest = async (
             createdAt: true
           }
         }),
-        prisma.auditLog.count({ where: { hotelId: context.hotelId } })
+        prisma.auditLog.count({ where: { tenantId: context.tenantId } })
       ]);
 
       json(res, 200, {
@@ -2115,7 +2115,7 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const items = await prisma.serviceRequest.findMany({
-        where: { hotelId: context.hotelId, status: { not: "resolved" } },
+        where: { tenantId: context.tenantId, status: { not: "resolved" } },
         orderBy: { createdAt: "desc" },
         take: 8,
         select: {
@@ -2143,9 +2143,9 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const guestId = guestIdMatch[1]!;
-      const { hotelId } = auth.context;
+      const { tenantId } = auth.context;
       const guest = await prisma.contact.findFirst({
-        where: { id: guestId, hotelId },
+        where: { id: guestId, tenantId },
         include: {
           stays: { orderBy: { checkInAt: "desc" }, take: 5 },
           serviceRequests: {
@@ -2157,13 +2157,13 @@ const handleRequest = async (
       });
       if (!guest) { json(res, 404, { ok: false, error: "Guest not found" }); return; }
       const connectorEvents = await prisma.connectorEvent.findMany({
-        where: { hotelId, guestId },
+        where: { tenantId, guestId },
         orderBy: { createdAt: "desc" },
         take: 10,
         select: { id: true, connectorKey: true, aiCategory: true, aiSummary: true, aiSentiment: true, replyStatus: true, createdAt: true }
       });
       const totalSpend = await prisma.offerEvent.aggregate({
-        where: { hotelId, guestId, status: "accepted" },
+        where: { tenantId, guestId, status: "accepted" },
         _sum: { revenueInr: true }
       });
       const segments = ["Standard", "Business", "Family", "Solo", "Couple"];
@@ -2196,7 +2196,7 @@ const handleRequest = async (
       const offset = asSafeOffset(parsedUrl.searchParams.get("offset"));
       const search = asTrimmedString(parsedUrl.searchParams.get("search"));
       const where = {
-        hotelId: context.hotelId,
+        tenantId: context.tenantId,
         ...(search ? { OR: [
           { fullName: { contains: search } },
           { phoneE164: { contains: search } }
@@ -2249,19 +2249,19 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /automations/executions")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licExec = await enforceLicenseFeature(auth.context.hotelId, "automations");
+      const licExec = await enforceLicenseFeature(auth.context.tenantId, "automations");
       if (!licExec.ok) { json(res, 403, { ok: false, error: licExec.error }); return; }
       const u = parseUrl(req.url);
       const limit = asSafeLimit(u.searchParams.get("limit"), 20, 100);
       const offset = asSafeOffset(u.searchParams.get("offset"));
       const [execs, total] = await Promise.all([
         prisma.automationExecution.findMany({
-          where: { hotelId: auth.context.hotelId },
+          where: { tenantId: auth.context.tenantId },
           orderBy: { executedAt: "desc" },
           skip: offset,
           take: limit
         }),
-        prisma.automationExecution.count({ where: { hotelId: auth.context.hotelId } })
+        prisma.automationExecution.count({ where: { tenantId: auth.context.tenantId } })
       ]);
       json(res, 200, {
         ok: true,
@@ -2284,10 +2284,10 @@ const handleRequest = async (
       if (!canAccess(context.permissions, "GET /automations")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licAuto = await enforceLicenseFeature(context.hotelId, "automations");
+      const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
       if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
       const rules = await prisma.automationRule.findMany({
-        where: { hotelId: context.hotelId },
+        where: { tenantId: context.tenantId },
         orderBy: { createdAt: "asc" },
         include: {
           automationExecutions: {
@@ -2300,12 +2300,12 @@ const handleRequest = async (
       // Execution counts per rule
       const execCounts = await prisma.automationExecution.groupBy({
         by: ["ruleId"],
-        where: { hotelId: context.hotelId },
+        where: { tenantId: context.tenantId },
         _count: { id: true }
       });
       const successCounts = await prisma.automationExecution.groupBy({
         by: ["ruleId"],
-        where: { hotelId: context.hotelId, actionResult: "success" },
+        where: { tenantId: context.tenantId, actionResult: "success" },
         _count: { id: true }
       });
       const execMap = Object.fromEntries(execCounts.map((e) => [e.ruleId, e._count.id]));
@@ -2349,11 +2349,11 @@ const handleRequest = async (
       if (!canAccess(context.permissions, "GET /analytics/sentiment")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licSentiment = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      const licSentiment = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licSentiment.ok) { json(res, 403, { ok: false, error: licSentiment.error }); return; }
       // Compute sentiment from resolved service requests (used as proxy for feedback)
       const resolved = await prisma.serviceRequest.findMany({
-        where: { hotelId: context.hotelId, status: "resolved" },
+        where: { tenantId: context.tenantId, status: "resolved" },
         select: { createdAt: true, resolvedAt: true, category: true }
       });
       const netScore = Math.min(99, 72 + resolved.length * 2);
@@ -2400,10 +2400,10 @@ const handleRequest = async (
       if (!canAccess(context.permissions, "GET /analytics/upsell-campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licUpsell = await enforceLicenseFeature(context.hotelId, "advanced_analytics");
+      const licUpsell = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
       const rules = await prisma.automationRule.findMany({
-        where: { hotelId: context.hotelId },
+        where: { tenantId: context.tenantId },
         orderBy: { createdAt: "asc" }
       });
       const campaignTriggers: Record<string, string> = {
@@ -2457,35 +2457,35 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /ai/morning-briefing")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licBriefing = await enforceLicenseFeature(auth.context.hotelId, "ai_features");
+      const licBriefing = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licBriefing.ok) { json(res, 403, { ok: false, error: licBriefing.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
-      const { hotelId } = auth.context;
-      const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
+      const { tenantId } = auth.context;
+      const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
       const [openReqs, escalatedReqs, guestCount] = await Promise.all([
-        prisma.serviceRequest.count({ where: { hotelId, status: "open" } }),
-        prisma.serviceRequest.count({ where: { hotelId, status: "escalated" } }),
-        prisma.contact.count({ where: { hotelId } })
+        prisma.serviceRequest.count({ where: { tenantId, status: "open" } }),
+        prisma.serviceRequest.count({ where: { tenantId, status: "escalated" } }),
+        prisma.contact.count({ where: { tenantId } })
       ]);
       const topCategories = await prisma.serviceRequest.groupBy({
         by: ["category"],
-        where: { hotelId, status: { in: ["open", "escalated"] } },
+        where: { tenantId, status: { in: ["open", "escalated"] } },
         _count: { category: true },
         orderBy: { _count: { category: "desc" } },
         take: 3
       });
       const offerAggregate = await prisma.offerEvent.aggregate({
-        where: { hotelId },
+        where: { tenantId },
         _avg: { revenueInr: true }
       });
       const avgSentimentScore = Math.min(100, Math.max(40, Math.round((offerAggregate._avg.revenueInr ?? 0) / 100 + 68)));
 
       const briefing = await generateMorningBriefing({
-        hotelName: hotel?.name ?? hotelId,
+        hotelName: hotel?.name ?? tenantId,
         date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
         openRequests: openReqs,
         escalatedRequests: escalatedReqs,
@@ -2515,7 +2515,7 @@ const handleRequest = async (
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
-      const classification = await classifyInboundEvent(auth.context.hotelId, text, provider);
+      const classification = await classifyInboundEvent(auth.context.tenantId, text, provider);
       json(res, 200, { ok: true, provider, classification });
       return;
     }
@@ -2527,7 +2527,7 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /ai/guest-intelligence/:guestId")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licGuest = await enforceLicenseFeature(auth.context.hotelId, "ai_features");
+      const licGuest = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licGuest.ok) { json(res, 403, { ok: false, error: licGuest.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
@@ -2535,27 +2535,27 @@ const handleRequest = async (
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const guestId = parseGuestIntelligencePath(req.url)!;
-      const { hotelId } = auth.context;
+      const { tenantId } = auth.context;
 
       const guest = await prisma.contact.findFirst({
-        where: { id: guestId, hotelId },
+        where: { id: guestId, tenantId },
         select: { id: true, fullName: true, visitCount: true }
       });
       if (!guest) { json(res, 404, { ok: false, error: "Guest not found" }); return; }
 
       const [guestRequests, guestOffers, openCount] = await Promise.all([
         prisma.serviceRequest.findMany({
-          where: { guestId, hotelId },
+          where: { guestId, tenantId },
           select: { category: true, createdAt: true },
           orderBy: { createdAt: "desc" },
           take: 20
         }),
         prisma.offerEvent.findMany({
-          where: { guestId, hotelId },
+          where: { guestId, tenantId },
           select: { status: true, revenueInr: true },
           take: 30
         }),
-        prisma.serviceRequest.count({ where: { guestId, hotelId, status: { in: ["open", "accepted"] } } })
+        prisma.serviceRequest.count({ where: { guestId, tenantId, status: { in: ["open", "accepted"] } } })
       ]);
 
       const lastReq = guestRequests[0];
@@ -2592,21 +2592,21 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /ai/revenue-insights")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licRevInsights = await enforceLicenseFeature(auth.context.hotelId, "ai_features");
+      const licRevInsights = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licRevInsights.ok) { json(res, 403, { ok: false, error: licRevInsights.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
-      const { hotelId } = auth.context;
-      const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
+      const { tenantId } = auth.context;
+      const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
 
       const [totalUsers, offerStats] = await Promise.all([
-        prisma.user.count({ where: { hotelId, isActive: true } }),
+        prisma.user.count({ where: { tenantId, isActive: true } }),
         prisma.offerEvent.groupBy({
           by: ["offerType"],
-          where: { hotelId },
+          where: { tenantId },
           _count: { offerType: true },
           _sum: { revenueInr: true },
           orderBy: { _sum: { revenueInr: "desc" } },
@@ -2614,11 +2614,11 @@ const handleRequest = async (
         })
       ]);
 
-      const accepted = await prisma.offerEvent.count({ where: { hotelId, status: "accepted" } });
-      const total = await prisma.offerEvent.count({ where: { hotelId } });
+      const accepted = await prisma.offerEvent.count({ where: { tenantId, status: "accepted" } });
+      const total = await prisma.offerEvent.count({ where: { tenantId } });
 
       const insights = await generateRevenueInsights({
-        hotelName: hotel?.name ?? hotelId,
+        hotelName: hotel?.name ?? tenantId,
         occupancyPct: 72,
         adrInr: 8500,
         revParInr: 6120,
@@ -2642,7 +2642,7 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "POST /night-audit/generate")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licNightGen = await enforceLicenseFeature(auth.context.hotelId, "night_audit");
+      const licNightGen = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!licNightGen.ok) { json(res, 403, { ok: false, error: licNightGen.error }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
@@ -2651,8 +2651,8 @@ const handleRequest = async (
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured" }); return; }
 
-      const { hotelId } = auth.context;
-      const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
+      const { tenantId } = auth.context;
+      const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
       const today = new Date();
       const todayStart = new Date(today); todayStart.setHours(0, 0, 0, 0);
       const todayEnd = new Date(today); todayEnd.setHours(23, 59, 59, 999);
@@ -2666,22 +2666,22 @@ const handleRequest = async (
         upsellAgg, topCategoryRows
       ] = await Promise.all([
         prisma.serviceRequest.findMany({
-          where: { hotelId, status: "resolved", resolvedAt: { gte: todayStart, lte: todayEnd } },
+          where: { tenantId, status: "resolved", resolvedAt: { gte: todayStart, lte: todayEnd } },
           select: { createdAt: true, resolvedAt: true }
         }),
-        prisma.serviceRequest.count({ where: { hotelId, status: "escalated" } }),
-        prisma.serviceRequest.count({ where: { hotelId, status: { not: "resolved" } } }),
-        prisma.stay.count({ where: { hotelId, checkInAt: { gte: todayStart, lte: todayEnd } } }),
-        prisma.stay.count({ where: { hotelId, checkOutAt: { gte: todayStart, lte: todayEnd } } }),
-        prisma.stay.count({ where: { hotelId, checkInAt: { lte: today }, checkOutAt: { gte: today } } }),
-        prisma.automationExecution.count({ where: { hotelId, executedAt: { gte: todayStart } } }),
-        prisma.automationExecution.count({ where: { hotelId, executedAt: { gte: todayStart }, actionResult: "success" } }),
-        prisma.connectorEvent.count({ where: { hotelId, createdAt: { gte: todayStart } } }),
-        prisma.connectorEvent.count({ where: { hotelId, createdAt: { gte: todayStart }, aiSentiment: "negative" } }),
-        prisma.offerEvent.aggregate({ where: { hotelId, status: "accepted", createdAt: { gte: todayStart } }, _sum: { revenueInr: true } }),
+        prisma.serviceRequest.count({ where: { tenantId, status: "escalated" } }),
+        prisma.serviceRequest.count({ where: { tenantId, status: { not: "resolved" } } }),
+        prisma.stay.count({ where: { tenantId, checkInAt: { gte: todayStart, lte: todayEnd } } }),
+        prisma.stay.count({ where: { tenantId, checkOutAt: { gte: todayStart, lte: todayEnd } } }),
+        prisma.stay.count({ where: { tenantId, checkInAt: { lte: today }, checkOutAt: { gte: today } } }),
+        prisma.automationExecution.count({ where: { tenantId, executedAt: { gte: todayStart } } }),
+        prisma.automationExecution.count({ where: { tenantId, executedAt: { gte: todayStart }, actionResult: "success" } }),
+        prisma.connectorEvent.count({ where: { tenantId, createdAt: { gte: todayStart } } }),
+        prisma.connectorEvent.count({ where: { tenantId, createdAt: { gte: todayStart }, aiSentiment: "negative" } }),
+        prisma.offerEvent.aggregate({ where: { tenantId, status: "accepted", createdAt: { gte: todayStart } }, _sum: { revenueInr: true } }),
         prisma.serviceRequest.groupBy({
           by: ["category"],
-          where: { hotelId },
+          where: { tenantId },
           _count: { category: true },
           orderBy: { _count: { category: "desc" } },
           take: 1
@@ -2696,7 +2696,7 @@ const handleRequest = async (
       );
 
       const auditData: NightAuditData = {
-        hotelName: hotel?.name ?? hotelId,
+        hotelName: hotel?.name ?? tenantId,
         reportDate,
         occupancyPct: inHouseCount > 0 ? Math.min(100, Math.round((inHouseCount / 45) * 100)) : 72,
         checkIns: checkInsToday,
@@ -2716,14 +2716,14 @@ const handleRequest = async (
 
       const result = await generateNightAuditReport(auditData, provider);
       await prisma.nightAuditReport.upsert({
-        where: { hotelId_reportDate: { hotelId, reportDate } },
-        create: { hotelId, reportDate, contentJson: JSON.stringify(result), provider },
+        where: { tenantId_reportDate: { tenantId, reportDate } },
+        create: { tenantId, reportDate, contentJson: JSON.stringify(result), provider },
         update: { contentJson: JSON.stringify(result), provider }
       });
 
       await prisma.auditLog.create({
         data: {
-          hotelId,
+          tenantId,
           actorRole: auth.context.role,
           action: "night_audit.generated",
           entityType: "night_audit_report",
@@ -2742,11 +2742,11 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /night-audit/latest")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licNightLatest = await enforceLicenseFeature(auth.context.hotelId, "night_audit");
+      const licNightLatest = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!licNightLatest.ok) { json(res, 403, { ok: false, error: licNightLatest.error }); return; }
-      const { hotelId } = auth.context;
+      const { tenantId } = auth.context;
       const report = await prisma.nightAuditReport.findFirst({
-        where: { hotelId },
+        where: { tenantId },
         orderBy: { generatedAt: "desc" }
       });
       if (!report) { json(res, 404, { ok: false, error: "No night audit report found" }); return; }
@@ -2763,19 +2763,19 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "POST /connectors/pms/simulate")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const { hotelId } = auth.context;
+      const { tenantId } = auth.context;
       const body = (await parseBody(req)) as { guestName?: unknown; roomNumber?: unknown };
       const guestNameInput = asTrimmedString(body.guestName) ?? "Demo Guest";
       const roomNumber = asTrimmedString(body.roomNumber) ?? `${Math.floor(Math.random() * 50) + 101}`;
 
       const phone = `+9198${Math.floor(Math.random() * 90000000) + 10000000}`;
-      const guestId = await upsertContactByPhone(hotelId, guestNameInput, phone);
+      const guestId = await upsertContactByPhone(tenantId, guestNameInput, phone);
       await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
 
       const checkInAt = new Date();
       const checkOutAt = new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
       const stay = await prisma.stay.create({
-        data: { hotelId, guestId, roomNumber, checkInAt, checkOutAt }
+        data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt }
       });
 
       broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt } });
@@ -2788,14 +2788,14 @@ const handleRequest = async (
     if (req.url === "/connectors/pms/webhook" && req.method === "POST") {
       const rawBody = await parseRawBody(req);
       const body = (rawBody ? JSON.parse(rawBody) : {}) as {
-        hotelId?: unknown; event?: unknown;
+        tenantId?: unknown; event?: unknown;
         guest?: { name?: unknown; phone?: unknown };
         reservation?: { roomNumber?: unknown; checkIn?: unknown; checkOut?: unknown };
       };
-      const hotelId = asTrimmedString(body.hotelId);
+      const tenantId = asTrimmedString(body.tenantId);
       const eventType = asTrimmedString(body.event) ?? "guest.checkin";
-      if (!hotelId) { json(res, 400, { ok: false, error: "hotelId is required" }); return; }
-      const hasAccess = await ensureHotelAccess(hotelId);
+      if (!tenantId) { json(res, 400, { ok: false, error: "tenantId is required" }); return; }
+      const hasAccess = await ensureTenantAccess(tenantId);
       if (!hasAccess) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
 
       const guestName = asTrimmedString(body.guest?.name) ?? "PMS Guest";
@@ -2804,11 +2804,11 @@ const handleRequest = async (
       const checkInAt = body.reservation?.checkIn ? new Date(body.reservation.checkIn as string) : new Date();
       const checkOutAt = body.reservation?.checkOut ? new Date(body.reservation.checkOut as string) : new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
 
-      const guestId = await upsertContactByPhone(hotelId, guestName, guestPhone);
+      const guestId = await upsertContactByPhone(tenantId, guestName, guestPhone);
 
       if (eventType === "guest.checkin") {
         await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
-        const stay = await prisma.stay.create({ data: { hotelId, guestId, roomNumber, checkInAt, checkOutAt } });
+        const stay = await prisma.stay.create({ data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt } });
         broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
         json(res, 201, { ok: true, event: "checkin", stayId: stay.id, guestId });
       } else if (eventType === "guest.checkout") {
@@ -2846,7 +2846,7 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const users = await prisma.user.findMany({
-        where: { hotelId: auth.context.hotelId },
+        where: { tenantId: auth.context.tenantId },
         select: {
           id: true, fullName: true, email: true, role: true,
           roleId: true, isActive: true, createdAt: true,
@@ -2854,7 +2854,7 @@ const handleRequest = async (
         },
         orderBy: { createdAt: "asc" }
       });
-      const license = await prisma.license.findUnique({ where: { hotelId: auth.context.hotelId } });
+      const license = await prisma.license.findUnique({ where: { tenantId: auth.context.tenantId } });
       const usedSeats = users.filter(u => u.isActive).length;
       json(res, 200, {
         ok: true,
@@ -2883,23 +2883,23 @@ const handleRequest = async (
         json(res, 400, { ok: false, error: "email and roleId are required" }); return;
       }
       const role = await prisma.role.findFirst({
-        where: { id: roleId, hotelId: auth.context.hotelId },
+        where: { id: roleId, tenantId: auth.context.tenantId },
         select: { id: true, key: true, displayName: true }
       });
       if (!role) { json(res, 404, { ok: false, error: "Role not found" }); return; }
-      const within = await isWithinSeatLimit(auth.context.hotelId);
+      const within = await isWithinSeatLimit(auth.context.tenantId);
       if (!within) {
         json(res, 403, { ok: false, error: "Seat limit reached — upgrade your plan to invite more users" }); return;
       }
       // Expire any existing pending invite for the same email
       await prisma.invitation.updateMany({
-        where: { hotelId: auth.context.hotelId, email, acceptedAt: null },
+        where: { tenantId: auth.context.tenantId, email, acceptedAt: null },
         data: { expiresAt: new Date() }
       });
       const token = randomBytes(32).toString("hex");
       const inv = await prisma.invitation.create({
         data: {
-          hotelId: auth.context.hotelId,
+          tenantId: auth.context.tenantId,
           email,
           roleId: role.id,
           token,
@@ -2924,14 +2924,14 @@ const handleRequest = async (
         where: { token },
         include: {
           role: { select: { displayName: true, key: true } },
-          hotel: { select: { name: true } }
+          tenant: { select: { name: true } }
         }
       });
       if (!inv) { json(res, 404, { ok: false, error: "Invitation not found" }); return; }
       json(res, 200, {
         ok: true,
         email: inv.email,
-        hotelName: inv.hotel.name,
+        hotelName: inv.tenant.name,
         roleName: inv.role.displayName,
         roleKey: inv.role.key,
         expired: inv.expiresAt < new Date(),
@@ -2956,16 +2956,16 @@ const handleRequest = async (
       const existing = await prisma.user.findUnique({ where: { email: inv.email } });
       // Email is globally unique, so an existing user belongs to exactly one hotel.
       // Accepting an invite to a *different* hotel must never silently re-point that
-      // user's role at another tenant (the user keeps their original hotelId, so they
+      // user's role at another tenant (the user keeps their original tenantId, so they
       // would inherit cross-tenant permissions). Reject instead.
-      if (existing && existing.hotelId !== inv.hotelId) {
+      if (existing && existing.tenantId !== inv.tenantId) {
         json(res, 409, { ok: false, error: "This email is already registered to a different workspace" });
         return;
       }
       // Seat enforcement at accept time: only block when this acceptance would add a
       // new active seat (a brand-new user, or reactivating a deactivated one).
       const willConsumeSeat = !existing || !existing.isActive;
-      if (willConsumeSeat && !(await isWithinSeatLimit(inv.hotelId))) {
+      if (willConsumeSeat && !(await isWithinSeatLimit(inv.tenantId))) {
         json(res, 403, { ok: false, error: "Seat limit reached — ask an admin to upgrade the plan" });
         return;
       }
@@ -2979,7 +2979,7 @@ const handleRequest = async (
       } else {
         const newUser = await prisma.user.create({
           data: {
-            hotelId: inv.hotelId,
+            tenantId: inv.tenantId,
             fullName,
             email: inv.email,
             role: legacyRole,
@@ -2997,7 +2997,7 @@ const handleRequest = async (
       const invPerms = parsePermissions(inv.role.permissions);
       const jwt = await createAuthToken({
         sub: userId,
-        hotelId: inv.hotelId,
+        tenantId: inv.tenantId,
         email: inv.email,
         role: legacyRole as UserRole,
         roleKey: inv.role.key as SystemRoleKey,
@@ -3006,7 +3006,7 @@ const handleRequest = async (
       json(res, 200, {
         ok: true,
         token: jwt,
-        hotelId: inv.hotelId,
+        tenantId: inv.tenantId,
         email: inv.email,
         role: legacyRole
       });
@@ -3022,7 +3022,7 @@ const handleRequest = async (
       }
       const targetId = parseTeamUserId(req.url)!;
       const target = await prisma.user.findFirst({
-        where: { id: targetId, hotelId: auth.context.hotelId },
+        where: { id: targetId, tenantId: auth.context.tenantId },
         include: { systemRole: { select: { key: true } } }
       });
       if (!target) { json(res, 404, { ok: false, error: "User not found" }); return; }
@@ -3037,7 +3037,7 @@ const handleRequest = async (
       let newRoleKey: string | null = null;
       if (asTrimmedString(body.roleId)) {
         const newRole = await prisma.role.findFirst({
-          where: { id: String(body.roleId), hotelId: auth.context.hotelId },
+          where: { id: String(body.roleId), tenantId: auth.context.tenantId },
           select: { id: true, key: true }
         });
         if (!newRole) { json(res, 404, { ok: false, error: "Role not found" }); return; }
@@ -3057,7 +3057,7 @@ const handleRequest = async (
       if (targetIsAdmin && losesAdmin) {
         const otherAdmins = await prisma.user.count({
           where: {
-            hotelId: auth.context.hotelId,
+            tenantId: auth.context.tenantId,
             isActive: true,
             id: { not: targetId },
             OR: [{ systemRole: { key: "admin" } }, { role: "owner" }]
@@ -3085,8 +3085,8 @@ const handleRequest = async (
       if (!hasPermission(auth.context.permissions, "manage_billing")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const license = await prisma.license.findUnique({ where: { hotelId: auth.context.hotelId } });
-      const usedSeats = await prisma.user.count({ where: { hotelId: auth.context.hotelId, isActive: true } });
+      const license = await prisma.license.findUnique({ where: { tenantId: auth.context.tenantId } });
+      const usedSeats = await prisma.user.count({ where: { tenantId: auth.context.tenantId, isActive: true } });
       json(res, 200, {
         ok: true,
         license: license
@@ -3104,7 +3104,7 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const roles = await prisma.role.findMany({
-        where: { hotelId: auth.context.hotelId },
+        where: { tenantId: auth.context.tenantId },
         include: { _count: { select: { users: true } } },
         orderBy: { createdAt: "asc" }
       });
@@ -3128,7 +3128,7 @@ const handleRequest = async (
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
       const roleId = parseTeamRoleId(req.url)!;
-      const role = await prisma.role.findFirst({ where: { id: roleId, hotelId: auth.context.hotelId } });
+      const role = await prisma.role.findFirst({ where: { id: roleId, tenantId: auth.context.tenantId } });
       if (!role) { json(res, 404, { ok: false, error: "Role not found" }); return; }
       const body = (await parseBody(req)) as { displayName?: unknown };
       const displayName = asTrimmedString(body.displayName);
@@ -3151,7 +3151,7 @@ const handleRequest = async (
       if (!hasPermission(auth.context.permissions, "create_custom_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const licCustomRoles = await enforceLicenseFeature(auth.context.hotelId, "custom_roles");
+      const licCustomRoles = await enforceLicenseFeature(auth.context.tenantId, "custom_roles");
       if (!licCustomRoles.ok) { json(res, 403, { ok: false, error: licCustomRoles.error }); return; }
       const body = (await parseBody(req)) as { displayName?: unknown; key?: unknown; permissions?: unknown };
       const displayName = asTrimmedString(body.displayName);
@@ -3166,11 +3166,11 @@ const handleRequest = async (
       const permissions = requested.filter(
         (p) => grantable.has(p) && hasPermission(auth.context.permissions, p)
       );
-      const existing = await prisma.role.findUnique({ where: { hotelId_key: { hotelId: auth.context.hotelId, key } } });
+      const existing = await prisma.role.findUnique({ where: { tenantId_key: { tenantId: auth.context.tenantId, key } } });
       if (existing) { json(res, 409, { ok: false, error: "A role with that key already exists" }); return; }
       const role = await prisma.role.create({
         data: {
-          hotelId: auth.context.hotelId,
+          tenantId: auth.context.tenantId,
           key,
           displayName,
           permissions: JSON.stringify(permissions),
@@ -3190,7 +3190,7 @@ const handleRequest = async (
     if (tplPath) {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const hotelId = auth.context.hotelId;
+      const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3202,7 +3202,7 @@ const handleRequest = async (
         if (req.method === "GET") {
           const qs = parseUrl(req.url).searchParams;
           const where = {
-            hotelId,
+            tenantId,
             ...(asTrimmedString(qs.get("channel")) ? { channel: asTrimmedString(qs.get("channel"))! } : {}),
             ...(asTrimmedString(qs.get("status")) ? { status: asTrimmedString(qs.get("status"))! } : {}),
           };
@@ -3215,7 +3215,7 @@ const handleRequest = async (
           const v = tplMod.validateTemplateCreate(body);
           if (!v.ok) { json(res, 400, { ok: false, error: v.error }); return; }
           const created = await prisma.messageTemplate.create({
-            data: { hotelId, name: v.value.name, channel: v.value.channel, category: v.value.category, language: v.value.language, subject: v.value.subject, body: v.value.body, variables: JSON.stringify(v.value.variables) },
+            data: { tenantId, name: v.value.name, channel: v.value.channel, category: v.value.category, language: v.value.language, subject: v.value.subject, body: v.value.body, variables: JSON.stringify(v.value.variables) },
           });
           json(res, 201, { ok: true, template: ser(created) });
           return;
@@ -3223,7 +3223,7 @@ const handleRequest = async (
         json(res, 405, { ok: false, error: "Method not allowed" }); return;
       }
 
-      const tpl = await prisma.messageTemplate.findFirst({ where: { id: tplPath.id, hotelId } });
+      const tpl = await prisma.messageTemplate.findFirst({ where: { id: tplPath.id, tenantId } });
       if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
 
       // POST /templates/:id/submit — draft → submitted
@@ -3268,7 +3268,7 @@ const handleRequest = async (
     if (seqPath) {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const hotelId = auth.context.hotelId;
+      const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3284,7 +3284,7 @@ const handleRequest = async (
       // Collection
       if (seqPath.id === null) {
         if (req.method === "GET") {
-          const rows = await prisma.sequence.findMany({ where: { hotelId }, orderBy: { createdAt: "desc" }, include: { _count: { select: { steps: true, enrollments: true } } } });
+          const rows = await prisma.sequence.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, include: { _count: { select: { steps: true, enrollments: true } } } });
           json(res, 200, { ok: true, items: rows.map(serializeSeq) });
           return;
         }
@@ -3297,7 +3297,7 @@ const handleRequest = async (
           const exitOn = seqMod.parseExitOn(body.exitOn ?? ["opted_out", "replied"]);
           const created = await prisma.sequence.create({
             data: {
-              hotelId, name, exitOn: JSON.stringify(exitOn),
+              tenantId, name, exitOn: JSON.stringify(exitOn),
               steps: { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateId: s.whatsappTemplateId, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) },
             },
             include: { steps: true },
@@ -3308,7 +3308,7 @@ const handleRequest = async (
         json(res, 405, { ok: false, error: "Method not allowed" }); return;
       }
 
-      const sequence = await prisma.sequence.findFirst({ where: { id: seqPath.id, hotelId } });
+      const sequence = await prisma.sequence.findFirst({ where: { id: seqPath.id, tenantId } });
       if (!sequence) { json(res, 404, { ok: false, error: "Sequence not found" }); return; }
 
       // POST /sequences/:id/enroll
@@ -3319,21 +3319,21 @@ const handleRequest = async (
         const leadIds = Array.isArray(body.leadIds) ? body.leadIds.filter((x): x is string => typeof x === "string") : [];
         const segmentId = asTrimmedString(body.segmentId);
         const campaignId = asTrimmedString(body.campaignId);
-        let where: Record<string, unknown> = { hotelId };
-        if (leadIds.length > 0) where = { hotelId, id: { in: leadIds } };
+        let where: Record<string, unknown> = { tenantId };
+        if (leadIds.length > 0) where = { tenantId, id: { in: leadIds } };
         else if (segmentId) {
-          const seg = await prisma.leadSegment.findFirst({ where: { id: segmentId, hotelId }, select: { rules: true } });
+          const seg = await prisma.leadSegment.findFirst({ where: { id: segmentId, tenantId }, select: { rules: true } });
           if (!seg) { json(res, 404, { ok: false, error: "Segment not found" }); return; }
           const { parseSegmentRules, buildLeadWhere } = await import("./core/campaigns/segments");
-          where = { hotelId, ...(campaignId ? { campaignId } : {}), ...buildLeadWhere(parseSegmentRules(seg.rules)) };
-        } else if (campaignId) where = { hotelId, campaignId };
+          where = { tenantId, ...(campaignId ? { campaignId } : {}), ...buildLeadWhere(parseSegmentRules(seg.rules)) };
+        } else if (campaignId) where = { tenantId, campaignId };
         else { json(res, 400, { ok: false, error: "Provide leadIds, segmentId, or campaignId" }); return; }
 
         const targets = await prisma.campaignLead.findMany({ where, take: 5000, select: { id: true } });
         if (targets.length === 0) { json(res, 200, { ok: true, enrolled: 0, skipped: 0 }); return; }
         const nextRunAt = seqMod.nextRunFrom(new Date(), steps[0].waitMinutes);
         const result = await prisma.sequenceEnrollment.createMany({
-          data: targets.map((t) => ({ sequenceId: sequence.id, hotelId, leadId: t.id, currentStepOrder: 0, nextRunAt })),
+          data: targets.map((t) => ({ sequenceId: sequence.id, tenantId, leadId: t.id, currentStepOrder: 0, nextRunAt })),
           skipDuplicates: true,
         });
         json(res, 200, { ok: true, enrolled: result.count, skipped: targets.length - result.count });
@@ -3406,7 +3406,7 @@ const handleRequest = async (
     if (segPath) {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const hotelId = auth.context.hotelId;
+      const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3415,7 +3415,7 @@ const handleRequest = async (
       // Collection: GET (list) / POST (create)
       if (segPath.id === null) {
         if (req.method === "GET") {
-          const rows = await prisma.leadSegment.findMany({ where: { hotelId }, orderBy: { createdAt: "desc" } });
+          const rows = await prisma.leadSegment.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" } });
           const items = rows.map((s) => ({ id: s.id, name: s.name, rules: parseSegmentRules(s.rules), createdAt: s.createdAt, updatedAt: s.updatedAt }));
           json(res, 200, { ok: true, items });
           return;
@@ -3425,7 +3425,7 @@ const handleRequest = async (
           const name = asTrimmedString(body.name);
           if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
           const rules = parseSegmentRules(body.rules);
-          const created = await prisma.leadSegment.create({ data: { hotelId, name, rules: JSON.stringify(rules) } });
+          const created = await prisma.leadSegment.create({ data: { tenantId, name, rules: JSON.stringify(rules) } });
           json(res, 201, { ok: true, segment: { id: created.id, name: created.name, rules, createdAt: created.createdAt, updatedAt: created.updatedAt } });
           return;
         }
@@ -3433,7 +3433,7 @@ const handleRequest = async (
       }
 
       // Item must belong to the tenant.
-      const segment = await prisma.leadSegment.findFirst({ where: { id: segPath.id, hotelId } });
+      const segment = await prisma.leadSegment.findFirst({ where: { id: segPath.id, tenantId } });
       if (!segment) { json(res, 404, { ok: false, error: "Segment not found" }); return; }
 
       // GET /segments/:id/preview?campaignId= — count + sample of matching leads
@@ -3441,7 +3441,7 @@ const handleRequest = async (
         const qs = parseUrl(req.url).searchParams;
         const campaignId = asTrimmedString(qs.get("campaignId"));
         const where = {
-          hotelId,
+          tenantId,
           ...(campaignId ? { campaignId } : {}),
           ...buildLeadWhere(parseSegmentRules(segment.rules)),
         };
@@ -3488,8 +3488,8 @@ const handleRequest = async (
     if (parseUrl(req.url).pathname === "/campaigns" && (req.method === "POST" || req.method === "GET")) {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const hotelId = auth.context.hotelId;
-      if (!(await ensureHotelAccess(hotelId))) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
+      const tenantId = auth.context.tenantId;
+      if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
 
       const { validateCampaignCreate, serializeCampaign } = await import("./core/campaigns/service");
 
@@ -3503,7 +3503,7 @@ const handleRequest = async (
         const v = validated.value;
         const created = await prisma.voiceCampaign.create({
           data: {
-            hotelId, name: v.name, channels: JSON.stringify(v.channels),
+            tenantId, name: v.name, channels: JSON.stringify(v.channels),
             scriptTemplate: v.scriptTemplate,
             voiceA: v.voiceA, voiceB: v.voiceB, personaA: v.personaA, personaB: v.personaB,
             outcomeTypes: JSON.stringify(v.outcomeTypes), followUpRules: JSON.stringify(v.followUpRules),
@@ -3532,12 +3532,12 @@ const handleRequest = async (
       const offset = asSafeOffset(qs.get("offset"));
       const [rows, total] = await Promise.all([
         prisma.voiceCampaign.findMany({
-          where: { hotelId },
+          where: { tenantId },
           orderBy: { createdAt: "desc" },
           take: limit, skip: offset,
           include: { _count: { select: { leads: true, calls: true } } },
         }),
-        prisma.voiceCampaign.count({ where: { hotelId } }),
+        prisma.voiceCampaign.count({ where: { tenantId } }),
       ]);
       const items = rows.map((r) => ({
         ...serializeCampaign(r),
@@ -3553,14 +3553,14 @@ const handleRequest = async (
       if (parsed) {
         const auth = await getAuthenticatedContext(req);
         if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-        const hotelId = auth.context.hotelId;
+        const tenantId = auth.context.tenantId;
         const { id, action } = parsed;
 
         const { buildCampaignUpdate, serializeCampaign, outcomeBreakdown, provisionCampaignAssistants } =
           await import("./core/campaigns/service");
 
         // Resolve the campaign scoped to this tenant.
-        const campaign = await prisma.voiceCampaign.findFirst({ where: { id, hotelId } });
+        const campaign = await prisma.voiceCampaign.findFirst({ where: { id, tenantId } });
 
         // GET /campaigns/:id
         if (action === null && req.method === "GET") {
@@ -3652,7 +3652,7 @@ const handleRequest = async (
           if (channels.includes("whatsapp")) {
             const { isApprovedWhatsappTemplate } = await import("./core/campaigns/whatsapp-template");
             const tpl = campaign.whatsappTemplateId
-              ? await prisma.messageTemplate.findFirst({ where: { id: campaign.whatsappTemplateId, hotelId }, select: { channel: true, status: true, providerTemplateId: true } })
+              ? await prisma.messageTemplate.findFirst({ where: { id: campaign.whatsappTemplateId, tenantId }, select: { channel: true, status: true, providerTemplateId: true } })
               : null;
             if (!isApprovedWhatsappTemplate(tpl)) {
               json(res, 400, { ok: false, error: "WhatsApp campaigns need an approved template. Get one approved in Templates, then select it in the campaign's settings." });
@@ -3665,7 +3665,7 @@ const handleRequest = async (
           // email) need no provisioning and activate directly.
           if (channels.includes("voice")) {
             const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
-            const creds = await resolveVapiCredentials(hotelId);
+            const creds = await resolveVapiCredentials(tenantId);
             if (!isVapiConfigured(creds)) {
               json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
               return;
@@ -3681,7 +3681,7 @@ const handleRequest = async (
               }
               // Agent name the AI introduces itself with: explicit campaign value,
               // else the hotel name (never the persona label).
-              const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
+              const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
               const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
               const provisioned = await provisionCampaignAssistants({
                 campaign: {
@@ -3713,10 +3713,10 @@ const handleRequest = async (
     if (leadsPath) {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const hotelId = auth.context.hotelId;
+      const tenantId = auth.context.tenantId;
       const { campaignId, leadId, isImport } = leadsPath;
       const campaign = await prisma.voiceCampaign.findFirst({
-        where: { id: campaignId, hotelId },
+        where: { id: campaignId, tenantId },
         select: { id: true, defaultCountryCode: true },
       });
 
@@ -3749,7 +3749,7 @@ const handleRequest = async (
           defaultConsent: multipart.fields.defaultConsent === "true",
           consentSource,
         });
-        const result = await bulkInsertLeads(campaignId, hotelId, leads, errors);
+        const result = await bulkInsertLeads(campaignId, tenantId, leads, errors);
         json(res, 200, { ok: true, ...result });
         return;
       }
@@ -3770,7 +3770,7 @@ const handleRequest = async (
         // Optional segment filter: apply the saved rules (tenant-scoped).
         let segmentWhere = {};
         if (segmentId) {
-          const seg = await prisma.leadSegment.findFirst({ where: { id: segmentId, hotelId }, select: { rules: true } });
+          const seg = await prisma.leadSegment.findFirst({ where: { id: segmentId, tenantId }, select: { rules: true } });
           if (seg) {
             const { parseSegmentRules, buildLeadWhere } = await import("./core/campaigns/segments");
             segmentWhere = buildLeadWhere(parseSegmentRules(seg.rules));
@@ -3813,7 +3813,7 @@ const handleRequest = async (
         if (leadIds.length === 0) { json(res, 400, { ok: false, error: "leadIds must be a non-empty array" }); return; }
         if (addTags.length === 0 && removeTags.length === 0) { json(res, 400, { ok: false, error: "provide addTags and/or removeTags" }); return; }
         // Read-modify-write per lead so tag sets stay deduped and ordered.
-        const targets = await prisma.campaignLead.findMany({ where: { id: { in: leadIds }, campaignId, hotelId }, select: { id: true, tags: true } });
+        const targets = await prisma.campaignLead.findMany({ where: { id: { in: leadIds }, campaignId, tenantId }, select: { id: true, tags: true } });
         let updated = 0;
         for (const t of targets) {
           const next = normalizeTags([...t.tags.filter((x) => !removeTags.includes(x)), ...addTags]);
@@ -3833,7 +3833,7 @@ const handleRequest = async (
         const body = (await parseBody(req)) as Record<string, unknown>;
         if (body.tags === undefined) { json(res, 400, { ok: false, error: "tags is required" }); return; }
         const { normalizeTags } = await import("./core/campaigns/segments");
-        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, hotelId }, select: { id: true } });
+        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, tenantId }, select: { id: true } });
         if (!lead) { json(res, 404, { ok: false, error: "Lead not found" }); return; }
         const updated = await prisma.campaignLead.update({ where: { id: lead.id }, data: { tags: normalizeTags(body.tags) }, select: { id: true, tags: true } });
         json(res, 200, { ok: true, lead: updated });
@@ -3846,7 +3846,7 @@ const handleRequest = async (
           json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
         }
         if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
-        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, hotelId }, select: { id: true, status: true } });
+        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, tenantId }, select: { id: true, status: true } });
         if (!lead) { json(res, 404, { ok: false, error: "Lead not found" }); return; }
         if (lead.status !== "pending") {
           json(res, 409, { ok: false, error: "Only pending leads can be removed" }); return;
@@ -3865,7 +3865,7 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /campaigns/:id/analytics")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: analyticsId, hotelId: auth.context.hotelId }, select: { id: true } });
+      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: analyticsId, tenantId: auth.context.tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
       const rows = await prisma.callRecord.findMany({
@@ -3916,7 +3916,7 @@ const handleRequest = async (
       if (!canAccess(auth.context.permissions, "GET /campaigns/:id/deliveries")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
-      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: deliveriesId, hotelId: auth.context.hotelId }, select: { id: true } });
+      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: deliveriesId, tenantId: auth.context.tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
       const qs = parseUrl(req.url).searchParams;
@@ -3947,8 +3947,8 @@ const handleRequest = async (
     if (callsPath && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      const hotelId = auth.context.hotelId;
-      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: callsPath.campaignId, hotelId }, select: { id: true } });
+      const tenantId = auth.context.tenantId;
+      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: callsPath.campaignId, tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
       // Single call detail: + sentiment timeline + the lead's WhatsApp thread.

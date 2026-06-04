@@ -149,8 +149,8 @@ Return a JSON object with exactly these keys:
 }`;
 }
 
-function classifyPrompt(hotelId: string, text: string): string {
-  return `A guest message arrived at hotel ${hotelId}. Classify it and extract key details.
+function classifyPrompt(tenantId: string, text: string): string {
+  return `A guest message arrived at hotel ${tenantId}. Classify it and extract key details.
 
 Guest message: "${text}"
 
@@ -234,8 +234,8 @@ async function claudeMorningBriefing(data: HotelBriefingData): Promise<MorningBr
   return extractJson(await claudeCall(briefingPrompt(data))) as MorningBriefing;
 }
 
-async function claudeClassifyEvent(hotelId: string, text: string): Promise<EventClassification> {
-  return extractJson(await claudeCall(classifyPrompt(hotelId, text))) as EventClassification;
+async function claudeClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
+  return extractJson(await claudeCall(classifyPrompt(tenantId, text))) as EventClassification;
 }
 
 async function claudeGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
@@ -267,8 +267,8 @@ async function openaiMorningBriefing(data: HotelBriefingData): Promise<MorningBr
   return JSON.parse(await openaiCall(briefingPrompt(data))) as MorningBriefing;
 }
 
-async function openaiClassifyEvent(hotelId: string, text: string): Promise<EventClassification> {
-  return JSON.parse(await openaiCall(classifyPrompt(hotelId, text))) as EventClassification;
+async function openaiClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
+  return JSON.parse(await openaiCall(classifyPrompt(tenantId, text))) as EventClassification;
 }
 
 async function openaiGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
@@ -352,11 +352,11 @@ export async function generateMorningBriefing(
 }
 
 export async function classifyInboundEvent(
-  hotelId: string,
+  tenantId: string,
   text: string,
   provider: AIProvider = "claude"
 ): Promise<EventClassification> {
-  return provider === "openai" ? openaiClassifyEvent(hotelId, text) : claudeClassifyEvent(hotelId, text);
+  return provider === "openai" ? openaiClassifyEvent(tenantId, text) : claudeClassifyEvent(tenantId, text);
 }
 
 export async function generateGuestIntelligence(

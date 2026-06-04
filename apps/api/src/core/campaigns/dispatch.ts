@@ -65,7 +65,7 @@ export async function processCampaignChannel(
     const remaining = campaign.spendCapCalls - (deliveries + calls);
     if (remaining <= 0) {
       await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-      broadcastSSEEvent({ type: "campaign_paused", hotelId: campaign.hotelId, campaignId, reason: "spend_cap_reached" });
+      broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
       return { sent, failed, skipped };
     }
     batchSize = Math.min(batchSize, remaining);
@@ -124,7 +124,7 @@ export async function processCampaignChannel(
   // Batch-resolve the durable suppression list for this slice of phones.
   const phones = leads.map((l) => l.phone).filter((p): p is string => Boolean(p));
   const suppressedRows = phones.length
-    ? await prisma.doNotContact.findMany({ where: { hotelId: campaign.hotelId, phone: { in: phones } }, select: { phone: true } })
+    ? await prisma.doNotContact.findMany({ where: { tenantId: campaign.tenantId, phone: { in: phones } }, select: { phone: true } })
     : [];
   const suppressed = new Set(suppressedRows.map((s) => s.phone));
 
@@ -134,10 +134,10 @@ export async function processCampaignChannel(
     ? leads.map((l) => l.email?.trim().toLowerCase()).filter((e): e is string => Boolean(e))
     : [];
   const suppressedEmails = emails.length
-    ? new Set((await prisma.emailSuppression.findMany({ where: { hotelId: campaign.hotelId, email: { in: emails } }, select: { email: true } })).map((r) => r.email))
+    ? new Set((await prisma.emailSuppression.findMany({ where: { tenantId: campaign.tenantId, email: { in: emails } }, select: { email: true } })).map((r) => r.email))
     : new Set<string>();
 
-  const hotel = await prisma.tenant.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
+  const hotel = await prisma.tenant.findUnique({ where: { id: campaign.tenantId }, select: { name: true } });
   const senderCampaign = {
     name: campaign.name, calendlyLink: campaign.calendlyLink,
     whatsappContentSid: campaign.whatsappContentSid, whatsappTemplateBody: campaign.whatsappTemplateBody,
@@ -160,7 +160,7 @@ export async function processCampaignChannel(
     // Skip recipients on the email suppression list (hard bounce / complaint).
     if (channel === "email" && lead.email && suppressedEmails.has(lead.email.trim().toLowerCase())) {
       await prisma.messageDelivery.create({
-        data: { hotelId: campaign.hotelId, campaignId, leadId: lead.id, channel, status: "skipped", error: "email_suppressed" },
+        data: { tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel, status: "skipped", error: "email_suppressed" },
       });
       skipped++;
       continue;
@@ -172,17 +172,17 @@ export async function processCampaignChannel(
     );
     if (!decision.ok) {
       await prisma.messageDelivery.create({
-        data: { hotelId: campaign.hotelId, campaignId, leadId: lead.id, channel, status: "skipped", error: decision.reason },
+        data: { tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel, status: "skipped", error: decision.reason },
       });
       skipped++;
       continue;
     }
 
-    const ctx: SendContext = { hotelId: campaign.hotelId, campaign: senderCampaign, lead, tenantName: hotel?.name ?? null };
+    const ctx: SendContext = { tenantId: campaign.tenantId, campaign: senderCampaign, lead, tenantName: hotel?.name ?? null };
     const result = await sender.send(ctx);
     await prisma.messageDelivery.create({
       data: {
-        hotelId: campaign.hotelId, campaignId, leadId: lead.id, channel,
+        tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel,
         status: result.ok ? "sent" : "failed",
         providerId: result.providerId, renderedSubject: result.renderedSubject,
         renderedBody: result.renderedBody, error: result.error,
@@ -191,7 +191,7 @@ export async function processCampaignChannel(
     });
     if (result.ok) {
       sent++;
-      broadcastSSEEvent({ type: "campaign_message_sent", hotelId: campaign.hotelId, campaignId, leadId: lead.id, channel });
+      broadcastSSEEvent({ type: "campaign_message_sent", tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel });
     } else {
       failed++;
     }

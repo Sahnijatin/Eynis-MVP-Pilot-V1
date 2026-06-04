@@ -3,7 +3,7 @@ import type { OrgRole } from "./rbac";
 import type { TenantBranding } from "./theme";
 
 export interface UserContext {
-  hotelId: string | null;
+  tenantId: string | null;
   role: string | null;        // legacy role: owner / front_desk / housekeeping / fnb_manager
   roleKey: string | null;     // system role key: admin / manager / supervisor / agent / viewer
   orgRole: OrgRole;           // mapped UI role
@@ -48,10 +48,10 @@ async function identifyByEmail(email: string) {
   try {
     const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal });
     if (!res.ok) return null;
-    const data = await res.json() as { ok: boolean; exists?: boolean; hotelId?: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; fullName?: string };
+    const data = await res.json() as { ok: boolean; exists?: boolean; tenantId?: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; fullName?: string };
     if (!data.ok || !data.exists) return null;
     return {
-      hotelId: data.hotelId ?? null,
+      tenantId: data.tenantId ?? null,
       role: data.role ?? null,
       roleKey: data.roleKey ?? null,
       industry: data.industry ?? null,
@@ -75,7 +75,7 @@ export async function resolveUserContext(): Promise<UserContext> {
   }
 
   if (!clerkUser) {
-    return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false };
+    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false };
   }
 
   const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
@@ -84,9 +84,9 @@ export async function resolveUserContext(): Promise<UserContext> {
   // regardless of what Clerk metadata says (which could be stale from a wiped hotel).
   const dbUser = email ? await identifyByEmail(email) : null;
 
-  if (dbUser && dbUser.hotelId) {
+  if (dbUser && dbUser.tenantId) {
     return {
-      hotelId: dbUser.hotelId,
+      tenantId: dbUser.tenantId,
       role: dbUser.role,
       roleKey: dbUser.roleKey,
       orgRole: toOrgRole(dbUser.roleKey, dbUser.role),
@@ -100,5 +100,5 @@ export async function resolveUserContext(): Promise<UserContext> {
   }
 
   // No DB record — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
-  return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false };
+  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false };
 }

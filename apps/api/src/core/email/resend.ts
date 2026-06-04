@@ -105,9 +105,9 @@ export interface ResendCredentials {
   fromName: string | null;
 }
 
-export async function resolveResendCredentials(hotelId: string): Promise<ResendCredentials> {
+export async function resolveResendCredentials(tenantId: string): Promise<ResendCredentials> {
   const cfg = await prisma.connectorConfig.findUnique({
-    where: { hotelId_connectorKey: { hotelId, connectorKey: "email_resend" } },
+    where: { tenantId_connectorKey: { tenantId, connectorKey: "email_resend" } },
     select: { configJson: true, enabled: true },
   }).catch(() => null);
 
