@@ -27,6 +27,25 @@ export function renderTemplate(template: string, vars: Record<string, string>): 
   return template.replace(/\{([a-zA-Z0-9_.]+)\}/g, (_match, key: string) => vars[key] ?? "");
 }
 
+// Email bodies are authored as either plain text or HTML, then sent in Resend's
+// `html` field — which renders as HTML and collapses runs of whitespace
+// (including newlines) into a single space. A plain-text body therefore loses
+// its line breaks. When the body has no HTML block/break markup we treat it as
+// plain text: escape it and turn newlines into <br> so paragraphs survive. A
+// body that already contains HTML is passed through untouched (its author
+// controls layout with real tags).
+const HTML_MARKUP =
+  /<(?:br|p|div|table|tr|td|ul|ol|li|h[1-6]|a|span|strong|b|em|i|img|blockquote|hr|pre)\b|<\/(?:p|div|table|ul|ol|li|h[1-6]|a|span|strong|b|em|i|blockquote|pre)>/i;
+
+export function toEmailHtml(body: string): string {
+  if (HTML_MARKUP.test(body)) return body;
+  const escaped = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped.replace(/\r\n|\r|\n/g, "<br>");
+}
+
 export interface TemplateNamespaces {
   lead?: {
     firstName?: string | null; lastName?: string | null; company?: string | null;
@@ -132,7 +151,7 @@ export async function sendFollowUpEmail(
     from,
     to: [params.to],
     subject: renderTemplate(params.subjectTemplate, params.vars),
-    html: renderTemplate(params.htmlTemplate, params.vars),
+    html: toEmailHtml(renderTemplate(params.htmlTemplate, params.vars)),
   };
   try {
     const res = await fetch(RESEND_API_URL, {

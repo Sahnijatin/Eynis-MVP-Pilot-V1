@@ -5,6 +5,7 @@ import {
   buildTemplateVars,
   isResendConfigured,
   sendFollowUpEmail,
+  toEmailHtml,
 } from "./resend";
 
 // ── renderTemplate ────────────────────────────────────────────────────────────
@@ -51,6 +52,28 @@ test("renderTemplate composes with buildTemplateVars end-to-end", () => {
     renderTemplate("Hi {lead.firstName}, thanks from {tenant.name}!", vars),
     "Hi Sarah, thanks from The Riviera!",
   );
+});
+
+// ── toEmailHtml (plain-text newline preservation) ──────────────────────────────
+
+test("toEmailHtml converts newlines in plain-text bodies to <br>", () => {
+  assert.equal(
+    toEmailHtml("Hi Sarah,\n\nWASSUP!!!!"),
+    "Hi Sarah,<br><br>WASSUP!!!!",
+  );
+});
+
+test("toEmailHtml handles CRLF and bare CR", () => {
+  assert.equal(toEmailHtml("a\r\nb\rc"), "a<br>b<br>c");
+});
+
+test("toEmailHtml escapes HTML-special chars in plain text", () => {
+  assert.equal(toEmailHtml("rate < 5 & > 1"), "rate &lt; 5 &amp; &gt; 1");
+});
+
+test("toEmailHtml passes through bodies that already contain HTML", () => {
+  const html = "<p>Hi Sarah</p>\n<p>Book now</p>";
+  assert.equal(toEmailHtml(html), html);
 });
 
 // ── Config + keys-last send ────────────────────────────────────────────────────
