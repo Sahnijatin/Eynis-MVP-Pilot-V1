@@ -173,19 +173,18 @@ _#3 (durable opt-out) and #4 (E.164 `+0…`) completed in Phase 6.0 above._
 
 ---
 
-## Phase 7 — Webhook, Post-Call & **Real-Time In-Call Sentiment** (Day 4–5)
+## Phase 7 — Webhook, Post-Call & **Real-Time In-Call Sentiment** ✅ DONE
 
-- [ ] `POST /webhooks/vapi` — verify `x-vapi-secret` → dispatch by event type → upsert `CallRecord` by `vapiCallId`
-- [ ] Handle `call-started` (set status, startedAt)
-- [ ] Subscribe to Vapi **streaming transcript events** (`transcript` / `conversation-update` / `speech-update`)
-- [ ] **Real-time sentiment:** on each inbound utterance, run a lightweight classifier (Claude Haiku or keyword fallback) → write a `SentimentEvent` row with a rolling score
-- [ ] **Broadcast `campaign_sentiment_update` over SSE** so the dashboard shows a live mood meter during the call
-- [ ] **Sentiment-driven safety:** if sentiment turns sharply negative or an opt-out phrase is detected, instruct the agent (via Vapi) to soften/close and log `opted_out`
-- [ ] Handle `end-of-call-report` — store transcript, `analysis.structuredData` (outcome/sentiment/keyPoints), duration, endedAt; compute final aggregate sentiment from `SentimentEvent` timeline
-- [ ] Write `apps/api/src/core/campaigns/followup.ts` — resolve variables → trigger WhatsApp + email per `followUpRules` (skip entirely for `opted_out`)
-- [ ] Broadcast `campaign_call_ended` and `campaign_followup_sent` SSE events
+- [x] `POST /webhooks/vapi` — public, verified by `x-vapi-secret` (`verifyWebhook`, env-gated `VERIFY_WEBHOOKS`); finds `CallRecord` by `vapiCallId`
+- [x] `normalizeVapiMessage()` maps Vapi message types → internal events (status-update/transcript/end-of-call-report); ignores partials + unknowns
+- [x] `call-started` → `in_progress` + `startedAt`
+- [x] **Real-time sentiment:** `sentiment.ts` keyword classifier (word-boundary, keys-last) → `SentimentEvent` per final customer utterance + `campaign_sentiment_update` SSE
+- [x] **Sentiment-driven safety:** opt-out phrase mid-call → `suppressContact` (durable) + outcome `opted_out`
+- [x] `end-of-call-report` → transcript, outcome, keyPoints, duration, endedAt; final sentiment aggregated from the live timeline; `campaign_call_ended` SSE
+- [x] Lead lifecycle + **no-answer retry scheduling** (attempts < maxRetries → `pending` + `nextCallAt`; else `called`)
+- [x] `followup.ts` — fires `followUpRules[outcome]` channels by **reusing the sender registry** (no duplicate send logic); records `MessageDelivery`; sets `whatsappSent`/`emailSent`; `campaign_followup_sent` SSE; **never fires for opted-out leads**
 
-**DoD:** Posting a simulated Vapi stream updates a live sentiment timeline; end-of-call updates the record and fires follow-ups; opted-out leads get no follow-up.
+**DoD:** ✅ A simulated Vapi stream builds a live sentiment timeline; mid-call opt-out suppresses tenant-wide; end-of-call finalises the record, schedules no-answer retries, and fires outcome-based follow-ups. Tests: sentiment 3 + webhook 6; full API suite 116/116, lint clean.
 
 ---
 

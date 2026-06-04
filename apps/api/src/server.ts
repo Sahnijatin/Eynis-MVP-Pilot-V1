@@ -584,6 +584,25 @@ const handleRequest = async (
       return;
     }
 
+    // ── Vapi end-of-call webhook (public; verified by x-vapi-secret) ─────────
+    if (req.url === "/webhooks/vapi" && req.method === "POST") {
+      const rawBody = await parseRawBody(req);
+      const { verifyWebhook } = await import("./core/campaigns/vapi");
+      const verdict = verifyWebhook({
+        provided: (req.headers["x-vapi-secret"] as string) ?? null,
+        expected: asTrimmedString(process.env.VAPI_WEBHOOK_SECRET),
+        enforce: String(process.env.VERIFY_WEBHOOKS ?? "").toLowerCase() === "true",
+      });
+      if (!verdict.ok) { json(res, 401, { ok: false, error: verdict.reason ?? "Invalid webhook secret" }); return; }
+
+      let payload: unknown = {};
+      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
+      const { processVapiWebhook } = await import("./core/campaigns/webhook");
+      const result = await processVapiWebhook(payload);
+      json(res, 200, { ok: true, ...result });
+      return;
+    }
+
     // ── GET /sse/live-feed — real-time event stream ───────────────────────────
     if (req.url?.startsWith("/sse/live-feed") && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
