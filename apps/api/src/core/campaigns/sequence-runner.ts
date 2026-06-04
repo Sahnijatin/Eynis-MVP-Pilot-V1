@@ -24,7 +24,7 @@ const safeArray = (json: string): string[] => {
   try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
 };
 
-interface ExitCtx { hotelId: string; leadId: string; enrolledAt: Date; leadOptedOut: boolean; leadPhone: string | null }
+interface ExitCtx { tenantId: string; leadId: string; enrolledAt: Date; leadOptedOut: boolean; leadPhone: string | null }
 
 // First exit condition the lead has met since enrolling, or null.
 async function exitMet(conds: ExitCondition[], c: ExitCtx): Promise<ExitCondition | null> {
@@ -32,14 +32,14 @@ async function exitMet(conds: ExitCondition[], c: ExitCtx): Promise<ExitConditio
     if (c.leadOptedOut) return "opted_out";
     if (c.leadPhone) {
       const dnc = await prisma.doNotContact.findUnique({
-        where: { hotelId_phone: { hotelId: c.hotelId, phone: c.leadPhone } }, select: { id: true },
+        where: { tenantId_phone: { tenantId: c.tenantId, phone: c.leadPhone } }, select: { id: true },
       });
       if (dnc) return "opted_out";
     }
   }
   if (conds.includes("replied")) {
     const inbound = await prisma.whatsappMessage.findFirst({
-      where: { hotelId: c.hotelId, direction: "in", conversation: { leadId: c.leadId }, createdAt: { gte: c.enrolledAt } },
+      where: { tenantId: c.tenantId, direction: "in", conversation: { leadId: c.leadId }, createdAt: { gte: c.enrolledAt } },
       select: { id: true },
     });
     if (inbound) return "replied";
@@ -51,7 +51,7 @@ async function exitMet(conds: ExitCondition[], c: ExitCtx): Promise<ExitConditio
   return null;
 }
 
-interface EventKeys { hotelId: string; sequenceId: string; enrollmentId: string; leadId: string }
+interface EventKeys { tenantId: string; sequenceId: string; enrollmentId: string; leadId: string }
 const logEvent = (k: EventKeys, stepOrder: number, channel: string, status: string, error: string | null) =>
   prisma.sequenceEvent.create({ data: { ...k, stepOrder, channel, status, error } });
 
@@ -67,10 +67,10 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
   });
 
   for (const e of due) {
-    const keys: EventKeys = { hotelId: e.hotelId, sequenceId: e.sequenceId, enrollmentId: e.id, leadId: e.leadId };
+    const keys: EventKeys = { tenantId: e.tenantId, sequenceId: e.sequenceId, enrollmentId: e.id, leadId: e.leadId };
     const conds = parseExitOn(e.sequence.exitOn);
 
-    const exit = await exitMet(conds, { hotelId: e.hotelId, leadId: e.leadId, enrolledAt: e.createdAt, leadOptedOut: e.lead.optedOut, leadPhone: e.lead.phone });
+    const exit = await exitMet(conds, { tenantId: e.tenantId, leadId: e.leadId, enrolledAt: e.createdAt, leadOptedOut: e.lead.optedOut, leadPhone: e.lead.phone });
     if (exit) {
       await prisma.sequenceEnrollment.update({ where: { id: e.id }, data: { status: "stopped", stoppedReason: exit } });
       await logEvent(keys, e.currentStepOrder, "-", "stopped", exit);
@@ -87,7 +87,7 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
 
     // Compliance guard — suppression is always enforced (independent of exitOn).
     const suppressed = e.lead.phone
-      ? Boolean(await prisma.doNotContact.findUnique({ where: { hotelId_phone: { hotelId: e.hotelId, phone: e.lead.phone } }, select: { id: true } }))
+      ? Boolean(await prisma.doNotContact.findUnique({ where: { tenantId_phone: { tenantId: e.tenantId, phone: e.lead.phone } }, select: { id: true } }))
       : true;
     const decision = evaluateContact(
       { consent: e.lead.consent, consentSource: e.lead.consentSource, optedOut: e.lead.optedOut, phone: e.lead.phone },
@@ -118,13 +118,13 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
       waContentSid = resolved.contentSid; waBody = resolved.body; waVars = resolved.variables;
     }
 
-    const hotel = await prisma.tenant.findUnique({ where: { id: e.hotelId }, select: { name: true } });
+    const hotel = await prisma.tenant.findUnique({ where: { id: e.tenantId }, select: { name: true } });
     const sender = resolveSender(step.channel);
     let status = "failed";
     let error: string | null = "no_sender";
     if (sender) {
       const ctx: SendContext = {
-        hotelId: e.hotelId,
+        tenantId: e.tenantId,
         campaign: {
           name: e.sequence.name, calendlyLink: null,
           whatsappContentSid: waContentSid, whatsappTemplateBody: waBody, whatsappVariables: waVars,

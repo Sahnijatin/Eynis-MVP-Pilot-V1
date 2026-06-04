@@ -12,13 +12,13 @@ import { seedDefaultRolesForHotel } from "./rbac";
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 
 async function seedHotelWithAdmin() {
-  const hotelId = "rk-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "RK " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await seedDefaultRolesForHotel(hotelId);
-  const adminRole = await prisma.role.findFirst({ where: { hotelId, key: "admin" }, select: { id: true } });
-  const email = `admin+${hotelId}@test.local`;
-  await prisma.user.create({ data: { hotelId, fullName: "Admin", email, role: "owner", roleId: adminRole!.id, isActive: true } });
-  return { hotelId, email };
+  const tenantId = "rk-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "RK " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await seedDefaultRolesForHotel(tenantId);
+  const adminRole = await prisma.role.findFirst({ where: { tenantId, key: "admin" }, select: { id: true } });
+  const email = `admin+${tenantId}@test.local`;
+  await prisma.user.create({ data: { tenantId, fullName: "Admin", email, role: "owner", roleId: adminRole!.id, isActive: true } });
+  return { tenantId, email };
 }
 
 const listen = async (server: Server): Promise<string> => {
@@ -32,13 +32,13 @@ const close = (server: Server) => new Promise<void>((res, rej) => server.close((
 after(async () => { await prisma.$disconnect(); });
 
 test("POST /auth/token accepts the generic roleKey and authenticates", async () => {
-  const { hotelId, email } = await seedHotelWithAdmin();
+  const { tenantId, email } = await seedHotelWithAdmin();
   const server = buildServer();
   const base = await listen(server);
   try {
     const tokRes = await fetch(base + "/auth/token", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ hotelId, email, roleKey: "admin" }),
+      body: JSON.stringify({ tenantId, email, roleKey: "admin" }),
     });
     const tok = (await tokRes.json()) as { ok: boolean; token?: string };
     assert.equal(tokRes.status, 200);
@@ -53,13 +53,13 @@ test("POST /auth/token accepts the generic roleKey and authenticates", async () 
 });
 
 test("POST /auth/token still accepts the legacy hospitality role (backward compat)", async () => {
-  const { hotelId, email } = await seedHotelWithAdmin();
+  const { tenantId, email } = await seedHotelWithAdmin();
   const server = buildServer();
   const base = await listen(server);
   try {
     const tokRes = await fetch(base + "/auth/token", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ hotelId, email, role: "owner" }),
+      body: JSON.stringify({ tenantId, email, role: "owner" }),
     });
     assert.equal(tokRes.status, 200);
     assert.ok((await tokRes.json() as { token?: string }).token);
@@ -67,7 +67,7 @@ test("POST /auth/token still accepts the legacy hospitality role (backward compa
 });
 
 test("verifyAuthToken accepts a roleKey-only (union-free) token", async () => {
-  const token = await createAuthToken({ sub: "u1", hotelId: "h1", email: "a@b.com", roleKey: "manager", permissions: ["view_requests"] });
+  const token = await createAuthToken({ sub: "u1", tenantId: "h1", email: "a@b.com", roleKey: "manager", permissions: ["view_requests"] });
   const claims = await verifyAuthToken(token);
   assert.ok(claims);
   assert.equal(claims?.roleKey, "manager");
@@ -75,6 +75,6 @@ test("verifyAuthToken accepts a roleKey-only (union-free) token", async () => {
 });
 
 test("verifyAuthToken rejects a token carrying no role identity", async () => {
-  const token = await createAuthToken({ sub: "u1", hotelId: "h1", email: "a@b.com", permissions: [] });
+  const token = await createAuthToken({ sub: "u1", tenantId: "h1", email: "a@b.com", permissions: [] });
   assert.equal(await verifyAuthToken(token), null);
 });

@@ -9,12 +9,12 @@ import { processResendEvent, verifyResendSignature } from "./resend-webhook";
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 
 async function seedDelivery(opts: { providerId: string; to: string }) {
-  const hotelId = "rw-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "RW " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "active", channels: JSON.stringify(["email"]) } });
-  const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "A", email: opts.to, phone: "+919" + Date.now().toString().slice(-9), consent: true } });
-  const delivery = await prisma.messageDelivery.create({ data: { hotelId, campaignId: campaign.id, leadId: lead.id, channel: "email", status: "sent", providerId: opts.providerId } });
-  return { hotelId, leadId: lead.id, deliveryId: delivery.id };
+  const tenantId = "rw-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "RW " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  const campaign = await prisma.voiceCampaign.create({ data: { tenantId, name: "C", status: "active", channels: JSON.stringify(["email"]) } });
+  const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "A", email: opts.to, phone: "+919" + Date.now().toString().slice(-9), consent: true } });
+  const delivery = await prisma.messageDelivery.create({ data: { tenantId, campaignId: campaign.id, leadId: lead.id, channel: "email", status: "sent", providerId: opts.providerId } });
+  return { tenantId, leadId: lead.id, deliveryId: delivery.id };
 }
 
 after(async () => { await prisma.$disconnect(); });
@@ -22,12 +22,12 @@ after(async () => { await prisma.$disconnect(); });
 test("processResendEvent: hard bounce suppresses the recipient and fails the delivery", async () => {
   const providerId = "re_" + uid();
   const to = `bounce+${uid()}@example.com`;
-  const { hotelId, deliveryId } = await seedDelivery({ providerId, to });
+  const { tenantId, deliveryId } = await seedDelivery({ providerId, to });
 
   const r = await processResendEvent({ type: "email.bounced", data: { email_id: providerId, to: [to], bounce: { type: "Permanent" } } });
   assert.equal(r.action, "suppressed_bounce");
 
-  const supp = await prisma.emailSuppression.findUnique({ where: { hotelId_email: { hotelId, email: to.toLowerCase() } } });
+  const supp = await prisma.emailSuppression.findUnique({ where: { tenantId_email: { tenantId, email: to.toLowerCase() } } });
   assert.ok(supp, "suppression row created");
   assert.equal(supp?.reason, "bounced");
   const d = await prisma.messageDelivery.findUnique({ where: { id: deliveryId } });
@@ -38,22 +38,22 @@ test("processResendEvent: hard bounce suppresses the recipient and fails the del
 test("processResendEvent: transient bounce does NOT suppress", async () => {
   const providerId = "re_" + uid();
   const to = `soft+${uid()}@example.com`;
-  const { hotelId } = await seedDelivery({ providerId, to });
+  const { tenantId } = await seedDelivery({ providerId, to });
 
   const r = await processResendEvent({ type: "email.bounced", data: { email_id: providerId, to: [to], bounce: { type: "Transient" } } });
   assert.equal(r.action, "transient_bounce");
-  const supp = await prisma.emailSuppression.findUnique({ where: { hotelId_email: { hotelId, email: to.toLowerCase() } } });
+  const supp = await prisma.emailSuppression.findUnique({ where: { tenantId_email: { tenantId, email: to.toLowerCase() } } });
   assert.equal(supp, null);
 });
 
 test("processResendEvent: complaint suppresses and opts the lead out", async () => {
   const providerId = "re_" + uid();
   const to = `spam+${uid()}@example.com`;
-  const { hotelId, leadId } = await seedDelivery({ providerId, to });
+  const { tenantId, leadId } = await seedDelivery({ providerId, to });
 
   const r = await processResendEvent({ type: "email.complained", data: { email_id: providerId, to: [to] } });
   assert.equal(r.action, "suppressed_complaint");
-  const supp = await prisma.emailSuppression.findUnique({ where: { hotelId_email: { hotelId, email: to.toLowerCase() } } });
+  const supp = await prisma.emailSuppression.findUnique({ where: { tenantId_email: { tenantId, email: to.toLowerCase() } } });
   assert.equal(supp?.reason, "complained");
   const lead = await prisma.campaignLead.findUnique({ where: { id: leadId } });
   assert.equal(lead?.optedOut, true);
@@ -85,7 +85,7 @@ test("verifyResendSignature validates a Svix-style signature", () => {
 test("POST /webhooks/resend processes an event end-to-end", async () => {
   const providerId = "re_" + uid();
   const to = `e2e+${uid()}@example.com`;
-  const { hotelId } = await seedDelivery({ providerId, to });
+  const { tenantId } = await seedDelivery({ providerId, to });
 
   const server: Server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -98,7 +98,7 @@ test("POST /webhooks/resend processes an event end-to-end", async () => {
       body: JSON.stringify({ type: "email.bounced", data: { email_id: providerId, to: [to], bounce: { type: "Permanent" } } }),
     });
     assert.equal(r.status, 200);
-    const supp = await prisma.emailSuppression.findUnique({ where: { hotelId_email: { hotelId, email: to.toLowerCase() } } });
+    const supp = await prisma.emailSuppression.findUnique({ where: { tenantId_email: { tenantId, email: to.toLowerCase() } } });
     assert.ok(supp, "suppression created via webhook");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));

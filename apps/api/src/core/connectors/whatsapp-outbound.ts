@@ -89,11 +89,11 @@ async function sendViaInterakt(config: Record<string, unknown>, toPhone: string,
 
 // ── Public: send WhatsApp message ─────────────────────────────────────────────
 
-export async function sendWhatsAppReply(hotelId: string, toPhone: string, message: string): Promise<OutboundResult> {
+export async function sendWhatsAppReply(tenantId: string, toPhone: string, message: string): Promise<OutboundResult> {
   // Try Twilio first, then Interakt, based on what's configured for this hotel
   const configs = await prisma.connectorConfig.findMany({
     where: {
-      hotelId,
+      tenantId,
       connectorKey: { in: ["whatsapp_twilio", "whatsapp_interakt"] },
       enabled: true
     },
@@ -128,13 +128,13 @@ export async function sendWhatsAppReply(hotelId: string, toPhone: string, messag
 // Twilio config from the hotel's connector config, then env. Returns the
 // message SID as `id` for delivery tracking.
 export async function sendWhatsAppTemplate(
-  hotelId: string,
+  tenantId: string,
   toPhone: string,
   contentSid: string,
   contentVariables: Record<string, string>,
 ): Promise<OutboundResult> {
   const cfg = await prisma.connectorConfig.findUnique({
-    where: { hotelId_connectorKey: { hotelId, connectorKey: "whatsapp_twilio" } },
+    where: { tenantId_connectorKey: { tenantId, connectorKey: "whatsapp_twilio" } },
     select: { configJson: true, enabled: true },
   }).catch(() => null);
   const parsed = cfg?.enabled ? parseConfig(cfg.configJson) : {};

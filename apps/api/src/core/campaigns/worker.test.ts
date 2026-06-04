@@ -13,26 +13,26 @@ const okCall = async (): Promise<VapiResult<{ id: string }>> => ({ ok: true, dat
 const baseDeps = { resolveCreds: async () => creds, initiateCall: okCall };
 
 async function makeVoiceCampaign(opts: { maxConcurrent?: number; spendCapCalls?: number } = {}) {
-  const hotelId = "dial-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "Dial " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  const tenantId = "dial-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "Dial " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
-      hotelId, name: "Calls", status: "active", channels: JSON.stringify(["voice"]),
+      tenantId, name: "Calls", status: "active", channels: JSON.stringify(["voice"]),
       scriptTemplate: "Hi {lead.firstName}", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S",
       vapiAssistantIdA: "asstA", vapiAssistantIdB: "asstB",
       maxConcurrent: opts.maxConcurrent ?? 5, spendCapCalls: opts.spendCapCalls ?? null,
     },
   });
-  return { hotelId, campaignId: campaign.id };
+  return { tenantId, campaignId: campaign.id };
 }
-const addLead = (campaignId: string, hotelId: string, phone: string, over: Record<string, unknown> = {}) =>
-  prisma.campaignLead.create({ data: { campaignId, hotelId, firstName: "L", phone, consent: true, consentSource: "csv_import", consentAt: new Date(), ...over } });
+const addLead = (campaignId: string, tenantId: string, phone: string, over: Record<string, unknown> = {}) =>
+  prisma.campaignLead.create({ data: { campaignId, tenantId, firstName: "L", phone, consent: true, consentSource: "csv_import", consentAt: new Date(), ...over } });
 
 after(async () => { await prisma.$disconnect(); });
 
 test("dials consented leads, records in_progress calls, and balances A/B", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign();
-  for (let i = 0; i < 4; i++) await addLead(campaignId, hotelId, phone());
+  const { tenantId, campaignId } = await makeVoiceCampaign();
+  for (let i = 0; i < 4; i++) await addLead(campaignId, tenantId, phone());
 
   const r = await processVoiceCampaign(campaignId, baseDeps);
   assert.equal(r.dialed, 4);
@@ -45,8 +45,8 @@ test("dials consented leads, records in_progress calls, and balances A/B", async
 });
 
 test("respects maxConcurrent and does not re-dial calling leads (atomic lock)", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign({ maxConcurrent: 2 });
-  for (let i = 0; i < 5; i++) await addLead(campaignId, hotelId, phone());
+  const { tenantId, campaignId } = await makeVoiceCampaign({ maxConcurrent: 2 });
+  for (let i = 0; i < 5; i++) await addLead(campaignId, tenantId, phone());
 
   const first = await processVoiceCampaign(campaignId, baseDeps);
   assert.equal(first.dialed, 2); // only 2 slots
@@ -58,11 +58,11 @@ test("respects maxConcurrent and does not re-dial calling leads (atomic lock)", 
 });
 
 test("skips guard failures (no consent / suppressed)", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign();
-  await addLead(campaignId, hotelId, phone(), { consent: false });
+  const { tenantId, campaignId } = await makeVoiceCampaign();
+  await addLead(campaignId, tenantId, phone(), { consent: false });
   const supp = phone();
-  await addLead(campaignId, hotelId, supp);
-  await prisma.doNotContact.create({ data: { hotelId, phone: supp, reason: "opt_out" } });
+  await addLead(campaignId, tenantId, supp);
+  await prisma.doNotContact.create({ data: { tenantId, phone: supp, reason: "opt_out" } });
 
   const r = await processVoiceCampaign(campaignId, baseDeps);
   assert.equal(r.dialed, 0);
@@ -72,8 +72,8 @@ test("skips guard failures (no consent / suppressed)", async () => {
 });
 
 test("failed initiation returns the lead to the queue (no silent failure)", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign();
-  await addLead(campaignId, hotelId, phone());
+  const { tenantId, campaignId } = await makeVoiceCampaign();
+  await addLead(campaignId, tenantId, phone());
   const failCall = async (): Promise<VapiResult<{ id: string }>> => ({ ok: false, error: "Vapi API error 400: bad" });
 
   const r = await processVoiceCampaign(campaignId, { resolveCreds: async () => creds, initiateCall: failCall });
@@ -84,8 +84,8 @@ test("failed initiation returns the lead to the queue (no silent failure)", asyn
 });
 
 test("provider 5xx auto-pauses the campaign", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign();
-  await addLead(campaignId, hotelId, phone());
+  const { tenantId, campaignId } = await makeVoiceCampaign();
+  await addLead(campaignId, tenantId, phone());
   const err5xx = async (): Promise<VapiResult<{ id: string }>> => ({ ok: false, error: "Vapi API error 503: down" });
 
   await processVoiceCampaign(campaignId, { resolveCreds: async () => creds, initiateCall: err5xx });
@@ -94,9 +94,9 @@ test("provider 5xx auto-pauses the campaign", async () => {
 });
 
 test("spend cap auto-pauses when exhausted", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign({ spendCapCalls: 1 });
-  await addLead(campaignId, hotelId, phone());
-  await addLead(campaignId, hotelId, phone());
+  const { tenantId, campaignId } = await makeVoiceCampaign({ spendCapCalls: 1 });
+  await addLead(campaignId, tenantId, phone());
+  await addLead(campaignId, tenantId, phone());
 
   const r1 = await processVoiceCampaign(campaignId, baseDeps);
   assert.equal(r1.dialed, 1); // capped
@@ -107,11 +107,11 @@ test("spend cap auto-pauses when exhausted", async () => {
 });
 
 test("recovers a stuck in-flight call and re-dials the lead", async () => {
-  const { hotelId, campaignId } = await makeVoiceCampaign();
-  const lead = await addLead(campaignId, hotelId, phone(), { status: "calling", abVariant: "A" });
+  const { tenantId, campaignId } = await makeVoiceCampaign();
+  const lead = await addLead(campaignId, tenantId, phone(), { status: "calling", abVariant: "A" });
   // A call stuck in-flight for 20 minutes.
   await prisma.callRecord.create({
-    data: { hotelId, campaignId, leadId: lead.id, abVariant: "A", status: "in_progress", createdAt: new Date(Date.now() - 20 * 60_000) },
+    data: { tenantId, campaignId, leadId: lead.id, abVariant: "A", status: "in_progress", createdAt: new Date(Date.now() - 20 * 60_000) },
   });
 
   const r = await processVoiceCampaign(campaignId, baseDeps);

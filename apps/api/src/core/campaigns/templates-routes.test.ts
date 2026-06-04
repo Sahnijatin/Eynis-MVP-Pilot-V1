@@ -5,11 +5,11 @@ import { buildServer } from "../../server";
 import { prisma } from "../../db/prisma";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "VC " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
 };
-const createUser = (hotelId: string, email: string) => prisma.user.create({ data: { hotelId, fullName: "U", email, role: "owner", isActive: true } });
+const createUser = (tenantId: string, email: string) => prisma.user.create({ data: { tenantId, fullName: "U", email, role: "owner", isActive: true } });
 async function startServer(): Promise<{ server: Server; base: string }> {
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -18,21 +18,21 @@ async function startServer(): Promise<{ server: Server; base: string }> {
   return { server, base: "http://127.0.0.1:" + addr.port };
 }
 const stop = (server: Server) => new Promise<void>((res, rej) => server.close((e) => (e ? rej(e) : res())));
-const auth = async (base: string, hotelId: string, email: string) => {
-  const r = await fetch(base + "/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hotelId, email, role: "owner" }) });
+const auth = async (base: string, tenantId: string, email: string) => {
+  const r = await fetch(base + "/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId, email, role: "owner" }) });
   return "Bearer " + ((await r.json()) as { token: string }).token;
 };
 
 after(async () => { await prisma.$disconnect(); });
 
 test("templates: create → submit → approve lifecycle, list filter, isolation", async () => {
-  const hotelId = "tpl-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, email);
+  const tenantId = "tpl-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, email);
   const { server, base } = await startServer();
   try {
-    const token = await auth(base, hotelId, email);
+    const token = await auth(base, tenantId, email);
 
     // create
     const created = await fetch(base + "/templates", {

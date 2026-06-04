@@ -4,7 +4,7 @@ import { sendWhatsAppReply, buildReplyMessage } from "./whatsapp-outbound";
 import { broadcastSSEEvent } from "../../sse/clients";
 
 export interface IngestInput {
-  hotelId: string;
+  tenantId: string;
   connectorKey: string;
   eventType?: string;
   guestPhone?: string;
@@ -37,11 +37,11 @@ function asTrimmedString(v: unknown): string | null {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 }
 
-async function upsertGuest(hotelId: string, guestName: string, phoneE164: string): Promise<string> {
-  const existing = await prisma.contact.findFirst({ where: { hotelId, phoneE164 }, select: { id: true } });
+async function upsertGuest(tenantId: string, guestName: string, phoneE164: string): Promise<string> {
+  const existing = await prisma.contact.findFirst({ where: { tenantId, phoneE164 }, select: { id: true } });
   if (existing) return existing.id;
   const g = await prisma.contact.create({
-    data: { hotelId, fullName: guestName, phoneE164 },
+    data: { tenantId, fullName: guestName, phoneE164 },
     select: { id: true }
   });
   return g.id;
@@ -71,7 +71,7 @@ function keywordClassify(text: string): ClassificationResult {
 
 export async function ingestConnectorEvent(input: IngestInput): Promise<IngestResult> {
   const {
-    hotelId,
+    tenantId,
     connectorKey,
     eventType = "inbound_message",
     guestPhone,
@@ -85,7 +85,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
   // 1. Create a preliminary event record
   const event = await prisma.connectorEvent.create({
     data: {
-      hotelId,
+      tenantId,
       connectorKey,
       eventType,
       guestPhone: guestPhone ?? null,
@@ -104,13 +104,13 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
   try {
     // 2. Upsert guest
     if (guestPhone) {
-      guestId = await upsertGuest(hotelId, guestName, guestPhone);
+      guestId = await upsertGuest(tenantId, guestName, guestPhone);
     }
 
     // 3. Classify via AI (or keyword fallback)
     if (AI_AVAILABLE && messageText) {
       try {
-        const aiResult = await classifyInboundEvent(hotelId, messageText, aiProvider);
+        const aiResult = await classifyInboundEvent(tenantId, messageText, aiProvider);
         classification = {
           category: aiResult.category,
           priority: aiResult.priority,
@@ -134,7 +134,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
 
       const sr = await prisma.serviceRequest.create({
         data: {
-          hotelId,
+          tenantId,
           guestId,
           category: classification.category,
           status: "open",
@@ -150,7 +150,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
       broadcastSSEEvent({
         type: "sr_created",
         data: {
-          id: sr.id, hotelId, category: classification.category,
+          id: sr.id, tenantId, category: classification.category,
           status: "open", summary: classification.summary,
           priority: classification.priority, source: connectorKey,
           guestName, createdAt: new Date().toISOString()
@@ -160,7 +160,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
       // 5. Build and send outbound reply
       if (sendReply && guestPhone) {
         replyMessage = buildReplyMessage(guestName, classification.summary, sr.id);
-        const replyResult = await sendWhatsAppReply(hotelId, guestPhone, replyMessage);
+        const replyResult = await sendWhatsAppReply(tenantId, guestPhone, replyMessage);
         replySent = replyResult.sent;
 
         if (!replyResult.sent) {
@@ -207,7 +207,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
     // 7. Write audit log
     await prisma.auditLog.create({
       data: {
-        hotelId,
+        tenantId,
         actorRole: "system",
         action: "connector.event.ingested",
         entityType: "connector_event",

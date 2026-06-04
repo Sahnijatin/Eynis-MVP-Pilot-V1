@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 These are standing directives — apply them to **every** new feature, schema change, doc, and UI.
 
-1. **Industry-agnostic, not hospitality-specific.** Eynis began as a hotel product but is now a generic operations platform serving many industries (hospitality, manufacturing, F&B, travel, healthcare, and more via `apps/web/lib/industry-config.ts`). Design every new capability to work for *any* industry. Prefer neutral domain language (tenant/organization, contact/customer, request) over hospitality terms (hotel/guest) in new code, copy, and docs. NB: the existing schema is still hospitality-named (`model Hotel`, `Guest`, ~700 refs) — treat that as the tenant/contact entity conceptually, and don't add *new* hospitality-specific assumptions on top of it.
+1. **Industry-agnostic, not hospitality-specific.** Eynis began as a hotel product but is now a generic operations platform serving many industries (hospitality, manufacturing, F&B, travel, healthcare, and more via `apps/web/lib/industry-config.ts`). Design every new capability to work for *any* industry. Prefer neutral domain language (tenant/organization, contact/customer, request) over hospitality terms (hotel/guest) in new code, copy, and docs. NB: the code/models are now industry-neutral — `model Tenant` and `model Contact`, scoped by `tenantId` — but the underlying DB tables/columns stay `Hotel`/`Guest`/`hotelId` via Prisma `@@map`/`@map` (no data migration). Don't add *new* hospitality-specific assumptions.
 2. **White-label by default.** Customers will rebrand and run Eynis as their own product. Anything customer-facing must be themeable per tenant (name, logo, colors, and **their own sending domain** for email — see `docs/email-deliverability-design.md`). Never hard-code "Eynis" branding or an `eynis.com` identity into customer-facing output.
 
 ## Commands
@@ -59,7 +59,7 @@ npm run build
 ### Monorepo Structure
 - **`apps/api`** — Node.js HTTP backend, no framework (`node:http` only)
 - **`apps/web`** — Next.js 15 App Router frontend, React 19, Tailwind CSS
-- **`packages/shared`** — Shared TypeScript types (`UserRole`, `Hotel`, `Guest`, `ServiceRequest`)
+- **`packages/shared`** — Shared TypeScript types (`SystemRoleKey`, `Tenant`, `Contact`, `ServiceRequest`; `UserRole`/`Hotel`/`Guest` retained as deprecated aliases)
 
 `@eynis/shared` is a build-time dependency of both `apps/api` and `apps/web`. Its `dist/` must exist before either can compile.
 
@@ -69,17 +69,17 @@ The entire API is one ~2400-line file with all routes as an `if/else` chain matc
 **Route authorization pattern:**
 1. `getAuthenticatedContext(req)` → verifies JWT, loads user from DB
 2. `isAllowedRole(role, policyMap[route])` → checks RBAC
-3. `ensureHotelAccess(hotelId)` → verifies hotel exists
+3. `ensureTenantAccess(tenantId)` → verifies the tenant exists
 
 `policyMap` at the top of `server.ts` is the authoritative list of all routes and which roles can access them. All four roles (`owner`, `front_desk`, `housekeeping`, `fnb_manager`) are defined in `@eynis/shared`.
 
 **All API responses follow:** `{ ok: boolean, ...data }` on success or `{ ok: false, error: string }` on failure. Paginated endpoints return `{ items, page: { limit, offset, total, hasMore } }`.
 
 ### Authentication
-JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, hotelId, email, roleKey, role?, permissions }`. `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential). The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
+JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, tenantId, email, roleKey, role?, permissions }` (`hotelId` also emitted as a deprecated alias). `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential). The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
 
 ### Multi-tenancy
-Every DB query is scoped to `hotelId` from the JWT. The JWT's `hotelId` is verified against the `User` record on every request — a user cannot impersonate a different hotel by forging claims.
+Every DB query is scoped to `tenantId` from the JWT. The JWT's `tenantId` is verified against the `User` record on every request — a user cannot impersonate a different tenant by forging claims.
 
 ### AI Intelligence Layer (`apps/api/src/core/ai/intelligence.ts`)
 Dual-provider: **Claude** (`claude-opus-4-7` with adaptive thinking) and **OpenAI** (`gpt-4o`). Provider is selected per request via `?provider=openai` query param (defaults to Claude). When neither `ANTHROPIC_API_KEY` nor `OPENAI_API_KEY` is set, the ingest pipeline falls back to **keyword classification** (no API calls needed for dev/test).
@@ -89,7 +89,7 @@ Functions: `classifyInboundEvent`, `generateMorningBriefing`, `generateGuestInte
 ### Connector Ingest Pipeline (`apps/api/src/core/connectors/ingest.ts`)
 Handles inbound WhatsApp messages. Steps executed in order:
 1. Create `ConnectorEvent` record
-2. Upsert `Guest` by phone number
+2. Upsert `Contact` by phone number
 3. Classify via AI (or keyword fallback)
 4. Create `ServiceRequest` with SLA deadline
 5. Broadcast SSE event to connected clients
@@ -116,11 +116,11 @@ Next.js API routes in `apps/web/app/api/` proxy specific API calls (SSE, public 
 
 ### Database Schema (`apps/api/prisma/schema.prisma`)
 SQLite via Prisma. Key models and relationships:
-- `Hotel` → `User[]`, `Guest[]`, `ServiceRequest[]`, `AutomationRule[]`, `ConnectorEvent[]`, `ConnectorConfig[]`, `AuditLog[]`
+- `Tenant` (table `Hotel`) → `User[]`, `Contact[]`, `ServiceRequest[]`, `AutomationRule[]`, `ConnectorEvent[]`, `ConnectorConfig[]`, `AuditLog[]`
 - `ServiceRequest` → has `ServiceRequestTransition[]` (status history), `assignedTo` (User), SLA fields (`slaDueAt`, `slaBreachedAt`)
 - `ConnectorConfig` — per-hotel enabled/config for each connector key; secrets are masked in API responses
 - `AutomationRule` → `AutomationExecution[]` (one row per rule+entity combination, used for idempotency)
-- `NightAuditReport` — unique per `(hotelId, reportDate)`; stores AI-generated JSON report
+- `NightAuditReport` — unique per `(tenantId, reportDate)`; stores AI-generated JSON report
 
 ### Connectors Registry
 Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twilio`, `pms_hotelogix`, `pms_ezee`, `pos_petpooja`, `payments_razorpay`. Each has an env flag (e.g. `CONNECTOR_WHATSAPP_TWILIO_ENABLED=true`) that controls default availability. Hotels can override via `PUT /connectors/configs/:key`.

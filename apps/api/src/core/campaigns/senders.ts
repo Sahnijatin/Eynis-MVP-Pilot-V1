@@ -32,7 +32,7 @@ export interface SenderCampaign {
 }
 
 export interface SendContext {
-  hotelId: string;
+  tenantId: string;
   campaign: SenderCampaign;
   lead: SenderLead;
   tenantName: string | null;
@@ -82,7 +82,7 @@ const whatsappSender: ChannelSender = {
     if (!ctx.campaign.whatsappContentSid) return { ok: false, error: "campaign has no whatsappContentSid" };
     const vars = contextVars(ctx);
     const contentVariables = renderWhatsappContentVariables(ctx.campaign.whatsappVariables, vars);
-    const result = await sendWhatsAppTemplate(ctx.hotelId, ctx.lead.phone, ctx.campaign.whatsappContentSid, contentVariables);
+    const result = await sendWhatsAppTemplate(ctx.tenantId, ctx.lead.phone, ctx.campaign.whatsappContentSid, contentVariables);
     const renderedBody = ctx.campaign.whatsappTemplateBody ? renderTemplate(ctx.campaign.whatsappTemplateBody, vars) : JSON.stringify(contentVariables);
     return { ok: result.sent, providerId: result.id, renderedBody, error: result.error };
   },
@@ -95,7 +95,7 @@ const emailSender: ChannelSender = {
     if (!ctx.campaign.emailSubjectTemplate || !ctx.campaign.emailBodyTemplate) {
       return { ok: false, error: "campaign has no email templates" };
     }
-    const creds = await resolveResendCredentials(ctx.hotelId);
+    const creds = await resolveResendCredentials(ctx.tenantId);
     const vars = contextVars(ctx);
     const result = await sendFollowUpEmail(creds, {
       to: ctx.lead.email,

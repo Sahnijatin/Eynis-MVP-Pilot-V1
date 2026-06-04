@@ -15,19 +15,19 @@ const deps = (replyText = "Sure, happy to help!") => ({
 });
 
 async function setup(opts: { agentEnabled?: boolean; agentPrompt?: string | null; calendlyLink?: string | null } = {}) {
-  const hotelId = "wa-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "WA " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  const tenantId = "wa-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "WA " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
-      hotelId, name: "C", status: "active", channels: JSON.stringify(["whatsapp"]),
+      tenantId, name: "C", status: "active", channels: JSON.stringify(["whatsapp"]),
       whatsappContentSid: "HX1", whatsappAgentEnabled: opts.agentEnabled ?? true,
       whatsappAgentPrompt: opts.agentPrompt ?? "You are a warm concierge for {tenant.name}.",
       calendlyLink: opts.calendlyLink ?? null,
     },
   });
   const p = phone();
-  const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "Sarah", phone: p, consent: true, consentSource: "csv_import" } });
-  return { hotelId, campaignId: campaign.id, leadId: lead.id, phone: p };
+  const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "Sarah", phone: p, consent: true, consentSource: "csv_import" } });
+  return { tenantId, campaignId: campaign.id, leadId: lead.id, phone: p };
 }
 
 after(async () => { await prisma.$disconnect(); });
@@ -46,8 +46,8 @@ test("buildAgentSystemPrompt falls back to a sensible default when unset", () =>
 
 test("inbound from an agent lead records the message, replies, and tracks sentiment", async () => {
   out.length = 0;
-  const { hotelId, campaignId, phone: p } = await setup();
-  const r = await handleInboundWhatsApp({ hotelId, fromPhone: `whatsapp:${p}`, body: "Hi, yes I'm interested!", providerMessageId: "m1" }, deps());
+  const { tenantId, campaignId, phone: p } = await setup();
+  const r = await handleInboundWhatsApp({ tenantId, fromPhone: `whatsapp:${p}`, body: "Hi, yes I'm interested!", providerMessageId: "m1" }, deps());
   assert.equal(r.handled, true);
   assert.equal(out.length, 1); // one reply sent
   const msgs = await prisma.whatsappMessage.findMany({ where: { conversation: { campaignId } }, orderBy: { createdAt: "asc" } });
@@ -58,34 +58,34 @@ test("inbound from an agent lead records the message, replies, and tracks sentim
 });
 
 test("non-agent senders are not handled (fall through to normal ingest)", async () => {
-  const { hotelId } = await setup({ agentEnabled: false });
-  const r = await handleInboundWhatsApp({ hotelId, fromPhone: phone(), body: "hello" }, deps());
+  const { tenantId } = await setup({ agentEnabled: false });
+  const r = await handleInboundWhatsApp({ tenantId, fromPhone: phone(), body: "hello" }, deps());
   assert.equal(r.handled, false);
 });
 
 test("duplicate inbound (same providerMessageId) does not double-reply", async () => {
   out.length = 0;
-  const { hotelId, phone: p } = await setup();
-  await handleInboundWhatsApp({ hotelId, fromPhone: p, body: "hello", providerMessageId: "dup1" }, deps());
-  const r2 = await handleInboundWhatsApp({ hotelId, fromPhone: p, body: "hello", providerMessageId: "dup1" }, deps());
+  const { tenantId, phone: p } = await setup();
+  await handleInboundWhatsApp({ tenantId, fromPhone: p, body: "hello", providerMessageId: "dup1" }, deps());
+  const r2 = await handleInboundWhatsApp({ tenantId, fromPhone: p, body: "hello", providerMessageId: "dup1" }, deps());
   assert.equal(r2.reason, "duplicate");
   assert.equal(out.length, 1); // only the first replied
 });
 
 test("opt-out over WhatsApp suppresses tenant-wide and confirms", async () => {
   out.length = 0;
-  const { hotelId, leadId, phone: p } = await setup();
-  const r = await handleInboundWhatsApp({ hotelId, fromPhone: p, body: "STOP", providerMessageId: "s1" }, deps());
+  const { tenantId, leadId, phone: p } = await setup();
+  const r = await handleInboundWhatsApp({ tenantId, fromPhone: p, body: "STOP", providerMessageId: "s1" }, deps());
   assert.equal(r.reason, "opted_out");
-  assert.equal(await prisma.doNotContact.count({ where: { hotelId, phone: p } }), 1);
+  assert.equal(await prisma.doNotContact.count({ where: { tenantId, phone: p } }), 1);
   const lead = await prisma.campaignLead.findUnique({ where: { id: leadId } });
   assert.equal(lead?.optedOut, true);
 });
 
 test("booking intent appends the calendly link and sets state=booked", async () => {
   out.length = 0;
-  const { hotelId, campaignId, phone: p } = await setup({ calendlyLink: "https://cal.com/riviera" });
-  await handleInboundWhatsApp({ hotelId, fromPhone: p, body: "can you book me an appointment?", providerMessageId: "b1" }, deps("Of course!"));
+  const { tenantId, campaignId, phone: p } = await setup({ calendlyLink: "https://cal.com/riviera" });
+  await handleInboundWhatsApp({ tenantId, fromPhone: p, body: "can you book me an appointment?", providerMessageId: "b1" }, deps("Of course!"));
   const lastOut = out[out.length - 1];
   assert.match(lastOut.msg, /cal\.com\/riviera/);
   const conv = await prisma.whatsappConversation.findFirst({ where: { campaignId } });

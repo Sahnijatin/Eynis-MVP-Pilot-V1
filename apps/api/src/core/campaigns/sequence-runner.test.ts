@@ -9,18 +9,18 @@ const fakeSender = (channel: string): ChannelSender => ({ channel, async send() 
 const deps = { resolveSender: (c: string) => fakeSender(c), batchSize: 100 };
 
 async function setup(opts: { steps: any[]; exitOn?: string[]; leadOver?: Record<string, unknown> }) {
-  const hotelId = "seq-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "Seq " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
-  const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "L", phone: "+9190000" + uid().replace(/\D/g, "").slice(0, 5).padEnd(5, "0"), consent: true, consentSource: "csv_import", ...opts.leadOver } });
+  const tenantId = "seq-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "Seq " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  const campaign = await prisma.voiceCampaign.create({ data: { tenantId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
+  const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "L", phone: "+9190000" + uid().replace(/\D/g, "").slice(0, 5).padEnd(5, "0"), consent: true, consentSource: "csv_import", ...opts.leadOver } });
   const seq = await prisma.sequence.create({
     data: {
-      hotelId, name: "Drip", status: "active", exitOn: JSON.stringify(opts.exitOn ?? ["opted_out", "replied"]),
+      tenantId, name: "Drip", status: "active", exitOn: JSON.stringify(opts.exitOn ?? ["opted_out", "replied"]),
       steps: { create: opts.steps },
     },
   });
-  const enrollment = await prisma.sequenceEnrollment.create({ data: { sequenceId: seq.id, hotelId, leadId: lead.id, currentStepOrder: 0, nextRunAt: new Date(Date.now() - 1000) } });
-  return { hotelId, seq, lead, enrollment };
+  const enrollment = await prisma.sequenceEnrollment.create({ data: { sequenceId: seq.id, tenantId, leadId: lead.id, currentStepOrder: 0, nextRunAt: new Date(Date.now() - 1000) } });
+  return { tenantId, seq, lead, enrollment };
 }
 
 const wa = (waitMinutes = 0) => ({ order: 0, waitMinutes, channel: "whatsapp", whatsappContentSid: "HX", whatsappVariables: "[]" });
@@ -56,10 +56,10 @@ test("runner: advances through steps with delay, logs events, completes", async 
 });
 
 test("runner: exits early when the lead has replied", async () => {
-  const { hotelId, lead, enrollment } = await setup({ steps: [wa()], exitOn: ["replied"] });
+  const { tenantId, lead, enrollment } = await setup({ steps: [wa()], exitOn: ["replied"] });
   // an inbound WhatsApp message after enrollment
-  const convo = await prisma.whatsappConversation.create({ data: { hotelId, campaignId: (await prisma.campaignLead.findUnique({ where: { id: lead.id }, select: { campaignId: true } }))!.campaignId, leadId: lead.id } });
-  await prisma.whatsappMessage.create({ data: { hotelId, conversationId: convo.id, direction: "in", body: "stop emailing me" } });
+  const convo = await prisma.whatsappConversation.create({ data: { tenantId, campaignId: (await prisma.campaignLead.findUnique({ where: { id: lead.id }, select: { campaignId: true } }))!.campaignId, leadId: lead.id } });
+  await prisma.whatsappMessage.create({ data: { tenantId, conversationId: convo.id, direction: "in", body: "stop emailing me" } });
 
   const r = await processDueEnrollments(deps);
   assert.equal(r.sent, 0);

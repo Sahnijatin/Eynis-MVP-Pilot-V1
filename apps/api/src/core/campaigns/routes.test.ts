@@ -8,17 +8,17 @@ import { prisma } from "../../db/prisma";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "VC " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
 };
 
 const createUser = async (
-  hotelId: string,
+  tenantId: string,
   role: "owner" | "front_desk" | "housekeeping" | "fnb_manager",
   email: string,
 ) => {
-  await prisma.user.create({ data: { hotelId, fullName: "U " + role, email, role, isActive: true } });
+  await prisma.user.create({ data: { tenantId, fullName: "U " + role, email, role, isActive: true } });
 };
 
 async function startServer(): Promise<{ server: Server; base: string }> {
@@ -31,11 +31,11 @@ async function startServer(): Promise<{ server: Server; base: string }> {
 const stop = (server: Server) =>
   new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
 
-const authHeaders = async (base: string, hotelId: string, email: string, role: string) => {
+const authHeaders = async (base: string, tenantId: string, email: string, role: string) => {
   const r = await fetch(base + "/auth/token", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hotelId, email, role }),
+    body: JSON.stringify({ tenantId, email, role }),
   });
   const p = (await r.json()) as { token?: string };
   if (!p.token) throw new Error("no token");
@@ -56,13 +56,13 @@ after(async () => { await prisma.$disconnect(); });
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test("campaign CRUD lifecycle (create, list, detail, patch, complete, delete)", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const headers = await authHeaders(base, hotelId, email, "owner");
+    const headers = await authHeaders(base, tenantId, email, "owner");
 
     // create
     const createRes = await fetch(base + "/campaigns", { method: "POST", headers, body: JSON.stringify(validCampaign) });
@@ -111,13 +111,13 @@ test("campaign CRUD lifecycle (create, list, detail, patch, complete, delete)", 
 });
 
 test("create validation rejects missing required fields", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const headers = await authHeaders(base, hotelId, email, "owner");
+    const headers = await authHeaders(base, tenantId, email, "owner");
     const res = await fetch(base + "/campaigns", { method: "POST", headers, body: JSON.stringify({ name: "x" }) });
     assert.equal(res.status, 400);
     assert.equal(((await res.json()) as any).ok, false);
@@ -127,13 +127,13 @@ test("create validation rejects missing required fields", async () => {
 });
 
 test("activate without Vapi configured returns 400; pause guard rejects non-active", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const headers = await authHeaders(base, hotelId, email, "owner");
+    const headers = await authHeaders(base, tenantId, email, "owner");
     const created = (await (await fetch(base + "/campaigns", { method: "POST", headers, body: JSON.stringify(validCampaign) })).json()) as any;
     const id = created.campaign.id;
 
@@ -149,17 +149,17 @@ test("activate without Vapi configured returns 400; pause guard rejects non-acti
 });
 
 test("delete is blocked (409) when call records exist", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const headers = await authHeaders(base, hotelId, email, "owner");
+    const headers = await authHeaders(base, tenantId, email, "owner");
     const created = (await (await fetch(base + "/campaigns", { method: "POST", headers, body: JSON.stringify(validCampaign) })).json()) as any;
     const id = created.campaign.id;
-    const lead = await prisma.campaignLead.create({ data: { campaignId: id, hotelId, firstName: "S", phone: "+91900" + uid().slice(0, 6) } });
-    await prisma.callRecord.create({ data: { campaignId: id, leadId: lead.id, hotelId, abVariant: "A", status: "ended" } });
+    const lead = await prisma.campaignLead.create({ data: { campaignId: id, tenantId, firstName: "S", phone: "+91900" + uid().slice(0, 6) } });
+    await prisma.callRecord.create({ data: { campaignId: id, leadId: lead.id, tenantId, abVariant: "A", status: "ended" } });
 
     const delRes = await fetch(base + `/campaigns/${id}`, { method: "DELETE", headers });
     assert.equal(delRes.status, 409);
@@ -169,13 +169,13 @@ test("delete is blocked (409) when call records exist", async () => {
 });
 
 test("RBAC: housekeeping role cannot access campaigns (403)", async () => {
-  const hotelId = "vc-" + uid();
-  await createHotel(hotelId);
-  const email = `hk+${hotelId}@test.local`;
-  await createUser(hotelId, "housekeeping", email);
+  const tenantId = "vc-" + uid();
+  await createHotel(tenantId);
+  const email = `hk+${tenantId}@test.local`;
+  await createUser(tenantId, "housekeeping", email);
   const { server, base } = await startServer();
   try {
-    const headers = await authHeaders(base, hotelId, email, "housekeeping");
+    const headers = await authHeaders(base, tenantId, email, "housekeeping");
     const res = await fetch(base + "/campaigns", { headers });
     assert.equal(res.status, 403);
   } finally {

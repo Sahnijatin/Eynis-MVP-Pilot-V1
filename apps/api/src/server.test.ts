@@ -5,29 +5,29 @@ import { prisma } from "./db/prisma";
 
 const uniqueHotelId = () => "test-hotel-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 
-const createHotel = async (hotelId: string) => {
+const createHotel = async (tenantId: string) => {
   await prisma.tenant.create({
     data: {
-      id: hotelId,
-      name: "Test Hotel " + hotelId.slice(-4),
+      id: tenantId,
+      name: "Test Hotel " + tenantId.slice(-4),
       timezone: "Asia/Kolkata"
     }
   });
   // Give the test hotel a Growth license so the plan-gated endpoints (advanced
   // analytics, AI, automations, night audit) are exercised rather than 403'd.
   await prisma.license.create({
-    data: { hotelId, plan: "growth", maxSeats: 25 }
+    data: { tenantId, plan: "growth", maxSeats: 25 }
   });
 };
 
 const createUser = async (
-  hotelId: string,
+  tenantId: string,
   role: "owner" | "front_desk" | "housekeeping" | "fnb_manager",
   email: string
 ) => {
   await prisma.user.create({
     data: {
-      hotelId,
+      tenantId,
       fullName: "Test User " + role,
       email,
       role,
@@ -38,14 +38,14 @@ const createUser = async (
 
 const getAuthHeaders = async (
   base: string,
-  hotelId: string,
+  tenantId: string,
   email: string,
   role: "owner" | "front_desk" | "housekeeping" | "fnb_manager"
 ) => {
   const response = await fetch(base + "/auth/token", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hotelId, email, role })
+    body: JSON.stringify({ tenantId, email, role })
   });
   const payload = (await response.json()) as { ok: boolean; token?: string };
   assert.equal(response.status, 200);
@@ -82,9 +82,9 @@ test("GET /health returns ok payload", async () => {
 });
 
 test("GET /context validates bearer token context", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -96,8 +96,8 @@ test("GET /context validates bearer token context", async () => {
   const base = "http://127.0.0.1:" + address.port;
   const headers = await getAuthHeaders(
     base,
-    hotelId,
-    "owner+" + hotelId + "@test.local",
+    tenantId,
+    "owner+" + tenantId + "@test.local",
     "owner"
   );
 
@@ -112,9 +112,9 @@ test("GET /context validates bearer token context", async () => {
 });
 
 test("POST event and read audit trail", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -126,8 +126,8 @@ test("POST event and read audit trail", async () => {
   const base = "http://127.0.0.1:" + address.port;
   const headers = await getAuthHeaders(
     base,
-    hotelId,
-    "owner+" + hotelId + "@test.local",
+    tenantId,
+    "owner+" + tenantId + "@test.local",
     "owner"
   );
 
@@ -220,12 +220,12 @@ test("service requests are tenant scoped by hotel", async () => {
   const listAResponse = await fetch(base + "/service-requests", { headers: hotelAOwnerHeaders });
   const listA = (await listAResponse.json()) as {
     ok: boolean;
-    items: Array<{ hotelId: string }>;
+    items: Array<{ tenantId: string }>;
   };
   assert.equal(listAResponse.status, 200);
   assert.equal(listA.ok, true);
   assert.equal(listA.items.length, 1);
-  assert.equal(listA.items[0]?.hotelId, hotelA);
+  assert.equal(listA.items[0]?.tenantId, hotelA);
 
   await new Promise<void>((resolve, reject) =>
     server.close((err) => (err ? reject(err) : resolve()))
@@ -233,11 +233,11 @@ test("service requests are tenant scoped by hotel", async () => {
 });
 
 test("PATCH service request status updates and writes audit", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "front_desk", "fd+" + hotelId + "@test.local");
-  await createUser(hotelId, "housekeeping", "hk+" + hotelId + "@test.local");
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "front_desk", "fd+" + tenantId + "@test.local");
+  await createUser(tenantId, "housekeeping", "hk+" + tenantId + "@test.local");
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -248,20 +248,20 @@ test("PATCH service request status updates and writes audit", async () => {
   const base = "http://127.0.0.1:" + address.port;
   const frontDeskHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "fd+" + hotelId + "@test.local",
+    tenantId,
+    "fd+" + tenantId + "@test.local",
     "front_desk"
   );
   const houseKeepingHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "hk+" + hotelId + "@test.local",
+    tenantId,
+    "hk+" + tenantId + "@test.local",
     "housekeeping"
   );
   const ownerHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "owner+" + hotelId + "@test.local",
+    tenantId,
+    "owner+" + tenantId + "@test.local",
     "owner"
   );
 
@@ -313,10 +313,10 @@ test("PATCH service request status updates and writes audit", async () => {
 });
 
 test("assign endpoint updates assignee and transition history is readable", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "front_desk", "fd+" + hotelId + "@test.local");
-  await createUser(hotelId, "housekeeping", "hk+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "front_desk", "fd+" + tenantId + "@test.local");
+  await createUser(tenantId, "housekeeping", "hk+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -327,8 +327,8 @@ test("assign endpoint updates assignee and transition history is readable", asyn
   const base = "http://127.0.0.1:" + address.port;
   const frontDeskHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "fd+" + hotelId + "@test.local",
+    tenantId,
+    "fd+" + tenantId + "@test.local",
     "front_desk"
   );
 
@@ -351,7 +351,7 @@ test("assign endpoint updates assignee and transition history is readable", asyn
       {
         method: "PATCH",
         headers: { "content-type": "application/json", ...frontDeskHeaders },
-        body: JSON.stringify({ assigneeEmail: "hk+" + hotelId + "@test.local" })
+        body: JSON.stringify({ assigneeEmail: "hk+" + tenantId + "@test.local" })
       }
     );
     assert.equal(assignResponse.status, 200);
@@ -385,11 +385,11 @@ test("assign endpoint updates assignee and transition history is readable", asyn
 });
 
 test("queue filters, SLA refresh, and dashboard overview work", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "front_desk", "fd+" + hotelId + "@test.local");
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
-  await createUser(hotelId, "fnb_manager", "fnb+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "front_desk", "fd+" + tenantId + "@test.local");
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
+  await createUser(tenantId, "fnb_manager", "fnb+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -400,20 +400,20 @@ test("queue filters, SLA refresh, and dashboard overview work", async () => {
   const base = "http://127.0.0.1:" + address.port;
   const frontDeskHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "fd+" + hotelId + "@test.local",
+    tenantId,
+    "fd+" + tenantId + "@test.local",
     "front_desk"
   );
   const ownerHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "owner+" + hotelId + "@test.local",
+    tenantId,
+    "owner+" + tenantId + "@test.local",
     "owner"
   );
   const fnbHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "fnb+" + hotelId + "@test.local",
+    tenantId,
+    "fnb+" + tenantId + "@test.local",
     "fnb_manager"
   );
 
@@ -505,7 +505,7 @@ test("queue filters, SLA refresh, and dashboard overview work", async () => {
   assert.equal(usersResponse.status, 200);
   assert.equal(usersPayload.ok, true);
   assert.equal(usersPayload.page.total >= 3, true);
-  assert.equal(usersPayload.items.some((u) => u.email === "fd+" + hotelId + "@test.local"), true);
+  assert.equal(usersPayload.items.some((u) => u.email === "fd+" + tenantId + "@test.local"), true);
 
   await new Promise<void>((resolve, reject) =>
     server.close((err) => (err ? reject(err) : resolve()))
@@ -513,8 +513,8 @@ test("queue filters, SLA refresh, and dashboard overview work", async () => {
 });
 
 test("public QR request intake creates service request", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -528,7 +528,7 @@ test("public QR request intake creates service request", async () => {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      hotelId,
+      tenantId,
       guestName: "QR Guest",
       guestPhone: "+919999009999",
       category: "housekeeping",
@@ -551,8 +551,8 @@ test("public QR request intake creates service request", async () => {
 });
 
 test("whatsapp webhook skeleton creates request and returns ack", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -566,7 +566,7 @@ test("whatsapp webhook skeleton creates request and returns ack", async () => {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      hotelId,
+      tenantId,
       fromPhone: "+919100000111",
       guestName: "WhatsApp Guest",
       message: "AC not working urgent"
@@ -590,8 +590,8 @@ test("whatsapp webhook skeleton creates request and returns ack", async () => {
 });
 
 test("whatsapp webhook normalization supports twilio payload", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -606,7 +606,7 @@ test("whatsapp webhook normalization supports twilio payload", async () => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       provider: "twilio",
-      hotelId,
+      tenantId,
       From: "whatsapp:+919100000222",
       Body: "Need fresh towels",
       ProfileName: "Twilio Guest"
@@ -623,8 +623,8 @@ test("whatsapp webhook normalization supports twilio payload", async () => {
 });
 
 test("whatsapp webhook normalization supports interakt payload", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -640,7 +640,7 @@ test("whatsapp webhook normalization supports interakt payload", async () => {
     body: JSON.stringify({
       provider: "interakt",
       data: {
-        hotelId,
+        tenantId,
         phone_number: "+919100000333",
         message: "AC issue in room 308",
         customer_name: "Interakt Guest"
@@ -658,10 +658,10 @@ test("whatsapp webhook normalization supports interakt payload", async () => {
 });
 
 test("analytics endpoints and connector registry return real payloads", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
-  await createUser(hotelId, "front_desk", "fd+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
+  await createUser(tenantId, "front_desk", "fd+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -672,14 +672,14 @@ test("analytics endpoints and connector registry return real payloads", async ()
   const base = "http://127.0.0.1:" + address.port;
   const ownerHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "owner+" + hotelId + "@test.local",
+    tenantId,
+    "owner+" + tenantId + "@test.local",
     "owner"
   );
   const frontDeskHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "fd+" + hotelId + "@test.local",
+    tenantId,
+    "fd+" + tenantId + "@test.local",
     "front_desk"
   );
 
@@ -731,9 +731,9 @@ test("analytics endpoints and connector registry return real payloads", async ()
 });
 
 test("connector configs are persisted per hotel and reflected in registry", async () => {
-  const hotelId = uniqueHotelId();
-  await createHotel(hotelId);
-  await createUser(hotelId, "owner", "owner+" + hotelId + "@test.local");
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
 
   const server = buildServer();
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -744,8 +744,8 @@ test("connector configs are persisted per hotel and reflected in registry", asyn
   const base = "http://127.0.0.1:" + address.port;
   const ownerHeaders = await getAuthHeaders(
     base,
-    hotelId,
-    "owner+" + hotelId + "@test.local",
+    tenantId,
+    "owner+" + tenantId + "@test.local",
     "owner"
   );
 

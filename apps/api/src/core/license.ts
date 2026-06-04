@@ -34,11 +34,11 @@ export const isPlanAllowed = (plan: string, feature: LicenseFeature): boolean =>
 };
 
 export const enforceLicenseFeature = async (
-  hotelId: string,
+  tenantId: string,
   feature: LicenseFeature,
 ): Promise<{ ok: true } | { ok: false; error: string; requiredPlan: string }> => {
   const license = await prisma.license.findUnique({
-    where: { hotelId },
+    where: { tenantId },
     select: { plan: true },
   });
   const plan = license?.plan ?? "starter";

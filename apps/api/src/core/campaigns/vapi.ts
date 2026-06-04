@@ -68,9 +68,9 @@ const parseConfig = (json: string): Record<string, unknown> => {
 
 // ── Credential resolution (per-hotel ConnectorConfig → env fallback) ─────────
 
-export async function resolveVapiCredentials(hotelId: string): Promise<VapiCredentials> {
+export async function resolveVapiCredentials(tenantId: string): Promise<VapiCredentials> {
   const cfg = await prisma.connectorConfig.findUnique({
-    where: { hotelId_connectorKey: { hotelId, connectorKey: "voice_vapi" } },
+    where: { tenantId_connectorKey: { tenantId, connectorKey: "voice_vapi" } },
     select: { configJson: true, enabled: true },
   }).catch(() => null);
 

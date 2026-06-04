@@ -2,12 +2,12 @@ import { resolveUserContext } from "./user-context";
 
 const getDemoEnv = () => ({
   apiBaseUrl: process.env.EYNIS_API_BASE_URL ?? "http://localhost:4000",
-  hotelId: process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1",
+  tenantId: process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1",
   email: process.env.EYNIS_DEMO_OWNER_EMAIL ?? "vikram@theriviera.com",
   role: process.env.EYNIS_DEMO_OWNER_ROLE ?? "owner"
 });
 
-async function fetchToken(apiBaseUrl: string, hotelId: string, email: string, role: string): Promise<string | null> {
+async function fetchToken(apiBaseUrl: string, tenantId: string, email: string, role: string): Promise<string | null> {
   // 3s timeout: if the API is unreachable we MUST NOT hang the server render.
   // Hanging here is what makes a logged-in user land on a blank shell.
   const ctrl = new AbortController();
@@ -16,7 +16,7 @@ async function fetchToken(apiBaseUrl: string, hotelId: string, email: string, ro
     const response = await fetch(apiBaseUrl + "/auth/token", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ hotelId, email, role }),
+      body: JSON.stringify({ tenantId, email, role }),
       cache: "no-store",
       signal: ctrl.signal
     });
@@ -43,8 +43,8 @@ export async function getApiToken() {
 
   // Resolve from Clerk metadata or DB lookup
   const ctx = await resolveUserContext();
-  if (ctx.exists && ctx.hotelId && ctx.email && ctx.role) {
-    const token = await fetchToken(apiBaseUrl, ctx.hotelId, ctx.email, ctx.role);
+  if (ctx.exists && ctx.tenantId && ctx.email && ctx.role) {
+    const token = await fetchToken(apiBaseUrl, ctx.tenantId, ctx.email, ctx.role);
     if (token) return token;
     // The user resolved to a real hotel but token issuance failed (API blip/timeout).
     // We MUST NOT fall back to the demo tenant here — doing so would serve another
@@ -58,7 +58,7 @@ export async function getApiToken() {
     throw new Error("No workspace resolved for the current user");
   }
   const env = getDemoEnv();
-  const token = await fetchToken(apiBaseUrl, env.hotelId, env.email, env.role);
+  const token = await fetchToken(apiBaseUrl, env.tenantId, env.email, env.role);
   if (!token) throw new Error("Failed to fetch auth token for web route");
   return token;
 }

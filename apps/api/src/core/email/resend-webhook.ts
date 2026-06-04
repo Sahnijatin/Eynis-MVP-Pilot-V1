@@ -24,12 +24,12 @@ export interface ProcessResult { ok: boolean; action: string }
 
 const lower = (s: string) => s.trim().toLowerCase();
 
-async function suppress(hotelId: string, email: string, reason: "bounced" | "complained" | "manual") {
+async function suppress(tenantId: string, email: string, reason: "bounced" | "complained" | "manual") {
   const e = lower(email);
   if (!e) return;
   await prisma.emailSuppression.upsert({
-    where: { hotelId_email: { hotelId, email: e } },
-    create: { hotelId, email: e, reason },
+    where: { tenantId_email: { tenantId, email: e } },
+    create: { tenantId, email: e, reason },
     update: { reason },
   });
 }
@@ -42,15 +42,15 @@ export async function processResendEvent(event: ResendWebhookEvent): Promise<Pro
   const delivery = emailId
     ? await prisma.messageDelivery.findFirst({
         where: { channel: "email", providerId: emailId },
-        select: { id: true, hotelId: true, leadId: true },
+        select: { id: true, tenantId: true, leadId: true },
       })
     : null;
 
-  // hotelId/recipient come from the delivery row, falling back to the send tags
+  // tenantId/recipient come from the delivery row, falling back to the send tags
   // and the `to` field (covers events with no matching delivery, e.g. future
   // transactional mail not tracked as a campaign delivery).
-  const tagHotelId = data.tags?.find((t) => t.name === "hotelId")?.value ?? null;
-  const hotelId = delivery?.hotelId ?? tagHotelId ?? null;
+  const tagHotelId = data.tags?.find((t) => t.name === "tenantId")?.value ?? null;
+  const tenantId = delivery?.tenantId ?? tagHotelId ?? null;
   const recipient = Array.isArray(data.to) ? data.to[0] ?? null : (typeof data.to === "string" ? data.to : null);
 
   switch (event.type) {
@@ -62,13 +62,13 @@ export async function processResendEvent(event: ResendWebhookEvent): Promise<Pro
       // Only permanent (hard) bounces suppress; transient bounces may be retried.
       const permanent = (data.bounce?.type ?? "Permanent").toLowerCase() === "permanent";
       if (delivery) await prisma.messageDelivery.update({ where: { id: delivery.id }, data: { status: "failed", error: "bounced" } });
-      if (permanent && hotelId && recipient) await suppress(hotelId, recipient, "bounced");
+      if (permanent && tenantId && recipient) await suppress(tenantId, recipient, "bounced");
       return { ok: true, action: permanent ? "suppressed_bounce" : "transient_bounce" };
     }
     case "email.complained": {
       if (delivery) await prisma.messageDelivery.update({ where: { id: delivery.id }, data: { status: "failed", error: "complained" } });
-      if (hotelId && recipient) {
-        await suppress(hotelId, recipient, "complained");
+      if (tenantId && recipient) {
+        await suppress(tenantId, recipient, "complained");
         // A spam complaint withdraws consent — opt the lead out across channels.
         if (delivery?.leadId) await prisma.campaignLead.update({ where: { id: delivery.leadId }, data: { optedOut: true } }).catch(() => { /* lead may be gone */ });
       }

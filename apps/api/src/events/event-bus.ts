@@ -2,7 +2,7 @@ type EventHandler<T> = (event: T) => void;
 
 export interface PlatformEvent {
   type: string;
-  hotelId: string;
+  tenantId: string;
   payload: Record<string, string | number | boolean | null>;
   createdAt: string;
 }

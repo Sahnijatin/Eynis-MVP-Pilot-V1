@@ -2,7 +2,7 @@ type UnknownRecord = Record<string, unknown>;
 
 export type NormalizedWhatsappInbound = {
   provider: "interakt" | "twilio" | "generic";
-  hotelId: string;
+  tenantId: string;
   fromPhone: string;
   message: string;
   guestName: string;
@@ -14,14 +14,14 @@ const asTrimmedString = (value: unknown): string | null =>
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
 function normalizeGeneric(body: UnknownRecord): NormalizedWhatsappInbound | null {
-  const hotelId = asTrimmedString(body.hotelId);
+  const tenantId = asTrimmedString(body.tenantId);
   const fromPhone = asTrimmedString(body.fromPhone);
   const message = asTrimmedString(body.message);
   const guestName = asTrimmedString(body.guestName) ?? "WhatsApp Guest";
-  if (!hotelId || !fromPhone || !message) return null;
+  if (!tenantId || !fromPhone || !message) return null;
   return {
     provider: "generic",
-    hotelId,
+    tenantId,
     fromPhone: normalizePhone(fromPhone),
     message,
     guestName
@@ -29,15 +29,15 @@ function normalizeGeneric(body: UnknownRecord): NormalizedWhatsappInbound | null
 }
 
 function normalizeTwilio(body: UnknownRecord): NormalizedWhatsappInbound | null {
-  const hotelId = asTrimmedString(body.hotelId);
+  const tenantId = asTrimmedString(body.tenantId);
   const from = asTrimmedString(body.From);
   const message = asTrimmedString(body.Body);
   const profileName = asTrimmedString(body.ProfileName) ?? "WhatsApp Guest";
-  if (!hotelId || !from || !message) return null;
+  if (!tenantId || !from || !message) return null;
   const fromPhone = from.replace(/^whatsapp:/, "");
   return {
     provider: "twilio",
-    hotelId,
+    tenantId,
     fromPhone: normalizePhone(fromPhone),
     message,
     guestName: profileName
@@ -46,7 +46,7 @@ function normalizeTwilio(body: UnknownRecord): NormalizedWhatsappInbound | null 
 
 function normalizeInterakt(body: UnknownRecord): NormalizedWhatsappInbound | null {
   const data = (body.data ?? body.payload) as UnknownRecord | undefined;
-  const hotelId = asTrimmedString(body.hotelId) ?? asTrimmedString(data?.hotelId);
+  const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(data?.tenantId);
   const fromPhone =
     asTrimmedString(body.phone_number) ??
     asTrimmedString(data?.phone_number) ??
@@ -60,10 +60,10 @@ function normalizeInterakt(body: UnknownRecord): NormalizedWhatsappInbound | nul
     asTrimmedString(data?.customer_name) ??
     asTrimmedString(data?.name) ??
     "WhatsApp Guest";
-  if (!hotelId || !fromPhone || !message) return null;
+  if (!tenantId || !fromPhone || !message) return null;
   return {
     provider: "interakt",
-    hotelId,
+    tenantId,
     fromPhone: normalizePhone(fromPhone),
     message,
     guestName

@@ -34,7 +34,7 @@ export type Hotel = Tenant;
 /** The end-customer a tenant engages (industry-neutral name for the Guest entity). */
 export interface Contact {
   id: string;
-  hotelId: string;
+  tenantId: string;
   fullName: string;
   phoneE164: string;
   visitCount: number;
@@ -45,7 +45,7 @@ export type Guest = Contact;
 
 export interface ServiceRequest {
   id: string;
-  hotelId: string;
+  tenantId: string;
   guestId: string;
   category: "housekeeping" | "maintenance" | "front_desk" | "concierge" | "fnb" | "other";
   status: "open" | "accepted" | "resolved" | "escalated";

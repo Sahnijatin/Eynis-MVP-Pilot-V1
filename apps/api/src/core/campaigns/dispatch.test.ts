@@ -32,32 +32,32 @@ const ageOut = (campaignId: string, channel: string, hours = 48) =>
   prisma.messageDelivery.updateMany({ where: { campaignId, channel }, data: { createdAt: new Date(Date.now() - hours * 3_600_000) } });
 
 async function makeCampaign(opts: { spendCapCalls?: number; maxRetries?: number; retryDelayHours?: number } = {}) {
-  const hotelId = "disp-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  const tenantId = "disp-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "Disp " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
-      hotelId, name: "WA", status: "active", channels: JSON.stringify(["whatsapp"]),
+      tenantId, name: "WA", status: "active", channels: JSON.stringify(["whatsapp"]),
       whatsappContentSid: "HXtest", whatsappVariables: JSON.stringify(["{lead.firstName}"]),
       spendCapCalls: opts.spendCapCalls ?? null,
       ...(opts.maxRetries !== undefined ? { maxRetries: opts.maxRetries } : {}),
       ...(opts.retryDelayHours !== undefined ? { retryDelayHours: opts.retryDelayHours } : {}),
     },
   });
-  return { hotelId, campaignId: campaign.id };
+  return { tenantId, campaignId: campaign.id };
 }
 
-const addLead = (campaignId: string, hotelId: string, phone: string, over: Record<string, unknown> = {}) =>
+const addLead = (campaignId: string, tenantId: string, phone: string, over: Record<string, unknown> = {}) =>
   prisma.campaignLead.create({
-    data: { campaignId, hotelId, firstName: "L", phone, consent: true, consentSource: "csv_import", consentAt: new Date(), ...over },
+    data: { campaignId, tenantId, firstName: "L", phone, consent: true, consentSource: "csv_import", consentAt: new Date(), ...over },
   });
 
 after(async () => { await prisma.$disconnect(); });
 
 test("dispatch sends to consented leads and is idempotent across ticks", async () => {
   sent.length = 0;
-  const { hotelId, campaignId } = await makeCampaign();
-  await addLead(campaignId, hotelId, "+1415555" + uid().slice(0, 4));
-  await addLead(campaignId, hotelId, "+1415556" + uid().slice(0, 4));
+  const { tenantId, campaignId } = await makeCampaign();
+  await addLead(campaignId, tenantId, "+1415555" + uid().slice(0, 4));
+  await addLead(campaignId, tenantId, "+1415556" + uid().slice(0, 4));
 
   const first = await processCampaignChannel(campaignId, "whatsapp", deps);
   assert.equal(first.sent, 2);
@@ -69,11 +69,11 @@ test("dispatch sends to consented leads and is idempotent across ticks", async (
 });
 
 test("dispatch skips leads that fail the pre-send guard (no consent / suppressed)", async () => {
-  const { hotelId, campaignId } = await makeCampaign();
-  await addLead(campaignId, hotelId, "+1415557" + uid().slice(0, 4), { consent: false }); // no consent
+  const { tenantId, campaignId } = await makeCampaign();
+  await addLead(campaignId, tenantId, "+1415557" + uid().slice(0, 4), { consent: false }); // no consent
   const suppPhone = "+1415558" + uid().slice(0, 4);
-  await addLead(campaignId, hotelId, suppPhone, { consent: true });
-  await prisma.doNotContact.create({ data: { hotelId, phone: suppPhone, reason: "opt_out" } });
+  await addLead(campaignId, tenantId, suppPhone, { consent: true });
+  await prisma.doNotContact.create({ data: { tenantId, phone: suppPhone, reason: "opt_out" } });
 
   const r = await processCampaignChannel(campaignId, "whatsapp", deps);
   assert.equal(r.sent, 0);
@@ -83,15 +83,15 @@ test("dispatch skips leads that fail the pre-send guard (no consent / suppressed
 });
 
 test("dispatch skips email recipients on the suppression list", async () => {
-  const hotelId = "disp-" + uid();
-  await prisma.tenant.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  const tenantId = "disp-" + uid();
+  await prisma.tenant.create({ data: { id: tenantId, name: "Disp " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
-    data: { hotelId, name: "Email", status: "active", channels: JSON.stringify(["email"]), emailSubjectTemplate: "Hi", emailBodyTemplate: "Hello {lead.firstName}" },
+    data: { tenantId, name: "Email", status: "active", channels: JSON.stringify(["email"]), emailSubjectTemplate: "Hi", emailBodyTemplate: "Hello {lead.firstName}" },
   });
   const suppEmail = `supp+${uid()}@example.com`;
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "S", email: suppEmail, phone: "+1888" + uid().slice(0, 6), consent: true, consentSource: "csv_import", consentAt: new Date() } });
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "OK", email: `ok+${uid()}@example.com`, phone: "+1889" + uid().slice(0, 6), consent: true, consentSource: "csv_import", consentAt: new Date() } });
-  await prisma.emailSuppression.create({ data: { hotelId, email: suppEmail.toLowerCase(), reason: "bounced" } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "S", email: suppEmail, phone: "+1888" + uid().slice(0, 6), consent: true, consentSource: "csv_import", consentAt: new Date() } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "OK", email: `ok+${uid()}@example.com`, phone: "+1889" + uid().slice(0, 6), consent: true, consentSource: "csv_import", consentAt: new Date() } });
+  await prisma.emailSuppression.create({ data: { tenantId, email: suppEmail.toLowerCase(), reason: "bounced" } });
 
   const r = await processCampaignChannel(campaign.id, "email", deps);
   assert.equal(r.sent, 1);     // only the non-suppressed lead is sent
@@ -101,9 +101,9 @@ test("dispatch skips email recipients on the suppression list", async () => {
 });
 
 test("dispatch enforces the spend cap and auto-pauses the campaign", async () => {
-  const { hotelId, campaignId } = await makeCampaign({ spendCapCalls: 1 });
-  await addLead(campaignId, hotelId, "+1415559" + uid().slice(0, 4));
-  await addLead(campaignId, hotelId, "+1415560" + uid().slice(0, 4));
+  const { tenantId, campaignId } = await makeCampaign({ spendCapCalls: 1 });
+  await addLead(campaignId, tenantId, "+1415559" + uid().slice(0, 4));
+  await addLead(campaignId, tenantId, "+1415560" + uid().slice(0, 4));
 
   const r1 = await processCampaignChannel(campaignId, "whatsapp", deps);
   assert.equal(r1.sent, 1); // capped to remaining budget
@@ -115,8 +115,8 @@ test("dispatch enforces the spend cap and auto-pauses the campaign", async () =>
 });
 
 test("dispatch retries a failed send only after the backoff window, then stops once sent", async () => {
-  const { hotelId, campaignId } = await makeCampaign({ maxRetries: 2, retryDelayHours: 24 });
-  const lead = await addLead(campaignId, hotelId, "+1415561" + uid().slice(0, 4));
+  const { tenantId, campaignId } = await makeCampaign({ maxRetries: 2, retryDelayHours: 24 });
+  const lead = await addLead(campaignId, tenantId, "+1415561" + uid().slice(0, 4));
 
   // Attempt 1 fails → one "failed" delivery, no success.
   sendOutcome = "fail";
@@ -142,8 +142,8 @@ test("dispatch retries a failed send only after the backoff window, then stops o
 });
 
 test("dispatch bounds retries by the campaign's maxRetries", async () => {
-  const { hotelId, campaignId } = await makeCampaign({ maxRetries: 1, retryDelayHours: 24 });
-  const lead = await addLead(campaignId, hotelId, "+1415562" + uid().slice(0, 4));
+  const { tenantId, campaignId } = await makeCampaign({ maxRetries: 1, retryDelayHours: 24 });
+  const lead = await addLead(campaignId, tenantId, "+1415562" + uid().slice(0, 4));
   sendOutcome = "fail";
 
   // Initial attempt (1 failure).
@@ -161,8 +161,8 @@ test("dispatch bounds retries by the campaign's maxRetries", async () => {
 });
 
 test("dispatch never retries a compliance 'skipped' delivery", async () => {
-  const { hotelId, campaignId } = await makeCampaign({ maxRetries: 3, retryDelayHours: 1 });
-  await addLead(campaignId, hotelId, "+1415563" + uid().slice(0, 4), { consent: false }); // guard will skip
+  const { tenantId, campaignId } = await makeCampaign({ maxRetries: 3, retryDelayHours: 1 });
+  await addLead(campaignId, tenantId, "+1415563" + uid().slice(0, 4), { consent: false }); // guard will skip
 
   const r1 = await processCampaignChannel(campaignId, "whatsapp", flakyDeps);
   assert.equal(r1.skipped, 1);

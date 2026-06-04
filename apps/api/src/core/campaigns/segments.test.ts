@@ -36,7 +36,7 @@ test("buildLeadWhere: compiles each clause into an AND filter", () => {
   });
   const and = (where.AND ?? []) as Record<string, unknown>[];
   // tenant/campaign scope must NOT be baked in
-  assert.ok(JSON.stringify(where).indexOf("hotelId") === -1);
+  assert.ok(JSON.stringify(where).indexOf("tenantId") === -1);
   assert.ok(JSON.stringify(where).indexOf("campaignId") === -1);
   assert.deepEqual(and.find((c) => "status" in c)?.status, { in: ["pending"] });
   assert.deepEqual(and.find((c) => "tags" in c && (c.tags as Record<string, unknown>).hasSome)?.tags, { hasSome: ["vip"] });

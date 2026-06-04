@@ -21,7 +21,7 @@ const AGENT_MODEL = "claude-haiku-4-5-20251001";
 const THREAD_WINDOW = 10; // recent messages given to the model for context
 
 export interface InboundWhatsApp {
-  hotelId: string;
+  tenantId: string;
   fromPhone: string;
   body: string;
   providerMessageId?: string | null;
@@ -36,7 +36,7 @@ export interface ReplyContext {
 
 export interface AgentDeps {
   generateReply?: (ctx: ReplyContext) => Promise<string>;
-  sendMessage?: (hotelId: string, toPhone: string, message: string) => Promise<{ sent: boolean; id?: string; error?: string }>;
+  sendMessage?: (tenantId: string, toPhone: string, message: string) => Promise<{ sent: boolean; id?: string; error?: string }>;
 }
 
 const normalizePhone = (raw: string): string => raw.replace(/^whatsapp:/i, "").replace(/\s+/g, "").trim();
@@ -87,7 +87,7 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
 
   // Find a lead on a WhatsApp-agent campaign for this tenant (most recent first).
   const lead = await prisma.campaignLead.findFirst({
-    where: { hotelId: input.hotelId, phone, campaign: { whatsappAgentEnabled: true, status: { not: "draft" } } },
+    where: { tenantId: input.tenantId, phone, campaign: { whatsappAgentEnabled: true, status: { not: "draft" } } },
     include: { campaign: true },
     orderBy: { updatedAt: "desc" },
   });
@@ -97,7 +97,7 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
   // Resolve/create the conversation.
   let conversation = await prisma.whatsappConversation.findFirst({ where: { campaignId: campaign.id, leadId: lead.id } });
   if (!conversation) {
-    conversation = await prisma.whatsappConversation.create({ data: { hotelId: input.hotelId, campaignId: campaign.id, leadId: lead.id, state: "open" } });
+    conversation = await prisma.whatsappConversation.create({ data: { tenantId: input.tenantId, campaignId: campaign.id, leadId: lead.id, state: "open" } });
   }
 
   // Idempotency: a re-delivered inbound webhook must not double-reply.
@@ -109,20 +109,20 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
   // Record inbound message + sentiment.
   const inboundSentiment = classifySentiment(body);
   await prisma.whatsappMessage.create({
-    data: { hotelId: input.hotelId, conversationId: conversation.id, direction: "in", body, providerId: input.providerMessageId ?? null, sentiment: inboundSentiment.sentiment, score: inboundSentiment.score },
+    data: { tenantId: input.tenantId, conversationId: conversation.id, direction: "in", body, providerId: input.providerMessageId ?? null, sentiment: inboundSentiment.sentiment, score: inboundSentiment.score },
   });
   await prisma.whatsappConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
-  broadcastSSEEvent({ type: "whatsapp_message", hotelId: input.hotelId, campaignId: campaign.id, conversationId: conversation.id, direction: "in", sentiment: inboundSentiment.sentiment });
+  broadcastSSEEvent({ type: "whatsapp_message", tenantId: input.tenantId, campaignId: campaign.id, conversationId: conversation.id, direction: "in", sentiment: inboundSentiment.sentiment });
 
   const sendMessage = deps.sendMessage ?? ((h: string, to: string, msg: string) => sendWhatsAppReply(h, to, msg).then((r) => ({ sent: r.sent, id: r.id, error: r.error })));
 
   // Opt-out: suppress tenant-wide, close the conversation, send a confirmation.
   if (detectOptOut(body)) {
-    await suppressContact(input.hotelId, phone, "opt_out");
+    await suppressContact(input.tenantId, phone, "opt_out");
     await prisma.whatsappConversation.update({ where: { id: conversation.id }, data: { state: "opted_out" } });
     const confirm = "You've been unsubscribed and won't receive further messages. Thank you.";
-    const sent = await sendMessage(input.hotelId, phone, confirm);
-    await prisma.whatsappMessage.create({ data: { hotelId: input.hotelId, conversationId: conversation.id, direction: "out", body: confirm, providerId: sent.id ?? null, sentiment: "neutral", score: 0 } });
+    const sent = await sendMessage(input.tenantId, phone, confirm);
+    await prisma.whatsappMessage.create({ data: { tenantId: input.tenantId, conversationId: conversation.id, direction: "out", body: confirm, providerId: sent.id ?? null, sentiment: "neutral", score: 0 } });
     return { handled: true, reason: "opted_out" };
   }
 
@@ -133,7 +133,7 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
     tenant: { name: null },
     booking: { calendlyLink: campaign.calendlyLink },
   });
-  const tenant = await prisma.tenant.findUnique({ where: { id: input.hotelId }, select: { name: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { id: input.tenantId }, select: { name: true } });
   if (tenant?.name) vars["tenant.name"] = tenant.name;
 
   const recent = await prisma.whatsappMessage.findMany({
@@ -152,15 +152,15 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
     reply = `${reply}\n\nBook a time here: ${campaign.calendlyLink}`;
   }
 
-  const sent = await sendMessage(input.hotelId, phone, reply);
+  const sent = await sendMessage(input.tenantId, phone, reply);
   await prisma.whatsappMessage.create({
-    data: { hotelId: input.hotelId, conversationId: conversation.id, direction: "out", body: reply, providerId: sent.id ?? null, sentiment: "neutral", score: 0 },
+    data: { tenantId: input.tenantId, conversationId: conversation.id, direction: "out", body: reply, providerId: sent.id ?? null, sentiment: "neutral", score: 0 },
   });
   await prisma.whatsappConversation.update({
     where: { id: conversation.id },
     data: { state: booked ? "booked" : "awaiting_reply", lastMessageAt: new Date(), threadSummary: body.slice(0, 200) },
   });
-  broadcastSSEEvent({ type: "whatsapp_message", hotelId: input.hotelId, campaignId: campaign.id, conversationId: conversation.id, direction: "out" });
+  broadcastSSEEvent({ type: "whatsapp_message", tenantId: input.tenantId, campaignId: campaign.id, conversationId: conversation.id, direction: "out" });
 
   return { handled: true, reason: sent.sent ? "replied" : "reply_failed" };
 }

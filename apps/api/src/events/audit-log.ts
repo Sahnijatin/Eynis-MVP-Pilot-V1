@@ -16,12 +16,12 @@ export class InMemoryAuditLog {
       ...entry,
       createdAt: new Date().toISOString()
     };
-    const current = this.entries[context.hotelId] ?? [];
+    const current = this.entries[context.tenantId] ?? [];
     current.unshift(next);
-    this.entries[context.hotelId] = current.slice(0, 50);
+    this.entries[context.tenantId] = current.slice(0, 50);
   }
 
-  list(hotelId: string) {
-    return this.entries[hotelId] ?? [];
+  list(tenantId: string) {
+    return this.entries[tenantId] ?? [];
   }
 }

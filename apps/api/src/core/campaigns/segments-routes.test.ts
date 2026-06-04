@@ -8,12 +8,12 @@ import type { ChannelSender } from "./senders";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 
-const createHotel = async (hotelId: string) => {
-  await prisma.tenant.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
-  await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
+const createHotel = async (tenantId: string) => {
+  await prisma.tenant.create({ data: { id: tenantId, name: "VC " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
 };
-const createUser = (hotelId: string, role: string, email: string) =>
-  prisma.user.create({ data: { hotelId, fullName: "U " + role, email, role, isActive: true } });
+const createUser = (tenantId: string, role: string, email: string) =>
+  prisma.user.create({ data: { tenantId, fullName: "U " + role, email, role, isActive: true } });
 
 async function startServer(): Promise<{ server: Server; base: string }> {
   const server = buildServer();
@@ -24,10 +24,10 @@ async function startServer(): Promise<{ server: Server; base: string }> {
 }
 const stop = (server: Server) => new Promise<void>((res, rej) => server.close((e) => (e ? rej(e) : res())));
 
-const authHeaders = async (base: string, hotelId: string, email: string, role: string) => {
+const authHeaders = async (base: string, tenantId: string, email: string, role: string) => {
   const r = await fetch(base + "/auth/token", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hotelId, email, role }),
+    body: JSON.stringify({ tenantId, email, role }),
   });
   return "Bearer " + ((await r.json()) as { token: string }).token;
 };
@@ -40,16 +40,16 @@ const sendDeps = { resolveSender: (c: string) => fakeSender(c), batchSize: 100 }
 after(async () => { await prisma.$disconnect(); });
 
 test("segments: CRUD + preview, and tenant isolation", async () => {
-  const hotelId = "seg-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "seg-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
-    const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
-    await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "Gold", phone: "+919000000101", consent: true, tags: ["vip", "gold"] } });
-    await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "Plain", phone: "+919000000102", consent: true, tags: [] } });
+    const token = await authHeaders(base, tenantId, email, "owner");
+    const campaign = await prisma.voiceCampaign.create({ data: { tenantId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
+    await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "Gold", phone: "+919000000101", consent: true, tags: ["vip", "gold"] } });
+    await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "Plain", phone: "+919000000102", consent: true, tags: [] } });
 
     // create
     const created = await fetch(base + "/segments", {
@@ -95,16 +95,16 @@ test("segments: CRUD + preview, and tenant isolation", async () => {
 });
 
 test("lead tagging: single PATCH + bulk add/remove, and ?tag= filter", async () => {
-  const hotelId = "seg-" + uid();
-  await createHotel(hotelId);
-  const email = `owner+${hotelId}@test.local`;
-  await createUser(hotelId, "owner", email);
+  const tenantId = "seg-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
   const { server, base } = await startServer();
   try {
-    const token = await authHeaders(base, hotelId, email, "owner");
-    const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
-    const l1 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "A", phone: "+919000000201", consent: true } });
-    const l2 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "B", phone: "+919000000202", consent: true } });
+    const token = await authHeaders(base, tenantId, email, "owner");
+    const campaign = await prisma.voiceCampaign.create({ data: { tenantId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
+    const l1 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "A", phone: "+919000000201", consent: true } });
+    const l2 = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "B", phone: "+919000000202", consent: true } });
 
     // single PATCH sets tags (deduped)
     const patch = await fetch(base + `/campaigns/${campaign.id}/leads/${l1.id}`, {
@@ -133,16 +133,16 @@ test("lead tagging: single PATCH + bulk add/remove, and ?tag= filter", async () 
 });
 
 test("targeting: a campaign with a segment only contacts matching leads", async () => {
-  const hotelId = "seg-" + uid();
-  await createHotel(hotelId);
-  const segment = await prisma.leadSegment.create({ data: { hotelId, name: "Gold", rules: JSON.stringify({ tagsAny: ["gold"] }) } });
+  const tenantId = "seg-" + uid();
+  await createHotel(tenantId);
+  const segment = await prisma.leadSegment.create({ data: { tenantId, name: "Gold", rules: JSON.stringify({ tagsAny: ["gold"] }) } });
   const campaign = await prisma.voiceCampaign.create({
-    data: { hotelId, name: "Targeted", status: "active", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", segmentId: segment.id },
+    data: { tenantId, name: "Targeted", status: "active", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", segmentId: segment.id },
   });
   // two match the segment, one does not
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "G1", phone: "+919000000301", consent: true, consentSource: "csv_import", tags: ["gold"] } });
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "G2", phone: "+919000000302", consent: true, consentSource: "csv_import", tags: ["gold", "vip"] } });
-  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "X", phone: "+919000000303", consent: true, consentSource: "csv_import", tags: ["silver"] } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "G1", phone: "+919000000301", consent: true, consentSource: "csv_import", tags: ["gold"] } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "G2", phone: "+919000000302", consent: true, consentSource: "csv_import", tags: ["gold", "vip"] } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "X", phone: "+919000000303", consent: true, consentSource: "csv_import", tags: ["silver"] } });
 
   const r = await processCampaignChannel(campaign.id, "whatsapp", sendDeps);
   assert.equal(r.sent, 2); // only the two gold leads

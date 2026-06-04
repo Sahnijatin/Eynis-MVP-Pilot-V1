@@ -52,7 +52,7 @@ export function parseSegmentRules(raw: unknown): SegmentRules {
 
 // Compile rules to a Prisma where-clause. Returns {} for an empty rule set
 // (matches everything within the caller's scope). The caller MUST AND this with
-// the tenant/campaign scope — these rules never include hotelId/campaignId.
+// the tenant/campaign scope — these rules never include tenantId/campaignId.
 export function buildLeadWhere(rules: SegmentRules): Prisma.CampaignLeadWhereInput {
   const and: Prisma.CampaignLeadWhereInput[] = [];
   if (rules.status?.length) and.push({ status: { in: rules.status } });
