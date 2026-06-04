@@ -76,7 +76,7 @@ The entire API is one ~2400-line file with all routes as an `if/else` chain matc
 **All API responses follow:** `{ ok: boolean, ...data }` on success or `{ ok: false, error: string }` on failure. Paginated endpoints return `{ items, page: { limit, offset, total, hasMore } }`.
 
 ### Authentication
-JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, hotelId, email, role }`. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential). The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
+JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, hotelId, email, roleKey, role?, permissions }`. `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential). The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
 
 ### Multi-tenancy
 Every DB query is scoped to `hotelId` from the JWT. The JWT's `hotelId` is verified against the `User` record on every request — a user cannot impersonate a different hotel by forging claims.

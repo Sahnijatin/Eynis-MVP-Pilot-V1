@@ -2,7 +2,7 @@ import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
-import type { UserRole } from "@eynis/shared";
+import type { UserRole, SystemRoleKey } from "@eynis/shared";
 import { isValidConsentSource } from "@eynis/shared";
 import { createAuthToken, parseBearerToken, verifyAuthToken } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
@@ -196,7 +196,10 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
       id: claims.sub,
       hotelId: claims.hotelId,
       email: claims.email,
-      role: claims.role,
+      // Legacy tokens pin the hospitality role for a consistency check; modern
+      // roleKey-only tokens identify by sub+hotel+email (permissions come from
+      // the live systemRole below, so dropping the role pin is not a downgrade).
+      ...(claims.role ? { role: claims.role } : {}),
       isActive: true
     },
     select: {
@@ -227,7 +230,8 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
     ok: true as const,
     context: {
       hotelId: user.hotelId,
-      role: user.role as UserRole,
+      role: user.role as UserRole, // legacy; retained for audit/domain compat
+      roleKey: user.systemRole?.key ?? claims.roleKey ?? null, // canonical generic role
       email: user.email,
       userId: user.id,
       fullName: user.fullName,
@@ -512,19 +516,25 @@ const handleRequest = async (
 ) => {
   try {
     if (req.url === "/auth/token" && req.method === "POST") {
-      const body = (await parseBody(req)) as { hotelId?: unknown; email?: unknown; role?: unknown };
+      const body = (await parseBody(req)) as { hotelId?: unknown; email?: unknown; role?: unknown; roleKey?: unknown };
       const hotelId = asTrimmedString(body.hotelId);
       const email = asTrimmedString(body.email)?.toLowerCase();
+      const roleKey = asTrimmedString(body.roleKey);
       const role = asTrimmedString(body.role) as UserRole | null;
-      if (!hotelId || !email || !role) {
-        json(res, 400, { ok: false, error: "hotelId, email, role are required" });
+      if (!hotelId || !email || (!role && !roleKey)) {
+        json(res, 400, { ok: false, error: "hotelId, email, and one of role|roleKey are required" });
         return;
       }
+      // Match by the generic roleKey (the user's assigned system role) when given,
+      // else fall back to the legacy hospitality role for backward compatibility.
       const user = await prisma.user.findFirst({
-        where: { hotelId, email, role, isActive: true },
+        where: {
+          hotelId, email, isActive: true,
+          ...(roleKey ? { systemRole: { key: roleKey } } : { role: role ?? undefined }),
+        },
         select: {
           id: true, hotelId: true, email: true, role: true,
-          systemRole: { select: { permissions: true } }
+          systemRole: { select: { permissions: true, key: true } }
         }
       });
       if (!user) {
@@ -538,7 +548,8 @@ const handleRequest = async (
         sub: user.id,
         hotelId: user.hotelId,
         email: user.email,
-        role: user.role as UserRole,
+        role: user.role as UserRole, // legacy claim (compat)
+        roleKey: (user.systemRole?.key as SystemRoleKey | undefined) ?? null,
         permissions
       });
       json(res, 200, { ok: true, token });
@@ -664,6 +675,7 @@ const handleRequest = async (
         hotelId,
         email: ownerEmail,
         role: "owner",
+        roleKey: "admin", // the owner is always seeded as the admin system role
         permissions
       });
 
@@ -2988,6 +3000,7 @@ const handleRequest = async (
         hotelId: inv.hotelId,
         email: inv.email,
         role: legacyRole as UserRole,
+        roleKey: inv.role.key as SystemRoleKey,
         permissions: invPerms
       });
       json(res, 200, {

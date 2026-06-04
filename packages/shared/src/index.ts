@@ -1,4 +1,17 @@
+/**
+ * @deprecated Hospitality-specific legacy roles. New code should use the generic
+ * {@link SystemRoleKey} (admin/manager/supervisor/agent/viewer) with the
+ * permission-based RBAC. This union is retained only as a backward-compat alias
+ * for existing JWTs and the `User.role` column during the role migration
+ * (see docs/industry-agnostic-and-white-label-plan.md, Plan A3).
+ */
 export type UserRole = "owner" | "front_desk" | "housekeeping" | "fnb_manager";
+
+/** Generic, industry-agnostic role keys — the canonical role vocabulary. */
+export type SystemRoleKey = "admin" | "manager" | "supervisor" | "agent" | "viewer";
+
+export const isSystemRoleKey = (key: string): key is SystemRoleKey =>
+  key === "admin" || key === "manager" || key === "supervisor" || key === "agent" || key === "viewer";
 
 // Plan-gated features used by the licensing layer (apps/api/src/core/license.ts).
 export type LicenseFeature =
@@ -31,6 +44,7 @@ export interface ServiceRequest {
   createdAt: string;
 }
 
+/** @deprecated Validates the legacy hospitality role union; prefer {@link isSystemRoleKey}. */
 export const isValidRole = (role: string): role is UserRole =>
   role === "owner" ||
   role === "front_desk" ||
