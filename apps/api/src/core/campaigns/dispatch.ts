@@ -57,16 +57,49 @@ export async function processCampaignChannel(
     batchSize = Math.min(batchSize, remaining);
   }
 
-  // Leads not yet actioned on this channel (a skipped/failed/sent delivery row
-  // excludes them, so each lead is attempted at most once per channel).
-  const leads = await prisma.campaignLead.findMany({
+  // Lead selection, bounded together by batchSize, has two parts:
+  //   (1) fresh leads never attempted on this channel; and
+  //   (2) retry leads whose only attempts on this channel are failures, are
+  //       still under the campaign's maxRetries, and whose last failure is older
+  //       than retryDelayHours (transient-failure backoff). A "skipped" delivery
+  //       is a permanent compliance decision (no consent / suppressed) and is
+  //       never retried — only "failed" rows are.
+  const leadScalars = {
+    id: true, firstName: true, lastName: true, phone: true, email: true, company: true,
+    jobTitle: true, rawData: true, consent: true, consentSource: true, optedOut: true,
+  } as const;
+
+  const fresh = await prisma.campaignLead.findMany({
     where: { campaignId, status: { not: "opted_out" }, deliveries: { none: { channel } } },
     take: batchSize,
-    select: {
-      id: true, firstName: true, lastName: true, phone: true, email: true, company: true,
-      jobTitle: true, rawData: true, consent: true, consentSource: true, optedOut: true,
-    },
+    select: leadScalars,
   });
+  const leads: Array<(typeof fresh)[number]> = [...fresh];
+
+  const retryBudget = batchSize - fresh.length;
+  if (retryBudget > 0 && campaign.maxRetries > 0) {
+    const cutoff = new Date(Date.now() - campaign.retryDelayHours * 3_600_000);
+    const candidates = await prisma.campaignLead.findMany({
+      where: {
+        campaignId, status: { not: "opted_out" },
+        deliveries: {
+          some: { channel, status: "failed" },
+          // No channel delivery that is either non-failed (terminal/in-flight) or
+          // a failure inside the backoff window ⇒ all attempts failed and the last
+          // one is past the delay, so the lead is due for a retry.
+          none: { channel, OR: [{ status: { not: "failed" } }, { createdAt: { gte: cutoff } }] },
+        },
+      },
+      take: retryBudget,
+      select: { ...leadScalars, deliveries: { where: { channel }, select: { id: true } } },
+    });
+    for (const c of candidates) {
+      if (c.deliveries.length > campaign.maxRetries) continue; // retries exhausted
+      const { deliveries: _attempts, ...lead } = c;
+      leads.push(lead);
+    }
+  }
+
   if (leads.length === 0) return { sent, failed, skipped };
 
   // Batch-resolve the durable suppression list for this slice of phones.
