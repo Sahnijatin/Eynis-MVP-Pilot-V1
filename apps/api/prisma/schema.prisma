@@ -379,6 +379,7 @@ model CallRecord {
   abVariant       String // A | B
   status          String           @default("initiated") // initiated | in_progress | ended | failed
   outcome         String? // value from campaign.outcomeTypes
+  error           String? // failure detail (initiation error, stuck_timeout, …)
   durationSeconds Int?
   transcript      String?
   aiSummary       String?

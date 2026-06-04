@@ -150,22 +150,23 @@ Campaigns are no longer voice-only. A campaign now declares **channels** (`voice
 
 ---
 
-## Phase 6 — Voice Dialler Worker (Day 4) — voice channel of the unified engine
+## Phase 6 — Voice Dialler Worker — voice channel of the unified engine ✅ DONE
 
-- [ ] Write `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()` (30s interval, separate from the 60s automation engine)
-- [ ] Slot calc: `maxConcurrent − in_progress`
-- [ ] **Atomic `calling` lock** before `initiateCall()` (prevents double-dial race)
-- [ ] Strict A/B alternation; reuse same variant on retry
-- [ ] Stuck-call recovery (in_progress > 15 min → reset to pending)
-- [ ] Retry scheduling (no_answer + attempts < maxRetries → `nextCallAt`)
-- [ ] **Spend cap** (total dials ≥ spendCapCalls → auto-pause + SSE alert)
-- [ ] Auto-pause campaign on Vapi 5xx; manual resume
-- [ ] Pre-dial consent + DND guard: skip leads failing `canContactLead` / on the suppression list; respect `dndScrub()` for `+91` numbers
-- [ ] Wire `startCampaignWorker()` into server startup alongside `startAutomationWorker()`
+- [x] `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()`, `processVoiceCampaign()` (30s interval, separate from the 60s automation engine)
+- [x] Slot calc: `maxConcurrent − in-flight`
+- [x] **Atomic `calling` lock** (`updateMany where status=pending`) before `initiateCall()` — prevents double-dial race
+- [x] Balanced A/B assignment (lighter arm); variant reused on retry
+- [x] Stuck-call recovery (in-flight > 15 min → call `failed` + lead reset to pending)
+- [x] **Spend cap** (dials + sent messages ≥ spendCapCalls → auto-pause + SSE)
+- [x] Auto-pause on Vapi 5xx; failed initiation returns the lead to the queue (no silent failure)
+- [x] Pre-dial shared guard (`evaluateContact`): consent + durable suppression + DND; suppressed/opted-out → `opted_out`, no-consent → `failed`
+- [x] Vapi calls dependency-injected → fully tested without keys; added `CallRecord.error` (migration)
+- [x] Wired `startCampaignWorker()` into server startup (beside dispatch + automation workers)
+- [x] Picks due retries via `nextCallAt` (the no_answer → nextCallAt scheduling itself lands in Phase 7's webhook)
 
 _#3 (durable opt-out) and #4 (E.164 `+0…`) completed in Phase 6.0 above._
 
-**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed (opted-out) number even across campaign deletion (✅ #3) — and E.164 validation rejects `+0…` (✅ #4).
+**DoD:** ✅ Worker dials due pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed number. Dialler tests 7/7; full API suite 107/107, lint clean.
 
 ---
 
