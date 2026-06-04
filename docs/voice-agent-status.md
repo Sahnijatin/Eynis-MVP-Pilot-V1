@@ -77,7 +77,7 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 
 | Phase | What | Why it matters | Depends on |
 |---|---|---|---|
-| **7** | Vapi end-of-call **webhook** + **real-time sentiment** + follow-up firing + no-answer retry scheduling | Calls currently *start* but nothing records how they *ended* — closes the voice loop | Vapi keys for live; logic testable now |
+| ~~7~~ ✅ | ~~Vapi webhook + real-time sentiment + follow-ups + no-answer retries~~ **DONE** (branch `claude/phase7-call-webhook-sentiment`) | Voice loop closed | — |
 | **8** | Conversational **WhatsApp agent** (two-way replies, per-message sentiment, booking intent, opt-out) | Turns WhatsApp from one-shot into a conversation | Phase 2 tables exist |
 | **9** | **A/B analytics** endpoint (per-variant funnel, sentiment, significance) + calls list/export | The "which voice wins" answer | Phase 7 data |
 | **10+** | UI follow-ups: live activity feed, Calls tab w/ sentiment meter, A/B cards, Settings edit form, deliveries endpoint | Observability + editing in the UI | Phases 7/9 |
