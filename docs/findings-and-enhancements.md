@@ -44,10 +44,11 @@ suppression + Svix webhook verification, tenant branding / custom domains, the A
 ## 2. Master findings list
 
 Severity: 🔴 HIGH · 🟠 MED · 🟡 LOW. Status updated as fixes land.
+GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 
 | ID | Sev | Area | Finding | Status |
 |---|---|---|---|---|
-| F-1 | 🔴 | Security | SSE broadcast not tenant-scoped — cross-tenant data leak | ☐ open |
+| F-1 | 🔴 | Security | SSE broadcast not tenant-scoped — cross-tenant data leak | ✅ fixed (#48) |
 | F-2 | 🔴 | Security | `/connectors/pms/webhook` unauthenticated + trusts body `tenantId` | ☐ open |
 | F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ☐ open |
 | F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ☐ open |
@@ -258,4 +259,7 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
-_(none yet)_
+- **F-1 (#48) — SSE cross-tenant leak — fixed.** `sse/clients.ts` now binds each client
+  to its authenticated `tenantId` and `broadcastSSEEvent(tenantId, payload)` only delivers
+  to clients of that tenant. All 14 call sites (server.ts, ingest, campaigns) updated to pass
+  the owning tenant. Added `sse/clients.test.ts` (2 regression tests). Full suite: 206/206 green.

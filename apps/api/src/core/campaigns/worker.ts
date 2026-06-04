@@ -84,7 +84,7 @@ export async function processVoiceCampaign(
     budget = campaign.spendCapCalls - (calls + deliveries);
     if (budget <= 0) {
       await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-      broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
       return { dialed, skipped, failed };
     }
   }
@@ -183,7 +183,7 @@ export async function processVoiceCampaign(
       await prisma.callRecord.update({ where: { id: call.id }, data: { status: "in_progress", vapiCallId: result.data.id, startedAt: ts } });
       dialed++;
       slots--;
-      broadcastSSEEvent({ type: "campaign_call_started", tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_call_started", tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant });
     } else {
       // No silent failures: fail the record, return the lead to the queue.
       await prisma.callRecord.update({ where: { id: call.id }, data: { status: "failed", error: result.error } });
@@ -192,7 +192,7 @@ export async function processVoiceCampaign(
       // Provider outage → auto-pause and stop this tick (manual resume).
       if (isServerError(result.error)) {
         await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-        broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
+        broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
         break;
       }
     }

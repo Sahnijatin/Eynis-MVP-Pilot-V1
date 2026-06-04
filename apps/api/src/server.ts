@@ -762,7 +762,7 @@ const handleRequest = async (
         "X-Accel-Buffering": "no"
       });
 
-      const clientId = registerSSEClient(res);
+      const clientId = registerSSEClient(res, auth.context.tenantId);
       res.write(`data: ${JSON.stringify({ type: "connected", clientId })}\n\n`);
 
       const heartbeat = setInterval(() => {
@@ -1478,7 +1478,7 @@ const handleRequest = async (
         }
       });
 
-      broadcastSSEEvent({ type: "sr_updated", data: { id: updated.id, status: nextStatus } });
+      broadcastSSEEvent(context.tenantId, { type: "sr_updated", data: { id: updated.id, status: nextStatus } });
       json(res, 200, { ok: true, item: updated });
       return;
     }
@@ -2871,7 +2871,7 @@ const handleRequest = async (
         data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt }
       });
 
-      broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt } });
+      broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt } });
 
       json(res, 201, { ok: true, stay: { id: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt, checkOutAt } });
       return;
@@ -2902,10 +2902,10 @@ const handleRequest = async (
       if (eventType === "guest.checkin") {
         await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
         const stay = await prisma.stay.create({ data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt } });
-        broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
+        broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
         json(res, 201, { ok: true, event: "checkin", stayId: stay.id, guestId });
       } else if (eventType === "guest.checkout") {
-        broadcastSSEEvent({ type: "checkout_event", data: { guestId, guestName, roomNumber, checkOutAt } });
+        broadcastSSEEvent(tenantId, { type: "checkout_event", data: { guestId, guestName, roomNumber, checkOutAt } });
         json(res, 200, { ok: true, event: "checkout", guestId });
       } else {
         json(res, 200, { ok: true, event: eventType, guestId });

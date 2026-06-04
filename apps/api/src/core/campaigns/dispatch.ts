@@ -65,7 +65,7 @@ export async function processCampaignChannel(
     const remaining = campaign.spendCapCalls - (deliveries + calls);
     if (remaining <= 0) {
       await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-      broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
       return { sent, failed, skipped };
     }
     batchSize = Math.min(batchSize, remaining);
@@ -191,7 +191,7 @@ export async function processCampaignChannel(
     });
     if (result.ok) {
       sent++;
-      broadcastSSEEvent({ type: "campaign_message_sent", tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_message_sent", tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel });
     } else {
       failed++;
     }

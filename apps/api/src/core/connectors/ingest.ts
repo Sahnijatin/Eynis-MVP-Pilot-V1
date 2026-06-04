@@ -147,7 +147,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
       });
       serviceRequestId = sr.id;
 
-      broadcastSSEEvent({
+      broadcastSSEEvent(tenantId, {
         type: "sr_created",
         data: {
           id: sr.id, tenantId, category: classification.category,
@@ -192,7 +192,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
       }
     });
 
-    broadcastSSEEvent({
+    broadcastSSEEvent(tenantId, {
       type: "connector_event",
       data: {
         id: event.id, connectorKey, guestName,

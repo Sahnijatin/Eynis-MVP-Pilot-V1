@@ -80,7 +80,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
   }
 
   if (sent.length > 0) {
-    broadcastSSEEvent({ type: "campaign_followup_sent", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, channels: sent });
+    broadcastSSEEvent(call.tenantId, { type: "campaign_followup_sent", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, channels: sent });
   }
   return { sent };
 }
