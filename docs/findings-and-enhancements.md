@@ -1,0 +1,261 @@
+# Findings & Enhancements
+
+> Full-codebase audit of the Eynis platform — findings, bugs, placeholders, and a
+> prioritized enhancement roadmap. Each finding has a stable ID (`F-NN`) so it can be
+> tracked to a GitHub issue and a fixing commit.
+>
+> **Generated:** 2026-06-04 · **Branch:** `claude/codebase-analysis-roadmap-RjQMH`
+
+---
+
+## 0. Verification snapshot (what was actually run)
+
+| Check | Result |
+|---|---|
+| `npm run build` (shared → api → web, incl. `next build`) | ✅ passes |
+| `npm run lint` (`tsc --noEmit` on api + web) | ✅ clean |
+| `npm run test -w @eynis/api` (real Postgres, no mocking) | ✅ **204 / 204 passing** |
+| CI (`.github/workflows/ci.yml`) | ✅ real — Postgres service, lint → build → migrate → test |
+| Prisma models | 32 models, 14 ordered migrations |
+| `apps/api/src/server.ts` | **4,136 lines** — single-function `if/else` router |
+
+---
+
+## 1. Where we stand (executive summary)
+
+Eynis has a **genuinely working, well-tested multi-tenant SaaS backbone** running alongside a
+**demo-shell outer UI layer**. The finished parts are above typical MVP quality; the unfinished
+parts are mostly "the backend exists but the UI shows mock data" and "the newest subsystems aren't
+tested."
+
+**Real & solid:** auth/RBAC (live DB checks, forge-proof tenant claims), campaigns/outreach (voice
+via Vapi, WhatsApp via Twilio/Interakt, email via Resend — all real provider calls), email
+suppression + Svix webhook verification, tenant branding / custom domains, the AI intelligence layer
+(real Anthropic + OpenAI calls), and a real CI pipeline.
+
+**Two big themes to close:**
+1. **Mock UI over a working API** — ~13 of 37 web pages render hardcoded arrays and never call the
+   API, even where a working endpoint already exists (analytics pages especially).
+2. **Newest = riskiest** — the AI layer and automation engine are real and wired but have **zero
+   tests** and the weakest error handling; campaigns has real double-send / spend-cap race windows.
+
+---
+
+## 2. Master findings list
+
+Severity: 🔴 HIGH · 🟠 MED · 🟡 LOW. Status updated as fixes land.
+
+| ID | Sev | Area | Finding | Status |
+|---|---|---|---|---|
+| F-1 | 🔴 | Security | SSE broadcast not tenant-scoped — cross-tenant data leak | ☐ open |
+| F-2 | 🔴 | Security | `/connectors/pms/webhook` unauthenticated + trusts body `tenantId` | ☐ open |
+| F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ☐ open |
+| F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ☐ open |
+| F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ☐ open |
+| F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ☐ open |
+| F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ☐ open |
+| F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
+| F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ☐ open |
+| F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ☐ open |
+| F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ☐ open |
+| F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ☐ open |
+| F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ☐ open |
+| F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ☐ open |
+| F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ☐ open |
+| F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ☐ open |
+| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ☐ open |
+| F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ☐ open |
+| F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ☐ open |
+| F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ☐ open |
+| F-21 | 🟡 | White-label | `eynis.com` hardcoded in billing alert (customer-facing) | ☐ open |
+| F-22 | 🟡 | Security | `JWT_SECRET` defaults to dev string; no startup assertion in prod | ☐ open |
+| F-23 | 🟡 | Security | Unknown legacy role silently grants `viewer` read access (default-allow) | ☐ open |
+| F-24 | 🟡 | Security | `GET /auth/identify` is an unauthenticated email-enumeration oracle | ☐ open |
+| F-25 | 🟡 | AI | Model `claude-opus-4-7` lags the `opus-4-8` runtime | ☐ open |
+| F-26 | 🟡 | Correctness | Guest search case-sensitive & unindexed (`contains`, no `mode`) | ☐ open |
+| F-27 | 🟡 | Correctness | `hasMore` pagination computed inconsistently across routes | ☐ open |
+| F-28 | 🟡 | Campaigns | Retry budget off-by-one (`> maxRetries` → `maxRetries+1` attempts) | ☐ open |
+| F-29 | 🟡 | Campaigns | Twilio outbound drops message SID → `providerId: null` | ☐ open |
+| F-30 | 🟡 | Campaigns | Provider 5xx auto-pause only covers voice, not messaging | ☐ open |
+| F-31 | 🟡 | Architecture | `request-context.ts` header-trust stub (delete before it's wired) | ☐ open |
+| F-32 | 🟡 | Architecture | `server.ts` is a 4,136-line single function; route ordering load-bearing | ☐ open |
+| F-33 | 🟡 | Quality | Duplicated `safeArray`/`safeObject` + send-context block across 5 files | ☐ open |
+| F-34 | 🟡 | Security | Body parsing has no size limit (memory-exhaustion DoS) | ☐ open |
+| F-35 | 🟡 | Correctness | `assignedToUserId` auto-assign keys off deprecated legacy role | ☐ open |
+
+---
+
+## 3. Detailed findings
+
+### 3.1 Security & tenant isolation
+
+**F-1 🔴 SSE broadcast is not tenant-scoped.** `apps/api/src/sse/clients.ts` holds a flat `Map` of
+clients with no `tenantId`. `broadcastSSEEvent()` fans out *every* event — `sr_updated`
+(`server.ts:1481`), `checkin_event` (`:2874`, payload includes `guestName`, `roomNumber`) — to all
+connected clients across all tenants. **Real cross-tenant data leak.** Fix: tag each SSE client with
+its `tenantId` at connect and filter broadcasts by tenant.
+
+**F-2 🔴 `/connectors/pms/webhook` is unauthenticated and trusts client-supplied `tenantId`.**
+`server.ts:2881` — no signature, no auth; `tenantId` is read from the body (`:2888`) and only gated
+by an existence check (`ensureTenantAccess`). Anyone who knows/guesses a tenant id can inject
+check-in/checkout events, create `Contact`/`Stay` rows, and bump `visitCount`. The `permissionMap`
+entry for it (`:415`) is never enforced — misleading dead config. `/connectors/pms/simulate`
+(`:2853`) is a demo endpoint that writes real data in prod.
+
+**F-9 🟠 Webhook signature verification defaults off & is omission-bypassable.** `VERIFY_WEBHOOKS`
+defaults `false`. On the WhatsApp webhook (`server.ts:1001`) the Twilio/Interakt signature is only
+checked *if the header is present* — omit it and verification is skipped. `webhook-verify.ts:56`
+returns `{ ok: true }` when no secret is configured. Twilio's verifier is also called with
+`params: {}` (`:1017`) so it can't validate real form-encoded Twilio webhooks. Fix: fail closed in
+prod; verify regardless of header presence.
+
+**F-10 🟠 Resend webhook replay + unauth-when-unset.** `resend-webhook.ts:85` verifies the Svix HMAC
+correctly but never checks `svix-timestamp` freshness → captured payloads replay forever. The route
+(`server.ts:984`) accepts all when `RESEND_WEBHOOK_SECRET` is unset → forged bounce/complaint events
+can suppress arbitrary recipients.
+
+**F-22 🟡** `JWT_SECRET` defaults to `"dev-only-secret-change-me"` (`auth.ts:17`) with no startup
+assertion — if unset in prod, all tokens are forgeable. **F-23 🟡** unknown/unmapped legacy role
+falls back to `viewer` (`rbac.ts:36`) — default-allow read access. **F-24 🟡** `GET /auth/identify`
+(`server.ts:567`) is an unauthenticated, unthrottled email→tenant enumeration oracle. **F-34 🟡**
+`parseRawBody` (`server.ts:46`) buffers unbounded request bodies → DoS on any public endpoint.
+
+### 3.2 Correctness bugs
+
+**F-7 🔴 `GET /service-requests/:id/transitions` is dead code.** The broad list handler at
+`server.ts:1287` (`startsWith("/service-requests") && GET`) returns before the dedicated transitions
+handler at `:2101` is reached — callers get a (mis-parsed) request list instead. It also lacks a
+`canAccess` check, so it's a latent authz hole once reachable. Fix: reorder (specific before broad)
+and add the permission check.
+
+**F-26 🟡** Guest search uses `{ contains: search }` without `mode: "insensitive"` (`server.ts:2293`)
+— case-sensitive on Postgres, full-scan. **F-27 🟡** `hasMore` is computed as `offset+limit<total`
+in some routes and `offset+items.length<total` in others — inconsistent. **F-35 🟡**
+`assignedToUserId` auto-assignment keys off the deprecated legacy `role === "front_desk"`
+(`server.ts:1249`) instead of `roleKey` → fires inconsistently under the new RBAC model.
+
+### 3.3 Campaigns / outreach
+
+**F-3 🔴 No atomic per-lead lock in messaging dispatch.** The voice worker locks each lead via
+`updateMany(pending → calling)` + `lock.count === 1` (`worker.ts:156`). The messaging dispatcher has
+no equivalent (`dispatch.ts:91`) and writes the `MessageDelivery` row only *after* the provider send
+(`:183`). Overlapping ticks (or a provider call slower than the 30s tick) can select & send the same
+lead twice. No DB uniqueness backs it. Fix: add a `@@unique` on `(campaignId, leadId, channel)` and
+an atomic claim.
+
+**F-4 🔴 Spend cap racy.** Voice (`worker.ts:79`) and messaging (`dispatch.ts:60`) workers each
+independently read `callRecord.count + messageDelivery.count` vs `spendCapCalls` on separate timers
+with no atomic reservation → both can see budget and overshoot.
+
+**F-5 🔴 Email-only leads never send.** The shared guard `canContactLead` hard-requires a phone
+(`compliance.ts:105` → `missing_phone`); dispatch email (`dispatch.ts:169`) and sequence runner
+(`sequence-runner.ts:92`) route email through it, so any lead with an email but no phone is recorded
+`skipped` and never emailed. Entire Resend backend is unreachable for the common email-only case.
+
+**F-14 🟠 `followup.ts` diverged from dispatch.** It sends WhatsApp via `campaign.whatsappContentSid`
+directly with **no approval-template gate** (`followup.ts:45`), **ignores `DoNotContact` /
+`EmailSuppression`** (only checks `lead.optedOut`), and is non-idempotent on re-delivered webhooks.
+It is also **untested** — the module with the most correctness gaps has zero coverage.
+
+**F-15 🟠** Sequence runner has no `schedule-gate` call → drip steps fire 24/7, bypassing
+quiet-hours that the other two workers enforce. **F-16 🟠** Vapi assistants are provisioned with a
+per-tenant `webhookSecret` (`vapi.ts:81`) but the inbound route verifies only the global
+`process.env.VAPI_WEBHOOK_SECRET` (`server.ts:739`) → tenant-configured secrets break verification.
+**F-28 🟡** retry skip uses `> maxRetries` → allows `maxRetries+1` attempts (`dispatch.ts:116`).
+**F-29 🟡** Twilio outbound returns no `id` (`whatsapp-outbound.ts:49`) → `providerId: null` breaks
+delivery correlation. **F-30 🟡** 5xx auto-pause only on voice (`worker.ts:193`), not messaging.
+
+**F-18 🟠 TRAI DND.** `compliance.ts:176` `dndScrub()` is a Phase-1 stub (never clears `+91`), and
+enforcement is gated by `ENFORCE_DND_SCRUB` which **defaults off** (`guard.ts:43`) → Indian numbers
+dial with no scrub in default config. Compliance risk before India go-live.
+
+### 3.4 AI & automation
+
+**F-6 🔴** `intelligence.ts` and `engine.ts` have **no test files** — the two highest-risk
+subsystems are completely unvalidated.
+
+**F-11 🟠 `extractJson()` fragile.** `intelligence.ts:47` uses a greedy `/\{[\s\S]*\}/` regex then
+`JSON.parse`, throws on prose containing stray braces, and the result is **blindly cast** to typed
+shapes with zero runtime validation → malformed AI output reaches the DB/client (and is persisted in
+night audit regardless, `server.ts:2810`).
+
+**F-12 🟠** The 4 AI route handlers + night audit call AI functions with no local try/catch → any
+failure (timeout, rate-limit, parse throw) bubbles to the generic `500` at `server.ts:4110`, cause
+swallowed, no retry/degradation. Only the ingest classifier has a real fallback.
+
+**F-13 🟠 Automation idempotency race.** `hasExecution` (`engine.ts:4`) is check-then-act with no
+transaction; `setInterval(() => void runCycle())` (`:254`) doesn't await the prior cycle, so a slow
+cycle overlaps and two evaluations can both pass the check and both act (double escalate / welcome /
+offer). Needs a DB unique constraint + awaited loop.
+
+**F-25 🟡** `CLAUDE_MODEL = "claude-opus-4-7"` lags the `opus-4-8` runtime.
+
+### 3.5 Frontend — mock data / placeholders
+
+**F-8 🟠 4 analytics pages are mock over a working API.** `revenue-intelligence`,
+`staff-performance`, `sentiment-trends`, `upsell-campaigns` render hardcoded constants and make
+**zero fetch calls** — even though `lib/data.ts` already defines `fetchRevenueAnalytics`,
+`fetchStaffPerformance`, `fetchSentiment`, `fetchUpsellCampaigns` (`data.ts:316-398`) and the API
+routes exist. `analytics/page.tsx` is self-labeled "6-month sample data." **Lowest-effort visible
+win.** (Note: backend F-17 must be addressed too, or the wired pages show fabricated numbers.)
+
+**F-17 🟠 Backend analytics fabricate data.** `/analytics/sentiment` returns `Math.random()`
+sentiment/NPS/30-point timeseries (`server.ts:2452`); morning briefing & revenue insights pass
+hardcoded `occupancyPct:72, adrInr:8500, todayRevenue:284000` into the AI.
+
+**F-19 🟠 Vertical pages are pure frontend mock.** `inventory, materials, menu, orders, patients,
+appointments, bookings, quotes, customers, ai-brain` hold data in module-level `const` arrays /
+`useState`; edits and imports persist nothing. `ai-brain` fakes AI with `MOCK_ANSWERS` + a 1.2s
+`setTimeout` and a static "● Live" badge.
+
+### 3.6 White-label principle violations (vs CLAUDE.md)
+
+**F-20 🟡** AI system prompt hardcodes "hotels in India / INR" (`intelligence.ts:35`); automation
+Rule 3 hardcodes `"Welcome to The Riviera"` / `"Your Concierge Team"` for every tenant
+(`engine.ts:155`). **F-21 🟡** billing alert hardcodes `sales@eynis.com` (`billing-client.tsx:198`).
+
+### 3.7 Architecture & code quality
+
+**F-31 🟡** `core/request-context.ts` trusts `x-hotel-id`/`x-user-role` headers with no verification
+— a tenant-isolation footgun; delete before it's ever wired. **F-32 🟡** `server.ts` is one
+4,136-line function; route ordering is load-bearing (root cause of F-7); the
+auth→permission→tenant preamble is copy-pasted ~50× with inconsistent ordering. **F-33 🟡**
+`safeArray`/`safeObject` redeclared in 5 files; the build-context→send→write-delivery block is
+duplicated between `dispatch.ts` and `followup.ts` and has drifted (root cause of F-14).
+
+---
+
+## 4. What's incomplete / left to build
+
+- Wire the analytics pages to real endpoints (F-8) + replace fabricated backend numbers (F-17).
+- Real persistence behind the vertical pages, or mark them honestly as "preview" (F-19).
+- TRAI DND Phase 2 + enable enforcement before India go-live (F-18).
+- GDPR erasure endpoint (`gdprErase` / `suppressContact` exist but aren't wired).
+- Demo seed for a populated campaign (clickable flow with no API keys).
+- Billing / Razorpay (currently an `alert()`).
+- Tests for AI, automations, `followup.ts`, ingest (F-6).
+- Rename internal `VoiceCampaign` model (it's multi-channel now).
+
+---
+
+## 5. Enhancement roadmap (recommended order)
+
+**Sprint 1 — Make it honest & safe.** F-1, F-2 (security HIGH, contained) · F-3 + F-4 (double-send /
+spend-cap via DB unique constraint + atomic claim) · F-5 (email-only leads) · F-7 (route shadowing) ·
+F-8 (wire analytics pages — biggest visible win).
+
+**Sprint 2 — De-risk the AI/automation core.** F-11 + F-12 (harden parsing + error handling) · F-6
+(tests for AI + automation + followup) · F-13 (automation idempotency) · F-17 (real analytics
+aggregates) · F-14/F-15/F-16 (campaign follow-up + sequence + Vapi secret fixes).
+
+**Sprint 3 — Vertical story + launch hardening.** Decide vertical persistence vs "preview" (F-19) ·
+F-18 (DND) · GDPR erasure · demo seed · white-label cleanup (F-20, F-21) · refactor `server.ts` into
+a route table (F-32) · remaining 🟡 items.
+
+---
+
+## 6. Progress log
+
+Fixes are recorded here as they land (newest first).
+
+_(none yet)_
