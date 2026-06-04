@@ -20,6 +20,7 @@ import {
   type NightAuditData
 } from "./core/ai/intelligence";
 import { startAutomationWorker } from "./core/automations/engine";
+import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
 import { checkWebhookSignature } from "./core/connectors/webhook-verify";
 import { randomBytes } from "node:crypto";
@@ -3306,6 +3307,7 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     console.log("Eynis API listening on port " + port);
     startAutomationWorker(60_000);
     console.log("Eynis AutomationEngine started — 60s cycle");
+    startCampaignDispatchWorker();
   });
   return server;
 };

@@ -136,13 +136,17 @@ Campaigns are no longer voice-only. A campaign now declares **channels** (`voice
 - [x] Channel-aware validation (`validateChannels`, per-channel required fields), update builder, and serializer; activation only provisions Vapi for the `voice` channel
 - [x] Tests: channel validation, per-channel requirements, #3 durable-suppression-across-deletion, #4 — full API suite 89/89, lint clean
 
-### Phase 6.1 — Unified send engine (next)
-- [ ] `apps/api/src/core/campaigns/dispatch.ts` — one 30s worker that, per active campaign channel, routes to the voice dialler / WhatsApp sender / email sender
-- [ ] Shared **pre-send guard** for all channels: `canContactLead` + `isSuppressed` + `dndScrub`
-- [ ] WhatsApp sender: render approved template variables, send via Twilio Content API, write `MessageDelivery`
-- [ ] Email sender: render subject/body templates, send via Resend, write `MessageDelivery`
-- [ ] Per-channel spend/volume caps + auto-pause; rate limiting
-- [ ] SSE `campaign_message_sent` events
+### Phase 6.1 — Unified send engine ✅ DONE
+- [x] `apps/api/src/core/campaigns/dispatch.ts` — 30s worker; per active campaign × messaging channel, batched (`CAMPAIGN_DISPATCH_BATCH`, default 200) so 50 or 50,000 leads are handled flat; idempotent per channel (a delivery row excludes the lead)
+- [x] Shared **pre-send guard** `guard.ts` (`evaluateContact`): consent + durable suppression + channel-aware DND (voice-only, env-gated `ENFORCE_DND_SCRUB`)
+- [x] **Channel sender registry** `senders.ts` — `ChannelSender` interface + `getSender()`; add a channel by registering a sender (reusable/dynamic)
+- [x] WhatsApp sender: approved-template send via Twilio Content API (`sendWhatsAppTemplate`), ordered `ContentVariables` rendered from the `{variable}` system
+- [x] Email sender: subject/body templates via Resend
+- [x] Per-channel **spend cap** bounds the batch + auto-pauses (`campaign_paused` SSE); `campaign_message_sent` SSE per send
+- [x] Records every send/skip/failure on `MessageDelivery`
+- [x] CSV import made scale-safe: chunked lookups + inserts (`DB_CHUNK=1000`), configurable `CSV_MAX_UPLOAD_MB` (default 25)
+- [x] Wired `startCampaignDispatchWorker()` into server startup
+- [x] Tests: guard, senders (render/registry), dispatch (send + idempotency + guard-skip + spend-cap pause), E.164/import scale — full API suite 100/100, lint clean
 
 ---
 

@@ -23,7 +23,7 @@ export interface MultipartResult {
   fields: Record<string, string>;
 }
 
-export const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
+export const DEFAULT_MAX_FILE_BYTES = Number(process.env.CSV_MAX_UPLOAD_MB ?? 25) * 1024 * 1024;
 
 export function parseMultipart(
   req: IncomingMessage,
@@ -172,6 +172,16 @@ export interface ImportResult {
   errors: ImportError[];           // validation + consent rejections
 }
 
+// Chunk size for DB round-trips so a very large import (tens of thousands of
+// rows) never builds a single huge `IN (...)` clause or `createMany` payload.
+const DB_CHUNK = 1000;
+
+const chunk = <T>(arr: T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
+
 export async function bulkInsertLeads(
   campaignId: string,
   hotelId: string,
@@ -193,21 +203,20 @@ export async function bulkInsertLeads(
   const phones = batch.map((l) => l.phone);
   if (phones.length === 0) return { imported: 0, skipped, errors };
 
-  // Existing phones in this campaign (unique constraint would reject anyway).
-  const existing = await prisma.campaignLead.findMany({
-    where: { campaignId, phone: { in: phones } },
-    select: { phone: true },
-  });
-  const existingPhones = new Set(existing.map((e) => e.phone));
-
-  // Tenant-wide opt-outs: a phone on the durable DoNotContact suppression list
-  // (survives lead/campaign deletion) OR flagged opted-out on any existing lead
-  // is permanently excluded across all campaigns and channels (compliance #3).
-  const [suppressed, optedOut] = await Promise.all([
-    prisma.doNotContact.findMany({ where: { hotelId, phone: { in: phones } }, select: { phone: true } }),
-    prisma.campaignLead.findMany({ where: { hotelId, optedOut: true, phone: { in: phones } }, select: { phone: true } }),
-  ]);
-  const optedOutPhones = new Set([...suppressed.map((s) => s.phone), ...optedOut.map((o) => o.phone)]);
+  // Resolve existing-in-campaign + tenant-wide suppressed phones, chunked so the
+  // IN-clause stays bounded regardless of import size.
+  const existingPhones = new Set<string>();
+  const optedOutPhones = new Set<string>();
+  for (const phoneChunk of chunk(phones, DB_CHUNK)) {
+    const [existing, suppressed, optedOut] = await Promise.all([
+      prisma.campaignLead.findMany({ where: { campaignId, phone: { in: phoneChunk } }, select: { phone: true } }),
+      prisma.doNotContact.findMany({ where: { hotelId, phone: { in: phoneChunk } }, select: { phone: true } }),
+      prisma.campaignLead.findMany({ where: { hotelId, optedOut: true, phone: { in: phoneChunk } }, select: { phone: true } }),
+    ]);
+    for (const e of existing) existingPhones.add(e.phone!);
+    for (const s of suppressed) optedOutPhones.add(s.phone);
+    for (const o of optedOut) optedOutPhones.add(o.phone!);
+  }
 
   const toInsert = batch.filter((l) => {
     if (existingPhones.has(l.phone)) { skipped++; return false; }
@@ -215,9 +224,10 @@ export async function bulkInsertLeads(
     return true;
   });
 
-  if (toInsert.length > 0) {
+  // Insert in chunks so the payload (and transaction) size stays bounded.
+  for (const insertChunk of chunk(toInsert, DB_CHUNK)) {
     await prisma.campaignLead.createMany({
-      data: toInsert.map((l) => ({
+      data: insertChunk.map((l) => ({
         campaignId, hotelId,
         firstName: l.firstName, lastName: l.lastName, phone: l.phone,
         email: l.email, company: l.company, jobTitle: l.jobTitle,
