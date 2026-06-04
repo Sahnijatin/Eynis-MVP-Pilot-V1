@@ -64,7 +64,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ✅ fixed (#61) |
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ✅ fixed (#62) |
 | F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ✅ fixed (#63) |
-| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ☐ open |
+| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ◐ partial (#64) |
 | F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ☐ open |
 | F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ☐ open |
 | F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ☐ open |
@@ -259,6 +259,14 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-17 (#64) — fabricated analytics — sentiment done (partial).** The `/analytics/sentiment`
+  endpoint no longer uses `Math.random()`/hard-coded drivers — extracted
+  `core/analytics/sentiment.ts` which computes real breakdown, net score, by-source counts, a
+  30-day daily-average series, and frequency-based drivers from `SentimentEvent` (voice) +
+  `ConnectorEvent.aiSentiment` (inbound); empty data yields genuine zeros, not guesses. Added 2
+  unit tests. _Remaining:_ revenue-intelligence/morning-briefing/night-audit still pass
+  hard-coded occupancy/ADR to the AI because there is **no PMS data source** for those — needs a
+  product decision (see open question), so left as-is for now.
 - **F-9 / F-10 (#56, #57) — webhook hardening — fixed.** WhatsApp webhook: the shared-secret
   check now uses `verifySharedWebhookSecret` (constant-time, fails closed in prod), and when
   `VERIFY_WEBHOOKS=true` a request with no provider signature header is rejected (closing the

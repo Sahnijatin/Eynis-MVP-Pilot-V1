@@ -21,6 +21,7 @@ import {
   type NightAuditData
 } from "./core/ai/intelligence";
 import { startAutomationWorker } from "./core/automations/engine";
+import { computeSentimentAnalytics } from "./core/analytics/sentiment";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
@@ -2496,44 +2497,7 @@ const handleRequest = async (
       }
       const licSentiment = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licSentiment.ok) { json(res, 403, { ok: false, error: licSentiment.error }); return; }
-      // Compute sentiment from resolved service requests (used as proxy for feedback)
-      const resolved = await prisma.serviceRequest.findMany({
-        where: { tenantId: context.tenantId, status: "resolved" },
-        select: { createdAt: true, resolvedAt: true, category: true }
-      });
-      const netScore = Math.min(99, 72 + resolved.length * 2);
-      const positive = Math.round(resolved.length * 0.68);
-      const neutral = Math.round(resolved.length * 0.17);
-      const negative = resolved.length - positive - neutral;
-      const bySource = [
-        { source: "Post-Stay Survey", count: Math.round(resolved.length * 1.5) + 20 },
-        { source: "Google Reviews", count: Math.round(resolved.length * 1.2) + 15 },
-        { source: "TripAdvisor", count: Math.round(resolved.length * 0.9) + 10 },
-        { source: "Booking.com", count: Math.round(resolved.length * 0.7) + 5 }
-      ];
-      const drivers = [
-        { term: "Welcoming", weight: 0.9, sentiment: "positive" },
-        { term: "Pristine", weight: 0.7, sentiment: "positive" },
-        { term: "Prompt Service", weight: 0.8, sentiment: "positive" },
-        { term: "Noisy AC", weight: 0.4, sentiment: "negative" },
-        { term: "Wait times", weight: 0.3, sentiment: "negative" },
-        { term: "Room view", weight: 0.6, sentiment: "positive" }
-      ];
-      const timeSeries = Array.from({ length: 30 }, (_, i) => ({
-        day: i + 1,
-        score: Math.round(60 + Math.random() * 30 + i * 0.5)
-      }));
-      json(res, 200, {
-        ok: true,
-        netScore: Math.min(netScore, 99),
-        totalFeedback: positive + neutral + Math.max(0, negative),
-        surveyCompletionRate: 0.68,
-        breakdown: { positive, neutral, negative: Math.max(0, negative) },
-        bySource,
-        drivers,
-        timeSeries,
-        alert: { type: "warning", message: "Negative trend in F&B reviews" }
-      });
+      json(res, 200, await computeSentimentAnalytics(context.tenantId));
       return;
     }
 
