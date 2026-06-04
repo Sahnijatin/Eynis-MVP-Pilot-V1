@@ -39,6 +39,7 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Link href="/segments" style={btnGhost}>Segments</Link>
+          <Link href="/sequences" style={btnGhost}>Sequences</Link>
           <Link href="/campaigns/new" style={btnPrimary}>+ New Campaign</Link>
         </div>
       </div>

@@ -22,6 +22,7 @@ import {
 import { startAutomationWorker } from "./core/automations/engine";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
+import { startSequenceWorker } from "./core/campaigns/sequence-runner";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
 import { checkWebhookSignature } from "./core/connectors/webhook-verify";
 import { randomBytes } from "node:crypto";
@@ -302,6 +303,18 @@ const parseSegmentPath = (
   const match = /^\/segments\/([^/]+)(?:\/(preview))?$/.exec(pathname);
   if (!match || !match[1]) return null;
   return { id: decodeURIComponent(match[1]), preview: match[2] === "preview" };
+};
+
+// Sequences routing: /sequences, /sequences/:id, /sequences/:id/{enroll,enrollments}
+const parseSequencePath = (
+  url: string | undefined,
+): { id: string | null; sub: "enroll" | "enrollments" | null } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  if (pathname === "/sequences") return { id: null, sub: null };
+  const match = /^\/sequences\/([^/]+)(?:\/(enroll|enrollments))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  return { id: decodeURIComponent(match[1]), sub: (match[2] as "enroll" | "enrollments") ?? null };
 };
 
 // Lead routing: /campaigns/:id/leads, /campaigns/:id/leads/import, /campaigns/:id/leads/:leadId
@@ -3062,6 +3075,137 @@ const handleRequest = async (
       return;
     }
 
+    // ── Drip Sequences: multi-step automation ───────────────────────────────
+    const seqPath = parseSequencePath(req.url);
+    if (seqPath) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const seqMod = await import("./core/campaigns/sequences");
+      const serializeStep = (s: { whatsappVariables: string } & Record<string, unknown>) => ({ ...s, whatsappVariables: (() => { try { const v = JSON.parse(s.whatsappVariables); return Array.isArray(v) ? v : []; } catch { return []; } })() });
+      const serializeSeq = (s: any) => ({
+        id: s.id, name: s.name, status: s.status, exitOn: seqMod.parseExitOn(s.exitOn),
+        createdAt: s.createdAt, updatedAt: s.updatedAt,
+        ...(s.steps ? { steps: [...s.steps].sort((a: any, b: any) => a.order - b.order).map(serializeStep) } : {}),
+        ...(s._count ? { stepCount: s._count.steps, enrollmentCount: s._count.enrollments } : {}),
+      });
+
+      // Collection
+      if (seqPath.id === null) {
+        if (req.method === "GET") {
+          const rows = await prisma.sequence.findMany({ where: { hotelId }, orderBy: { createdAt: "desc" }, include: { _count: { select: { steps: true, enrollments: true } } } });
+          json(res, 200, { ok: true, items: rows.map(serializeSeq) });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const name = asTrimmedString(body.name);
+          if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+          const stepsV = seqMod.validateSequenceSteps(body.steps);
+          if (!stepsV.ok) { json(res, 400, { ok: false, error: stepsV.error }); return; }
+          const exitOn = seqMod.parseExitOn(body.exitOn ?? ["opted_out", "replied"]);
+          const created = await prisma.sequence.create({
+            data: {
+              hotelId, name, exitOn: JSON.stringify(exitOn),
+              steps: { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) },
+            },
+            include: { steps: true },
+          });
+          json(res, 201, { ok: true, sequence: serializeSeq(created) });
+          return;
+        }
+        json(res, 405, { ok: false, error: "Method not allowed" }); return;
+      }
+
+      const sequence = await prisma.sequence.findFirst({ where: { id: seqPath.id, hotelId } });
+      if (!sequence) { json(res, 404, { ok: false, error: "Sequence not found" }); return; }
+
+      // POST /sequences/:id/enroll
+      if (seqPath.sub === "enroll" && req.method === "POST") {
+        const steps = await prisma.sequenceStep.findMany({ where: { sequenceId: sequence.id }, orderBy: { order: "asc" } });
+        if (steps.length === 0) { json(res, 400, { ok: false, error: "Sequence has no steps" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const leadIds = Array.isArray(body.leadIds) ? body.leadIds.filter((x): x is string => typeof x === "string") : [];
+        const segmentId = asTrimmedString(body.segmentId);
+        const campaignId = asTrimmedString(body.campaignId);
+        let where: Record<string, unknown> = { hotelId };
+        if (leadIds.length > 0) where = { hotelId, id: { in: leadIds } };
+        else if (segmentId) {
+          const seg = await prisma.leadSegment.findFirst({ where: { id: segmentId, hotelId }, select: { rules: true } });
+          if (!seg) { json(res, 404, { ok: false, error: "Segment not found" }); return; }
+          const { parseSegmentRules, buildLeadWhere } = await import("./core/campaigns/segments");
+          where = { hotelId, ...(campaignId ? { campaignId } : {}), ...buildLeadWhere(parseSegmentRules(seg.rules)) };
+        } else if (campaignId) where = { hotelId, campaignId };
+        else { json(res, 400, { ok: false, error: "Provide leadIds, segmentId, or campaignId" }); return; }
+
+        const targets = await prisma.campaignLead.findMany({ where, take: 5000, select: { id: true } });
+        if (targets.length === 0) { json(res, 200, { ok: true, enrolled: 0, skipped: 0 }); return; }
+        const nextRunAt = seqMod.nextRunFrom(new Date(), steps[0].waitMinutes);
+        const result = await prisma.sequenceEnrollment.createMany({
+          data: targets.map((t) => ({ sequenceId: sequence.id, hotelId, leadId: t.id, currentStepOrder: 0, nextRunAt })),
+          skipDuplicates: true,
+        });
+        json(res, 200, { ok: true, enrolled: result.count, skipped: targets.length - result.count });
+        return;
+      }
+
+      // GET /sequences/:id/enrollments
+      if (seqPath.sub === "enrollments" && req.method === "GET") {
+        const qs = parseUrl(req.url).searchParams;
+        const limit = asSafeLimit(qs.get("limit"), 50, 200);
+        const offset = asSafeOffset(qs.get("offset"));
+        const [items, total] = await Promise.all([
+          prisma.sequenceEnrollment.findMany({
+            where: { sequenceId: sequence.id }, orderBy: { updatedAt: "desc" }, take: limit, skip: offset,
+            select: { id: true, status: true, currentStepOrder: true, nextRunAt: true, stoppedReason: true, createdAt: true, lead: { select: { firstName: true, lastName: true, company: true, phone: true } } },
+          }),
+          prisma.sequenceEnrollment.count({ where: { sequenceId: sequence.id } }),
+        ]);
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        return;
+      }
+
+      if (seqPath.sub) { json(res, 405, { ok: false, error: "Method not allowed" }); return; }
+
+      // Item GET / PATCH / DELETE
+      if (req.method === "GET") {
+        const full = await prisma.sequence.findUnique({ where: { id: sequence.id }, include: { steps: true, _count: { select: { steps: true, enrollments: true } } } });
+        json(res, 200, { ok: true, sequence: serializeSeq(full) });
+        return;
+      }
+      if (req.method === "PATCH") {
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const data: Record<string, unknown> = {};
+        if (body.name !== undefined) { const n = asTrimmedString(body.name); if (!n) { json(res, 400, { ok: false, error: "name must be non-empty" }); return; } data.name = n; }
+        if (body.status !== undefined) {
+          const st = asTrimmedString(body.status);
+          if (!st || !["draft", "active", "archived"].includes(st)) { json(res, 400, { ok: false, error: "status must be draft|active|archived" }); return; }
+          data.status = st;
+        }
+        if (body.exitOn !== undefined) data.exitOn = JSON.stringify(seqMod.parseExitOn(body.exitOn));
+        // Replace steps wholesale when provided.
+        if (body.steps !== undefined) {
+          const stepsV = seqMod.validateSequenceSteps(body.steps);
+          if (!stepsV.ok) { json(res, 400, { ok: false, error: stepsV.error }); return; }
+          await prisma.sequenceStep.deleteMany({ where: { sequenceId: sequence.id } });
+          data.steps = { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) };
+        }
+        if (Object.keys(data).length === 0) { json(res, 400, { ok: false, error: "No updatable fields provided" }); return; }
+        const updated = await prisma.sequence.update({ where: { id: sequence.id }, data, include: { steps: true } });
+        json(res, 200, { ok: true, sequence: serializeSeq(updated) });
+        return;
+      }
+      if (req.method === "DELETE") {
+        await prisma.sequence.delete({ where: { id: sequence.id } });
+        json(res, 200, { ok: true, deleted: sequence.id });
+        return;
+      }
+      json(res, 405, { ok: false, error: "Method not allowed" }); return;
+    }
+
     // ── Lead Segments: saved tenant-wide audience filters ───────────────────
     const segPath = parseSegmentPath(req.url);
     if (segPath) {
@@ -3681,6 +3825,7 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     console.log("Eynis AutomationEngine started — 60s cycle");
     startCampaignDispatchWorker();
     startCampaignWorker();
+    startSequenceWorker();
   });
   return server;
 };

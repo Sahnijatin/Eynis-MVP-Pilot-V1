@@ -31,6 +31,9 @@ model Hotel {
   invitations           Invitation[]
   voiceCampaigns        VoiceCampaign[]
   leadSegments          LeadSegment[]
+  sequences             Sequence[]
+  sequenceEnrollments   SequenceEnrollment[]
+  sequenceEvents        SequenceEvent[]
   campaignLeads         CampaignLead[]
   callRecords           CallRecord[]
   sentimentEvents       SentimentEvent[]
@@ -347,6 +350,84 @@ model VoiceCampaign {
   @@index([hotelId, status])
 }
 
+// ── Drip automation: multi-step sequences ──────────────────────────────────
+// A Sequence is an ordered list of Steps (delay → send on a channel). Leads are
+// enrolled; a runner advances each enrollment step-by-step and exits early on
+// configured conditions (reply / opt-out / booking). Reuses the ChannelSender
+// registry + the shared compliance guard.
+model Sequence {
+  id          String               @id @default(cuid())
+  hotelId     String
+  name        String
+  status      String               @default("draft") // draft | active | archived
+  exitOn      String               @default("[\"opted_out\",\"replied\"]") // JSON string[] of exit conditions
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  hotel       Hotel                @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+  events      SequenceEvent[]
+
+  @@index([hotelId, status])
+}
+
+model SequenceStep {
+  id                   String   @id @default(cuid())
+  sequenceId           String
+  order                Int // 0-based position
+  waitMinutes          Int      @default(0) // delay before this step (from enrollment for step 0, else from the previous step's run)
+  channel              String // whatsapp | email
+  whatsappContentSid   String?
+  whatsappTemplateBody String?
+  whatsappVariables    String   @default("[]") // JSON ordered list of {variable} exprs
+  emailSubject         String?
+  emailBody            String?
+  sequence             Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@unique([sequenceId, order])
+  @@index([sequenceId])
+}
+
+model SequenceEnrollment {
+  id               String          @id @default(cuid())
+  sequenceId       String
+  hotelId          String
+  leadId           String
+  status           String          @default("active") // active | completed | stopped
+  currentStepOrder Int             @default(0)
+  nextRunAt        DateTime // when the current step becomes due
+  stoppedReason    String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  sequence         Sequence        @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  hotel            Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  lead             CampaignLead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  events           SequenceEvent[]
+
+  @@unique([sequenceId, leadId])
+  @@index([status, nextRunAt])
+  @@index([hotelId])
+}
+
+model SequenceEvent {
+  id           String             @id @default(cuid())
+  hotelId      String
+  sequenceId   String
+  enrollmentId String
+  leadId       String
+  stepOrder    Int
+  channel      String
+  status       String // sent | failed | skipped | stopped
+  error        String?
+  createdAt    DateTime           @default(now())
+  hotel        Hotel              @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  sequence     Sequence           @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  enrollment   SequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([sequenceId, createdAt])
+  @@index([enrollmentId])
+}
+
 // Saved, tenant-wide audience filter. `rules` is a JSON SegmentRules object
 // (see core/campaigns/segments.ts) compiled to a Prisma where-clause at query
 // time. A campaign can target a segment so only matching leads are contacted.
@@ -390,6 +471,7 @@ model CampaignLead {
   calls                 CallRecord[]
   deliveries            MessageDelivery[]
   whatsappConversations WhatsappConversation[]
+  sequenceEnrollments   SequenceEnrollment[]
 
   // Dedupe phone within a campaign. NOTE: Postgres treats NULLs as distinct, so
   // this does NOT dedupe null-phone rows — acceptable because active leads always

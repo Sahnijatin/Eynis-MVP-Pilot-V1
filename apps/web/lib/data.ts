@@ -577,6 +577,34 @@ export async function fetchSegments(): Promise<{ ok: boolean; items: LeadSegment
   return (await res.json()) as { ok: boolean; items: LeadSegmentRow[] };
 }
 
+export interface SequenceStepRow {
+  order: number;
+  waitMinutes: number;
+  channel: "whatsapp" | "email";
+  whatsappContentSid: string | null;
+  whatsappTemplateBody: string | null;
+  whatsappVariables: string[];
+  emailSubject: string | null;
+  emailBody: string | null;
+}
+
+export interface SequenceRow {
+  id: string;
+  name: string;
+  status: "draft" | "active" | "archived";
+  exitOn: string[];
+  steps?: SequenceStepRow[];
+  stepCount?: number;
+  enrollmentCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchSequences(): Promise<{ ok: boolean; items: SequenceRow[] }> {
+  const res = await authedFetch("/sequences");
+  return (await res.json()) as { ok: boolean; items: SequenceRow[] };
+}
+
 export async function fetchCampaigns(): Promise<{ ok: boolean; items: CampaignSummary[] }> {
   const res = await authedFetch("/campaigns?limit=100");
   return (await res.json()) as { ok: boolean; items: CampaignSummary[] };
