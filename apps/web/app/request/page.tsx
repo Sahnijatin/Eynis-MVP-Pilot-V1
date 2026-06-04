@@ -8,7 +8,12 @@ export default async function RequestPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = searchParams ? await searchParams : {};
-  const tenantId = typeof query.tenantId === "string" ? query.tenantId : "eynis-pilot-hotel-1";
+  // Accept the legacy `?hotelId=` param so QR codes / links printed before the
+  // rename still resolve to the right tenant.
+  const tenantId =
+    typeof query.tenantId === "string" ? query.tenantId
+    : typeof query.hotelId === "string" ? query.hotelId
+    : "eynis-pilot-hotel-1";
   const result = typeof query.result === "string" ? query.result : "";
   const msg = typeof query.msg === "string" ? query.msg : "";
   const ackText =
