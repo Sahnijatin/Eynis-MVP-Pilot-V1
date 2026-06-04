@@ -206,15 +206,18 @@ _#3 (durable opt-out) and #4 (E.164 `+0…`) completed in Phase 6.0 above._
 
 ---
 
-## Phase 9 — Analytics & A/B (Day 5–6)
+## Phase 9 — Analytics & A/B ✅ DONE (backend)
 
-- [ ] `GET /campaigns/:id/calls` (paginated, join lead firstName + company)
-- [ ] `GET /campaigns/:id/calls/:callId` (full transcript + sentiment timeline + WhatsApp thread)
-- [ ] `GET /campaigns/:id/analytics` — per-variant funnel, answer/interest/booking rates, avg duration, **avg sentiment per variant**, two-proportion z-test for leading variant
-- [ ] Enforce ≥50 answered per arm before declaring a winner ("insufficient sample" otherwise)
-- [ ] CSV export: `GET /campaigns/:id/calls?format=csv` (Content-Disposition header)
+- [x] `GET /campaigns/:id/calls` (paginated, joins lead name + company; filter `?outcome=` `?abVariant=`)
+- [x] `GET /campaigns/:id/calls/:callId` (call + parsed keyPoints + **sentiment timeline** + the lead's **WhatsApp thread**)
+- [x] `GET /campaigns/:id/analytics` — per-variant funnel, answer/interest/booking rates, avg duration, **avg sentiment per variant**, two-proportion z-test
+- [x] Winner gating: ≥50 answered per arm (`WINNER_MIN_ANSWERED`) → `sufficientSample`/`confident` (p<0.05) with `sampleNote`
+- [x] CSV export: `GET /campaigns/:id/calls?format=csv` (Content-Disposition)
+- [x] Pure stats in `analytics.ts` (`summarizeVariant`, `twoProportionZ`, `decideLeader`, `sentimentScore`)
 
-**DoD:** Analytics endpoint returns correct funnel + per-variant stats + sentiment, with winner gating.
+**DoD:** ✅ Endpoints return correct funnel + per-variant stats + sentiment with winner gating. Tests: analytics 6 + routes 3; full API suite 132/132, lint clean.
+
+**UI follow-up (separate):** Calls tab + sentiment meter, A/B comparison cards, WhatsApp thread view, live activity feed, Settings edit form.
 
 ---
 

@@ -268,6 +268,23 @@ const parseCampaignPath = (
   return { id: decodeURIComponent(match[1]), action };
 };
 
+// Calls routing: /campaigns/:id/calls, /campaigns/:id/calls/:callId
+const parseCampaignCallsPath = (
+  url: string | undefined,
+): { campaignId: string; callId: string | null } | null => {
+  if (!url) return null;
+  const match = /^\/campaigns\/([^/]+)\/calls(?:\/([^/]+))?$/.exec(parseUrl(url).pathname);
+  if (!match || !match[1]) return null;
+  return { campaignId: decodeURIComponent(match[1]), callId: match[2] ? decodeURIComponent(match[2]) : null };
+};
+
+// Analytics routing: /campaigns/:id/analytics
+const parseCampaignAnalyticsPath = (url: string | undefined): string | null => {
+  if (!url) return null;
+  const match = /^\/campaigns\/([^/]+)\/analytics$/.exec(parseUrl(url).pathname);
+  return match && match[1] ? decodeURIComponent(match[1]) : null;
+};
+
 // Lead routing: /campaigns/:id/leads, /campaigns/:id/leads/import, /campaigns/:id/leads/:leadId
 const parseCampaignLeadsPath = (
   url: string | undefined,
@@ -335,6 +352,9 @@ const permissionMap: Record<string, Permission | null> = {
   "POST /campaigns/:id/leads/import":     "manage_campaigns",
   "GET /campaigns/:id/leads":             "manage_campaigns",
   "DELETE /campaigns/:id/leads/:leadId":  "manage_campaigns",
+  "GET /campaigns/:id/calls":             "manage_campaigns",
+  "GET /campaigns/:id/calls/:callId":     "manage_campaigns",
+  "GET /campaigns/:id/analytics":         "manage_campaigns",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3323,6 +3343,125 @@ const handleRequest = async (
         json(res, 200, { ok: true, deleted: leadId });
         return;
       }
+    }
+
+    // ── Voice Campaign: A/B analytics ───────────────────────────────────────
+    const analyticsId = parseCampaignAnalyticsPath(req.url);
+    if (analyticsId && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/analytics")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: analyticsId, hotelId: auth.context.hotelId }, select: { id: true } });
+      if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+
+      const rows = await prisma.callRecord.findMany({
+        where: { campaignId: analyticsId },
+        select: { abVariant: true, status: true, outcome: true, durationSeconds: true, sentiment: true, meetingBooked: true },
+      });
+      const { summarizeVariant, decideLeader, sentimentScore } = await import("./core/campaigns/analytics");
+      const NO_ANSWER = new Set(["no_answer"]);
+      const blank = () => ({ dials: 0, answered: 0, interested: 0, meetingsBooked: 0, durationSum: 0, durationCount: 0, sentimentScoreSum: 0, sentimentRatedCount: 0 });
+      const acc: Record<string, ReturnType<typeof blank>> = { A: blank(), B: blank() };
+      for (const r of rows) {
+        const v = acc[r.abVariant];
+        if (!v) continue;
+        v.dials++;
+        if (r.status === "ended" && r.outcome && !NO_ANSWER.has(r.outcome)) v.answered++;
+        if (r.outcome === "interested") v.interested++;
+        if (r.meetingBooked) v.meetingsBooked++;
+        if (r.status === "ended" && r.durationSeconds != null) { v.durationSum += r.durationSeconds; v.durationCount++; }
+        if (r.sentiment) { v.sentimentScoreSum += sentimentScore(r.sentiment); v.sentimentRatedCount++; }
+      }
+      const toRaw = (v: ReturnType<typeof blank>) => ({
+        dials: v.dials, answered: v.answered, interested: v.interested, meetingsBooked: v.meetingsBooked,
+        avgDurationSeconds: v.durationCount > 0 ? Math.round(v.durationSum / v.durationCount) : null,
+        sentimentScoreSum: v.sentimentScoreSum, sentimentRatedCount: v.sentimentRatedCount,
+      });
+      const variantA = summarizeVariant(toRaw(acc.A));
+      const variantB = summarizeVariant(toRaw(acc.B));
+      const decision = decideLeader(variantA, variantB);
+      const overall = {
+        totalLeads: await prisma.campaignLead.count({ where: { campaignId: analyticsId } }),
+        dials: variantA.dials + variantB.dials,
+        answered: variantA.answered + variantB.answered,
+        interested: variantA.interested + variantB.interested,
+        meetingsBooked: variantA.meetingsBooked + variantB.meetingsBooked,
+      };
+      json(res, 200, { ok: true, overall, variantA, variantB, ...decision });
+      return;
+    }
+
+    // ── Voice Campaign: calls list / detail (+ CSV export) ──────────────────
+    const callsPath = parseCampaignCallsPath(req.url);
+    if (callsPath && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: callsPath.campaignId, hotelId }, select: { id: true } });
+      if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+
+      // Single call detail: + sentiment timeline + the lead's WhatsApp thread.
+      if (callsPath.callId) {
+        if (!canAccess(auth.context.permissions, "GET /campaigns/:id/calls/:callId")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        const call = await prisma.callRecord.findFirst({
+          where: { id: callsPath.callId, campaignId: callsPath.campaignId },
+          include: { lead: { select: { id: true, firstName: true, lastName: true, company: true, phone: true } } },
+        });
+        if (!call) { json(res, 404, { ok: false, error: "Call not found" }); return; }
+        const [sentimentEvents, conversation] = await Promise.all([
+          prisma.sentimentEvent.findMany({ where: { callRecordId: call.id }, orderBy: { createdAt: "asc" }, select: { speaker: true, text: true, sentiment: true, score: true, createdAt: true } }),
+          prisma.whatsappConversation.findFirst({ where: { campaignId: callsPath.campaignId, leadId: call.leadId }, include: { messages: { orderBy: { createdAt: "asc" }, select: { direction: true, body: true, sentiment: true, createdAt: true } } } }),
+        ]);
+        json(res, 200, { ok: true, call: { ...call, keyPoints: (() => { try { return JSON.parse(call.keyPoints); } catch { return []; } })() }, sentimentEvents, whatsappThread: conversation?.messages ?? [] });
+        return;
+      }
+
+      // List
+      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/calls")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const qs = parseUrl(req.url).searchParams;
+      const whereCalls = {
+        campaignId: callsPath.campaignId,
+        ...(asTrimmedString(qs.get("outcome")) ? { outcome: asTrimmedString(qs.get("outcome"))! } : {}),
+        ...(asTrimmedString(qs.get("abVariant")) ? { abVariant: asTrimmedString(qs.get("abVariant"))! } : {}),
+      };
+      const selectCall = {
+        id: true, abVariant: true, status: true, outcome: true, sentiment: true, durationSeconds: true,
+        whatsappSent: true, emailSent: true, meetingBooked: true, createdAt: true, endedAt: true,
+        lead: { select: { firstName: true, lastName: true, company: true, phone: true } },
+      };
+
+      // CSV export — full set (no pagination), Content-Disposition.
+      if (qs.get("format") === "csv") {
+        const all = await prisma.callRecord.findMany({ where: whereCalls, orderBy: { createdAt: "desc" }, select: selectCall });
+        const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+        const header = ["name", "company", "phone", "variant", "status", "outcome", "sentiment", "durationSeconds", "whatsappSent", "emailSent", "meetingBooked", "createdAt"];
+        const lines = [header.join(",")];
+        for (const c of all) {
+          lines.push([
+            `${c.lead.firstName} ${c.lead.lastName ?? ""}`.trim(), c.lead.company ?? "", c.lead.phone ?? "",
+            c.abVariant, c.status, c.outcome ?? "", c.sentiment ?? "", c.durationSeconds ?? "",
+            c.whatsappSent, c.emailSent, c.meetingBooked, c.createdAt.toISOString(),
+          ].map(esc).join(","));
+        }
+        res.writeHead(200, { "content-type": "text/csv", "content-disposition": `attachment; filename="campaign-${callsPath.campaignId}-calls.csv"` });
+        res.end(lines.join("\n"));
+        return;
+      }
+
+      const limit = asSafeLimit(qs.get("limit"), 50, 200);
+      const offset = asSafeOffset(qs.get("offset"));
+      const [items, total] = await Promise.all([
+        prisma.callRecord.findMany({ where: whereCalls, orderBy: { createdAt: "desc" }, take: limit, skip: offset, select: selectCall }),
+        prisma.callRecord.count({ where: whereCalls }),
+      ]);
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      return;
     }
 
     json(res, 404, { ok: false, error: "Not found" });

@@ -79,7 +79,7 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 |---|---|---|---|
 | ~~7~~ ✅ | ~~Vapi webhook + real-time sentiment + follow-ups + no-answer retries~~ **DONE** (branch `claude/phase7-call-webhook-sentiment`) | Voice loop closed | — |
 | ~~8~~ ✅ | ~~Conversational WhatsApp agent — operator-configurable (`whatsappAgentPrompt`), per-message sentiment, booking intent, opt-out, idempotent~~ **DONE** | Two-way WhatsApp live | — |
-| **9** | **A/B analytics** endpoint (per-variant funnel, sentiment, significance) + calls list/export | The "which voice wins" answer | Phase 7 data |
+| ~~9~~ ✅ | ~~A/B analytics endpoint (funnel, sentiment, z-test winner gating) + calls list/detail/CSV export~~ **DONE (backend)** | "which voice wins" | — |
 | **10+** | UI follow-ups: live activity feed, Calls tab w/ sentiment meter, A/B cards, Settings edit form, deliveries endpoint | Observability + editing in the UI | Phases 7/9 |
 | **11** | Compliance hardening: GDPR erasure endpoint (wire `gdprErase`+`suppressContact`), enforce DND before go-live | Legal sign-off before real calls | — |
 | **12** | Launch: demo seed, full live validation with real keys, docs | Demoable + production-ready | accounts/keys |
