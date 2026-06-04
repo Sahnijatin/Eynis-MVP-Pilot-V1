@@ -1,6 +1,6 @@
 # Multi-Channel Campaign System — Status & Regroup
 
-_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **136/136 green**_
+_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **141/141 green**_
 
 This is the executive view: the original plan, what we built, what changed, what's
 left, and the next steps. The phase-by-phase detail lives in
@@ -75,8 +75,8 @@ channels in parallel · pre-approved WhatsApp templates · `manage_campaigns` RB
   reasons.
 
 ### Health
-- **API tests: 136/136 passing** · TypeScript lint clean · `next build` clean.
-- 13 campaign modules + 12 test files; **6 DB migrations**.
+- **API tests: 141/141 passing** · TypeScript lint clean · `next build` clean.
+- 13 campaign modules + 16 test files; **6 DB migrations**.
 - Everything **keys-last**: runs and is fully testable with no Vapi/Twilio/Resend keys.
 
 ---
@@ -110,7 +110,7 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 | **A/B analytics** (funnel, sentiment, z-test winner gating) + calls list/detail/CSV | ✅ |
 | Operator **UI**: list · multi-channel builder · detail · import wizard | ✅ |
 | **Observability UI**: Calls tab + live sentiment meter · A/B comparison cards · WhatsApp thread view · live activity feed (`GET /campaigns/:id/deliveries`) · Settings edit form | ✅ |
-| Keys-last (runs/tests with no external keys) · **138/138 tests** | ✅ |
+| Keys-last (runs/tests with no external keys) · **141/141 tests** | ✅ |
 
 ---
 
@@ -123,7 +123,7 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 
 ### Known follow-ups / tech debt
 - Internal model still named `VoiceCampaign` (it is multi-channel now) — rename deferred to avoid churn.
-- Messaging channels don't auto-retry failed sends (a failed `MessageDelivery` excludes the lead) — add if needed.
+- ~~Messaging channels don't auto-retry failed sends~~ — ✅ done: a failed `MessageDelivery` is now re-attempted up to the campaign's `maxRetries`, gated by `retryDelayHours` backoff; `skipped` (compliance) rows are never retried.
 - WhatsApp template approval (Twilio/Meta) is an **operational** step before real sends.
 - Analytics endpoint loads call rows into memory to aggregate — fine within spend caps; switch to grouped SQL if a single campaign ever exceeds ~100k calls.
 
