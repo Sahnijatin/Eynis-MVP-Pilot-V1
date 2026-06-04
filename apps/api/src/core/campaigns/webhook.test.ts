@@ -19,7 +19,7 @@ async function setup(opts: { followUpRules?: Record<string, string[]>; maxRetrie
     },
   });
   const lead = await prisma.campaignLead.create({
-    data: { campaignId: campaign.id, tenantId, firstName: "Sarah", phone: phone(), consent: true, consentSource: "csv_import", status: "calling", abVariant: "A", callAttempts: 1 },
+    data: { campaignId: campaign.id, tenantId, firstName: "Sarah", phone: phone(), email: `sarah${seq}@example.com`, consent: true, consentSource: "csv_import", status: "calling", abVariant: "A", callAttempts: 1 },
   });
   const vapiCallId = "vapi_" + uid();
   await prisma.callRecord.create({ data: { tenantId, campaignId: campaign.id, leadId: lead.id, abVariant: "A", status: "in_progress", vapiCallId } });

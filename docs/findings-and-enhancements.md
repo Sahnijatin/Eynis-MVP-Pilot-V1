@@ -61,9 +61,9 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ✅ fixed (#58) |
 | F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ✅ fixed (#59) |
 | F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ✅ fixed (#60) |
-| F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ☐ open |
+| F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ✅ fixed (#61) |
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ☐ open |
-| F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ☐ open |
+| F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ✅ fixed (#63) |
 | F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ☐ open |
 | F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ☐ open |
 | F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ☐ open |
@@ -259,6 +259,13 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-14 / F-16 (#61, #63) — post-call follow-up + Vapi webhook secret — fixed.** `followup.ts`
+  now mirrors the dispatcher: it enforces the approved-WhatsApp-template gate, honours the
+  durable `DoNotContact` + `EmailSuppression` lists, and is idempotent (per-channel
+  `whatsappSent`/`emailSent` flags make a re-delivered end-of-call webhook a no-op). Added
+  `followup.test.ts` (6 tests). For F-16, the Vapi webhook now resolves the expected secret
+  **per-tenant** (mapping the call → tenant, since assistants are provisioned with that
+  tenant's `webhookSecret`) and falls back to the global env secret. Suite: 236 → 242 green.
 - **F-13 (#60) — automation idempotency race — fixed.** Wrapped the cycle in `singleFlight`
   (`runAutomationCycle`) so a 60s cycle can't overlap the next, and added a DB
   `@@unique([ruleId, triggerEntityId])` on `AutomationExecution` (migration dedupes any

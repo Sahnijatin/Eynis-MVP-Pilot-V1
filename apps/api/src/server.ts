@@ -743,17 +743,34 @@ const handleRequest = async (
     // ── Vapi end-of-call webhook (public; verified by x-vapi-secret) ─────────
     if (req.url === "/webhooks/vapi" && req.method === "POST") {
       const rawBody = await parseRawBody(req);
-      const { verifyWebhook } = await import("./core/campaigns/vapi");
+      let payload: unknown = {};
+      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
+
+      const { verifyWebhook, resolveVapiCredentials } = await import("./core/campaigns/vapi");
+      const { normalizeVapiMessage, processVapiWebhook } = await import("./core/campaigns/webhook");
+
+      // Resolve the expected secret per-tenant: assistants are provisioned with the
+      // tenant's webhookSecret (ConnectorConfig, falling back to env), so verifying
+      // only against the global env var rejects tenants with their own secret (F-16).
+      // Mapping the call→tenant uses the unverified callId purely to pick which
+      // secret to check against — the caller must still present that secret.
+      let expectedSecret = asTrimmedString(process.env.VAPI_WEBHOOK_SECRET);
+      const evt = normalizeVapiMessage(payload);
+      if (evt.kind !== "ignore") {
+        const call = await prisma.callRecord.findUnique({ where: { vapiCallId: evt.callId }, select: { tenantId: true } });
+        if (call) {
+          const creds = await resolveVapiCredentials(call.tenantId);
+          if (creds.webhookSecret) expectedSecret = creds.webhookSecret;
+        }
+      }
+
       const verdict = verifyWebhook({
         provided: (req.headers["x-vapi-secret"] as string) ?? null,
-        expected: asTrimmedString(process.env.VAPI_WEBHOOK_SECRET),
+        expected: expectedSecret,
         enforce: String(process.env.VERIFY_WEBHOOKS ?? "").toLowerCase() === "true",
       });
       if (!verdict.ok) { json(res, 401, { ok: false, error: verdict.reason ?? "Invalid webhook secret" }); return; }
 
-      let payload: unknown = {};
-      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
-      const { processVapiWebhook } = await import("./core/campaigns/webhook");
       const result = await processVapiWebhook(payload);
       json(res, 200, { ok: true, ...result });
       return;
