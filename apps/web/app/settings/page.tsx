@@ -21,7 +21,8 @@ const connectorCategoryLabel: Record<string, string> = {
   communication: "Communication",
   pms: "Property Management",
   pos: "Point of Sale",
-  payments: "Payments"
+  payments: "Payments",
+  email: "Email"
 };
 
 export default async function SettingsPage() {
