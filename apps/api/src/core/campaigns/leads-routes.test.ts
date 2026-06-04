@@ -155,6 +155,34 @@ test("DELETE lead: pending removable, non-pending blocked (409)", async () => {
   }
 });
 
+test("import CSV with a UTF-8 BOM + messy country code imports correctly (regression)", async () => {
+  // Reproduces the real-world failure: Excel saves CSVs as UTF-8-with-BOM, and a
+  // campaign whose defaultCountryCode had a stray space ("+91 ") used to reject
+  // every row as "missing or invalid phone".
+  const hotelId = "vc-" + uid();
+  await createHotel(hotelId);
+  const email = `owner+${hotelId}@test.local`;
+  await createUser(hotelId, "owner", email);
+  const { server, base } = await startServer();
+  try {
+    const token = await authHeaders(base, hotelId, email, "owner");
+    // campaign with a space-padded country code
+    const c = await prisma.voiceCampaign.create({
+      data: { hotelId, name: "BOM", status: "draft", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", defaultCountryCode: "+91 " },
+    });
+    const csv = "﻿" + ["First Name,Last Name,Phone,Email,Consent", "Jatin,Sahni,9997497006,j@x.com,Yes", "Sanyam,Pahwa,8384826232,s@x.com,Yes"].join("\n");
+    const map = { "First Name": "firstName", "Last Name": "lastName", "Phone": "phone", "Email": "email", "Consent": "consent" };
+    const r = await importCsv(base, token, c.id, csv, map);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.imported, 2);
+    assert.equal(r.body.errors.length, 0);
+    const phones = (await prisma.campaignLead.findMany({ where: { campaignId: c.id }, select: { phone: true } })).map((l) => l.phone).sort();
+    assert.deepEqual(phones, ["+918384826232", "+919997497006"]);
+  } finally {
+    await stop(server);
+  }
+});
+
 test("durable suppression (#3): opt-out survives campaign deletion and blocks re-import", async () => {
   const { suppressContact } = await import("./csv-import");
   const hotelId = "vc-" + uid();
