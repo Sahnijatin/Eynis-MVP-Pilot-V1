@@ -1,6 +1,6 @@
 # Multi-Channel Campaign System — Status & Regroup
 
-_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **160/160 green**_
+_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **170/170 green**_
 
 This is the executive view: the original plan, what we built, what changed, what's
 left, and the next steps. The phase-by-phase detail lives in
@@ -75,8 +75,8 @@ channels in parallel · pre-approved WhatsApp templates · `manage_campaigns` RB
   reasons.
 
 ### Health
-- **API tests: 160/160 passing** · TypeScript lint clean · `next build` clean.
-- 13 campaign modules + 20 test files; **8 DB migrations**.
+- **API tests: 170/170 passing** · TypeScript lint clean · `next build` clean.
+- 15 campaign modules + 24 test files; **9 DB migrations**.
 - Everything **keys-last**: runs and is fully testable with no Vapi/Twilio/Resend keys.
 
 ---
@@ -112,7 +112,8 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 | **Observability UI**: Calls tab + live sentiment meter · A/B comparison cards · WhatsApp thread view · live activity feed (`GET /campaigns/:id/deliveries`) · Settings edit form | ✅ |
 | **Segmentation**: lead tags + custom attributes · saved segments (`/segments`) · target a campaign at a segment (dispatcher + dialler honour it) | ✅ |
 | **Scheduling**: scheduled start · daily send window / quiet-hours (per-tz, overnight-aware) · allowed weekdays — enforced by dispatcher + dialler | ✅ |
-| Keys-last (runs/tests with no external keys) · **160/160 tests** | ✅ |
+| **Drip automation**: multi-step sequences (delay → channel action) · enroll by segment · runner advances enrollments · exit on reply/opt-out/booking (`/sequences`) | ✅ |
+| Keys-last (runs/tests with no external keys) · **170/170 tests** | ✅ |
 
 ---
 
@@ -163,7 +164,7 @@ under one **compliance guard**. Their edge we're closing:
 | **Segmentation** (tags, saved audiences, targeted sends) | ✅ done |
 | Auto-retry failed sends | ✅ done |
 | **Scheduling / quiet-hours / send windows** | ✅ done |
-| **Drip automation** (multi-step sequences, delays, branching) | ⏳ Tier 2 |
+| **Drip automation** (multi-step sequences, delays, exit conditions) | ✅ done |
 | In-app WhatsApp **template library + approval status** | ⏳ Tier 2 |
 | Delivery **read/click tracking** + deeper analytics | ⏳ Tier 2 (needs provider webhooks) |
 | **Shared inbox + human handoff** | ⏳ Tier 3 |
