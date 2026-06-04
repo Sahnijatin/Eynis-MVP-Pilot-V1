@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "./badge";
+import { Button, LinkButton, Card, CardTitle, useToast, tokens as t } from "../ds";
 import { CampaignCallsTab } from "./campaign-calls-tab";
 import { CampaignAnalyticsTab } from "./campaign-analytics-tab";
 import { CampaignActivityTab } from "./campaign-activity-tab";
@@ -32,6 +33,7 @@ export function CampaignDetailClient({
   leadTotal: number;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>("overview");
   const [busy, setBusy] = useState(false);
 
@@ -40,37 +42,38 @@ export function CampaignDetailClient({
     try {
       const res = await fetch(`/api/campaigns/${campaign.id}/${action}`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok || !data.ok) alert(data.error ?? "Action failed");
-      else router.refresh();
+      if (!res.ok || !data.ok) toast.push(data.error ?? "Action failed", "error");
+      else { toast.push(`Campaign ${action === "activate" ? "activated" : action === "pause" ? "paused" : "completed"}`, "success"); router.refresh(); }
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-      <Link href="/campaigns" style={{ color: "#0f766e", fontSize: 14 }}>← Campaigns</Link>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "8px 0 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: 24 }}>{campaign.name}</h1>
+    <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
+      <Link href="/campaigns" style={{ color: t.color.accent, fontSize: t.font.base, fontWeight: 600, textDecoration: "none" }}>← Campaigns</Link>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0 18px", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h1 style={{ margin: 0, fontSize: t.font.xxl, fontWeight: 700, letterSpacing: -0.3 }}>{campaign.name}</h1>
           <Badge label={campaign.status} tone={STATUS_TONE[campaign.status] ?? "neutral"} />
           {(campaign.channels ?? []).map((c) => <Badge key={c} label={CHANNEL_LABEL[c] ?? c} tone="neutral" />)}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/campaigns/${campaign.id}/leads/import`} style={btnGhost}>Import leads</Link>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <LinkButton variant="secondary" href={`/campaigns/${campaign.id}/leads/import`}>Import leads</LinkButton>
           {campaign.status === "active"
-            ? <button onClick={() => act("pause")} disabled={busy} style={btnPrimary}>Pause</button>
+            ? <Button onClick={() => act("pause")} disabled={busy}>Pause</Button>
             : (campaign.status === "draft" || campaign.status === "paused")
-              ? <button onClick={() => act("activate")} disabled={busy} style={btnPrimary}>Activate</button>
+              ? <Button onClick={() => act("activate")} disabled={busy}>Activate</Button>
               : null}
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 18, flexWrap: "wrap" }}>
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            style={{ ...tabBtn, borderBottom: tab === t ? "2px solid #0f766e" : "2px solid transparent", color: tab === t ? "#0f766e" : "#666" }}>
-            {t === "overview" ? "Overview" : t === "leads" ? `Leads (${leadTotal})` : TAB_LABEL[t]}
+      <div style={{ display: "flex", gap: 2, borderBottom: `1px solid ${t.color.border}`, marginBottom: 20, flexWrap: "wrap" }}>
+        {TABS.map((tb) => (
+          <button key={tb} onClick={() => setTab(tb)}
+            style={{ background: "none", border: "none", padding: "9px 14px", fontWeight: 600, cursor: "pointer", fontSize: t.font.base, marginBottom: -1,
+              borderBottom: tab === tb ? `2px solid ${t.color.accent}` : "2px solid transparent", color: tab === tb ? t.color.accent : t.color.textMuted }}>
+            {tb === "leads" ? `Leads (${leadTotal})` : TAB_LABEL[tb]}
           </button>
         ))}
       </div>
@@ -92,22 +95,22 @@ export function CampaignDetailClient({
             <Stat label="Spend cap" value={campaign.spendCapCalls ?? "—"} />
           </div>
           {stats && Object.keys(stats.leadStatusBreakdown).length > 0 && (
-            <div style={card}>
-              <div style={cardTitle}>Lead status</div>
+            <Card>
+              <CardTitle>Lead status</CardTitle>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {Object.entries(stats.leadStatusBreakdown).map(([k, v]) => (
                   <Badge key={k} label={`${k}: ${v}`} tone={STATUS_TONE[k] ?? "neutral"} />
                 ))}
               </div>
-            </div>
+            </Card>
           )}
           {stats && Object.keys(stats.outcomeBreakdown).length > 0 && (
-            <div style={card}>
-              <div style={cardTitle}>Call outcomes</div>
+            <Card>
+              <CardTitle>Call outcomes</CardTitle>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {Object.entries(stats.outcomeBreakdown).map(([k, v]) => <Badge key={k} label={`${k}: ${v}`} />)}
               </div>
-            </div>
+            </Card>
           )}
         </div>
       ) : (
@@ -119,17 +122,9 @@ export function CampaignDetailClient({
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div style={card}>
-      <div style={{ color: "#666", fontSize: 13 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div>
-    </div>
+    <Card style={{ padding: 16 }}>
+      <div style={{ color: t.color.textMuted, fontSize: t.font.sm }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: t.color.text }}>{value}</div>
+    </Card>
   );
 }
-
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
-const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 10 };
-const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 600 };
-const td: React.CSSProperties = { padding: "12px 14px" };
-const tabBtn: React.CSSProperties = { background: "none", border: "none", padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 14 };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14 };
-const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "9px 16px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };

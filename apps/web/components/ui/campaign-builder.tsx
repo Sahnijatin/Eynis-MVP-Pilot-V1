@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MessageTemplateRow } from "../../lib/data";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Button, LinkButton, Card, CardTitle, Field, Label, Input, Select, useToast, tokens as t } from "../ds";
 
 // Reusable variable reference — shared across voice script, WhatsApp, and email.
 const VARIABLE_GROUPS: Array<{ group: string; vars: string[] }> = [
@@ -21,6 +22,11 @@ const ALL_CHANNELS: Array<{ key: "voice" | "whatsapp" | "email"; label: string; 
   { key: "email", label: "Email", hint: "Configurable subject + body" },
 ];
 
+const textareaStyle: React.CSSProperties = {
+  width: "100%", padding: "9px 12px", border: `1px solid ${t.color.borderStrong}`, borderRadius: t.radius.md,
+  fontSize: t.font.base, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical", color: t.color.text, outline: "none",
+};
+
 function TemplateField({
   label, value, onChange, rows = 4, placeholder,
 }: { label: string; value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
@@ -36,15 +42,15 @@ function TemplateField({
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
       <div>
-        <label style={lbl}>{label}</label>
+        <Label>{label}</Label>
         <textarea ref={ref} value={value} rows={rows} placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)} style={textarea} />
+          onChange={(e) => onChange(e.target.value)} style={textareaStyle} />
       </div>
-      <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 8, background: "#fafafa", maxHeight: 200, overflow: "auto" }}>
-        <div style={{ fontSize: 11, color: "#888", marginBottom: 6 }}>Click to insert</div>
+      <div style={{ border: `1px solid ${t.color.border}`, borderRadius: t.radius.md, padding: 8, background: t.color.bg, maxHeight: 200, overflow: "auto" }}>
+        <div style={{ fontSize: t.font.xs, color: t.color.textMuted, marginBottom: 6 }}>Click to insert</div>
         {VARIABLE_GROUPS.map((g) => (
           <div key={g.group} style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase" }}>{g.group}</div>
+            <div style={{ fontSize: 10, color: t.color.textFaint, textTransform: "uppercase", letterSpacing: 0.4 }}>{g.group}</div>
             {g.vars.map((v) => (
               <button type="button" key={v} onClick={() => insert(v)} style={chip}>{v}</button>
             ))}
@@ -57,6 +63,7 @@ function TemplateField({
 
 export function CampaignBuilder() {
   const router = useRouter();
+  const toast = useToast();
   const [name, setName] = useState("");
   const [channels, setChannels] = useState<Set<string>>(new Set(["whatsapp"]));
   // voice
@@ -146,6 +153,7 @@ export function CampaignBuilder() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setError(data.error ?? "Failed to create campaign"); return; }
+      toast.push("Campaign created", "success");
       router.push(`/campaigns/${data.campaign.id}`);
     } finally {
       setBusy(false);
@@ -153,130 +161,115 @@ export function CampaignBuilder() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <Link href="/campaigns" style={{ color: "#0f766e", fontSize: 14 }}>← Campaigns</Link>
-      <h1 style={{ margin: "8px 0 20px", fontSize: 24 }}>New Campaign</h1>
+    <div style={{ padding: 28, maxWidth: 980, margin: "0 auto" }}>
+      <Link href="/campaigns" style={{ color: t.color.accent, fontSize: t.font.base, fontWeight: 600, textDecoration: "none" }}>← Campaigns</Link>
+      <h1 style={{ margin: "12px 0 22px", fontSize: t.font.xxl, fontWeight: 700, letterSpacing: -0.3 }}>New Campaign</h1>
 
-      <section style={section}>
-        <label style={lbl}>Campaign name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Summer Room Upgrade" style={input} />
-      </section>
+      <Card style={{ marginBottom: 16 }}>
+        <Field label="Campaign name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Summer Room Upgrade" /></Field>
+      </Card>
 
-      <section style={section}>
-        <div style={{ fontWeight: 600, marginBottom: 10 }}>Channels</div>
+      <Card style={{ marginBottom: 16 }}>
+        <CardTitle>Channels</CardTitle>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {ALL_CHANNELS.map((c) => {
             const on = channels.has(c.key);
             return (
               <button type="button" key={c.key} onClick={() => toggle(c.key)}
-                style={{ ...channelCard, borderColor: on ? "#0f766e" : "#e5e7eb", background: on ? "#f0fdfa" : "#fff" }}>
-                <div style={{ fontWeight: 600 }}>{on ? "✓ " : ""}{c.label}</div>
-                <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>{c.hint}</div>
+                style={{ ...channelCard, borderColor: on ? t.color.accent : t.color.border, background: on ? t.color.accentSoft : t.color.surface }}>
+                <div style={{ fontWeight: 600, color: t.color.text }}>{on ? "✓ " : ""}{c.label}</div>
+                <div style={{ fontSize: t.font.xs, color: t.color.textMuted, marginTop: 4 }}>{c.hint}</div>
               </button>
             );
           })}
         </div>
-      </section>
+      </Card>
 
       {channels.has("voice") && (
-        <section style={section}>
-          <div style={sectionTitle}>Voice script & A/B voices</div>
+        <Card style={{ marginBottom: 16 }}>
+          <CardTitle>Voice script & A/B voices</CardTitle>
           <TemplateField label="System prompt / script" value={scriptTemplate} onChange={setScript} rows={5}
             placeholder="You are calling {lead.firstName} from {tenant.name}…" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-            <div><label style={lbl}>Variant A voice</label>
-              <select value={voiceA} onChange={(e) => setVoiceA(e.target.value)} style={input}>{ELEVENLABS_VOICES.map((v) => <option key={v}>{v}</option>)}</select></div>
-            <div><label style={lbl}>Variant B voice</label>
-              <select value={voiceB} onChange={(e) => setVoiceB(e.target.value)} style={input}>{ELEVENLABS_VOICES.map((v) => <option key={v}>{v}</option>)}</select></div>
-            <div><label style={lbl}>Persona A label</label><input value={personaA} onChange={(e) => setPersonaA(e.target.value)} style={input} /></div>
-            <div><label style={lbl}>Persona B label</label><input value={personaB} onChange={(e) => setPersonaB(e.target.value)} style={input} /></div>
-            <div><label style={lbl}>Agent name (intro)</label><input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="defaults to hotel name" style={input} /></div>
-            <div><label style={lbl}>Outcome types (comma-separated)</label><input value={outcomeTypes} onChange={(e) => setOutcomeTypes(e.target.value)} style={input} /></div>
+            <Field label="Variant A voice"><Select value={voiceA} onChange={(e) => setVoiceA(e.target.value)}>{ELEVENLABS_VOICES.map((v) => <option key={v}>{v}</option>)}</Select></Field>
+            <Field label="Variant B voice"><Select value={voiceB} onChange={(e) => setVoiceB(e.target.value)}>{ELEVENLABS_VOICES.map((v) => <option key={v}>{v}</option>)}</Select></Field>
+            <Field label="Persona A label"><Input value={personaA} onChange={(e) => setPersonaA(e.target.value)} /></Field>
+            <Field label="Persona B label"><Input value={personaB} onChange={(e) => setPersonaB(e.target.value)} /></Field>
+            <Field label="Agent name (intro)"><Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="defaults to hotel name" /></Field>
+            <Field label="Outcome types (comma-separated)"><Input value={outcomeTypes} onChange={(e) => setOutcomeTypes(e.target.value)} /></Field>
           </div>
-        </section>
+        </Card>
       )}
 
       {channels.has("whatsapp") && (
-        <section style={section}>
-          <div style={sectionTitle}>WhatsApp (pre-approved template)</div>
-          <label style={lbl}>Approved template</label>
-          <select value={whatsappTemplateId} onChange={(e) => setWaTemplateId(e.target.value)} style={input}>
-            <option value="">— select an approved template —</option>
-            {waTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <div style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 12px" }}>
-            {waTemplates.length === 0
-              ? <>No approved templates yet — create one in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a>. WhatsApp campaigns can't be activated without an approved template (Meta requirement).</>
-              : <>Required to activate. Manage in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a>.</>}
-          </div>
-          <label style={lbl}>Legacy: raw Content SID (optional, advanced)</label>
-          <input value={whatsappContentSid} onChange={(e) => setWaSid(e.target.value)} placeholder="HX…" style={input} />
-          <div style={{ marginTop: 12 }}>
+        <Card style={{ marginBottom: 16 }}>
+          <CardTitle>WhatsApp (pre-approved template)</CardTitle>
+          <Field label="Approved template" hint={waTemplates.length === 0
+            ? <>No approved templates yet — create one in <a href="/templates" style={{ color: t.color.accent }}>Templates</a>. WhatsApp campaigns can&apos;t be activated without an approved template (Meta requirement).</>
+            : <>Required to activate. Manage in <a href="/templates" style={{ color: t.color.accent }}>Templates</a>.</>}>
+            <Select value={whatsappTemplateId} onChange={(e) => setWaTemplateId(e.target.value)}>
+              <option value="">— select an approved template —</option>
+              {waTemplates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Legacy: raw Content SID (optional, advanced)"><Input value={whatsappContentSid} onChange={(e) => setWaSid(e.target.value)} placeholder="HX…" /></Field>
+          <div style={{ marginBottom: 14 }}>
             <TemplateField label="Template body (for preview)" value={whatsappTemplateBody} onChange={setWaBody} rows={3}
               placeholder="Hi {lead.firstName}, …" />
           </div>
-          <div style={{ marginTop: 12 }}>
-            <label style={lbl}>Template variables — one per line, in order ({"{{1}}, {{2}}…"})</label>
+          <Field label={`Template variables — one per line, in order ({{1}}, {{2}}…)`}>
             <textarea value={whatsappVariables} onChange={(e) => setWaVars(e.target.value)} rows={3}
-              placeholder={"{lead.firstName}\n{campaign.calendlyLink}"} style={textarea} />
-          </div>
-          <div style={{ marginTop: 14, padding: 12, background: "#fafafa", borderRadius: 8 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
+              placeholder={"{lead.firstName}\n{campaign.calendlyLink}"} style={textareaStyle} />
+          </Field>
+          <div style={{ marginTop: 4, padding: 12, background: t.color.bg, borderRadius: t.radius.md, border: `1px solid ${t.color.border}` }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: t.font.base, fontWeight: 600 }}>
               <input type="checkbox" checked={whatsappAgentEnabled} onChange={(e) => setWaAgent(e.target.checked)} />
               Enable two-way AI agent (reply to customer replies automatically)
             </label>
             {whatsappAgentEnabled && (
               <div style={{ marginTop: 10 }}>
-                <label style={lbl}>How should the bot respond? (your instructions to the AI)</label>
+                <Label>How should the bot respond? (your instructions to the AI)</Label>
                 <textarea value={whatsappAgentPrompt} onChange={(e) => setWaAgentPrompt(e.target.value)} rows={4}
                   placeholder={"e.g. You are a warm, concise concierge for {tenant.name}. Answer questions about the offer, never make up prices, and if the guest is interested share the booking link."}
-                  style={textarea} />
-                <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0" }}>
-                  This is the AI's system prompt — it fully controls tone & behaviour. Supports {"{variables}"}. Leave blank for a sensible default.
+                  style={textareaStyle} />
+                <p style={{ fontSize: t.font.xs, color: t.color.textMuted, margin: "6px 0 0" }}>
+                  This is the AI&apos;s system prompt — it fully controls tone & behaviour. Supports {"{variables}"}. Leave blank for a sensible default.
                 </p>
               </div>
             )}
           </div>
-        </section>
+        </Card>
       )}
 
       {channels.has("email") && (
-        <section style={section}>
-          <div style={sectionTitle}>Email</div>
-          <label style={lbl}>Subject</label>
-          <input value={emailSubjectTemplate} onChange={(e) => setEmailSubject(e.target.value)} placeholder="A special offer for {lead.firstName}" style={input} />
-          <div style={{ marginTop: 12 }}>
+        <Card style={{ marginBottom: 16 }}>
+          <CardTitle>Email</CardTitle>
+          <Field label="Subject"><Input value={emailSubjectTemplate} onChange={(e) => setEmailSubject(e.target.value)} placeholder="A special offer for {lead.firstName}" /></Field>
+          <div style={{ marginTop: 4 }}>
             <TemplateField label="Body (HTML)" value={emailBodyTemplate} onChange={setEmailBody} rows={6}
               placeholder="<p>Hi {lead.firstName},</p>…" />
           </div>
-        </section>
+        </Card>
       )}
 
-      <section style={section}>
-        <div style={sectionTitle}>Delivery controls</div>
+      <Card style={{ marginBottom: 16 }}>
+        <CardTitle>Delivery controls</CardTitle>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <div><label style={lbl}>Calendly link</label><input value={calendlyLink} onChange={(e) => setCalendly(e.target.value)} style={input} /></div>
-          <div><label style={lbl}>Max concurrent</label><input value={maxConcurrent} onChange={(e) => setMaxConcurrent(e.target.value)} type="number" min={0} style={input} /></div>
-          <div><label style={lbl}>Spend cap (sends/dials)</label><input value={spendCapCalls} onChange={(e) => setSpendCap(e.target.value)} type="number" min={1} placeholder="optional" style={input} /></div>
-          <div><label style={lbl}>Default country code</label><input value={defaultCountryCode} onChange={(e) => setCountry(e.target.value)} style={input} /></div>
+          <Field label="Calendly link"><Input value={calendlyLink} onChange={(e) => setCalendly(e.target.value)} /></Field>
+          <Field label="Max concurrent"><Input value={maxConcurrent} onChange={(e) => setMaxConcurrent(e.target.value)} type="number" min={0} /></Field>
+          <Field label="Spend cap (sends/dials)"><Input value={spendCapCalls} onChange={(e) => setSpendCap(e.target.value)} type="number" min={1} placeholder="optional" /></Field>
+          <Field label="Default country code"><Input value={defaultCountryCode} onChange={(e) => setCountry(e.target.value)} /></Field>
         </div>
-      </section>
+      </Card>
 
-      {error && <div style={{ color: "#991b1b", background: "#fee2e2", padding: 10, borderRadius: 8, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: t.color.danger, background: t.color.dangerSoft, padding: 10, borderRadius: t.radius.md, marginBottom: 12, fontSize: t.font.sm }}>{error}</div>}
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={submit} disabled={busy} style={btnPrimary}>{busy ? "Creating…" : "Create campaign"}</button>
-        <Link href="/campaigns" style={btnGhost}>Cancel</Link>
+        <Button onClick={submit} disabled={busy}>{busy ? "Creating…" : "Create campaign"}</Button>
+        <LinkButton variant="secondary" href="/campaigns">Cancel</LinkButton>
       </div>
     </div>
   );
 }
 
-const section: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 18, marginBottom: 16 };
-const sectionTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 12, fontSize: 15 };
-const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "#374151", marginBottom: 4, fontWeight: 500 };
-const input: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 14, boxSizing: "border-box" };
-const textarea: React.CSSProperties = { ...input, fontFamily: "inherit", resize: "vertical" };
-const chip: React.CSSProperties = { display: "block", width: "100%", textAlign: "left", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 5, padding: "3px 6px", margin: "2px 0", fontSize: 11, cursor: "pointer", color: "#0f766e" };
-const channelCard: React.CSSProperties = { flex: "1 1 220px", textAlign: "left", border: "2px solid #e5e7eb", borderRadius: 10, padding: 14, cursor: "pointer", background: "#fff" };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "10px 18px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14 };
-const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "10px 18px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };
+const chip: React.CSSProperties = { display: "block", width: "100%", textAlign: "left", background: t.color.surface, border: `1px solid ${t.color.border}`, borderRadius: 5, padding: "3px 6px", margin: "2px 0", fontSize: 11, cursor: "pointer", color: t.color.accent };
+const channelCard: React.CSSProperties = { flex: "1 1 220px", textAlign: "left", border: `2px solid ${t.color.border}`, borderRadius: t.radius.md, padding: 14, cursor: "pointer", background: t.color.surface };
