@@ -24,7 +24,7 @@ import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
-import { checkWebhookSignature } from "./core/connectors/webhook-verify";
+import { checkWebhookSignature, verifySharedWebhookSecret } from "./core/connectors/webhook-verify";
 import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel } from "./core/rbac";
@@ -2851,6 +2851,12 @@ const handleRequest = async (
 
     // ── POST /connectors/pms/simulate ────────────────────────────────────────
     if (req.url === "/connectors/pms/simulate" && req.method === "POST") {
+      // Demo-only: fabricates a check-in with real DB writes. Disabled in
+      // production unless explicitly opted in, so it can't be used to seed
+      // bogus stays/contacts on a live tenant (F-2).
+      if (process.env.NODE_ENV === "production" && process.env.ENABLE_PMS_SIMULATE !== "true") {
+        json(res, 404, { ok: false, error: "Not found" }); return;
+      }
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
       if (!canAccess(auth.context.permissions, "POST /connectors/pms/simulate")) {
@@ -2879,6 +2885,17 @@ const handleRequest = async (
 
     // ── POST /connectors/pms/webhook ─────────────────────────────────────────
     if (req.url === "/connectors/pms/webhook" && req.method === "POST") {
+      // This endpoint writes data (contacts, stays, visit counts) for the tenantId
+      // in the body, so it MUST be authenticated. Without the shared-secret gate
+      // anyone who knows a tenantId could inject check-in/checkout events (F-2).
+      const providedSecret = req.headers["x-webhook-secret"];
+      const secretCheck = verifySharedWebhookSecret({
+        expected: process.env.PMS_WEBHOOK_SECRET,
+        provided: typeof providedSecret === "string" ? providedSecret : Array.isArray(providedSecret) ? providedSecret[0] : null,
+        isProduction: process.env.NODE_ENV === "production"
+      });
+      if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
+
       const rawBody = await parseRawBody(req);
       const body = (rawBody ? JSON.parse(rawBody) : {}) as {
         tenantId?: unknown; hotelId?: unknown; event?: unknown;

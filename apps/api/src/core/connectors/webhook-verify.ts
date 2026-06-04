@@ -35,6 +35,34 @@ export function verifyInteraktSignature(
   return safeCompare(computed, sig);
 }
 
+/**
+ * Shared-secret webhook auth (no HMAC): the caller must present `provided`
+ * matching the configured `expected` secret, compared in constant time.
+ *
+ * Fails CLOSED in production when no secret is configured, so a misconfigured
+ * deploy can never leave a data-writing webhook publicly callable (F-2). In
+ * non-production it stays open for local development convenience.
+ */
+export function verifySharedWebhookSecret(opts: {
+  expected: string | null | undefined;
+  provided: string | null | undefined;
+  isProduction: boolean;
+}): { ok: boolean; status: number; reason?: string } {
+  const expected = (opts.expected ?? "").trim();
+  const provided = (opts.provided ?? "").trim();
+
+  if (!expected) {
+    if (opts.isProduction) {
+      return { ok: false, status: 503, reason: "Webhook secret not configured" };
+    }
+    return { ok: true, status: 200 };
+  }
+  if (!provided || !safeCompare(provided, expected)) {
+    return { ok: false, status: 401, reason: "Invalid webhook secret" };
+  }
+  return { ok: true, status: 200 };
+}
+
 // Vapi: a shared secret echoed back in the x-vapi-secret header (no HMAC).
 // Verified by constant-time comparison against the configured secret.
 export function verifyVapiSecret(provided: string, expected: string): boolean {

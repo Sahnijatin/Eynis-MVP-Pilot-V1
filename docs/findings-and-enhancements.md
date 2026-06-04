@@ -49,7 +49,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | ID | Sev | Area | Finding | Status |
 |---|---|---|---|---|
 | F-1 | 🔴 | Security | SSE broadcast not tenant-scoped — cross-tenant data leak | ✅ fixed (#48) |
-| F-2 | 🔴 | Security | `/connectors/pms/webhook` unauthenticated + trusts body `tenantId` | ☐ open |
+| F-2 | 🔴 | Security | `/connectors/pms/webhook` unauthenticated + trusts body `tenantId` | ✅ fixed (#49) |
 | F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ☐ open |
 | F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ☐ open |
 | F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ☐ open |
@@ -259,6 +259,11 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-2 (#49) — PMS webhook unauthenticated — fixed.** Added `verifySharedWebhookSecret`
+  (constant-time, **fails closed in production** when `PMS_WEBHOOK_SECRET` is unset) and gated
+  `POST /connectors/pms/webhook` behind it before any data write. `/connectors/pms/simulate`
+  (demo writes) is now disabled in production unless `ENABLE_PMS_SIMULATE=true`. Added
+  `webhook-verify.test.ts` (5 tests). Suite: 211/211 green.
 - **F-1 (#48) — SSE cross-tenant leak — fixed.** `sse/clients.ts` now binds each client
   to its authenticated `tenantId` and `broadcastSSEEvent(tenantId, payload)` only delivers
   to clients of that tenant. All 14 call sites (server.ts, ingest, campaigns) updated to pass
