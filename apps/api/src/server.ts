@@ -789,6 +789,20 @@ const handleRequest = async (
         return;
       }
 
+      // Two-way campaign WhatsApp agent: if this sender is a lead on a campaign
+      // with the agent enabled, handle the reply here and stop. Otherwise fall
+      // through to the normal service-request ingest.
+      const providerMessageId =
+        asTrimmedString((body as Record<string, unknown>).MessageSid) ??
+        asTrimmedString((body as Record<string, unknown>).messageId) ??
+        asTrimmedString((body as Record<string, unknown>).id);
+      const { handleInboundWhatsApp } = await import("./core/campaigns/whatsapp-agent");
+      const agentResult = await handleInboundWhatsApp({ hotelId, fromPhone, body: message, providerMessageId });
+      if (agentResult.handled) {
+        json(res, 202, { ok: true, handledBy: "whatsapp_agent", reason: agentResult.reason });
+        return;
+      }
+
       const result = await ingestConnectorEvent({
         hotelId,
         connectorKey: provider === "twilio" ? "whatsapp_twilio" : provider === "interakt" ? "whatsapp_interakt" : "whatsapp_generic",
@@ -3034,6 +3048,7 @@ const handleRequest = async (
             calendlyLink: v.calendlyLink, agentName: v.agentName,
             whatsappContentSid: v.whatsappContentSid, whatsappTemplateBody: v.whatsappTemplateBody,
             whatsappVariables: JSON.stringify(v.whatsappVariables),
+            whatsappAgentEnabled: v.whatsappAgentEnabled, whatsappAgentPrompt: v.whatsappAgentPrompt,
             emailSubjectTemplate: v.emailSubjectTemplate, emailBodyTemplate: v.emailBodyTemplate,
             maxRetries: v.maxRetries, retryDelayHours: v.retryDelayHours,
             maxConcurrent: v.maxConcurrent, spendCapCalls: v.spendCapCalls, defaultCountryCode: v.defaultCountryCode,

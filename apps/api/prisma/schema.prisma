@@ -314,6 +314,9 @@ model VoiceCampaign {
   whatsappContentSid    String? // provider-approved template id (Twilio Content SID / Meta template)
   whatsappTemplateBody  String? // approved text with {variable} placeholders (for preview)
   whatsappVariables     String                 @default("[]") // JSON ordered list of {variable} exprs for the template
+  // ── WhatsApp two-way agent (configurable per campaign) ──
+  whatsappAgentEnabled  Boolean                @default(false) // reply to inbound WhatsApp with the AI agent
+  whatsappAgentPrompt   String? // operator-defined instructions: how the bot should respond to customers
   // ── Email channel ──
   emailSubjectTemplate  String? // {variable} placeholders
   emailBodyTemplate     String? // HTML, {variable} placeholders
@@ -447,6 +450,7 @@ model WhatsappMessage {
   conversationId String
   direction      String // in | out
   body           String
+  providerId     String? // provider message id (inbound dedupe / outbound tracking)
   sentiment      String? // positive | neutral | negative
   score          Float?
   createdAt      DateTime             @default(now())
