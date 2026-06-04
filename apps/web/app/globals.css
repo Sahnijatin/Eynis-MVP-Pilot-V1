@@ -625,3 +625,5 @@
     @apply flex items-center;
   }
 }
+
+@keyframes ds-spin { to { transform: rotate(360deg); } }
