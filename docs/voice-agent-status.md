@@ -1,6 +1,6 @@
 # Multi-Channel Campaign System — Status & Regroup
 
-_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **170/170 green**_
+_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **173/173 green**_
 
 This is the executive view: the original plan, what we built, what changed, what's
 left, and the next steps. The phase-by-phase detail lives in
@@ -75,8 +75,8 @@ channels in parallel · pre-approved WhatsApp templates · `manage_campaigns` RB
   reasons.
 
 ### Health
-- **API tests: 170/170 passing** · TypeScript lint clean · `next build` clean.
-- 15 campaign modules + 24 test files; **9 DB migrations**.
+- **API tests: 173/173 passing** · TypeScript lint clean · `next build` clean.
+- 16 campaign modules + 26 test files; **10 DB migrations**.
 - Everything **keys-last**: runs and is fully testable with no Vapi/Twilio/Resend keys.
 
 ---
@@ -113,7 +113,8 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 | **Segmentation**: lead tags + custom attributes · saved segments (`/segments`) · target a campaign at a segment (dispatcher + dialler honour it) | ✅ |
 | **Scheduling**: scheduled start · daily send window / quiet-hours (per-tz, overnight-aware) · allowed weekdays — enforced by dispatcher + dialler | ✅ |
 | **Drip automation**: multi-step sequences (delay → channel action) · enroll by segment · runner advances enrollments · exit on reply/opt-out/booking (`/sequences`) | ✅ |
-| Keys-last (runs/tests with no external keys) · **170/170 tests** | ✅ |
+| **Template library**: reusable WhatsApp/email templates with approval-status lifecycle (draft → submitted → approved/rejected) + recorded Content SID (`/templates`) | ✅ |
+| Keys-last (runs/tests with no external keys) · **173/173 tests** | ✅ |
 
 ---
 
@@ -165,7 +166,7 @@ under one **compliance guard**. Their edge we're closing:
 | Auto-retry failed sends | ✅ done |
 | **Scheduling / quiet-hours / send windows** | ✅ done |
 | **Drip automation** (multi-step sequences, delays, exit conditions) | ✅ done |
-| In-app WhatsApp **template library + approval status** | ⏳ Tier 2 |
+| In-app WhatsApp **template library + approval status** | ✅ done |
 | Delivery **read/click tracking** + deeper analytics | ⏳ Tier 2 (needs provider webhooks) |
 | **Shared inbox + human handoff** | ⏳ Tier 3 |
 | Forms / opt-in capture · bounce-suppression hygiene | ⏳ Tier 3 |

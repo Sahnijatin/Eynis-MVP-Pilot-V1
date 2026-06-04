@@ -305,6 +305,18 @@ const parseSegmentPath = (
   return { id: decodeURIComponent(match[1]), preview: match[2] === "preview" };
 };
 
+// Templates routing: /templates, /templates/:id, /templates/:id/submit
+const parseTemplatePath = (
+  url: string | undefined,
+): { id: string | null; submit: boolean } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  if (pathname === "/templates") return { id: null, submit: false };
+  const match = /^\/templates\/([^/]+)(?:\/(submit))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  return { id: decodeURIComponent(match[1]), submit: match[2] === "submit" };
+};
+
 // Sequences routing: /sequences, /sequences/:id, /sequences/:id/{enroll,enrollments}
 const parseSequencePath = (
   url: string | undefined,
@@ -3073,6 +3085,84 @@ const handleRequest = async (
         role: { id: role.id, key: role.key, displayName: role.displayName, permissions, isSystem: false, isCustom: true, userCount: 0 }
       });
       return;
+    }
+
+    // ── Message Templates: reusable library + approval status ───────────────
+    const tplPath = parseTemplatePath(req.url);
+    if (tplPath) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const tplMod = await import("./core/campaigns/templates");
+      const ser = (t: any) => ({ ...t, variables: (() => { try { const v = JSON.parse(t.variables); return Array.isArray(v) ? v : []; } catch { return []; } })() });
+
+      // Collection
+      if (tplPath.id === null) {
+        if (req.method === "GET") {
+          const qs = parseUrl(req.url).searchParams;
+          const where = {
+            hotelId,
+            ...(asTrimmedString(qs.get("channel")) ? { channel: asTrimmedString(qs.get("channel"))! } : {}),
+            ...(asTrimmedString(qs.get("status")) ? { status: asTrimmedString(qs.get("status"))! } : {}),
+          };
+          const rows = await prisma.messageTemplate.findMany({ where, orderBy: { updatedAt: "desc" } });
+          json(res, 200, { ok: true, items: rows.map(ser) });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const v = tplMod.validateTemplateCreate(body);
+          if (!v.ok) { json(res, 400, { ok: false, error: v.error }); return; }
+          const created = await prisma.messageTemplate.create({
+            data: { hotelId, name: v.value.name, channel: v.value.channel, category: v.value.category, language: v.value.language, subject: v.value.subject, body: v.value.body, variables: JSON.stringify(v.value.variables) },
+          });
+          json(res, 201, { ok: true, template: ser(created) });
+          return;
+        }
+        json(res, 405, { ok: false, error: "Method not allowed" }); return;
+      }
+
+      const tpl = await prisma.messageTemplate.findFirst({ where: { id: tplPath.id, hotelId } });
+      if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+
+      // POST /templates/:id/submit — draft → submitted
+      if (tplPath.submit && req.method === "POST") {
+        if (tpl.status !== "draft" && tpl.status !== "rejected") { json(res, 409, { ok: false, error: "Only draft/rejected templates can be submitted" }); return; }
+        const updated = await prisma.messageTemplate.update({ where: { id: tpl.id }, data: { status: "submitted", submittedAt: new Date(), rejectionReason: null } });
+        json(res, 200, { ok: true, template: ser(updated) });
+        return;
+      }
+      if (tplPath.submit) { json(res, 405, { ok: false, error: "Method not allowed" }); return; }
+
+      if (req.method === "GET") { json(res, 200, { ok: true, template: ser(tpl) }); return; }
+      if (req.method === "PATCH") {
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const data: Record<string, unknown> = {};
+        // Content edits (allowed while not approved).
+        for (const f of ["name", "category", "language", "subject", "body"] as const) {
+          if (f in body) { const s = asTrimmedString(body[f]); if (f !== "subject" && !s) { json(res, 400, { ok: false, error: `${f} must be a non-empty string` }); return; } data[f] = s; }
+        }
+        if ("variables" in body) data.variables = JSON.stringify(Array.isArray(body.variables) ? body.variables.filter((x): x is string => typeof x === "string") : []);
+        // Status lifecycle.
+        if ("status" in body) {
+          const sc = tplMod.validateStatusChange(tpl.channel, String(body.status), { providerTemplateId: body.providerTemplateId as string | null, rejectionReason: body.rejectionReason as string | null });
+          if (!sc.ok) { json(res, 400, { ok: false, error: sc.error }); return; }
+          Object.assign(data, sc.value);
+        }
+        if (Object.keys(data).length === 0) { json(res, 400, { ok: false, error: "No updatable fields provided" }); return; }
+        const updated = await prisma.messageTemplate.update({ where: { id: tpl.id }, data });
+        json(res, 200, { ok: true, template: ser(updated) });
+        return;
+      }
+      if (req.method === "DELETE") {
+        await prisma.messageTemplate.delete({ where: { id: tpl.id } });
+        json(res, 200, { ok: true, deleted: tpl.id });
+        return;
+      }
+      json(res, 405, { ok: false, error: "Method not allowed" }); return;
     }
 
     // ── Drip Sequences: multi-step automation ───────────────────────────────
