@@ -70,6 +70,8 @@ export function CampaignBuilder() {
   const [whatsappContentSid, setWaSid] = useState("");
   const [whatsappTemplateBody, setWaBody] = useState("");
   const [whatsappVariables, setWaVars] = useState("");
+  const [whatsappAgentEnabled, setWaAgent] = useState(false);
+  const [whatsappAgentPrompt, setWaAgentPrompt] = useState("");
   // email
   const [emailSubjectTemplate, setEmailSubject] = useState("");
   const [emailBodyTemplate, setEmailBody] = useState("");
@@ -113,6 +115,8 @@ export function CampaignBuilder() {
         whatsappContentSid: whatsappContentSid.trim(),
         whatsappTemplateBody: whatsappTemplateBody.trim() || null,
         whatsappVariables: whatsappVariables.split("\n").map((s) => s.trim()).filter(Boolean),
+        whatsappAgentEnabled,
+        whatsappAgentPrompt: whatsappAgentPrompt.trim() || null,
       });
     }
     if (channels.has("email")) {
@@ -189,6 +193,23 @@ export function CampaignBuilder() {
             <label style={lbl}>Template variables — one per line, in order ({"{{1}}, {{2}}…"})</label>
             <textarea value={whatsappVariables} onChange={(e) => setWaVars(e.target.value)} rows={3}
               placeholder={"{lead.firstName}\n{campaign.calendlyLink}"} style={textarea} />
+          </div>
+          <div style={{ marginTop: 14, padding: 12, background: "#fafafa", borderRadius: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
+              <input type="checkbox" checked={whatsappAgentEnabled} onChange={(e) => setWaAgent(e.target.checked)} />
+              Enable two-way AI agent (reply to customer replies automatically)
+            </label>
+            {whatsappAgentEnabled && (
+              <div style={{ marginTop: 10 }}>
+                <label style={lbl}>How should the bot respond? (your instructions to the AI)</label>
+                <textarea value={whatsappAgentPrompt} onChange={(e) => setWaAgentPrompt(e.target.value)} rows={4}
+                  placeholder={"e.g. You are a warm, concise concierge for {tenant.name}. Answer questions about the offer, never make up prices, and if the guest is interested share the booking link."}
+                  style={textarea} />
+                <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0" }}>
+                  This is the AI's system prompt — it fully controls tone & behaviour. Supports {"{variables}"}. Leave blank for a sensible default.
+                </p>
+              </div>
+            )}
           </div>
         </section>
       )}

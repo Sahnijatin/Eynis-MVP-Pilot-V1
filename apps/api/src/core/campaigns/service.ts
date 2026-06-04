@@ -34,6 +34,8 @@ export interface CampaignCreateValue {
   whatsappContentSid: string | null;
   whatsappTemplateBody: string | null;
   whatsappVariables: string[];
+  whatsappAgentEnabled: boolean;
+  whatsappAgentPrompt: string | null;
   // email
   emailSubjectTemplate: string | null;
   emailBodyTemplate: string | null;
@@ -160,6 +162,8 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
       whatsappContentSid,
       whatsappTemplateBody: str(body.whatsappTemplateBody),
       whatsappVariables,
+      whatsappAgentEnabled: body.whatsappAgentEnabled === true,
+      whatsappAgentPrompt: str(body.whatsappAgentPrompt),
       emailSubjectTemplate,
       emailBodyTemplate,
       maxRetries: intOr(body.maxRetries, 2),
@@ -190,11 +194,12 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
   // Nullable string fields (per-channel templates etc. — null clears them).
   const nullableStrings = [
     "scriptTemplate", "voiceA", "voiceB", "personaA", "personaB", "calendlyLink", "agentName",
-    "whatsappContentSid", "whatsappTemplateBody", "emailSubjectTemplate", "emailBodyTemplate",
+    "whatsappContentSid", "whatsappTemplateBody", "whatsappAgentPrompt", "emailSubjectTemplate", "emailBodyTemplate",
   ] as const;
   for (const f of nullableStrings) {
     if (f in body) data[f] = str(body[f]);
   }
+  if (body.whatsappAgentEnabled !== undefined) data.whatsappAgentEnabled = body.whatsappAgentEnabled === true;
 
   if (body.channels !== undefined) {
     const c = validateChannels(body.channels);
