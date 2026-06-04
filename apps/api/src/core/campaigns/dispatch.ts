@@ -15,6 +15,7 @@ import { campaignMaySendNow } from "./schedule-gate";
 import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
+import { singleFlight } from "./single-flight";
 
 // Resolve a campaign's optional targeting segment to a lead where-fragment.
 // Returns {} when no segment is set (or it was deleted) → contact all leads.
@@ -206,8 +207,11 @@ export async function processCampaignChannel(
   return { sent, failed, skipped };
 }
 
-// One pass over all active campaigns' messaging channels.
-export async function runDispatchTick(deps: DispatchDeps = {}): Promise<void> {
+// One pass over all active campaigns' messaging channels. Wrapped in singleFlight
+// so a tick that overruns the interval can't overlap the next one — overlapping
+// passes would re-select the same fresh leads (F-3 double-send) and each spend the
+// full remaining budget (F-4 cap overshoot).
+export const runDispatchTick = singleFlight(async (deps: DispatchDeps = {}): Promise<void> => {
   const active = await prisma.voiceCampaign.findMany({ where: { status: "active" }, select: { id: true, channels: true } });
   for (const campaign of active) {
     const channels = safeArray(campaign.channels).filter((c) => MESSAGING_CHANNELS.includes(c));
@@ -219,7 +223,7 @@ export async function runDispatchTick(deps: DispatchDeps = {}): Promise<void> {
       }
     }
   }
-}
+});
 
 let timer: ReturnType<typeof setInterval> | null = null;
 

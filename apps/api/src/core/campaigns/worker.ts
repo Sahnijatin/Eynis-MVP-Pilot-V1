@@ -21,6 +21,7 @@ import {
   resolveVapiCredentials, isVapiConfigured, initiateCall as realInitiateCall,
   type VapiCredentials, type VapiResult, type CallParams,
 } from "./vapi";
+import { singleFlight } from "./single-flight";
 
 const TICK_MS = Number(process.env.CAMPAIGN_DIALER_INTERVAL_MS ?? 30_000);
 const DEFAULT_MAX_CONCURRENT = 5;
@@ -201,7 +202,11 @@ export async function processVoiceCampaign(
   return { dialed, skipped, failed };
 }
 
-export async function runDialerTick(deps: DialerDeps = {}): Promise<void> {
+// Wrapped in singleFlight — a dial pass that overruns the interval must not overlap
+// the next one, or both passes would independently pass the spend-cap check and
+// overshoot the budget (F-4). The per-lead pending→calling lock already prevents
+// double-dialling; this keeps the cap safe by running one pass at a time.
+export const runDialerTick = singleFlight(async (deps: DialerDeps = {}): Promise<void> => {
   const active = await prisma.voiceCampaign.findMany({ where: { status: "active" }, select: { id: true, channels: true } });
   for (const campaign of active) {
     if (!safeArray(campaign.channels).includes("voice")) continue;
@@ -211,7 +216,7 @@ export async function runDialerTick(deps: DialerDeps = {}): Promise<void> {
       console.error(`[Dialer] campaign ${campaign.id} failed:`, (e as Error).message);
     }
   }
-}
+});
 
 let timer: ReturnType<typeof setInterval> | null = null;
 

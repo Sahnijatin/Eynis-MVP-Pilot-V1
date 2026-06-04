@@ -50,8 +50,8 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 |---|---|---|---|---|
 | F-1 | 🔴 | Security | SSE broadcast not tenant-scoped — cross-tenant data leak | ✅ fixed (#48) |
 | F-2 | 🔴 | Security | `/connectors/pms/webhook` unauthenticated + trusts body `tenantId` | ✅ fixed (#49) |
-| F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ☐ open |
-| F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ☐ open |
+| F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ✅ fixed (#50) |
+| F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ✅ fixed (#51) |
 | F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ✅ fixed (#52) |
 | F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ☐ open |
 | F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ✅ fixed (#54) |
@@ -259,6 +259,17 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-3 / F-4 (#50, #51) — messaging double-send + spend-cap overshoot — fixed.** Root cause
+  was `setInterval(() => void tick())` being fire-and-forget: a tick that overran the 30s
+  interval overlapped the next, so two passes re-selected the same fresh leads (double-send)
+  and each spent the full remaining budget (the per-tick cap already bounds `batchSize` to the
+  remaining budget, so the only overshoot was from overlap). Extracted a `singleFlight` helper
+  and wrapped both `runDispatchTick` and `runDialerTick` so a pass can't overlap itself. The
+  voice worker's per-lead `pending→calling` lock already prevented double-dialling. Added
+  `single-flight.test.ts` (3 tests). _Residual:_ the voice and messaging workers are separate
+  30s timers, so a hard cross-worker cap would need a shared atomic reservation — the cap is a
+  soft ceiling by design; overshoot is now bounded to at most one concurrent worker pass rather
+  than unbounded overlap. Suite: 217/217 green.
 - **F-5 (#52) — email-only leads never send — fixed.** `canContactLead` is now
   channel-aware: the email channel requires a deliverable address (`isLikelyEmail`),
   voice/WhatsApp require a phone (default). Threaded `email`+`channel` through `guard.ts`,
