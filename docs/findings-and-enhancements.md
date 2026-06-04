@@ -58,8 +58,8 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
 | F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ☐ open |
 | F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ☐ open |
-| F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ☐ open |
-| F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ☐ open |
+| F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ✅ fixed (#58) |
+| F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ✅ fixed (#59) |
 | F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ☐ open |
 | F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ☐ open |
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ☐ open |
@@ -259,6 +259,13 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-11 / F-12 (#58, #59) — AI parsing + route error handling — fixed.** `extractJson` now
+  returns `null` instead of throwing on no-match/parse-failure; a new `parseStructured<T>`
+  validates the response is a plain object with the required keys, throwing a typed
+  `AiResponseError` otherwise — so structurally-invalid AI output is rejected rather than
+  cast through to the DB/client. All five AI routes are wrapped in try/catch via an `aiError`
+  helper that logs the cause and returns a clean `502` (night audit no longer persists a
+  malformed report). Added 4 parse tests. Suite: 232 → 235 green.
 - **F-6 (#53) — no tests for AI + automation — fixed.** Added `engine.test.ts` (5 integration
   tests: each of the 4 rules acts correctly + is idempotent, plus multi-tenant scoping),
   `intelligence.test.ts` (`extractJson` success/embedded/nested/failure), and `ingest.test.ts`

@@ -17,6 +17,7 @@ import {
   generateMorningBriefing,
   generateRevenueInsights,
   generateNightAuditReport,
+  AiResponseError,
   type NightAuditData
 } from "./core/ai/intelligence";
 import { startAutomationWorker } from "./core/automations/engine";
@@ -41,6 +42,15 @@ eventBus.subscribe("service_request.created", (event) => {
 const json = (res: ServerResponse, status: number, payload: unknown) => {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(payload));
+};
+
+// Turns an AI provider/parse failure into a clean 502 instead of letting it bubble
+// to the generic 500 with the cause swallowed (F-12). AiResponseError carries a safe,
+// specific message (bad shape); any other error is reported generically.
+const aiError = (res: ServerResponse, label: string, e: unknown) => {
+  const message = e instanceof Error ? e.message : String(e);
+  console.error(`[AI] ${label} failed:`, message);
+  json(res, 502, { ok: false, error: e instanceof AiResponseError ? `AI response error: ${message}` : "AI provider request failed" });
 };
 
 const parseRawBody = async (req: IncomingMessage): Promise<string> => {
@@ -2586,19 +2596,22 @@ const handleRequest = async (
       });
       const avgSentimentScore = Math.min(100, Math.max(40, Math.round((offerAggregate._avg.revenueInr ?? 0) / 100 + 68)));
 
-      const briefing = await generateMorningBriefing({
-        hotelName: hotel?.name ?? tenantId,
-        date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
-        openRequests: openReqs,
-        escalatedRequests: escalatedReqs,
-        occupancyPct: 72,
-        todayRevenue: 284000,
-        arrivingGuests: guestCount,
-        avgSentimentScore,
-        topPendingCategories: topCategories.map((c) => c.category)
-      }, provider);
-
-      json(res, 200, { ok: true, provider, briefing });
+      try {
+        const briefing = await generateMorningBriefing({
+          hotelName: hotel?.name ?? tenantId,
+          date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+          openRequests: openReqs,
+          escalatedRequests: escalatedReqs,
+          occupancyPct: 72,
+          todayRevenue: 284000,
+          arrivingGuests: guestCount,
+          avgSentimentScore,
+          topPendingCategories: topCategories.map((c) => c.category)
+        }, provider);
+        json(res, 200, { ok: true, provider, briefing });
+      } catch (e) {
+        aiError(res, "morning-briefing", e);
+      }
       return;
     }
 
@@ -2617,8 +2630,12 @@ const handleRequest = async (
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
-      const classification = await classifyInboundEvent(auth.context.tenantId, text, provider);
-      json(res, 200, { ok: true, provider, classification });
+      try {
+        const classification = await classifyInboundEvent(auth.context.tenantId, text, provider);
+        json(res, 200, { ok: true, provider, classification });
+      } catch (e) {
+        aiError(res, "classify-event", e);
+      }
       return;
     }
 
@@ -2671,19 +2688,22 @@ const handleRequest = async (
         .map(([cat]) => cat);
       const totalSpendInr = guestOffers.reduce((sum, o) => sum + (o.revenueInr ?? 0), 0);
 
-      const intelligence = await generateGuestIntelligence({
-        guestName: guest.fullName,
-        totalStays: guest.visitCount,
-        lastStayDate: lastReq ? new Date(lastReq.createdAt).toLocaleDateString("en-IN") : null,
-        totalSpendInr,
-        preferredCategories,
-        openRequests: openCount,
-        sentimentScore: null,
-        segment: "transient",
-        notes: []
-      }, provider);
-
-      json(res, 200, { ok: true, provider, guestId, guestName: guest.fullName, intelligence });
+      try {
+        const intelligence = await generateGuestIntelligence({
+          guestName: guest.fullName,
+          totalStays: guest.visitCount,
+          lastStayDate: lastReq ? new Date(lastReq.createdAt).toLocaleDateString("en-IN") : null,
+          totalSpendInr,
+          preferredCategories,
+          openRequests: openCount,
+          sentimentScore: null,
+          segment: "transient",
+          notes: []
+        }, provider);
+        json(res, 200, { ok: true, provider, guestId, guestName: guest.fullName, intelligence });
+      } catch (e) {
+        aiError(res, "guest-intelligence", e);
+      }
       return;
     }
 
@@ -2719,21 +2739,24 @@ const handleRequest = async (
       const accepted = await prisma.offerEvent.count({ where: { tenantId, status: "accepted" } });
       const total = await prisma.offerEvent.count({ where: { tenantId } });
 
-      const insights = await generateRevenueInsights({
-        hotelName: hotel?.name ?? tenantId,
-        occupancyPct: 72,
-        adrInr: 8500,
-        revParInr: 6120,
-        upsellConversionPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
-        topCategories: offerStats.map((o) => ({
-          name: o.offerType,
-          revenueInr: o._sum.revenueInr ?? 0
-        })),
-        weekTrend: "up",
-        availableRooms: Math.max(0, totalUsers - Math.floor(totalUsers * 0.72))
-      }, provider);
-
-      json(res, 200, { ok: true, provider, insights });
+      try {
+        const insights = await generateRevenueInsights({
+          hotelName: hotel?.name ?? tenantId,
+          occupancyPct: 72,
+          adrInr: 8500,
+          revParInr: 6120,
+          upsellConversionPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
+          topCategories: offerStats.map((o) => ({
+            name: o.offerType,
+            revenueInr: o._sum.revenueInr ?? 0
+          })),
+          weekTrend: "up",
+          availableRooms: Math.max(0, totalUsers - Math.floor(totalUsers * 0.72))
+        }, provider);
+        json(res, 200, { ok: true, provider, insights });
+      } catch (e) {
+        aiError(res, "revenue-insights", e);
+      }
       return;
     }
 
@@ -2816,7 +2839,14 @@ const handleRequest = async (
         topIssueCategory: topCategoryRows[0]?.category ?? "general"
       };
 
-      const result = await generateNightAuditReport(auditData, provider);
+      let result;
+      try {
+        result = await generateNightAuditReport(auditData, provider);
+      } catch (e) {
+        // Don't persist a malformed report (F-11/F-12) — fail cleanly instead.
+        aiError(res, "night-audit", e);
+        return;
+      }
       await prisma.nightAuditReport.upsert({
         where: { tenantId_reportDate: { tenantId, reportDate } },
         create: { tenantId, reportDate, contentJson: JSON.stringify(result), provider },

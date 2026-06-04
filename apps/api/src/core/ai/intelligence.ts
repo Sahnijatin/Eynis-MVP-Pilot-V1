@@ -44,10 +44,43 @@ Hotel context: You serve boutique and mid-scale hotels in India and Southeast As
 
 // ── Shared helper ─────────────────────────────────────────────────────────────
 
-export function extractJson(text: string): unknown {
+// Thrown when a provider returns something we can't parse into the expected shape.
+// AI route handlers catch this to return a clean error instead of a generic 500 (F-12).
+export class AiResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiResponseError";
+  }
+}
+
+// Pulls a JSON object out of a free-text model response. Returns null (never throws)
+// when no balanced-looking object is present or it doesn't parse — callers decide how
+// to handle the absence (F-11: previously this threw a raw SyntaxError that bubbled
+// to a generic 500).
+export function extractJson(text: string): unknown | null {
   const match = /\{[\s\S]*\}/.exec(text);
-  if (!match) throw new Error("No JSON object found in AI response");
-  return JSON.parse(match[0]);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+}
+
+// Parses a provider response and guarantees a plain object, with the given required
+// keys present. Throws AiResponseError on any shape problem so structurally-invalid AI
+// output is rejected rather than cast through to the DB/client unchecked (F-11).
+export function parseStructured<T>(text: string, requiredKeys: ReadonlyArray<keyof T & string>): T {
+  const parsed = extractJson(text);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new AiResponseError("AI response did not contain a JSON object");
+  }
+  const obj = parsed as Record<string, unknown>;
+  const missing = requiredKeys.filter((k) => !(k in obj));
+  if (missing.length > 0) {
+    throw new AiResponseError(`AI response missing required field(s): ${missing.join(", ")}`);
+  }
+  return parsed as T;
 }
 
 function claudeTextContent(response: Anthropic.Message): string {
@@ -231,19 +264,19 @@ async function claudeCall(userContent: string): Promise<string> {
 }
 
 async function claudeMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
-  return extractJson(await claudeCall(briefingPrompt(data))) as MorningBriefing;
+  return parseStructured<MorningBriefing>(await claudeCall(briefingPrompt(data)), BRIEFING_KEYS);
 }
 
 async function claudeClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
-  return extractJson(await claudeCall(classifyPrompt(tenantId, text))) as EventClassification;
+  return parseStructured<EventClassification>(await claudeCall(classifyPrompt(tenantId, text)), CLASSIFICATION_KEYS);
 }
 
 async function claudeGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
-  return extractJson(await claudeCall(guestPrompt(data))) as GuestIntelligence;
+  return parseStructured<GuestIntelligence>(await claudeCall(guestPrompt(data)), GUEST_KEYS);
 }
 
 async function claudeRevenueInsights(data: RevenueData): Promise<RevenueInsight> {
-  return extractJson(await claudeCall(revenuePrompt(data))) as RevenueInsight;
+  return parseStructured<RevenueInsight>(await claudeCall(revenuePrompt(data)), REVENUE_KEYS);
 }
 
 // ── OpenAI implementations ────────────────────────────────────────────────────
@@ -264,19 +297,19 @@ async function openaiCall(userContent: string): Promise<string> {
 }
 
 async function openaiMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
-  return JSON.parse(await openaiCall(briefingPrompt(data))) as MorningBriefing;
+  return parseStructured<MorningBriefing>(await openaiCall(briefingPrompt(data)), BRIEFING_KEYS);
 }
 
 async function openaiClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
-  return JSON.parse(await openaiCall(classifyPrompt(tenantId, text))) as EventClassification;
+  return parseStructured<EventClassification>(await openaiCall(classifyPrompt(tenantId, text)), CLASSIFICATION_KEYS);
 }
 
 async function openaiGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
-  return JSON.parse(await openaiCall(guestPrompt(data))) as GuestIntelligence;
+  return parseStructured<GuestIntelligence>(await openaiCall(guestPrompt(data)), GUEST_KEYS);
 }
 
 async function openaiRevenueInsights(data: RevenueData): Promise<RevenueInsight> {
-  return JSON.parse(await openaiCall(revenuePrompt(data))) as RevenueInsight;
+  return parseStructured<RevenueInsight>(await openaiCall(revenuePrompt(data)), REVENUE_KEYS);
 }
 
 // ── Night Audit ───────────────────────────────────────────────────────────────
@@ -335,12 +368,19 @@ Return a JSON object with exactly these keys:
 }
 
 async function claudeNightAudit(data: NightAuditData): Promise<NightAuditResult> {
-  return extractJson(await claudeCall(nightAuditPrompt(data))) as NightAuditResult;
+  return parseStructured<NightAuditResult>(await claudeCall(nightAuditPrompt(data)), NIGHT_AUDIT_KEYS);
 }
 
 async function openaiNightAudit(data: NightAuditData): Promise<NightAuditResult> {
-  return JSON.parse(await openaiCall(nightAuditPrompt(data))) as NightAuditResult;
+  return parseStructured<NightAuditResult>(await openaiCall(nightAuditPrompt(data)), NIGHT_AUDIT_KEYS);
 }
+
+// Required-key sets used to validate each provider response shape (F-11).
+const BRIEFING_KEYS = ["headline", "operationalAlerts", "revenueHighlight", "guestExperienceNote", "topPriority"] as const;
+const CLASSIFICATION_KEYS = ["category", "priority", "summary", "sentiment", "routingHint", "slaMinutes"] as const;
+const GUEST_KEYS = ["arrivalBrief", "keyPreferences", "upsellOpportunities", "attentionFlags", "vipScore"] as const;
+const REVENUE_KEYS = ["summary", "recommendations", "quickWin", "riskAlert"] as const;
+const NIGHT_AUDIT_KEYS = ["headline", "executiveSummary", "highlights", "concerns", "tomorrowRecommendations", "operationalScore"] as const;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
