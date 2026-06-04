@@ -38,9 +38,9 @@ function asTrimmedString(v: unknown): string | null {
 }
 
 async function upsertGuest(hotelId: string, guestName: string, phoneE164: string): Promise<string> {
-  const existing = await prisma.guest.findFirst({ where: { hotelId, phoneE164 }, select: { id: true } });
+  const existing = await prisma.contact.findFirst({ where: { hotelId, phoneE164 }, select: { id: true } });
   if (existing) return existing.id;
-  const g = await prisma.guest.create({
+  const g = await prisma.contact.create({
     data: { hotelId, fullName: guestName, phoneE164 },
     select: { id: true }
   });

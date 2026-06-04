@@ -122,15 +122,15 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
 
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
-const upsertGuestByPhone = async (hotelId: string, fullName: string, phoneE164: string) => {
-  const existing = await prisma.guest.findFirst({
+const upsertContactByPhone = async (hotelId: string, fullName: string, phoneE164: string) => {
+  const existing = await prisma.contact.findFirst({
     where: { hotelId, phoneE164 },
     select: { id: true }
   });
   if (existing) {
     return existing.id;
   }
-  const guest = await prisma.guest.create({
+  const guest = await prisma.contact.create({
     data: { hotelId, fullName, phoneE164 },
     select: { id: true }
   });
@@ -860,7 +860,7 @@ const handleRequest = async (
         return;
       }
 
-      const guestId = await upsertGuestByPhone(hotelId, guestName, guestPhone);
+      const guestId = await upsertContactByPhone(hotelId, guestName, guestPhone);
       const serviceRequest = await createServiceRequestForHotel({
         hotelId,
         guestId,
@@ -1119,7 +1119,7 @@ const handleRequest = async (
       }
 
       if (guestIdInput) {
-        const guest = await prisma.guest.findFirst({
+        const guest = await prisma.contact.findFirst({
           where: { id: guestIdInput, hotelId: context.hotelId },
           select: { id: true }
         });
@@ -1129,7 +1129,7 @@ const handleRequest = async (
         }
         guestId = guest.id;
       } else if (guestNameInput && guestPhoneInput) {
-        const guest = await prisma.guest.create({
+        const guest = await prisma.contact.create({
           data: {
             hotelId: context.hotelId,
             fullName: guestNameInput,
@@ -2144,7 +2144,7 @@ const handleRequest = async (
       }
       const guestId = guestIdMatch[1]!;
       const { hotelId } = auth.context;
-      const guest = await prisma.guest.findFirst({
+      const guest = await prisma.contact.findFirst({
         where: { id: guestId, hotelId },
         include: {
           stays: { orderBy: { checkInAt: "desc" }, take: 5 },
@@ -2203,7 +2203,7 @@ const handleRequest = async (
         ] } : {})
       };
       const [guests, total] = await Promise.all([
-        prisma.guest.findMany({
+        prisma.contact.findMany({
           where,
           orderBy: { visitCount: "desc" },
           skip: offset,
@@ -2224,7 +2224,7 @@ const handleRequest = async (
             }
           }
         }),
-        prisma.guest.count({ where })
+        prisma.contact.count({ where })
       ]);
       const segments = ["VIP", "Business", "Family", "Solo", "Couple"];
       const items = guests.map((g, i) => ({
@@ -2469,7 +2469,7 @@ const handleRequest = async (
       const [openReqs, escalatedReqs, guestCount] = await Promise.all([
         prisma.serviceRequest.count({ where: { hotelId, status: "open" } }),
         prisma.serviceRequest.count({ where: { hotelId, status: "escalated" } }),
-        prisma.guest.count({ where: { hotelId } })
+        prisma.contact.count({ where: { hotelId } })
       ]);
       const topCategories = await prisma.serviceRequest.groupBy({
         by: ["category"],
@@ -2537,7 +2537,7 @@ const handleRequest = async (
       const guestId = parseGuestIntelligencePath(req.url)!;
       const { hotelId } = auth.context;
 
-      const guest = await prisma.guest.findFirst({
+      const guest = await prisma.contact.findFirst({
         where: { id: guestId, hotelId },
         select: { id: true, fullName: true, visitCount: true }
       });
@@ -2769,8 +2769,8 @@ const handleRequest = async (
       const roomNumber = asTrimmedString(body.roomNumber) ?? `${Math.floor(Math.random() * 50) + 101}`;
 
       const phone = `+9198${Math.floor(Math.random() * 90000000) + 10000000}`;
-      const guestId = await upsertGuestByPhone(hotelId, guestNameInput, phone);
-      await prisma.guest.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
+      const guestId = await upsertContactByPhone(hotelId, guestNameInput, phone);
+      await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
 
       const checkInAt = new Date();
       const checkOutAt = new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
@@ -2804,10 +2804,10 @@ const handleRequest = async (
       const checkInAt = body.reservation?.checkIn ? new Date(body.reservation.checkIn as string) : new Date();
       const checkOutAt = body.reservation?.checkOut ? new Date(body.reservation.checkOut as string) : new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
 
-      const guestId = await upsertGuestByPhone(hotelId, guestName, guestPhone);
+      const guestId = await upsertContactByPhone(hotelId, guestName, guestPhone);
 
       if (eventType === "guest.checkin") {
-        await prisma.guest.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
+        await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
         const stay = await prisma.stay.create({ data: { hotelId, guestId, roomNumber, checkInAt, checkOutAt } });
         broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
         json(res, 201, { ok: true, event: "checkin", stayId: stay.id, guestId });
