@@ -214,21 +214,22 @@ _#3 (durable opt-out) and #4 (E.164 `+0…`) completed in Phase 6.0 above._
 
 ---
 
-## Phase 10 — Frontend (Day 6–9)
+## Phase 10 — Frontend (multi-channel) — core flow ✅ DONE
 
-- [ ] Add campaign fetch/mutation functions to `lib/data.ts` and `lib/api.ts`; add Next.js proxy routes under `app/api/campaigns/`
-- [ ] Add **Voice Campaigns** nav item (Mic icon) to `app-shell.tsx`
-- [ ] `/voice-campaigns` — list with status chips + per-campaign stats + New Campaign CTA
-- [ ] `/voice-campaigns/new` — basics + script editor with **variable reference panel** + A/B voice picker
-- [ ] `/voice-campaigns/[id]` — tabs: **Overview · Leads · Calls · Settings**
-  - [ ] Overview: funnel + A/B stat cards + leading-variant badge + **avg sentiment per variant**
-  - [ ] Leads: paginated table, status/variant chips, filters, remove pending
-  - [ ] Calls: SSE live log; expandable transcript with speaker labels, AI summary, **live sentiment meter / timeline**, follow-up badges, and the **WhatsApp thread view**
-  - [ ] Settings: edit script, calendly link, voices, outcomes, follow-up rules, retry/concurrency/spend caps
-- [ ] `/voice-campaigns/[id]/leads/import` — CSV drop zone → column mapping → 5-row preview → import
-- [ ] Components: `campaign-ab-chart.tsx`, `campaign-leads-table.tsx`, `campaign-call-log.tsx`, **`campaign-sentiment-meter.tsx`**, **`campaign-whatsapp-thread.tsx`**
+- [x] Campaign fetch functions in `lib/data.ts`; Next.js proxy routes under `app/api/campaigns/` (create, PATCH/DELETE, lifecycle action, multipart import forwarder)
+- [x] **Campaigns** nav item (Mic icon) added to every industry config + web route permission
+- [x] `/campaigns` — list with channel chips, status chips, per-campaign stats, inline Activate/Pause, New Campaign CTA, empty state
+- [x] `/campaigns/new` — multi-channel **CampaignBuilder**: channel toggles (voice/WhatsApp/email) revealing per-channel template editors; reusable **variable-reference panel** (click-to-insert) shared across all channels; A/B voice pickers; delivery controls (concurrency, spend cap, country)
+- [x] `/campaigns/[id]` — Overview (stats + lead-status + outcome breakdown) and Leads tabs; Activate/Pause + Import in header
+- [x] `/campaigns/[id]/leads/import` — **LeadImportWizard**: upload → auto column-mapping → 5-row preview → import, with consent attestation; parses only the first 64KB client-side so very large CSVs stay responsive (full file uploaded for server-side chunked import)
 
-**DoD:** A campaign can be created, leads imported, activated, and watched live — including the sentiment meter and WhatsApp thread — entirely from the UI.
+**Verification:** web `tsc` + `next build` clean; all 8 campaign routes compile; full API suite 100/100.
+
+**Deferred to a follow-up UI pass (need Phase 7/9 endpoints):**
+- [ ] Calls tab: SSE live log + transcript + **sentiment meter** + **WhatsApp thread view** (needs Phase 7 call/sentiment data + a deliveries/activity endpoint)
+- [ ] A/B comparison cards + leading-variant (needs Phase 9 analytics)
+- [ ] Settings tab edit form (PATCH wired; form UI pending)
+- [ ] Live activity feed of `campaign_message_sent` deliveries
 
 ---
 

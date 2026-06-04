@@ -496,3 +496,81 @@ export async function fetchTeamLicense(): Promise<TeamLicenseResponse> {
   const res = await authedFetch("/team/license");
   return (await res.json()) as TeamLicenseResponse;
 }
+
+// ── Voice / multi-channel campaigns ───────────────────────────────────────────
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  status: string;
+  channels: string[];
+  createdAt: string;
+  stats?: { totalLeads: number; totalCalls: number };
+}
+
+export interface CampaignDetail extends CampaignSummary {
+  scriptTemplate: string | null;
+  voiceA: string | null;
+  voiceB: string | null;
+  personaA: string | null;
+  personaB: string | null;
+  agentName: string | null;
+  calendlyLink: string | null;
+  outcomeTypes: string[];
+  followUpRules: Record<string, string[]>;
+  whatsappContentSid: string | null;
+  whatsappTemplateBody: string | null;
+  whatsappVariables: string[];
+  emailSubjectTemplate: string | null;
+  emailBodyTemplate: string | null;
+  maxRetries: number;
+  retryDelayHours: number;
+  maxConcurrent: number;
+  spendCapCalls: number | null;
+  defaultCountryCode: string;
+}
+
+export interface CampaignLeadRow {
+  id: string;
+  firstName: string;
+  lastName: string | null;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  abVariant: string | null;
+  status: string;
+  callAttempts: number;
+  consent: boolean;
+  optedOut: boolean;
+  createdAt: string;
+}
+
+export async function fetchCampaigns(): Promise<{ ok: boolean; items: CampaignSummary[] }> {
+  const res = await authedFetch("/campaigns?limit=100");
+  return (await res.json()) as { ok: boolean; items: CampaignSummary[] };
+}
+
+export async function fetchCampaign(id: string): Promise<{
+  ok: boolean;
+  campaign?: CampaignDetail;
+  stats?: {
+    totalLeads: number;
+    totalCalls: number;
+    outcomeBreakdown: Record<string, number>;
+    leadStatusBreakdown: Record<string, number>;
+  };
+}> {
+  const res = await authedFetch(`/campaigns/${encodeURIComponent(id)}`);
+  return await res.json();
+}
+
+export async function fetchCampaignLeads(
+  id: string,
+  params: { status?: string; abVariant?: string; limit?: number; offset?: number } = {},
+): Promise<{ ok: boolean; items: CampaignLeadRow[]; page?: { total: number; hasMore: boolean } }> {
+  const q = new URLSearchParams({ limit: String(params.limit ?? 50), offset: String(params.offset ?? 0) });
+  if (params.status) q.set("status", params.status);
+  if (params.abVariant) q.set("abVariant", params.abVariant);
+  const res = await authedFetch(`/campaigns/${encodeURIComponent(id)}/leads?${q.toString()}`);
+  return await res.json();
+}

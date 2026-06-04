@@ -117,6 +117,7 @@ export const SYSTEM_ROLES: OrgRoleDefinition[] = [
 export const ROUTE_PERMISSIONS: Array<{ pattern: string; permission: Permission }> = [
   { pattern: "/settings",            permission: "manage_settings" },
   { pattern: "/automations",         permission: "manage_automations" },
+  { pattern: "/campaigns",           permission: "manage_automations" },
   { pattern: "/analytics",           permission: "view_analytics" },
   { pattern: "/revenue-intelligence",permission: "view_analytics" },
   { pattern: "/sentiment-trends",    permission: "view_analytics" },
