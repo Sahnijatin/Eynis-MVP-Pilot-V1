@@ -1,5 +1,8 @@
 # Voice Agent — Sequential Build Checklist
 
+> 📊 **For the executive status (plan vs done vs remaining + next steps), see [`voice-agent-status.md`](./voice-agent-status.md).**
+> This file is the detailed phase-by-phase build log.
+
 Build order for the **Outbound AI Voice Campaign System** (per `Voice_Campaign_System_BRD.docx`),
 extended with two added capabilities:
 
