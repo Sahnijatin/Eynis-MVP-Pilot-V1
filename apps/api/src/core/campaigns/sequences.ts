@@ -12,6 +12,7 @@ export interface SequenceStepInput {
   waitMinutes: number;
   channel: SequenceChannel;
   whatsappContentSid: string | null;
+  whatsappTemplateId: string | null;
   whatsappTemplateBody: string | null;
   whatsappVariables: string[];
   emailSubject: string | null;
@@ -45,10 +46,11 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStepInput
     if (waitMinutes === null) return { ok: false, error: `step ${i}: waitMinutes must be a non-negative integer` };
 
     const whatsappContentSid = str(s.whatsappContentSid);
+    const whatsappTemplateId = str(s.whatsappTemplateId);
     const emailSubject = str(s.emailSubject);
     const emailBody = str(s.emailBody);
-    if (channel === "whatsapp" && !whatsappContentSid) {
-      return { ok: false, error: `step ${i}: whatsapp step requires whatsappContentSid` };
+    if (channel === "whatsapp" && !whatsappContentSid && !whatsappTemplateId) {
+      return { ok: false, error: `step ${i}: whatsapp step requires an approved template (whatsappTemplateId) or a legacy whatsappContentSid` };
     }
     if (channel === "email" && (!emailSubject || !emailBody)) {
       return { ok: false, error: `step ${i}: email step requires emailSubject and emailBody` };
@@ -59,7 +61,7 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStepInput
 
     steps.push({
       order: i, waitMinutes, channel: channel as SequenceChannel,
-      whatsappContentSid, whatsappTemplateBody: str(s.whatsappTemplateBody), whatsappVariables,
+      whatsappContentSid, whatsappTemplateId, whatsappTemplateBody: str(s.whatsappTemplateBody), whatsappVariables,
       emailSubject, emailBody,
     });
   }

@@ -519,6 +519,7 @@ export interface CampaignDetail extends CampaignSummary {
   outcomeTypes: string[];
   followUpRules: Record<string, string[]>;
   whatsappContentSid: string | null;
+  whatsappTemplateId: string | null;
   whatsappTemplateBody: string | null;
   whatsappVariables: string[];
   emailSubjectTemplate: string | null;
@@ -582,6 +583,7 @@ export interface SequenceStepRow {
   waitMinutes: number;
   channel: "whatsapp" | "email";
   whatsappContentSid: string | null;
+  whatsappTemplateId: string | null;
   whatsappTemplateBody: string | null;
   whatsappVariables: string[];
   emailSubject: string | null;

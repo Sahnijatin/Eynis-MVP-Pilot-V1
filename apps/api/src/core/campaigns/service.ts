@@ -42,6 +42,7 @@ export interface CampaignCreateValue {
   agentName: string | null;
   // whatsapp
   whatsappContentSid: string | null;
+  whatsappTemplateId: string | null;
   whatsappTemplateBody: string | null;
   whatsappVariables: string[];
   whatsappAgentEnabled: boolean;
@@ -135,8 +136,9 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
   }
 
   const whatsappContentSid = str(body.whatsappContentSid);
-  if (channels.includes("whatsapp") && !whatsappContentSid) {
-    return { ok: false, error: "whatsapp channel requires whatsappContentSid (an approved template id)" };
+  const whatsappTemplateId = str(body.whatsappTemplateId);
+  if (channels.includes("whatsapp") && !whatsappContentSid && !whatsappTemplateId) {
+    return { ok: false, error: "whatsapp channel requires an approved template (whatsappTemplateId) or a legacy whatsappContentSid" };
   }
 
   const emailSubjectTemplate = str(body.emailSubjectTemplate);
@@ -183,6 +185,7 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
       calendlyLink: str(body.calendlyLink),
       agentName: str(body.agentName),
       whatsappContentSid,
+      whatsappTemplateId,
       whatsappTemplateBody: str(body.whatsappTemplateBody),
       whatsappVariables,
       whatsappAgentEnabled: body.whatsappAgentEnabled === true,
@@ -221,7 +224,7 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
   // Nullable string fields (per-channel templates etc. — null clears them).
   const nullableStrings = [
     "scriptTemplate", "voiceA", "voiceB", "personaA", "personaB", "calendlyLink", "agentName",
-    "whatsappContentSid", "whatsappTemplateBody", "whatsappAgentPrompt", "emailSubjectTemplate", "emailBodyTemplate",
+    "whatsappContentSid", "whatsappTemplateId", "whatsappTemplateBody", "whatsappAgentPrompt", "emailSubjectTemplate", "emailBodyTemplate",
   ] as const;
   for (const f of nullableStrings) {
     if (f in body) data[f] = str(body[f]);

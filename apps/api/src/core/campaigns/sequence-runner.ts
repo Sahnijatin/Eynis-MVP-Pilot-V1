@@ -9,6 +9,7 @@
 import { prisma } from "../../db/prisma";
 import { evaluateContact } from "./guard";
 import { getSender, type ChannelSender, type SendContext } from "./senders";
+import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { parseExitOn, nextRunFrom, type ExitCondition } from "./sequences";
 
 const TICK_MS = Number(process.env.SEQUENCE_RUNNER_INTERVAL_MS ?? 60_000);
@@ -99,6 +100,24 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
       continue;
     }
 
+    // WhatsApp steps must resolve to an approved library template.
+    let waContentSid = step.whatsappContentSid;
+    let waBody = step.whatsappTemplateBody;
+    let waVars = safeArray(step.whatsappVariables);
+    if (step.channel === "whatsapp" && step.whatsappTemplateId) {
+      const resolved = await resolveApprovedWhatsappTemplate(step.whatsappTemplateId);
+      if (!resolved) {
+        await logEvent(keys, step.order, step.channel, "skipped", "template_not_approved");
+        skipped++;
+        // Advance past this step so a stuck template doesn't wedge the enrollment.
+        const next = e.sequence.steps.find((s) => s.order === e.currentStepOrder + 1);
+        if (next) await prisma.sequenceEnrollment.update({ where: { id: e.id }, data: { currentStepOrder: next.order, nextRunAt: nextRunFrom(now, next.waitMinutes) } });
+        else await prisma.sequenceEnrollment.update({ where: { id: e.id }, data: { status: "completed", currentStepOrder: e.currentStepOrder + 1 } });
+        continue;
+      }
+      waContentSid = resolved.contentSid; waBody = resolved.body; waVars = resolved.variables;
+    }
+
     const hotel = await prisma.hotel.findUnique({ where: { id: e.hotelId }, select: { name: true } });
     const sender = resolveSender(step.channel);
     let status = "failed";
@@ -108,8 +127,7 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
         hotelId: e.hotelId,
         campaign: {
           name: e.sequence.name, calendlyLink: null,
-          whatsappContentSid: step.whatsappContentSid, whatsappTemplateBody: step.whatsappTemplateBody,
-          whatsappVariables: safeArray(step.whatsappVariables),
+          whatsappContentSid: waContentSid, whatsappTemplateBody: waBody, whatsappVariables: waVars,
           emailSubjectTemplate: step.emailSubject, emailBodyTemplate: step.emailBody,
         },
         lead: e.lead, tenantName: hotel?.name ?? null,

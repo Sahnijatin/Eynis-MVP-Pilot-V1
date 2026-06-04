@@ -12,6 +12,7 @@ import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { evaluateContact } from "./guard";
 import { campaignMaySendNow } from "./schedule-gate";
+import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
 
@@ -134,6 +135,17 @@ export async function processCampaignChannel(
     whatsappVariables: safeArray(campaign.whatsappVariables),
     emailSubjectTemplate: campaign.emailSubjectTemplate, emailBodyTemplate: campaign.emailBodyTemplate,
   };
+
+  // WhatsApp: enforce an approved library template. When the campaign references
+  // one, resolve it to the approved Content SID; if it's no longer approved,
+  // send nothing this tick (Meta forbids un-approved business-initiated sends).
+  if (channel === "whatsapp" && campaign.whatsappTemplateId) {
+    const resolved = await resolveApprovedWhatsappTemplate(campaign.whatsappTemplateId);
+    if (!resolved) return { sent, failed, skipped };
+    senderCampaign.whatsappContentSid = resolved.contentSid;
+    senderCampaign.whatsappTemplateBody = resolved.body;
+    senderCampaign.whatsappVariables = resolved.variables;
+  }
 
   for (const lead of leads) {
     const decision = evaluateContact(
