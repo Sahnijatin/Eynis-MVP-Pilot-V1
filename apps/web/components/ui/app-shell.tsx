@@ -288,6 +288,21 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     root.setProperty("--color-accent", theme.accentColor);
   }, [theme.primaryColor, theme.accentColor]);
 
+  // White-label the browser tab: favicon (falls back to the logo) + brand title.
+  useEffect(() => {
+    if (theme.faviconUrl) {
+      let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+      if (!link) {
+        link = document.createElement("link");
+        link.rel = "icon";
+        document.head.appendChild(link);
+      }
+      link.href = theme.faviconUrl;
+    }
+    const brand = theme.brandName ?? propertyName;
+    if (brand) document.title = brand;
+  }, [theme.faviconUrl, theme.brandName, propertyName]);
+
   useEffect(() => {
     if (!notifOpen) return;
     function handle(e: MouseEvent) {

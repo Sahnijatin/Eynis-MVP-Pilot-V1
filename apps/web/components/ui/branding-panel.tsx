@@ -7,14 +7,21 @@ import type { TenantBranding } from "../../lib/theme";
 // Settings → Branding: edit per-tenant white-label overrides. Anything left
 // blank falls back to the industry default, so this is purely additive.
 const EMPTY: TenantBranding = {
-  brandName: "", tagline: "", logoUrl: "", primaryColor: "", accentColor: "", supportEmail: "", hidePoweredBy: false,
+  brandName: "", tagline: "", logoUrl: "", faviconUrl: "", primaryColor: "", accentColor: "", supportEmail: "", hidePoweredBy: false,
 };
+
+// True for direct image links / data URLs. Page links (e.g. freeimage.host/i/…)
+// return false — they serve HTML, not an image, so <img> can't render them.
+const looksLikeImage = (u?: string | null) =>
+  !u || /^data:image\//i.test(u) || /\.(png|jpe?g|svg|webp|gif|ico|avif)(\?.*)?$/i.test(u.trim());
 
 export function BrandingPanel() {
   const toast = useToast();
   const [form, setForm] = useState<TenantBranding>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoBroken, setLogoBroken] = useState(false);
+  const [faviconBroken, setFaviconBroken] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -31,7 +38,6 @@ export function BrandingPanel() {
   }, []);
 
   const set = (patch: Partial<TenantBranding>) => setForm((f) => ({ ...f, ...patch }));
-
   const colorInvalid = (v: string | null | undefined) => Boolean(v && !/^#[0-9a-fA-F]{6}$/.test(v));
 
   async function save() {
@@ -54,6 +60,8 @@ export function BrandingPanel() {
   if (loading) return <Card style={{ maxWidth: 640 }}><span style={{ color: t.color.textMuted }}>Loading…</span></Card>;
 
   const primary = form.primaryColor && !colorInvalid(form.primaryColor) ? form.primaryColor : t.color.accent;
+  const logoUrl = form.logoUrl?.trim() || "";
+  const warn = (msg: string) => <span style={{ color: t.color.warning, fontSize: t.font.xs }}>⚠ {msg}</span>;
 
   return (
     <Card style={{ maxWidth: 640 }}>
@@ -64,9 +72,9 @@ export function BrandingPanel() {
 
       {/* Live preview of the sidebar brand block */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: t.radius.md, background: t.color.bg, border: `1px solid ${t.color.border}`, marginBottom: 16 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: form.logoUrl ? "transparent" : primary, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-          {form.logoUrl
-            ? <img src={form.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: logoUrl && !logoBroken ? "transparent" : primary, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+          {logoUrl && !logoBroken
+            ? <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={() => setLogoBroken(true)} onLoad={() => setLogoBroken(false)} />
             : <span style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{(form.brandName || "E").charAt(0).toUpperCase()}</span>}
         </div>
         <div style={{ lineHeight: 1.2 }}>
@@ -77,7 +85,39 @@ export function BrandingPanel() {
 
       <Field label="Brand name" hint="Replaces the “Eynis” wordmark in the sidebar."><Input value={form.brandName ?? ""} onChange={(e) => set({ brandName: e.target.value })} placeholder="Acme Cloud" /></Field>
       <Field label="Tagline" hint="Sidebar subtitle."><Input value={form.tagline ?? ""} onChange={(e) => set({ tagline: e.target.value })} placeholder="Operations, intelligently" /></Field>
-      <Field label="Logo URL" hint="Square image works best (PNG/SVG)."><Input value={form.logoUrl ?? ""} onChange={(e) => set({ logoUrl: e.target.value })} placeholder="https://cdn.acme.com/logo.png" /></Field>
+
+      <Field
+        label="Logo URL"
+        hint={
+          logoUrl && !looksLikeImage(logoUrl)
+            ? warn("That looks like a page link, not an image. Use the host's “Direct link” (ends in .png/.jpg/.svg) — e.g. https://iili.io/xxxx.png, not …/i/xxxx.")
+            : logoBroken
+              ? warn("Couldn't load that image — check the URL is public and a direct link.")
+              : "Direct image link, square works best (PNG/SVG). Right-click the image → “Copy image address”."
+        }
+      >
+        <Input value={form.logoUrl ?? ""} onChange={(e) => { setLogoBroken(false); set({ logoUrl: e.target.value }); }} placeholder="https://cdn.acme.com/logo.png"
+          style={(logoUrl && !looksLikeImage(logoUrl)) || logoBroken ? { borderColor: t.color.warning } : undefined} />
+      </Field>
+
+      <Field
+        label="Favicon URL"
+        hint={
+          form.faviconUrl?.trim() && !looksLikeImage(form.faviconUrl)
+            ? warn("Use a direct image link (.png/.ico/.svg).")
+            : faviconBroken
+              ? warn("Couldn't load that favicon — check the URL.")
+              : "Browser-tab icon (.ico/.png/.svg). Falls back to your logo if blank."
+        }
+      >
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {(form.faviconUrl?.trim() || logoUrl) && !faviconBroken && (
+            <img src={form.faviconUrl?.trim() || logoUrl} alt="" width={20} height={20} style={{ objectFit: "contain", flexShrink: 0 }} onError={() => setFaviconBroken(true)} />
+          )}
+          <Input value={form.faviconUrl ?? ""} onChange={(e) => { setFaviconBroken(false); set({ faviconUrl: e.target.value }); }} placeholder="https://cdn.acme.com/favicon.png" />
+        </div>
+      </Field>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Primary color" hint="Hex, e.g. #0f766e">
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
