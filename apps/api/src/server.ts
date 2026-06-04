@@ -285,6 +285,13 @@ const parseCampaignAnalyticsPath = (url: string | undefined): string | null => {
   return match && match[1] ? decodeURIComponent(match[1]) : null;
 };
 
+// Deliveries routing: /campaigns/:id/deliveries  (messaging activity feed)
+const parseCampaignDeliveriesPath = (url: string | undefined): string | null => {
+  if (!url) return null;
+  const match = /^\/campaigns\/([^/]+)\/deliveries$/.exec(parseUrl(url).pathname);
+  return match && match[1] ? decodeURIComponent(match[1]) : null;
+};
+
 // Lead routing: /campaigns/:id/leads, /campaigns/:id/leads/import, /campaigns/:id/leads/:leadId
 const parseCampaignLeadsPath = (
   url: string | undefined,
@@ -355,6 +362,7 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /campaigns/:id/calls":             "manage_campaigns",
   "GET /campaigns/:id/calls/:callId":     "manage_campaigns",
   "GET /campaigns/:id/analytics":         "manage_campaigns",
+  "GET /campaigns/:id/deliveries":        "manage_campaigns",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3390,6 +3398,43 @@ const handleRequest = async (
         meetingsBooked: variantA.meetingsBooked + variantB.meetingsBooked,
       };
       json(res, 200, { ok: true, overall, variantA, variantB, ...decision });
+      return;
+    }
+
+    // ── Voice Campaign: message deliveries (activity feed) ──────────────────
+    // Surfaces WhatsApp/email sends (MessageDelivery) for a campaign so the UI
+    // can render a live activity feed. Paginated, newest first, optional
+    // ?channel= and ?status= filters. Tenant-scoped via the campaign lookup.
+    const deliveriesId = parseCampaignDeliveriesPath(req.url);
+    if (deliveriesId && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/deliveries")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: deliveriesId, hotelId: auth.context.hotelId }, select: { id: true } });
+      if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+
+      const qs = parseUrl(req.url).searchParams;
+      const whereDeliveries = {
+        campaignId: deliveriesId,
+        ...(asTrimmedString(qs.get("channel")) ? { channel: asTrimmedString(qs.get("channel"))! } : {}),
+        ...(asTrimmedString(qs.get("status")) ? { status: asTrimmedString(qs.get("status"))! } : {}),
+      };
+      const limit = asSafeLimit(qs.get("limit"), 50, 200);
+      const offset = asSafeOffset(qs.get("offset"));
+      const [items, total] = await Promise.all([
+        prisma.messageDelivery.findMany({
+          where: whereDeliveries, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
+          select: {
+            id: true, channel: true, status: true, renderedSubject: true, renderedBody: true,
+            error: true, sentAt: true, createdAt: true,
+            lead: { select: { firstName: true, lastName: true, company: true, phone: true } },
+          },
+        }),
+        prisma.messageDelivery.count({ where: whereDeliveries }),
+      ]);
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
       return;
     }
 
