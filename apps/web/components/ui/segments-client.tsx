@@ -1,15 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Badge } from "./badge";
+import { Button, Card, PageHeader, Field, Input, Select, Badge, EmptyState, Modal, useToast, tokens as t } from "../ds";
+import { CampaignsNav } from "./campaigns-nav";
 import type { LeadSegmentRow, SegmentRules } from "../../lib/data";
 
-// Saved audience segments: create a reusable filter (tags / status / fields)
-// once, then target any campaign at it. Mirrors the SegmentRules DSL on the API.
-
+// Saved audience segments: build a reusable filter once, target any campaign at it.
 const LEAD_STATUSES = ["pending", "called", "completed", "failed", "opted_out"];
 const csv = (s: string): string[] => s.split(",").map((x) => x.trim()).filter(Boolean);
-const join = (a?: string[]) => (a ?? []).join(", ");
 
 function rulesSummary(r: SegmentRules): string {
   const parts: string[] = [];
@@ -24,11 +22,12 @@ function rulesSummary(r: SegmentRules): string {
 }
 
 export function SegmentsClient({ initialSegments }: { initialSegments: LeadSegmentRow[] }) {
+  const toast = useToast();
   const [segments, setSegments] = useState<LeadSegmentRow[]>(initialSegments);
   const [creating, setCreating] = useState(false);
   const [previews, setPreviews] = useState<Record<string, number | "…">>({});
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  // create-form state
   const [name, setName] = useState("");
   const [tagsAny, setTagsAny] = useState("");
   const [tagsNot, setTagsNot] = useState("");
@@ -52,22 +51,20 @@ export function SegmentsClient({ initialSegments }: { initialSegments: LeadSegme
     if (!name.trim()) { setError("Name is required"); return; }
     setBusy(true); setError(null);
     try {
-      const res = await fetch("/api/segments", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), rules: buildRules() }),
-      });
+      const res = await fetch("/api/segments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.trim(), rules: buildRules() }) });
       const data = await res.json();
       if (!res.ok || !data.ok) { setError(data.error ?? "Create failed"); return; }
       setSegments((s) => [data.segment, ...s]);
-      setName(""); setTagsAny(""); setTagsNot(""); setStatuses(new Set()); setConsent("any"); setCompany("");
-      setCreating(false);
+      setName(""); setTagsAny(""); setTagsNot(""); setStatuses(new Set()); setConsent("any"); setCompany(""); setCreating(false);
+      toast.push("Segment created", "success");
     } finally { setBusy(false); }
   }
 
   async function remove(id: string) {
-    if (!confirm("Delete this segment? Campaigns targeting it will revert to all leads.")) return;
     await fetch(`/api/segments/${id}`, { method: "DELETE" });
     setSegments((s) => s.filter((x) => x.id !== id));
+    setConfirmId(null);
+    toast.push("Segment deleted");
   }
 
   async function preview(id: string) {
@@ -77,85 +74,68 @@ export function SegmentsClient({ initialSegments }: { initialSegments: LeadSegme
     setPreviews((p) => ({ ...p, [id]: data.ok ? data.total : 0 }));
   }
 
-  const toggleStatus = (s: string) => setStatuses((prev) => {
-    const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next;
-  });
+  const toggleStatus = (s: string) => setStatuses((prev) => { const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next; });
 
   return (
-    <div style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24 }}>Segments</h1>
-          <p style={{ color: "#666", margin: "4px 0 0", fontSize: 14 }}>Reusable audiences. Target a campaign at one in its Settings tab.</p>
-        </div>
-        {!creating && <button onClick={() => setCreating(true)} style={btnPrimary}>+ New segment</button>}
-      </div>
+    <div style={{ padding: 28, maxWidth: 960, margin: "0 auto" }}>
+      <CampaignsNav active="/segments" />
+      <PageHeader title="Segments" subtitle="Reusable audiences. Target a campaign or sequence at one to contact only matching leads."
+        actions={!creating && <Button onClick={() => setCreating(true)}>+ New segment</Button>} />
 
       {creating && (
-        <div style={{ ...card, marginBottom: 16 }}>
-          <div style={cardTitle}>New segment</div>
-          <Field label="Name"><input style={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VIP — gold tier" /></Field>
+        <Card style={{ marginBottom: 18 }}>
+          <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VIP — gold tier" /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Has any of these tags (comma-sep)"><input style={input} value={tagsAny} onChange={(e) => setTagsAny(e.target.value)} placeholder="vip, gold" /></Field>
-            <Field label="Excludes tags (comma-sep)"><input style={input} value={tagsNot} onChange={(e) => setTagsNot(e.target.value)} placeholder="churned" /></Field>
+            <Field label="Has any of these tags" hint="comma-separated"><Input value={tagsAny} onChange={(e) => setTagsAny(e.target.value)} placeholder="vip, gold" /></Field>
+            <Field label="Excludes tags" hint="comma-separated"><Input value={tagsNot} onChange={(e) => setTagsNot(e.target.value)} placeholder="churned" /></Field>
           </div>
           <Field label="Status">
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {LEAD_STATUSES.map((s) => (
-                <button key={s} onClick={() => toggleStatus(s)} type="button"
-                  style={{ ...chip, ...(statuses.has(s) ? chipOn : {}) }}>{s}</button>
+                <button key={s} type="button" onClick={() => toggleStatus(s)} style={{ ...chip, ...(statuses.has(s) ? chipOn : {}) }}>{s}</button>
               ))}
             </div>
           </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Consent">
-              <select style={input} value={consent} onChange={(e) => setConsent(e.target.value as "any" | "true" | "false")}>
-                <option value="any">Any</option><option value="true">Consented only</option><option value="false">Not consented</option>
-              </select>
-            </Field>
-            <Field label="Company contains"><input style={input} value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme" /></Field>
+            <Field label="Consent"><Select value={consent} onChange={(e) => setConsent(e.target.value as "any" | "true" | "false")}><option value="any">Any</option><option value="true">Consented only</option><option value="false">Not consented</option></Select></Field>
+            <Field label="Company contains"><Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme" /></Field>
           </div>
-          {error && <div style={{ color: "#991b1b", fontSize: 13, marginBottom: 8 }}>{error}</div>}
+          {error && <div style={{ color: t.color.danger, fontSize: t.font.sm, marginBottom: 10 }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={create} disabled={busy} style={btnPrimary}>{busy ? "Saving…" : "Create segment"}</button>
-            <button onClick={() => { setCreating(false); setError(null); }} style={btnGhost}>Cancel</button>
+            <Button onClick={create} disabled={busy}>{busy ? "Saving…" : "Create segment"}</Button>
+            <Button variant="ghost" onClick={() => { setCreating(false); setError(null); }}>Cancel</Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {segments.length === 0 ? (
-        <div style={{ ...card, textAlign: "center", color: "#666", padding: 32 }}>No segments yet. Create one to target campaigns at a specific audience.</div>
+        <EmptyState icon="🎯" title="No segments yet" description="Create one to target campaigns at a specific audience." action={<Button onClick={() => setCreating(true)}>+ New segment</Button>} />
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: 12 }}>
           {segments.map((s) => (
-            <div key={s.id} style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <Card key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>{s.name}</div>
-                <div style={{ color: "#6b7280", fontSize: 13 }}>{rulesSummary(s.rules)}</div>
+                <div style={{ fontWeight: 600, color: t.color.text }}>{s.name}</div>
+                <div style={{ color: t.color.textMuted, fontSize: t.font.sm }}>{rulesSummary(s.rules)}</div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
-                {previews[s.id] !== undefined
-                  ? <Badge label={`${previews[s.id]} leads`} tone="success" />
-                  : <button onClick={() => preview(s.id)} style={btnGhost}>Preview count</button>}
-                <button onClick={() => remove(s.id)} style={{ ...btnGhost, color: "#991b1b" }}>Delete</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                {previews[s.id] !== undefined ? <Badge tone="success">{previews[s.id]} leads</Badge> : <Button size="sm" variant="secondary" onClick={() => preview(s.id)}>Preview count</Button>}
+                <Button size="sm" variant="danger" onClick={() => setConfirmId(s.id)}>Delete</Button>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
+      )}
+
+      {confirmId && (
+        <Modal title="Delete segment?" onClose={() => setConfirmId(null)}
+          footer={<><Button variant="ghost" onClick={() => setConfirmId(null)}>Cancel</Button><Button variant="danger" onClick={() => remove(confirmId)}>Delete</Button></>}>
+          <p style={{ margin: 0, color: t.color.textMuted, fontSize: t.font.base }}>Campaigns targeting this segment will revert to contacting all leads.</p>
+        </Modal>
       )}
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div style={{ marginBottom: 12 }}><label style={lbl}>{label}</label>{children}</div>;
-}
-
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
-const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 12 };
-const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "#374151", fontWeight: 600, marginBottom: 4 };
-const input: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, boxSizing: "border-box", fontFamily: "inherit" };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14 };
-const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13 };
-const chip: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "6px 12px", borderRadius: 999, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 13 };
-const chipOn: React.CSSProperties = { background: "#0f766e", color: "#fff", borderColor: "#0f766e" };
+const chip: React.CSSProperties = { background: t.color.surfaceMuted, color: t.color.text, padding: "6px 12px", borderRadius: t.radius.pill, border: `1px solid ${t.color.border}`, cursor: "pointer", fontSize: t.font.sm };
+const chipOn: React.CSSProperties = { background: t.color.accent, color: "#fff", borderColor: t.color.accent };

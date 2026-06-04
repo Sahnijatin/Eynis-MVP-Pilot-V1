@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "./badge";
+import { PageHeader, LinkButton, useToast } from "../ds";
+import { CampaignsNav } from "./campaigns-nav";
 import type { CampaignSummary } from "../../lib/data";
 
 const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
@@ -14,6 +16,7 @@ const CHANNEL_LABEL: Record<string, string> = { voice: "Voice", whatsapp: "Whats
 
 export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
   async function act(id: string, action: "activate" | "pause") {
@@ -21,29 +24,18 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
     try {
       const res = await fetch(`/api/campaigns/${id}/${action}`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok || !data.ok) alert(data.error ?? "Action failed");
-      else router.refresh();
+      if (!res.ok || !data.ok) toast.push(data.error ?? "Action failed", "error");
+      else { toast.push(action === "activate" ? "Campaign activated" : "Campaign paused", "success"); router.refresh(); }
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24 }}>Campaigns</h1>
-          <p style={{ margin: "4px 0 0", color: "#666", fontSize: 14 }}>
-            Reach your leads by voice, WhatsApp, or email — with configurable templates.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/segments" style={btnGhost}>Segments</Link>
-          <Link href="/sequences" style={btnGhost}>Sequences</Link>
-          <Link href="/templates" style={btnGhost}>Templates</Link>
-          <Link href="/campaigns/new" style={btnPrimary}>+ New Campaign</Link>
-        </div>
-      </div>
+    <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
+      <CampaignsNav active="/campaigns" />
+      <PageHeader title="Campaigns" subtitle="Reach your leads by voice, WhatsApp, or email — with configurable templates."
+        actions={<LinkButton variant="primary" href="/campaigns/new">+ New Campaign</LinkButton>} />
 
       {items.length === 0 ? (
         <div style={{ ...cardBox, textAlign: "center", padding: 48 }}>
