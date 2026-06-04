@@ -8,6 +8,7 @@ import { CampaignCallsTab } from "./campaign-calls-tab";
 import { CampaignAnalyticsTab } from "./campaign-analytics-tab";
 import { CampaignActivityTab } from "./campaign-activity-tab";
 import { CampaignSettingsForm } from "./campaign-settings-form";
+import { CampaignLeadsTab } from "./campaign-leads-tab";
 import type { CampaignDetail, CampaignLeadRow } from "../../lib/data";
 
 const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
@@ -110,35 +111,7 @@ export function CampaignDetailClient({
           )}
         </div>
       ) : (
-        <div style={card}>
-          {leads.length === 0 ? (
-            <div style={{ textAlign: "center", padding: 32 }}>
-              <p style={{ color: "#666", marginBottom: 16 }}>No leads imported yet.</p>
-              <Link href={`/campaigns/${campaign.id}/leads/import`} style={btnPrimary}>Import leads from CSV</Link>
-            </div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#666", borderBottom: "1px solid #eee" }}>
-                  <th style={th}>Name</th><th style={th}>Company</th><th style={th}>Phone</th>
-                  <th style={th}>Variant</th><th style={th}>Status</th><th style={th}>Consent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((l) => (
-                  <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={td}>{l.firstName} {l.lastName ?? ""}</td>
-                    <td style={td}>{l.company ?? "—"}</td>
-                    <td style={td}>{l.phone ?? "—"}</td>
-                    <td style={td}>{l.abVariant ?? "—"}</td>
-                    <td style={td}><Badge label={l.status} tone={STATUS_TONE[l.status] ?? "neutral"} /></td>
-                    <td style={td}>{l.optedOut ? <Badge label="opted out" tone="danger" /> : l.consent ? "✓" : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <CampaignLeadsTab campaignId={campaign.id} initialLeads={leads} initialTotal={leadTotal} />
       )}
     </div>
   );
