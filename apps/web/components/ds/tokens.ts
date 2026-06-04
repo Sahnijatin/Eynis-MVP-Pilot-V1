@@ -1,17 +1,18 @@
-// Design tokens — a single source of truth for the modern-SaaS look.
-// Neutral slate palette + one teal accent, soft borders, subtle shadows.
+// Design tokens — kept in lockstep with the CSS variables in app/globals.css
+// (--color-*), so the design-system primitives share ONE palette with the rest
+// of the app (dark-teal sidebar shell, stat cards, charts) — no drift.
 
 export const tokens = {
   color: {
-    bg: "#f8fafc", // slate-50 (page background)
-    surface: "#ffffff",
-    surfaceMuted: "#f1f5f9", // slate-100
-    border: "#e2e8f0", // slate-200
-    borderStrong: "#cbd5e1", // slate-300
-    text: "#0f172a", // slate-900
-    textMuted: "#64748b", // slate-500
+    bg: "#f4f6fa", // --color-bg
+    surface: "#ffffff", // --color-surface
+    surfaceMuted: "#f1f5f9", // slate-100 (hover/fills)
+    border: "#e6eaf0", // --color-border
+    borderStrong: "#cbd5e1", // slate-300 (input borders)
+    text: "#0f172a", // --color-text
+    textMuted: "#64748b", // --color-muted
     textFaint: "#94a3b8", // slate-400
-    accent: "#0f766e", // teal-700
+    accent: "#0f766e", // --color-teal
     accentHover: "#0e6b63",
     accentSoft: "#f0fdfa", // teal-50
     danger: "#b91c1c",

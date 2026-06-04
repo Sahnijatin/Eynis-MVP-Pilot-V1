@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button, useToast, tokens as tk } from "../ds";
 import type { CampaignDetail, LeadSegmentRow, MessageTemplateRow } from "../../lib/data";
 
 // Settings tab: edit a campaign's core config + per-channel templates via
@@ -33,7 +34,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
   const [sendTimeZone, setTimeZone] = useState(campaign.sendTimeZone ?? "");
 
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     let alive = true;
@@ -54,7 +55,6 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
 
   async function save() {
     setBusy(true);
-    setMsg(null);
     try {
       const payload = {
         name: name.trim(),
@@ -81,13 +81,13 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        setMsg({ tone: "err", text: data.error ?? "Save failed" });
+        toast.push(data.error ?? "Save failed", "error");
       } else {
-        setMsg({ tone: "ok", text: "Saved" });
+        toast.push("Changes saved", "success");
         router.refresh();
       }
     } catch {
-      setMsg({ tone: "err", text: "Network error — try again" });
+      toast.push("Network error — try again", "error");
     } finally {
       setBusy(false);
     }
@@ -184,8 +184,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={save} disabled={busy || !name.trim()} style={btnPrimary}>{busy ? "Saving…" : "Save changes"}</button>
-        {msg && <span style={{ fontSize: 14, color: msg.tone === "ok" ? "#166534" : "#991b1b", fontWeight: 600 }}>{msg.text}</span>}
+        <Button onClick={save} disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save changes"}</Button>
       </div>
     </div>
   );
@@ -212,10 +211,9 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
-const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 12 };
-const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "#374151", fontWeight: 600, marginBottom: 4 };
-const input: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, boxSizing: "border-box", fontFamily: "inherit" };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14 };
-const chip: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "6px 12px", borderRadius: 999, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 13 };
-const chipOn: React.CSSProperties = { background: "#0f766e", color: "#fff", borderColor: "#0f766e" };
+const card: React.CSSProperties = { border: `1px solid ${tk.color.border}`, borderRadius: tk.radius.lg, background: tk.color.surface, padding: 18, boxShadow: tk.shadow.sm };
+const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 12, fontSize: tk.font.lg, color: tk.color.text };
+const lbl: React.CSSProperties = { display: "block", fontSize: tk.font.sm, color: tk.color.text, fontWeight: 600, marginBottom: 6 };
+const input: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: tk.radius.md, border: `1px solid ${tk.color.borderStrong}`, fontSize: tk.font.base, boxSizing: "border-box", fontFamily: "inherit", color: tk.color.text };
+const chip: React.CSSProperties = { background: tk.color.surfaceMuted, color: tk.color.text, padding: "6px 12px", borderRadius: tk.radius.pill, border: `1px solid ${tk.color.border}`, cursor: "pointer", fontSize: tk.font.sm };
+const chipOn: React.CSSProperties = { background: tk.color.accent, color: "#fff", borderColor: tk.color.accent };
