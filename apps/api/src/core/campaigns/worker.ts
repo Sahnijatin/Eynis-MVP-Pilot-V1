@@ -14,6 +14,7 @@
 import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { evaluateContact } from "./guard";
+import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { buildTemplateVars } from "../email/resend";
 import {
   resolveVapiCredentials, isVapiConfigured, initiateCall as realInitiateCall,
@@ -91,11 +92,20 @@ export async function processVoiceCampaign(
   let slots = Math.min(maxConcurrent - inFlight, budget);
   if (slots <= 0) return { dialed, skipped, failed };
 
+  // Optional targeting: when the campaign points at a segment, only matching
+  // leads are dialled.
+  let segmentWhere = {};
+  if (campaign.segmentId) {
+    const seg = await prisma.leadSegment.findUnique({ where: { id: campaign.segmentId }, select: { rules: true } });
+    if (seg) segmentWhere = buildLeadWhere(parseSegmentRules(seg.rules));
+  }
+
   // Due pending leads (covers retries via nextCallAt).
   const leads = await prisma.campaignLead.findMany({
     where: {
       campaignId, status: "pending",
       OR: [{ nextCallAt: null }, { nextCallAt: { lte: ts } }],
+      ...segmentWhere,
     },
     orderBy: { createdAt: "asc" },
     take: slots,

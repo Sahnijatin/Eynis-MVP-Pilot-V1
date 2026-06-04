@@ -292,6 +292,18 @@ const parseCampaignDeliveriesPath = (url: string | undefined): string | null => 
   return match && match[1] ? decodeURIComponent(match[1]) : null;
 };
 
+// Segments routing: /segments, /segments/:id, /segments/:id/preview
+const parseSegmentPath = (
+  url: string | undefined,
+): { id: string | null; preview: boolean } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  if (pathname === "/segments") return { id: null, preview: false };
+  const match = /^\/segments\/([^/]+)(?:\/(preview))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  return { id: decodeURIComponent(match[1]), preview: match[2] === "preview" };
+};
+
 // Lead routing: /campaigns/:id/leads, /campaigns/:id/leads/import, /campaigns/:id/leads/:leadId
 const parseCampaignLeadsPath = (
   url: string | undefined,
@@ -3050,6 +3062,89 @@ const handleRequest = async (
       return;
     }
 
+    // ── Lead Segments: saved tenant-wide audience filters ───────────────────
+    const segPath = parseSegmentPath(req.url);
+    if (segPath) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const hotelId = auth.context.hotelId;
+      if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const { parseSegmentRules, buildLeadWhere } = await import("./core/campaigns/segments");
+
+      // Collection: GET (list) / POST (create)
+      if (segPath.id === null) {
+        if (req.method === "GET") {
+          const rows = await prisma.leadSegment.findMany({ where: { hotelId }, orderBy: { createdAt: "desc" } });
+          const items = rows.map((s) => ({ id: s.id, name: s.name, rules: parseSegmentRules(s.rules), createdAt: s.createdAt, updatedAt: s.updatedAt }));
+          json(res, 200, { ok: true, items });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const name = asTrimmedString(body.name);
+          if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+          const rules = parseSegmentRules(body.rules);
+          const created = await prisma.leadSegment.create({ data: { hotelId, name, rules: JSON.stringify(rules) } });
+          json(res, 201, { ok: true, segment: { id: created.id, name: created.name, rules, createdAt: created.createdAt, updatedAt: created.updatedAt } });
+          return;
+        }
+        json(res, 405, { ok: false, error: "Method not allowed" }); return;
+      }
+
+      // Item must belong to the tenant.
+      const segment = await prisma.leadSegment.findFirst({ where: { id: segPath.id, hotelId } });
+      if (!segment) { json(res, 404, { ok: false, error: "Segment not found" }); return; }
+
+      // GET /segments/:id/preview?campaignId= — count + sample of matching leads
+      if (segPath.preview && req.method === "GET") {
+        const qs = parseUrl(req.url).searchParams;
+        const campaignId = asTrimmedString(qs.get("campaignId"));
+        const where = {
+          hotelId,
+          ...(campaignId ? { campaignId } : {}),
+          ...buildLeadWhere(parseSegmentRules(segment.rules)),
+        };
+        const [total, sample] = await Promise.all([
+          prisma.campaignLead.count({ where }),
+          prisma.campaignLead.findMany({
+            where, orderBy: { createdAt: "desc" }, take: 10,
+            select: { id: true, firstName: true, lastName: true, company: true, phone: true, status: true, tags: true },
+          }),
+        ]);
+        json(res, 200, { ok: true, total, sample });
+        return;
+      }
+
+      if (segPath.preview) { json(res, 405, { ok: false, error: "Method not allowed" }); return; }
+
+      if (req.method === "GET") {
+        json(res, 200, { ok: true, segment: { id: segment.id, name: segment.name, rules: parseSegmentRules(segment.rules), createdAt: segment.createdAt, updatedAt: segment.updatedAt } });
+        return;
+      }
+      if (req.method === "PATCH") {
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const data: Record<string, unknown> = {};
+        if (body.name !== undefined) {
+          const name = asTrimmedString(body.name);
+          if (!name) { json(res, 400, { ok: false, error: "name must be a non-empty string" }); return; }
+          data.name = name;
+        }
+        if (body.rules !== undefined) data.rules = JSON.stringify(parseSegmentRules(body.rules));
+        if (Object.keys(data).length === 0) { json(res, 400, { ok: false, error: "No updatable fields provided" }); return; }
+        const updated = await prisma.leadSegment.update({ where: { id: segment.id }, data });
+        json(res, 200, { ok: true, segment: { id: updated.id, name: updated.name, rules: parseSegmentRules(updated.rules), createdAt: updated.createdAt, updatedAt: updated.updatedAt } });
+        return;
+      }
+      if (req.method === "DELETE") {
+        await prisma.leadSegment.delete({ where: { id: segment.id } }); // campaigns.segmentId → SetNull
+        json(res, 200, { ok: true, deleted: segment.id });
+        return;
+      }
+      json(res, 405, { ok: false, error: "Method not allowed" }); return;
+    }
+
     // ── Voice Campaigns: create + list ──────────────────────────────────────
     if (parseUrl(req.url).pathname === "/campaigns" && (req.method === "POST" || req.method === "GET")) {
       const auth = await getAuthenticatedContext(req);
@@ -3080,6 +3175,7 @@ const handleRequest = async (
             emailSubjectTemplate: v.emailSubjectTemplate, emailBodyTemplate: v.emailBodyTemplate,
             maxRetries: v.maxRetries, retryDelayHours: v.retryDelayHours,
             maxConcurrent: v.maxConcurrent, spendCapCalls: v.spendCapCalls, defaultCountryCode: v.defaultCountryCode,
+            segmentId: v.segmentId,
           },
         });
         json(res, 201, { ok: true, campaign: serializeCampaign(created) });
@@ -3316,23 +3412,78 @@ const handleRequest = async (
         const offset = asSafeOffset(qs.get("offset"));
         const status = asTrimmedString(qs.get("status"));
         const abVariant = asTrimmedString(qs.get("abVariant"));
+        const tag = asTrimmedString(qs.get("tag"));
+        const segmentId = asTrimmedString(qs.get("segmentId"));
+        // Optional segment filter: apply the saved rules (tenant-scoped).
+        let segmentWhere = {};
+        if (segmentId) {
+          const seg = await prisma.leadSegment.findFirst({ where: { id: segmentId, hotelId }, select: { rules: true } });
+          if (seg) {
+            const { parseSegmentRules, buildLeadWhere } = await import("./core/campaigns/segments");
+            segmentWhere = buildLeadWhere(parseSegmentRules(seg.rules));
+          }
+        }
         const where = {
           campaignId,
           ...(status ? { status } : {}),
           ...(abVariant ? { abVariant } : {}),
+          ...(tag ? { tags: { has: tag } } : {}),
+          ...segmentWhere,
         };
         const [items, total] = await Promise.all([
           prisma.campaignLead.findMany({
             where, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
             select: {
               id: true, firstName: true, lastName: true, phone: true, email: true,
-              company: true, jobTitle: true, abVariant: true, status: true,
+              company: true, jobTitle: true, abVariant: true, status: true, tags: true,
               callAttempts: true, consent: true, optedOut: true, createdAt: true,
             },
           }),
           prisma.campaignLead.count({ where }),
         ]);
         json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        return;
+      }
+
+      // POST /campaigns/:id/leads/tag — bulk add/remove tags on selected leads.
+      // ("tag" is a reserved sub-path; lead ids are cuids and never collide.)
+      if (leadId === "tag" && req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "GET /campaigns/:id/leads")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const { normalizeTags } = await import("./core/campaigns/segments");
+        const leadIds = Array.isArray(body.leadIds) ? body.leadIds.filter((x): x is string => typeof x === "string") : [];
+        const addTags = normalizeTags(body.addTags);
+        const removeTags = normalizeTags(body.removeTags);
+        if (leadIds.length === 0) { json(res, 400, { ok: false, error: "leadIds must be a non-empty array" }); return; }
+        if (addTags.length === 0 && removeTags.length === 0) { json(res, 400, { ok: false, error: "provide addTags and/or removeTags" }); return; }
+        // Read-modify-write per lead so tag sets stay deduped and ordered.
+        const targets = await prisma.campaignLead.findMany({ where: { id: { in: leadIds }, campaignId, hotelId }, select: { id: true, tags: true } });
+        let updated = 0;
+        for (const t of targets) {
+          const next = normalizeTags([...t.tags.filter((x) => !removeTags.includes(x)), ...addTags]);
+          await prisma.campaignLead.update({ where: { id: t.id }, data: { tags: next } });
+          updated++;
+        }
+        json(res, 200, { ok: true, updated });
+        return;
+      }
+
+      // PATCH /campaigns/:id/leads/:leadId — set the lead's tags (full replace).
+      if (leadId !== null && leadId !== "tag" && !isImport && req.method === "PATCH") {
+        if (!canAccess(auth.context.permissions, "GET /campaigns/:id/leads")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        if (body.tags === undefined) { json(res, 400, { ok: false, error: "tags is required" }); return; }
+        const { normalizeTags } = await import("./core/campaigns/segments");
+        const lead = await prisma.campaignLead.findFirst({ where: { id: leadId, campaignId, hotelId }, select: { id: true } });
+        if (!lead) { json(res, 404, { ok: false, error: "Lead not found" }); return; }
+        const updated = await prisma.campaignLead.update({ where: { id: lead.id }, data: { tags: normalizeTags(body.tags) }, select: { id: true, tags: true } });
+        json(res, 200, { ok: true, lead: updated });
         return;
       }
 

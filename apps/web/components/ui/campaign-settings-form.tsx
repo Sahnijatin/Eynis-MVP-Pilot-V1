@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CampaignDetail } from "../../lib/data";
+import type { CampaignDetail, LeadSegmentRow } from "../../lib/data";
 
 // Settings tab: edit a campaign's core config + per-channel templates via
 // PATCH /api/campaigns/:id. Only the fields most operators tweak post-creation
@@ -19,9 +19,23 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
   const [whatsappTemplateBody, setWaBody] = useState(campaign.whatsappTemplateBody ?? "");
   const [emailSubjectTemplate, setEmailSubject] = useState(campaign.emailSubjectTemplate ?? "");
   const [emailBodyTemplate, setEmailBody] = useState(campaign.emailBodyTemplate ?? "");
+  const [segmentId, setSegmentId] = useState(campaign.segmentId ?? "");
+  const [segments, setSegments] = useState<LeadSegmentRow[]>([]);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/segments", { cache: "no-store" });
+        const data = await res.json();
+        if (alive && data.ok) setSegments(data.items);
+      } catch { /* segments are optional */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   async function save() {
     setBusy(true);
@@ -37,6 +51,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
         whatsappTemplateBody: whatsappTemplateBody.trim() || null,
         emailSubjectTemplate: emailSubjectTemplate.trim() || null,
         emailBodyTemplate: emailBodyTemplate.trim() || null,
+        segmentId: segmentId || null,
       };
       const res = await fetch(`/api/campaigns/${campaign.id}`, {
         method: "PATCH",
@@ -69,6 +84,15 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
           <Field label="Spend cap (calls)"><input style={input} value={spendCapCalls} onChange={(e) => setSpendCap(e.target.value)} placeholder="unlimited" inputMode="numeric" /></Field>
           <Field label="Max concurrent"><input style={input} value={maxConcurrent} onChange={(e) => setMaxConcurrent(e.target.value)} inputMode="numeric" /></Field>
         </div>
+        <Field label="Target segment">
+          <select style={input} value={segmentId} onChange={(e) => setSegmentId(e.target.value)}>
+            <option value="">All leads (no segment)</option>
+            {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
+            When set, only leads matching the segment are contacted. Manage segments in <a href="/segments" style={{ color: "#0f766e" }}>Segments</a>.
+          </div>
+        </Field>
       </div>
 
       {channels.includes("voice") && (

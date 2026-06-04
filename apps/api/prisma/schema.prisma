@@ -30,6 +30,7 @@ model Hotel {
   roles                 Role[]
   invitations           Invitation[]
   voiceCampaigns        VoiceCampaign[]
+  leadSegments          LeadSegment[]
   campaignLeads         CampaignLead[]
   callRecords           CallRecord[]
   sentimentEvents       SentimentEvent[]
@@ -326,15 +327,34 @@ model VoiceCampaign {
   maxConcurrent         Int                    @default(5)
   spendCapCalls         Int? // auto-pause after this many total sends/dials
   defaultCountryCode    String                 @default("+91") // for phone normalisation
+  // ── Targeting ──
+  segmentId             String? // optional saved segment; when set, only matching leads are contacted
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  segment               LeadSegment?           @relation(fields: [segmentId], references: [id], onDelete: SetNull)
   leads                 CampaignLead[]
   calls                 CallRecord[]
   deliveries            MessageDelivery[]
   whatsappConversations WhatsappConversation[]
 
   @@index([hotelId, status])
+}
+
+// Saved, tenant-wide audience filter. `rules` is a JSON SegmentRules object
+// (see core/campaigns/segments.ts) compiled to a Prisma where-clause at query
+// time. A campaign can target a segment so only matching leads are contacted.
+model LeadSegment {
+  id        String          @id @default(cuid())
+  hotelId   String
+  name      String
+  rules     String          @default("{}") // JSON SegmentRules
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  hotel     Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  campaigns VoiceCampaign[]
+
+  @@index([hotelId])
 }
 
 model CampaignLead {
@@ -348,6 +368,7 @@ model CampaignLead {
   company               String?
   jobTitle              String?
   rawData               String                 @default("{}") // original CSV row JSON -> {lead.custom.*}
+  tags                  String[]               @default([]) // free-form labels for segmentation
   abVariant             String? // A | B, assigned on first dial
   status                String                 @default("pending") // pending|calling|called|completed|failed|opted_out
   callAttempts          Int                    @default(0)

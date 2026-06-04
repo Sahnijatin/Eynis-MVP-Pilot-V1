@@ -45,6 +45,7 @@ export interface CampaignCreateValue {
   maxConcurrent: number;
   spendCapCalls: number | null;
   defaultCountryCode: string;
+  segmentId: string | null;
 }
 
 type Validated<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -171,6 +172,7 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
       maxConcurrent: intOr(body.maxConcurrent, 5), // 0 is preserved (provision but don't dial)
       spendCapCalls,
       defaultCountryCode: str(body.defaultCountryCode) ?? "+91",
+      segmentId: str(body.segmentId), // optional targeting segment
     },
   };
 }
@@ -237,6 +239,7 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
     else if (typeof v === "number" && Number.isInteger(v) && v > 0) data.spendCapCalls = v;
     else return { ok: false, error: "spendCapCalls must be a positive integer or null" };
   }
+  if ("segmentId" in body) data.segmentId = str(body.segmentId); // string targets a segment; null clears it
 
   if (Object.keys(data).length === 0) return { ok: false, error: "No updatable fields provided" };
   return { ok: true, value: data };

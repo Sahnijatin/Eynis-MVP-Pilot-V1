@@ -528,6 +528,7 @@ export interface CampaignDetail extends CampaignSummary {
   maxConcurrent: number;
   spendCapCalls: number | null;
   defaultCountryCode: string;
+  segmentId: string | null;
 }
 
 export interface CampaignLeadRow {
@@ -539,10 +540,36 @@ export interface CampaignLeadRow {
   company: string | null;
   abVariant: string | null;
   status: string;
+  tags: string[];
   callAttempts: number;
   consent: boolean;
   optedOut: boolean;
   createdAt: string;
+}
+
+export interface SegmentRules {
+  status?: string[];
+  consent?: boolean;
+  optedOut?: boolean;
+  tagsAny?: string[];
+  tagsAll?: string[];
+  tagsNot?: string[];
+  company?: string;
+  jobTitle?: string;
+  search?: string;
+}
+
+export interface LeadSegmentRow {
+  id: string;
+  name: string;
+  rules: SegmentRules;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchSegments(): Promise<{ ok: boolean; items: LeadSegmentRow[] }> {
+  const res = await authedFetch("/segments");
+  return (await res.json()) as { ok: boolean; items: LeadSegmentRow[] };
 }
 
 export async function fetchCampaigns(): Promise<{ ok: boolean; items: CampaignSummary[] }> {

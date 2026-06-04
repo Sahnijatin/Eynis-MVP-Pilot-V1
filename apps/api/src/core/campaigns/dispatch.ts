@@ -11,7 +11,16 @@
 import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { evaluateContact } from "./guard";
+import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
+
+// Resolve a campaign's optional targeting segment to a lead where-fragment.
+// Returns {} when no segment is set (or it was deleted) → contact all leads.
+async function segmentWhereFor(segmentId: string | null): Promise<ReturnType<typeof buildLeadWhere>> {
+  if (!segmentId) return {};
+  const seg = await prisma.leadSegment.findUnique({ where: { id: segmentId }, select: { rules: true } });
+  return seg ? buildLeadWhere(parseSegmentRules(seg.rules)) : {};
+}
 
 const DEFAULT_BATCH = Number(process.env.CAMPAIGN_DISPATCH_BATCH ?? 200);
 const TICK_MS = Number(process.env.CAMPAIGN_DISPATCH_INTERVAL_MS ?? 30_000);
@@ -69,8 +78,12 @@ export async function processCampaignChannel(
     jobTitle: true, rawData: true, consent: true, consentSource: true, optedOut: true,
   } as const;
 
+  // Optional targeting: when the campaign points at a segment, only matching
+  // leads are contacted (ANDed into both fresh and retry selection).
+  const segmentWhere = await segmentWhereFor(campaign.segmentId);
+
   const fresh = await prisma.campaignLead.findMany({
-    where: { campaignId, status: { not: "opted_out" }, deliveries: { none: { channel } } },
+    where: { campaignId, status: { not: "opted_out" }, deliveries: { none: { channel } }, ...segmentWhere },
     take: batchSize,
     select: leadScalars,
   });
@@ -89,6 +102,7 @@ export async function processCampaignChannel(
           // one is past the delay, so the lead is due for a retry.
           none: { channel, OR: [{ status: { not: "failed" } }, { createdAt: { gte: cutoff } }] },
         },
+        ...segmentWhere,
       },
       take: retryBudget,
       select: { ...leadScalars, deliveries: { where: { channel }, select: { id: true } } },
