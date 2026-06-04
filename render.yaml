@@ -42,6 +42,10 @@ services:
         sync: false
       - key: PMS_WEBHOOK_SECRET    # required in prod — shared secret for POST /connectors/pms/webhook (fails closed if unset)
         sync: false
+      - key: WHATSAPP_WEBHOOK_SECRET  # required in prod — shared secret for the WhatsApp inbound webhook (fails closed if unset)
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET # required in prod — Svix secret for the Resend webhook (fails closed if unset)
+        sync: false
       - key: ANTHROPIC_API_KEY     # optional — keyword fallback used if absent
         sync: false
       - key: OPENAI_API_KEY        # optional

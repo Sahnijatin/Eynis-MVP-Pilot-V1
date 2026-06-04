@@ -56,8 +56,8 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ✅ fixed (#53) |
 | F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ✅ fixed (#54) |
 | F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
-| F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ☐ open |
-| F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ☐ open |
+| F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ✅ fixed (#56) |
+| F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ✅ fixed (#57) |
 | F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ✅ fixed (#58) |
 | F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ✅ fixed (#59) |
 | F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ✅ fixed (#60) |
@@ -259,6 +259,12 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-9 / F-10 (#56, #57) — webhook hardening — fixed.** WhatsApp webhook: the shared-secret
+  check now uses `verifySharedWebhookSecret` (constant-time, fails closed in prod), and when
+  `VERIFY_WEBHOOKS=true` a request with no provider signature header is rejected (closing the
+  omission bypass). Resend webhook: fails closed in prod when `RESEND_WEBHOOK_SECRET` is unset,
+  and rejects stale/missing `svix-timestamp` (>5m) to stop signature replay. Declared both
+  secrets in `render.yaml`. Added 2 integration tests. Suite: 243 → 245 green.
 - **F-15 (#62) — sequence runner ignored quiet-hours — fixed.** The drip runner had no
   schedule gate, so steps could fire overnight. Sequences carry no schedule of their own, so
   each step now gates on its lead's originating campaign send-window via `campaignMaySendNow`;

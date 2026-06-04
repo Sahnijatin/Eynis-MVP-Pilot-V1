@@ -1011,10 +1011,21 @@ const handleRequest = async (
     if (req.url === "/webhooks/resend" && req.method === "POST") {
       const rawBody = await parseRawBody(req);
       const secret = asTrimmedString(process.env.RESEND_WEBHOOK_SECRET);
-      if (secret) {
+      if (!secret) {
+        // Fail closed in production: without the secret, forged bounce/complaint
+        // events could suppress arbitrary recipients (F-10). Accept-all only in dev.
+        if (process.env.NODE_ENV === "production") { json(res, 503, { ok: false, error: "Webhook secret not configured" }); return; }
+      } else {
         const hdr = (k: string) => (typeof req.headers[k] === "string" ? (req.headers[k] as string) : null);
+        const tsHeader = hdr("svix-timestamp");
+        // Replay protection: reject stale or missing timestamps (Svix sends unix
+        // seconds) so a captured signed payload can't be replayed forever (F-10).
+        const tsSec = tsHeader ? Number(tsHeader) : NaN;
+        if (!Number.isFinite(tsSec) || Math.abs(Date.now() / 1000 - tsSec) > 300) {
+          json(res, 401, { ok: false, error: "Stale or missing webhook timestamp" }); return;
+        }
         const valid = verifyResendSignature(secret, {
-          id: hdr("svix-id"), timestamp: hdr("svix-timestamp"), signature: hdr("svix-signature"),
+          id: hdr("svix-id"), timestamp: tsHeader, signature: hdr("svix-signature"),
         }, rawBody ?? "");
         if (!valid) { json(res, 401, { ok: false, error: "Invalid webhook signature" }); return; }
       }
@@ -1026,19 +1037,24 @@ const handleRequest = async (
     }
 
     if (req.url === "/integrations/whatsapp/webhook" && req.method === "POST") {
-      const expected = asTrimmedString(process.env.WHATSAPP_WEBHOOK_SECRET);
       const provided = req.headers["x-webhook-secret"];
-      const providedSecret =
-        typeof provided === "string" ? provided : Array.isArray(provided) ? provided[0] : null;
-      if (expected && providedSecret !== expected) {
-        json(res, 401, { ok: false, error: "Invalid webhook secret" });
-        return;
-      }
+      const secretCheck = verifySharedWebhookSecret({
+        expected: process.env.WHATSAPP_WEBHOOK_SECRET,
+        provided: typeof provided === "string" ? provided : Array.isArray(provided) ? provided[0] : null,
+        isProduction: process.env.NODE_ENV === "production"
+      });
+      if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
 
       const rawBody = await parseRawBody(req);
       const enforce = process.env.VERIFY_WEBHOOKS === "true";
 
       const twilioSig = typeof req.headers["x-twilio-signature"] === "string" ? req.headers["x-twilio-signature"] : null;
+      const interaktSigPresent = typeof req.headers["x-hub-signature-256"] === "string" || typeof req.headers["x-interakt-signature"] === "string";
+      // Close the omission bypass: when enforcing, a request with no provider
+      // signature at all must be rejected rather than silently accepted (F-9).
+      if (enforce && twilioSig === null && !interaktSigPresent) {
+        json(res, 401, { ok: false, error: "Missing webhook signature" }); return;
+      }
       if (twilioSig !== null) {
         const fullUrl = `http://${req.headers.host ?? "localhost"}${req.url}`;
         const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: {}, enforce });

@@ -596,6 +596,60 @@ test("whatsapp webhook skeleton creates request and returns ack", async () => {
   );
 });
 
+test("whatsapp webhook rejects a request with no signature when VERIFY_WEBHOOKS=true (F-9)", async () => {
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Failed to bind test server");
+  const base = "http://127.0.0.1:" + address.port;
+
+  const prev = process.env.VERIFY_WEBHOOKS;
+  process.env.VERIFY_WEBHOOKS = "true";
+  try {
+    const resp = await fetch(base + "/integrations/whatsapp/webhook", {
+      method: "POST",
+      headers: { "content-type": "application/json" }, // no x-twilio-signature / x-hub-signature-256
+      body: JSON.stringify({ tenantId, fromPhone: "+919100000111", message: "hi" })
+    });
+    assert.equal(resp.status, 401);
+    const payload = (await resp.json()) as { ok: boolean; error: string };
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /signature/i);
+  } finally {
+    if (prev === undefined) delete process.env.VERIFY_WEBHOOKS; else process.env.VERIFY_WEBHOOKS = prev;
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test("resend webhook rejects a stale svix-timestamp when a secret is configured (F-10)", async () => {
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Failed to bind test server");
+  const base = "http://127.0.0.1:" + address.port;
+
+  const prev = process.env.RESEND_WEBHOOK_SECRET;
+  process.env.RESEND_WEBHOOK_SECRET = "whsec_test";
+  try {
+    const staleTs = String(Math.floor(Date.now() / 1000) - 3600); // 1h old → outside the 5m window
+    const resp = await fetch(base + "/webhooks/resend", {
+      method: "POST",
+      headers: { "content-type": "application/json", "svix-id": "msg_1", "svix-timestamp": staleTs, "svix-signature": "v1,deadbeef" },
+      body: JSON.stringify({ type: "email.bounced", data: {} })
+    });
+    assert.equal(resp.status, 401);
+    const payload = (await resp.json()) as { ok: boolean; error: string };
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /timestamp/i);
+  } finally {
+    if (prev === undefined) delete process.env.RESEND_WEBHOOK_SECRET; else process.env.RESEND_WEBHOOK_SECRET = prev;
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
 test("whatsapp webhook normalization supports twilio payload", async () => {
   const tenantId = uniqueHotelId();
   await createHotel(tenantId);
