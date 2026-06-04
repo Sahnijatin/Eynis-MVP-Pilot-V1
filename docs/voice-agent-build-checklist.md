@@ -120,11 +120,33 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 - [x] **#10** (security) Webhook host derived only from `API_PUBLIC_URL` (`webhookHostFromPublicUrl`); the request Host header is never trusted. Activation 500s with a clear message if `API_PUBLIC_URL` is unset.
 - [x] **#8** `maxConcurrent: 0` now preserved (dropped the `|| 5` coercion) — provision-but-don't-dial is honoured.
 
-**Scheduled into Phase 6:** **#3** (durable opt-out) and **#4** (E.164 `+0…`) — see the Phase 6 task list below.
+**Scheduled into Phase 6:** **#3** (durable opt-out) and **#4** (E.164 `+0…`) — done in Phase 6.0 below.
 
 ---
 
-## Phase 6 — Dialler Worker (Day 4)
+## 🔀 Direction change — Multi-channel campaigns (decided post-Phase 5)
+
+Campaigns are no longer voice-only. A campaign now declares **channels** (`voice`, `whatsapp`, `email`, in any combination) and carries a **configurable template per channel**. The original "voice with follow-ups" model becomes "pick the channel(s), configure templates, launch." Decisions: **multi-channel per campaign**, **all three channels in parallel**, **pre-approved WhatsApp templates**.
+
+### Phase 6.0 — Multi-channel foundation ✅ DONE
+- [x] Generalised `VoiceCampaign`: `channels` (JSON), nullable voice fields, WhatsApp (`whatsappContentSid` / `whatsappTemplateBody` / `whatsappVariables`) + email (`emailSubjectTemplate` / `emailBodyTemplate`) template fields (migration `multichannel_campaigns`)
+- [x] `MessageDelivery` model — per-lead outbound record for WhatsApp/email (non-voice analogue of `CallRecord`)
+- [x] **#3** Durable `DoNotContact` suppression model + `suppressContact()` / `isSuppressed()`; checked at import (survives campaign/lead deletion)
+- [x] **#4** `normalizeToE164` rejects `+0…` (country code can't start with 0)
+- [x] Channel-aware validation (`validateChannels`, per-channel required fields), update builder, and serializer; activation only provisions Vapi for the `voice` channel
+- [x] Tests: channel validation, per-channel requirements, #3 durable-suppression-across-deletion, #4 — full API suite 89/89, lint clean
+
+### Phase 6.1 — Unified send engine (next)
+- [ ] `apps/api/src/core/campaigns/dispatch.ts` — one 30s worker that, per active campaign channel, routes to the voice dialler / WhatsApp sender / email sender
+- [ ] Shared **pre-send guard** for all channels: `canContactLead` + `isSuppressed` + `dndScrub`
+- [ ] WhatsApp sender: render approved template variables, send via Twilio Content API, write `MessageDelivery`
+- [ ] Email sender: render subject/body templates, send via Resend, write `MessageDelivery`
+- [ ] Per-channel spend/volume caps + auto-pause; rate limiting
+- [ ] SSE `campaign_message_sent` events
+
+---
+
+## Phase 6 — Voice Dialler Worker (Day 4) — voice channel of the unified engine
 
 - [ ] Write `apps/api/src/core/campaigns/worker.ts` — `startCampaignWorker()`, `runDialerTick()` (30s interval, separate from the 60s automation engine)
 - [ ] Slot calc: `maxConcurrent − in_progress`
@@ -137,11 +159,9 @@ Findings from the `/code-review` pass. **Fixed in this commit:**
 - [ ] Pre-dial consent + DND guard: skip leads failing `canContactLead` / on the suppression list; respect `dndScrub()` for `+91` numbers
 - [ ] Wire `startCampaignWorker()` into server startup alongside `startAutomationWorker()`
 
-**Folded-in review fixes (from Phase 5.5 backlog):**
-- [ ] **#3** (high) Durable tenant-wide opt-out — add a phone-level `DoNotContact` model (`hotelId` + `phone`, unique, survives lead/campaign deletion). Check it at import (`bulkInsertLeads`) and pre-dial in the worker; add a `suppressContact(hotelId, phone, reason)` helper the worker/Phase 7–8 call on opt-out. Replaces the current fragile "scan `optedOut` lead rows" approach.
-- [ ] **#4** (medium) `normalizeToE164` — reject a leading zero after `+` (`+0…` is not valid E.164), so bad numbers fail at import rather than at dial time.
+_#3 (durable opt-out) and #4 (E.164 `+0…`) completed in Phase 6.0 above._
 
-**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed (opted-out) number even across campaign deletion. E.164 validation rejects `+0…`.
+**DoD:** Worker dials pending leads, respects caps/concurrency, never double-dials, recovers stuck calls, and never dials a non-consented or suppressed (opted-out) number even across campaign deletion (✅ #3) — and E.164 validation rejects `+0…` (✅ #4).
 
 ---
 

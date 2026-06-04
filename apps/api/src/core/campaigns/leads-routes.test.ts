@@ -155,6 +155,36 @@ test("DELETE lead: pending removable, non-pending blocked (409)", async () => {
   }
 });
 
+test("durable suppression (#3): opt-out survives campaign deletion and blocks re-import", async () => {
+  const { suppressContact } = await import("./csv-import");
+  const hotelId = "vc-" + uid();
+  await createHotel(hotelId);
+  const email = `owner+${hotelId}@test.local`;
+  await createUser(hotelId, "owner", email);
+  const { server, base } = await startServer();
+  try {
+    const token = await authHeaders(base, hotelId, email, "owner");
+
+    // A lead opts out on campaign A, then campaign A is deleted entirely.
+    const campA = await createCampaign(base, token);
+    const phone = "+919" + uid().replace(/[^0-9]/g, "").padEnd(9, "0").slice(0, 9);
+    await prisma.campaignLead.create({ data: { campaignId: campA, hotelId, firstName: "X", phone, consent: true } });
+    await suppressContact(hotelId, phone, "opt_out");
+    await prisma.voiceCampaign.delete({ where: { id: campA } }); // lead row gone via cascade
+
+    // Re-import the same phone into a brand-new campaign — must be suppressed.
+    const campB = await createCampaign(base, token);
+    const national = phone.replace("+91", "");
+    const csv = ["First Name,Mobile,Opted In", `Sarah,${national},yes`].join("\n");
+    const map = { "First Name": "firstName", "Mobile": "phone", "Opted In": "consent" };
+    const r = await importCsv(base, token, campB, csv, map);
+    assert.equal(r.body.imported, 0);
+    assert.ok(r.body.errors.some((e: any) => e.reason === "opted_out"));
+  } finally {
+    await stop(server);
+  }
+});
+
 test("import CSV: tenant-wide opted-out phone is skipped", async () => {
   const hotelId = "vc-" + uid();
   await createHotel(hotelId);

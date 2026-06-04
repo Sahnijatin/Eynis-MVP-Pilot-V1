@@ -73,7 +73,8 @@ export function normalizeToE164(raw: string | null | undefined, defaultCountryCo
     const cc = defaultCountryCode.startsWith("+") ? defaultCountryCode : "+" + defaultCountryCode;
     s = cc + s.replace(/^0+/, ""); // drop national trunk zero before prefixing
   }
-  return /^\+\d{8,15}$/.test(s) ? s : null;
+  // E.164: '+' then a country code that cannot start with 0, total 8–15 digits.
+  return /^\+[1-9]\d{7,14}$/.test(s) ? s : null;
 }
 
 // ── Parse + validate (pure) ───────────────────────────────────────────────────
@@ -199,13 +200,14 @@ export async function bulkInsertLeads(
   });
   const existingPhones = new Set(existing.map((e) => e.phone));
 
-  // Tenant-wide opt-outs: a phone opted out on ANY campaign for this hotel is
-  // permanently excluded (BRD compliance rule).
-  const optedOut = await prisma.campaignLead.findMany({
-    where: { hotelId, optedOut: true, phone: { in: phones } },
-    select: { phone: true },
-  });
-  const optedOutPhones = new Set(optedOut.map((o) => o.phone));
+  // Tenant-wide opt-outs: a phone on the durable DoNotContact suppression list
+  // (survives lead/campaign deletion) OR flagged opted-out on any existing lead
+  // is permanently excluded across all campaigns and channels (compliance #3).
+  const [suppressed, optedOut] = await Promise.all([
+    prisma.doNotContact.findMany({ where: { hotelId, phone: { in: phones } }, select: { phone: true } }),
+    prisma.campaignLead.findMany({ where: { hotelId, optedOut: true, phone: { in: phones } }, select: { phone: true } }),
+  ]);
+  const optedOutPhones = new Set([...suppressed.map((s) => s.phone), ...optedOut.map((o) => o.phone)]);
 
   const toInsert = batch.filter((l) => {
     if (existingPhones.has(l.phone)) { skipped++; return false; }
@@ -229,4 +231,33 @@ export async function bulkInsertLeads(
   }
 
   return { imported: toInsert.length, skipped, errors };
+}
+
+// Records a phone on the durable, tenant-wide DoNotContact suppression list and
+// flags any matching leads. Idempotent. Called whenever a lead opts out (voice
+// transcript, WhatsApp reply, manual, or GDPR erasure) so the exclusion is
+// permanent across all future campaigns and channels (compliance #3).
+export async function suppressContact(
+  hotelId: string,
+  phone: string,
+  reason: "opt_out" | "dnd" | "manual" | "gdpr_erasure" = "opt_out",
+): Promise<void> {
+  await prisma.doNotContact.upsert({
+    where: { hotelId_phone: { hotelId, phone } },
+    create: { hotelId, phone, reason },
+    update: {}, // keep the original reason/createdAt
+  });
+  await prisma.campaignLead.updateMany({
+    where: { hotelId, phone },
+    data: { optedOut: true, status: "opted_out" },
+  });
+}
+
+// Whether a phone is on the suppression list (durable) for this tenant.
+export async function isSuppressed(hotelId: string, phone: string): Promise<boolean> {
+  const hit = await prisma.doNotContact.findUnique({
+    where: { hotelId_phone: { hotelId, phone } },
+    select: { id: true },
+  });
+  return Boolean(hit);
 }

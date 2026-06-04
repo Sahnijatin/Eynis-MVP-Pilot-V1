@@ -14,17 +14,30 @@ import {
 
 // ── Create validation ─────────────────────────────────────────────────────────
 
+export const SUPPORTED_CHANNELS = ["voice", "whatsapp", "email"] as const;
+export type CampaignChannel = (typeof SUPPORTED_CHANNELS)[number];
+
 export interface CampaignCreateValue {
   name: string;
-  scriptTemplate: string;
-  voiceA: string;
-  voiceB: string;
-  personaA: string;
-  personaB: string;
+  channels: string[];
+  // voice
+  scriptTemplate: string | null;
+  voiceA: string | null;
+  voiceB: string | null;
+  personaA: string | null;
+  personaB: string | null;
   outcomeTypes: string[];
   followUpRules: Record<string, string[]>;
   calendlyLink: string | null;
   agentName: string | null;
+  // whatsapp
+  whatsappContentSid: string | null;
+  whatsappTemplateBody: string | null;
+  whatsappVariables: string[];
+  // email
+  emailSubjectTemplate: string | null;
+  emailBodyTemplate: string | null;
+  // shared
   maxRetries: number;
   retryDelayHours: number;
   maxConcurrent: number;
@@ -43,6 +56,25 @@ const intOr = (v: unknown, fallback: number): number =>
 // outcome→channels map, e.g. { interested: ["whatsapp","email"] }. Channels are
 // constrained to the supported set.
 const FOLLOWUP_CHANNELS = new Set(["whatsapp", "email"]);
+
+// Validates the campaign's delivery channels. Defaults to ["voice"] for
+// backward compatibility when omitted; rejects unknown or empty sets.
+export function validateChannels(input: unknown): string[] | null {
+  if (input === undefined || input === null) return ["voice"];
+  if (!Array.isArray(input)) return null;
+  const set = new Set<string>();
+  for (const c of input) {
+    if (typeof c !== "string" || !(SUPPORTED_CHANNELS as readonly string[]).includes(c)) return null;
+    set.add(c);
+  }
+  return set.size === 0 ? null : [...set];
+}
+
+export function validateStringList(input: unknown): string[] | null {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) return null;
+  return input.filter((v) => typeof v === "string" && v.trim().length > 0).map((v) => (v as string).trim());
+}
 
 export function validateFollowUpRules(input: unknown): Record<string, string[]> | null {
   if (input === undefined || input === null) return {};
@@ -65,17 +97,34 @@ export function validateOutcomeTypes(input: unknown): string[] | null {
 
 export function validateCampaignCreate(body: Record<string, unknown>): Validated<CampaignCreateValue> {
   const name = str(body.name);
+  if (!name) return { ok: false, error: "Missing required field: name" };
+
+  const channels = validateChannels(body.channels);
+  if (channels === null) {
+    return { ok: false, error: `channels must be a non-empty array of: ${SUPPORTED_CHANNELS.join(", ")}` };
+  }
+
+  // Per-channel required fields.
   const scriptTemplate = str(body.scriptTemplate);
   const voiceA = str(body.voiceA);
   const voiceB = str(body.voiceB);
   const personaA = str(body.personaA);
   const personaB = str(body.personaB);
+  if (channels.includes("voice")) {
+    const missing = Object.entries({ scriptTemplate, voiceA, voiceB, personaA, personaB })
+      .filter(([, v]) => v === null).map(([k]) => k);
+    if (missing.length > 0) return { ok: false, error: `voice channel requires: ${missing.join(", ")}` };
+  }
 
-  const missing = Object.entries({ name, scriptTemplate, voiceA, voiceB, personaA, personaB })
-    .filter(([, v]) => v === null)
-    .map(([k]) => k);
-  if (missing.length > 0) {
-    return { ok: false, error: `Missing required fields: ${missing.join(", ")}` };
+  const whatsappContentSid = str(body.whatsappContentSid);
+  if (channels.includes("whatsapp") && !whatsappContentSid) {
+    return { ok: false, error: "whatsapp channel requires whatsappContentSid (an approved template id)" };
+  }
+
+  const emailSubjectTemplate = str(body.emailSubjectTemplate);
+  const emailBodyTemplate = str(body.emailBodyTemplate);
+  if (channels.includes("email") && (!emailSubjectTemplate || !emailBodyTemplate)) {
+    return { ok: false, error: "email channel requires emailSubjectTemplate and emailBodyTemplate" };
   }
 
   const outcomeTypes = validateOutcomeTypes(body.outcomeTypes);
@@ -85,6 +134,9 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
   if (followUpRules === null) {
     return { ok: false, error: "followUpRules must be an object mapping outcome -> [channels]" };
   }
+
+  const whatsappVariables = validateStringList(body.whatsappVariables);
+  if (whatsappVariables === null) return { ok: false, error: "whatsappVariables must be an array of strings" };
 
   const spendRaw = body.spendCapCalls;
   const spendCapCalls =
@@ -98,16 +150,18 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
   return {
     ok: true,
     value: {
-      name: name!,
-      scriptTemplate: scriptTemplate!,
-      voiceA: voiceA!,
-      voiceB: voiceB!,
-      personaA: personaA!,
-      personaB: personaB!,
+      name,
+      channels,
+      scriptTemplate, voiceA, voiceB, personaA, personaB,
       outcomeTypes,
       followUpRules,
       calendlyLink: str(body.calendlyLink),
       agentName: str(body.agentName),
+      whatsappContentSid,
+      whatsappTemplateBody: str(body.whatsappTemplateBody),
+      whatsappVariables,
+      emailSubjectTemplate,
+      emailBodyTemplate,
       maxRetries: intOr(body.maxRetries, 2),
       retryDelayHours: intOr(body.retryDelayHours, 24),
       maxConcurrent: intOr(body.maxConcurrent, 5), // 0 is preserved (provision but don't dial)
@@ -124,10 +178,8 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
 export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Record<string, unknown>> {
   const data: Record<string, unknown> = {};
 
-  const stringFields: Array<keyof CampaignCreateValue> = [
-    "name", "scriptTemplate", "voiceA", "voiceB", "personaA", "personaB", "defaultCountryCode",
-  ];
-  for (const f of stringFields) {
+  // Required-non-empty if present.
+  for (const f of ["name", "defaultCountryCode"] as const) {
     if (body[f] !== undefined) {
       const v = str(body[f]);
       if (v === null) return { ok: false, error: `${f} must be a non-empty string` };
@@ -135,9 +187,25 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
     }
   }
 
-  if ("calendlyLink" in body) data.calendlyLink = str(body.calendlyLink); // nullable
-  if ("agentName" in body) data.agentName = str(body.agentName); // nullable
+  // Nullable string fields (per-channel templates etc. — null clears them).
+  const nullableStrings = [
+    "scriptTemplate", "voiceA", "voiceB", "personaA", "personaB", "calendlyLink", "agentName",
+    "whatsappContentSid", "whatsappTemplateBody", "emailSubjectTemplate", "emailBodyTemplate",
+  ] as const;
+  for (const f of nullableStrings) {
+    if (f in body) data[f] = str(body[f]);
+  }
 
+  if (body.channels !== undefined) {
+    const c = validateChannels(body.channels);
+    if (c === null) return { ok: false, error: `channels must be a non-empty array of: ${SUPPORTED_CHANNELS.join(", ")}` };
+    data.channels = JSON.stringify(c);
+  }
+  if (body.whatsappVariables !== undefined) {
+    const w = validateStringList(body.whatsappVariables);
+    if (w === null) return { ok: false, error: "whatsappVariables must be an array of strings" };
+    data.whatsappVariables = JSON.stringify(w);
+  }
   if (body.outcomeTypes !== undefined) {
     const o = validateOutcomeTypes(body.outcomeTypes);
     if (o === null) return { ok: false, error: "outcomeTypes must be an array of strings" };
@@ -180,8 +248,16 @@ const safeObject = (json: string): Record<string, unknown> => {
   try { const v = JSON.parse(json); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch { return {}; }
 };
 
-export function serializeCampaign<T extends { outcomeTypes: string; followUpRules: string }>(c: T) {
-  return { ...c, outcomeTypes: safeArray(c.outcomeTypes), followUpRules: safeObject(c.followUpRules) };
+export function serializeCampaign<
+  T extends { outcomeTypes: string; followUpRules: string; channels?: string; whatsappVariables?: string },
+>(c: T) {
+  return {
+    ...c,
+    outcomeTypes: safeArray(c.outcomeTypes),
+    followUpRules: safeObject(c.followUpRules),
+    ...(c.channels !== undefined ? { channels: safeArray(c.channels) } : {}),
+    ...(c.whatsappVariables !== undefined ? { whatsappVariables: safeArray(c.whatsappVariables) } : {}),
+  };
 }
 
 // ── Stats summarisation (pure) ────────────────────────────────────────────────

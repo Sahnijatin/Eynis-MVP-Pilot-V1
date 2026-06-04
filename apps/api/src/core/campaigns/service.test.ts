@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   validateCampaignCreate,
+  validateChannels,
   buildCampaignUpdate,
   validateFollowUpRules,
   validateOutcomeTypes,
@@ -45,6 +46,43 @@ test("validateCampaignCreate reports all missing required fields", () => {
   const r = validateCampaignCreate({ name: "x" });
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /scriptTemplate/);
+});
+
+test("validateCampaignCreate defaults channels to voice and accepts explicit multi-channel", () => {
+  const def = validateCampaignCreate(validBody);
+  assert.ok(def.ok);
+  if (def.ok) assert.deepEqual(def.value.channels, ["voice"]);
+
+  const multi = validateCampaignCreate({
+    name: "Multi", channels: ["voice", "whatsapp", "email"],
+    scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S",
+    whatsappContentSid: "HXabc", emailSubjectTemplate: "Hi {lead.firstName}", emailBodyTemplate: "<p>Hi</p>",
+  });
+  assert.ok(multi.ok);
+  if (multi.ok) assert.deepEqual(multi.value.channels, ["voice", "whatsapp", "email"]);
+});
+
+test("validateCampaignCreate enforces per-channel required fields", () => {
+  // whatsapp without a template id
+  const wa = validateCampaignCreate({ name: "W", channels: ["whatsapp"] });
+  assert.equal(wa.ok, false);
+  if (!wa.ok) assert.match(wa.error, /whatsappContentSid/);
+
+  // email without templates
+  const em = validateCampaignCreate({ name: "E", channels: ["email"] });
+  assert.equal(em.ok, false);
+  if (!em.ok) assert.match(em.error, /emailSubjectTemplate/);
+
+  // whatsapp-only campaign needs NO voice fields
+  const ok = validateCampaignCreate({ name: "W", channels: ["whatsapp"], whatsappContentSid: "HXabc" });
+  assert.ok(ok.ok);
+});
+
+test("validateChannels rejects unknown channels and empties", () => {
+  assert.equal(validateChannels(["sms"]), null);
+  assert.equal(validateChannels([]), null);
+  assert.deepEqual(validateChannels(undefined), ["voice"]);
+  assert.deepEqual(validateChannels(["email", "email"]), ["email"]);
 });
 
 test("validateCampaignCreate rejects a bad spendCapCalls", () => {

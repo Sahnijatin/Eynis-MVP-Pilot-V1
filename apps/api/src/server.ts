@@ -3006,10 +3006,15 @@ const handleRequest = async (
         const v = validated.value;
         const created = await prisma.voiceCampaign.create({
           data: {
-            hotelId, name: v.name, scriptTemplate: v.scriptTemplate,
+            hotelId, name: v.name, channels: JSON.stringify(v.channels),
+            scriptTemplate: v.scriptTemplate,
             voiceA: v.voiceA, voiceB: v.voiceB, personaA: v.personaA, personaB: v.personaB,
             outcomeTypes: JSON.stringify(v.outcomeTypes), followUpRules: JSON.stringify(v.followUpRules),
-            calendlyLink: v.calendlyLink, maxRetries: v.maxRetries, retryDelayHours: v.retryDelayHours,
+            calendlyLink: v.calendlyLink, agentName: v.agentName,
+            whatsappContentSid: v.whatsappContentSid, whatsappTemplateBody: v.whatsappTemplateBody,
+            whatsappVariables: JSON.stringify(v.whatsappVariables),
+            emailSubjectTemplate: v.emailSubjectTemplate, emailBodyTemplate: v.emailBodyTemplate,
+            maxRetries: v.maxRetries, retryDelayHours: v.retryDelayHours,
             maxConcurrent: v.maxConcurrent, spendCapCalls: v.spendCapCalls, defaultCountryCode: v.defaultCountryCode,
           },
         });
@@ -3140,40 +3145,45 @@ const handleRequest = async (
           if (campaign.status !== "draft" && campaign.status !== "paused") {
             json(res, 409, { ok: false, error: `Cannot activate a campaign in '${campaign.status}' status` }); return;
           }
-          const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
-          const creds = await resolveVapiCredentials(hotelId);
-          if (!isVapiConfigured(creds)) {
-            json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
-            return;
-          }
-          // Re-provision only if not already provisioned (resume keeps existing assistants).
+          const channels = serializeCampaign(campaign).channels as string[];
           let vapiAssistantIdA = campaign.vapiAssistantIdA;
           let vapiAssistantIdB = campaign.vapiAssistantIdB;
-          if (!vapiAssistantIdA || !vapiAssistantIdB) {
-            // Webhook callback host MUST come from trusted server config, never the
-            // request Host header (which a caller can spoof to exfiltrate call reports).
-            const apiDomain = webhookHostFromPublicUrl(process.env.API_PUBLIC_URL);
-            if (!apiDomain) {
-              json(res, 500, { ok: false, error: "Server misconfigured: set API_PUBLIC_URL (e.g. https://api.example.com) for the Vapi webhook callback" });
+          // Voice channel: provision Vapi assistants. Non-voice channels (WhatsApp/
+          // email) need no provisioning and activate directly.
+          if (channels.includes("voice")) {
+            const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
+            const creds = await resolveVapiCredentials(hotelId);
+            if (!isVapiConfigured(creds)) {
+              json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
               return;
             }
-            // Agent name the AI introduces itself with: explicit campaign value,
-            // else the hotel name (never the persona label).
-            const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
-            const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
-            const provisioned = await provisionCampaignAssistants({
-              campaign: {
-                name: campaign.name, scriptTemplate: campaign.scriptTemplate,
-                voiceA: campaign.voiceA, voiceB: campaign.voiceB,
-                personaA: campaign.personaA, personaB: campaign.personaB,
-                outcomeTypes: serializeCampaign(campaign).outcomeTypes,
-              },
-              creds, apiDomain, agentName,
-              createAssistant, deleteAssistant,
-            });
-            if (!provisioned.ok) { json(res, 502, { ok: false, error: provisioned.error }); return; }
-            vapiAssistantIdA = provisioned.vapiAssistantIdA;
-            vapiAssistantIdB = provisioned.vapiAssistantIdB;
+            // Re-provision only if not already provisioned (resume keeps existing assistants).
+            if (!vapiAssistantIdA || !vapiAssistantIdB) {
+              // Webhook callback host MUST come from trusted server config, never the
+              // request Host header (which a caller can spoof to exfiltrate call reports).
+              const apiDomain = webhookHostFromPublicUrl(process.env.API_PUBLIC_URL);
+              if (!apiDomain) {
+                json(res, 500, { ok: false, error: "Server misconfigured: set API_PUBLIC_URL (e.g. https://api.example.com) for the Vapi webhook callback" });
+                return;
+              }
+              // Agent name the AI introduces itself with: explicit campaign value,
+              // else the hotel name (never the persona label).
+              const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+              const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
+              const provisioned = await provisionCampaignAssistants({
+                campaign: {
+                  name: campaign.name, scriptTemplate: campaign.scriptTemplate ?? "",
+                  voiceA: campaign.voiceA ?? "", voiceB: campaign.voiceB ?? "",
+                  personaA: campaign.personaA ?? "", personaB: campaign.personaB ?? "",
+                  outcomeTypes: serializeCampaign(campaign).outcomeTypes,
+                },
+                creds, apiDomain, agentName,
+                createAssistant, deleteAssistant,
+              });
+              if (!provisioned.ok) { json(res, 502, { ok: false, error: provisioned.error }); return; }
+              vapiAssistantIdA = provisioned.vapiAssistantIdA;
+              vapiAssistantIdB = provisioned.vapiAssistantIdB;
+            }
           }
           const updated = await prisma.voiceCampaign.update({
             where: { id },
