@@ -12,7 +12,10 @@ export const tokens = {
     text: "#0f172a", // --color-text
     textMuted: "#64748b", // --color-muted
     textFaint: "#94a3b8", // slate-400
-    accent: "#0f766e", // --color-teal
+    // Accent reads the white-label CSS var set by the app shell (resolved theme),
+    // falling back to the teal default for SSR / pre-hydration. accentHover/Soft
+    // stay static for now — a follow-up can derive them from the live accent.
+    accent: "var(--color-accent, #0f766e)",
     accentHover: "#0e6b63",
     accentSoft: "#f0fdfa", // teal-50
     danger: "#b91c1c",

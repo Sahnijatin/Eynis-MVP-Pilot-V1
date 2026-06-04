@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { Bell, Building2, CalendarDays, X, ShieldCheck, ShieldAlert, Lock } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry } from "../../lib/industry-config";
+import { resolveTheme, type TenantBranding } from "../../lib/theme";
 import {
   type OrgRole,
   ORG_ROLE_LABELS,
@@ -199,6 +200,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [realOrgRole, setRealOrgRole] = useState<OrgRole>(initialOrgRole);
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
   const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
+  const [branding, setBranding] = useState<TenantBranding | null>(null);
 
   // ── Fetch fresh context from server when user is loaded ──────────────────
   // The root layout may have rendered before sign-in (returning defaults),
@@ -207,8 +209,9 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     if (!isLoaded || !user) return;
     fetch("/api/me", { cache: "no-store" })
       .then(r => r.json())
-      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null }) => {
+      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null }) => {
         if (data.ok && data.exists) {
+          setBranding(data.branding ?? null);
           if (data.orgRole) {
             setRealOrgRole(data.orgRole);
             if (data.orgRole === "org_admin") {
@@ -255,6 +258,9 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const config = getIndustryConfig(industry);
   const visibleNavItems = getAllowedNavItems(config.navItems, orgRole);
 
+  // ── Resolved white-label theme (tenant ▶ industry ▶ Eynis) ─────────────────
+  const theme = resolveTheme(branding, config);
+
   // ── Route guard ──────────────────────────────────────────────────────────
   const isPublicRoute =
     pathname.startsWith("/request") ||
@@ -273,9 +279,14 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   }, [pathname, orgRole, isPublicRoute, router]);
 
   // ── Misc effects ─────────────────────────────────────────────────────────
+  // Drive the global theme CSS variables off the resolved tenant theme so the
+  // whole UI (incl. the design-system tokens) picks up white-label colors.
   useEffect(() => {
-    document.documentElement.style.setProperty("--color-industry", config.accentColor);
-  }, [config.accentColor]);
+    const root = document.documentElement.style;
+    root.setProperty("--color-industry", theme.primaryColor);
+    root.setProperty("--color-primary", theme.primaryColor);
+    root.setProperty("--color-accent", theme.accentColor);
+  }, [theme.primaryColor, theme.accentColor]);
 
   useEffect(() => {
     if (!notifOpen) return;
@@ -303,24 +314,28 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
       <aside className="app-sidebar">
         <div className="brand-block">
           <div className="brand-logo">
-            <div className="brand-logo-icon" style={{ background: config.accentColor }}>
-              <Building2 className="w-4 h-4 text-white" />
+            <div className="brand-logo-icon" style={{ background: theme.logoUrl ? "transparent" : theme.primaryColor, overflow: "hidden" }}>
+              {theme.logoUrl
+                ? <img src={theme.logoUrl} alt="" className="w-full h-full object-contain" />
+                : <OverviewIcon className="w-4 h-4 text-white" />}
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="text-[10px] uppercase tracking-widest font-medium" style={{ color: "#5a7a9a" }}>
-                Eynis
-              </span>
+              {(theme.brandName || !theme.hidePoweredBy) && (
+                <span className="text-[10px] uppercase tracking-widest font-medium" style={{ color: "#5a7a9a" }}>
+                  {theme.brandName ?? "Eynis"}
+                </span>
+              )}
               <span className="brand-title" title={propertyName} style={{ fontSize: "15px" }}>
                 {propertyName}
               </span>
             </div>
           </div>
-          <div className="brand-subtitle">{config.tagline}</div>
+          <div className="brand-subtitle">{theme.subtitle}</div>
         </div>
 
-        <div className="sidebar-industry-badge" style={{ borderColor: config.accentColor + "33", background: config.accentColor + "11" }}>
-          <OverviewIcon className="w-3.5 h-3.5" style={{ color: config.accentColor }} />
-          <span style={{ color: config.accentColor }}>{config.name}</span>
+        <div className="sidebar-industry-badge" style={{ borderColor: theme.primaryColor + "33", background: theme.primaryColor + "11" }}>
+          <OverviewIcon className="w-3.5 h-3.5" style={{ color: theme.primaryColor }} />
+          <span style={{ color: theme.primaryColor }}>{config.name}</span>
         </div>
 
         {/* Current role chip */}

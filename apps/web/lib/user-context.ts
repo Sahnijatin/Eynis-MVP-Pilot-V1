@@ -1,5 +1,6 @@
 import { currentUser } from "@clerk/nextjs/server";
 import type { OrgRole } from "./rbac";
+import type { TenantBranding } from "./theme";
 
 export interface UserContext {
   hotelId: string | null;
@@ -8,6 +9,7 @@ export interface UserContext {
   orgRole: OrgRole;           // mapped UI role
   industry: string | null;
   propertyName: string | null;
+  branding: TenantBranding | null;  // per-tenant white-label overrides (null = industry defaults)
   fullName: string | null;
   email: string | null;
   exists: boolean;            // true if user has a DB record
@@ -46,7 +48,7 @@ async function identifyByEmail(email: string) {
   try {
     const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal });
     if (!res.ok) return null;
-    const data = await res.json() as { ok: boolean; exists?: boolean; hotelId?: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; fullName?: string };
+    const data = await res.json() as { ok: boolean; exists?: boolean; hotelId?: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; fullName?: string };
     if (!data.ok || !data.exists) return null;
     return {
       hotelId: data.hotelId ?? null,
@@ -54,6 +56,7 @@ async function identifyByEmail(email: string) {
       roleKey: data.roleKey ?? null,
       industry: data.industry ?? null,
       propertyName: data.propertyName ?? null,
+      branding: data.branding ?? null,
       fullName: data.fullName ?? null,
     };
   } catch {
@@ -72,7 +75,7 @@ export async function resolveUserContext(): Promise<UserContext> {
   }
 
   if (!clerkUser) {
-    return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, fullName: null, email: null, exists: false };
+    return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false };
   }
 
   const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
@@ -89,6 +92,7 @@ export async function resolveUserContext(): Promise<UserContext> {
       orgRole: toOrgRole(dbUser.roleKey, dbUser.role),
       industry: dbUser.industry ?? "hospitality",
       propertyName: dbUser.propertyName ?? null,
+      branding: dbUser.branding ?? null,
       fullName: dbUser.fullName ?? null,
       email,
       exists: true,
@@ -96,5 +100,5 @@ export async function resolveUserContext(): Promise<UserContext> {
   }
 
   // No DB record — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
-  return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, fullName: clerkUser.fullName ?? null, email, exists: false };
+  return { hotelId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false };
 }

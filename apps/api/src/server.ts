@@ -92,6 +92,33 @@ const ensureHotelAccess = async (hotelId: string) => {
   return Boolean(hotel);
 };
 
+// ── Tenant branding (white-label) ──────────────────────────────────────────────
+// Fields the client may read/write. `id`/`hotelId`/timestamps are never client-set.
+const BRANDING_SELECT = {
+  brandName: true, tagline: true, logoUrl: true, faviconUrl: true,
+  primaryColor: true, accentColor: true, supportEmail: true, hidePoweredBy: true,
+} as const;
+
+// Coerce/validate an inbound branding payload into the writable columns. Strings
+// are trimmed; blanks become null (so clearing a field resets to industry default).
+const sanitizeBranding = (body: Record<string, unknown>) => {
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const color = (v: unknown): string | null => {
+    const s = str(v);
+    return s && /^#[0-9a-fA-F]{6}$/.test(s) ? s : null; // only accept #rrggbb
+  };
+  return {
+    brandName: str(body.brandName),
+    tagline: str(body.tagline),
+    logoUrl: str(body.logoUrl),
+    faviconUrl: str(body.faviconUrl),
+    primaryColor: color(body.primaryColor),
+    accentColor: color(body.accentColor),
+    supportEmail: str(body.supportEmail),
+    hidePoweredBy: body.hidePoweredBy === true,
+  };
+};
+
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
 const upsertGuestByPhone = async (hotelId: string, fullName: string, phoneE164: string) => {
@@ -343,6 +370,8 @@ const parseCampaignLeadsPath = (
 
 const permissionMap: Record<string, Permission | null> = {
   "GET /context":                          null,
+  "GET /tenant/branding":                  "manage_settings",
+  "PUT /tenant/branding":                  "manage_settings",
   "POST /events/service-request-created":  "manage_requests",
   "POST /service-requests":               "manage_requests",
   "GET /service-requests":                "view_requests",
@@ -535,7 +564,7 @@ const handleRequest = async (
           role: true,
           fullName: true,
           systemRole: { select: { key: true } },
-          hotel: { select: { industry: true, name: true } }
+          hotel: { select: { industry: true, name: true, branding: { select: BRANDING_SELECT } } }
         }
       });
 
@@ -558,6 +587,7 @@ const handleRequest = async (
         roleKey: user.systemRole?.key ?? null,
         industry: user.hotel.industry,
         propertyName: user.hotel.name,
+        branding: user.hotel.branding ?? null,
         fullName: user.fullName
       });
       return;
@@ -710,6 +740,40 @@ const handleRequest = async (
         return;
       }
       json(res, 200, { ok: true, context: auth.context });
+      return;
+    }
+
+    // ── Tenant branding (white-label) ───────────────────────────────────────────
+    if (req.url === "/tenant/branding" && (req.method === "GET" || req.method === "PUT")) {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const { hotelId, permissions } = auth.context;
+      if (!(await ensureHotelAccess(hotelId))) {
+        json(res, 403, { ok: false, error: "Hotel not found or access denied" });
+        return;
+      }
+      if (!canAccess(permissions, `${req.method} /tenant/branding`)) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
+        return;
+      }
+
+      if (req.method === "GET") {
+        const branding = await prisma.tenantBranding.findUnique({
+          where: { hotelId }, select: BRANDING_SELECT,
+        });
+        json(res, 200, { ok: true, branding: branding ?? null });
+        return;
+      }
+
+      // PUT — upsert this tenant's branding (partial overrides; blanks reset to default).
+      const data = sanitizeBranding((await parseBody(req)) as Record<string, unknown>);
+      const branding = await prisma.tenantBranding.upsert({
+        where: { hotelId },
+        create: { hotelId, ...data },
+        update: data,
+        select: BRANDING_SELECT,
+      });
+      json(res, 200, { ok: true, branding });
       return;
     }
 
