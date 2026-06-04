@@ -128,6 +128,15 @@ export async function processCampaignChannel(
     : [];
   const suppressed = new Set(suppressedRows.map((s) => s.phone));
 
+  // Email channel: batch-resolve this tenant's email suppression list (populated
+  // by the Resend webhook on bounces/complaints) so we never re-mail a bad address.
+  const emails = channel === "email"
+    ? leads.map((l) => l.email?.trim().toLowerCase()).filter((e): e is string => Boolean(e))
+    : [];
+  const suppressedEmails = emails.length
+    ? new Set((await prisma.emailSuppression.findMany({ where: { hotelId: campaign.hotelId, email: { in: emails } }, select: { email: true } })).map((r) => r.email))
+    : new Set<string>();
+
   const hotel = await prisma.hotel.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
   const senderCampaign = {
     name: campaign.name, calendlyLink: campaign.calendlyLink,
@@ -148,6 +157,15 @@ export async function processCampaignChannel(
   }
 
   for (const lead of leads) {
+    // Skip recipients on the email suppression list (hard bounce / complaint).
+    if (channel === "email" && lead.email && suppressedEmails.has(lead.email.trim().toLowerCase())) {
+      await prisma.messageDelivery.create({
+        data: { hotelId: campaign.hotelId, campaignId, leadId: lead.id, channel, status: "skipped", error: "email_suppressed" },
+      });
+      skipped++;
+      continue;
+    }
+
     const decision = evaluateContact(
       { consent: lead.consent, consentSource: lead.consentSource, optedOut: lead.optedOut, phone: lead.phone },
       { channel: channel as "whatsapp" | "email", suppressed: lead.phone ? suppressed.has(lead.phone) : true },

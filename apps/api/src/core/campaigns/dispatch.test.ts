@@ -82,6 +82,24 @@ test("dispatch skips leads that fail the pre-send guard (no consent / suppressed
   assert.deepEqual(reasons, ["no_consent", "suppressed"]);
 });
 
+test("dispatch skips email recipients on the suppression list", async () => {
+  const hotelId = "disp-" + uid();
+  await prisma.hotel.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  const campaign = await prisma.voiceCampaign.create({
+    data: { hotelId, name: "Email", status: "active", channels: JSON.stringify(["email"]), emailSubjectTemplate: "Hi", emailBodyTemplate: "Hello {lead.firstName}" },
+  });
+  const suppEmail = `supp+${uid()}@example.com`;
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "S", email: suppEmail, phone: "+1888" + uid().slice(0, 6), consent: true, consentSource: "csv_import", consentAt: new Date() } });
+  await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "OK", email: `ok+${uid()}@example.com`, phone: "+1889" + uid().slice(0, 6), consent: true, consentSource: "csv_import", consentAt: new Date() } });
+  await prisma.emailSuppression.create({ data: { hotelId, email: suppEmail.toLowerCase(), reason: "bounced" } });
+
+  const r = await processCampaignChannel(campaign.id, "email", deps);
+  assert.equal(r.sent, 1);     // only the non-suppressed lead is sent
+  assert.equal(r.skipped, 1);  // suppressed lead skipped before send
+  const skipped = await prisma.messageDelivery.findFirst({ where: { campaignId: campaign.id, status: "skipped" }, select: { error: true } });
+  assert.equal(skipped?.error, "email_suppressed");
+});
+
 test("dispatch enforces the spend cap and auto-pauses the campaign", async () => {
   const { hotelId, campaignId } = await makeCampaign({ spendCapCalls: 1 });
   await addLead(campaignId, hotelId, "+1415559" + uid().slice(0, 4));

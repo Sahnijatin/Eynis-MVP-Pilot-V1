@@ -43,6 +43,23 @@ model Hotel {
   messageDeliveries     MessageDelivery[]
   doNotContacts         DoNotContact[]
   branding              TenantBranding?
+  emailSuppressions     EmailSuppression[]
+}
+
+// Per-tenant email suppression list. Populated by the Resend webhook on hard
+// bounces and spam complaints (and manual adds). The email dispatcher skips any
+// recipient on this list — the deliverability feedback loop that protects a
+// tenant's sending reputation. Email-keyed counterpart to DoNotContact (phone).
+model EmailSuppression {
+  id        String   @id @default(cuid())
+  hotelId   String
+  email     String // lowercased
+  reason    String   @default("bounced") // bounced | complained | manual
+  createdAt DateTime @default(now())
+  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelId, email])
+  @@index([hotelId])
 }
 
 // Per-tenant white-label branding. All fields optional — anything left null

@@ -25,6 +25,7 @@ import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
 import { checkWebhookSignature } from "./core/connectors/webhook-verify";
+import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel } from "./core/rbac";
 import { enforceLicenseFeature } from "./core/license";
@@ -869,6 +870,26 @@ const handleRequest = async (
       });
 
       json(res, 201, { ok: true, item: serviceRequest });
+      return;
+    }
+
+    // ── POST /webhooks/resend — public: email delivery/bounce/complaint events ──
+    // Feeds the per-tenant EmailSuppression list. Verified via the Svix signature
+    // when RESEND_WEBHOOK_SECRET is set (accept-all in dev, mirroring VERIFY_WEBHOOKS).
+    if (req.url === "/webhooks/resend" && req.method === "POST") {
+      const rawBody = await parseRawBody(req);
+      const secret = asTrimmedString(process.env.RESEND_WEBHOOK_SECRET);
+      if (secret) {
+        const hdr = (k: string) => (typeof req.headers[k] === "string" ? (req.headers[k] as string) : null);
+        const valid = verifyResendSignature(secret, {
+          id: hdr("svix-id"), timestamp: hdr("svix-timestamp"), signature: hdr("svix-signature"),
+        }, rawBody ?? "");
+        if (!valid) { json(res, 401, { ok: false, error: "Invalid webhook signature" }); return; }
+      }
+      let event: unknown;
+      try { event = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
+      const result = await processResendEvent(event as Parameters<typeof processResendEvent>[0]);
+      json(res, 200, { ok: true, action: result.action });
       return;
     }
 

@@ -26,6 +26,14 @@ const connectorFields: Record<string, ConnectorField[]> = {
   stripe_payments: [
     { key: "secretKey", label: "Secret Key", placeholder: "sk_live_xxxxxxxx", secret: true },
     { key: "webhookSecret", label: "Webhook Secret", placeholder: "whsec_xxxxxxxx", secret: true }
+  ],
+  // White-label email: each tenant connects its OWN Resend account + verified
+  // sending domain, so campaign email goes out from the tenant's brand. With no
+  // config here the API falls back to the platform env defaults.
+  email_resend: [
+    { key: "apiKey", label: "Resend API Key", placeholder: "re_xxxxxxxx", secret: true },
+    { key: "fromAddress", label: "From Address", placeholder: "campaigns@yourdomain.com" },
+    { key: "fromName", label: "From Name", placeholder: "Your Brand" }
   ]
 };
 
