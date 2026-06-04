@@ -52,7 +52,9 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
     // responsive even for very large files; the full file is uploaded for import.
     const text = await f.slice(0, 65536).text();
     const rows = parseCSV(text).filter((r) => r.some((c) => c.trim() !== ""));
-    const hdrs = rows[0] ?? [];
+    // Trim header cells (and strip a UTF-8 BOM) so the column map matches what
+    // the server parses — exporters often emit ", Phone, " with padding.
+    const hdrs = (rows[0] ?? []).map((h) => h.replace(/^﻿/, "").trim());
     setHeaders(hdrs);
     setSample(rows.slice(1, 6));
     setMapping(autoMap(hdrs));

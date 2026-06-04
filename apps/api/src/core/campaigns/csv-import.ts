@@ -68,10 +68,13 @@ export function parseMultipart(
 export function normalizeToE164(raw: string | null | undefined, defaultCountryCode: string): string | null {
   if (!raw) return null;
   let s = raw.replace(/[^\d+]/g, "");
+  if (!s) return null;
   if (s.startsWith("00")) s = "+" + s.slice(2);
   if (!s.startsWith("+")) {
-    const cc = defaultCountryCode.startsWith("+") ? defaultCountryCode : "+" + defaultCountryCode;
-    s = cc + s.replace(/^0+/, ""); // drop national trunk zero before prefixing
+    // Sanitise the country code to digits only (tolerates "+91", "91", "+91 ").
+    const cc = defaultCountryCode.replace(/[^\d]/g, "");
+    if (!cc) return null; // a national number with no country code can't be normalised
+    s = "+" + cc + s.replace(/^0+/, ""); // drop national trunk zero before prefixing
   }
   // E.164: '+' then a country code that cannot start with 0, total 8–15 digits.
   return /^\+[1-9]\d{7,14}$/.test(s) ? s : null;
@@ -109,15 +112,21 @@ export function parseLeadsFromCsv(
   const errors: ImportError[] = [];
   let records: Record<string, string>[];
   try {
-    records = parseCsv(csvText, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+    records = parseCsv(csvText, {
+      // Trim header names so they match the (possibly space-padded) column map
+      // keys, e.g. a CSV with ", Phone, " columns. Values are trimmed too.
+      columns: (header: string[]) => header.map((h) => h.trim()),
+      skip_empty_lines: true, trim: true, bom: true,
+    }) as Record<string, string>[];
   } catch (e) {
     return { leads: [], errors: [{ row: 0, reason: `CSV parse failed: ${(e as Error).message}` }] };
   }
 
-  // Reverse the map: Eynis field -> CSV header (first wins).
+  // Reverse the map: Eynis field -> CSV header (first wins). Trim keys so they
+  // match the trimmed parsed headers regardless of client-side whitespace.
   const headerFor: Partial<Record<EynisLeadField, string>> = {};
   for (const [header, field] of Object.entries(opts.columnMap)) {
-    if (!(field in headerFor)) headerFor[field] = header;
+    if (!(field in headerFor)) headerFor[field] = header.trim();
   }
 
   const source: ConsentSource = opts.consentSource ?? "csv_import";
