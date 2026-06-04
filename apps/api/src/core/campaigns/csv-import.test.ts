@@ -74,6 +74,18 @@ test("normalizeToE164 tolerates a space-padded country code", () => {
   assert.equal(normalizeToE164("9876543210", "91"), "+919876543210");
 });
 
+test("normalizeToE164 falls back to +91 when the country code has no digits (never rejects a valid number)", () => {
+  // The real-world failure: a campaign whose defaultCountryCode was empty/
+  // whitespace/garbage must NOT reject otherwise-valid national numbers.
+  for (const badCc of ["", " ", "+", "abc", "  +  "]) {
+    assert.equal(normalizeToE164("9997497006", badCc), "+919997497006", `cc=${JSON.stringify(badCc)}`);
+  }
+  // An explicit valid country code is still respected.
+  assert.equal(normalizeToE164("4155550100", "+1"), "+14155550100");
+  // A number already in international form is untouched regardless of cc.
+  assert.equal(normalizeToE164("+14155550100", ""), "+14155550100");
+});
+
 test("parseLeadsFromCsv rejects non-consented rows", () => {
   const csv = ["First Name,Mobile,Opted In", "Sarah,9876543210,no"].join("\n");
   const { leads, errors } = parseLeadsFromCsv(csv, { columnMap, defaultCountryCode: "+91" });
@@ -101,7 +113,9 @@ test("parseLeadsFromCsv flags missing firstName and invalid phone", () => {
   ].join("\n");
   const { leads, errors } = parseLeadsFromCsv(csv, { columnMap, defaultCountryCode: "+91" });
   assert.equal(leads.length, 0);
-  assert.deepEqual(errors.map((e) => e.reason).sort(), ["missing firstName", "missing or invalid phone (need E.164)"].sort());
+  const reasons = errors.map((e) => e.reason);
+  assert.ok(reasons.includes("missing firstName"));
+  assert.ok(reasons.some((r) => /invalid phone "xyz"/.test(r)));
 });
 
 test("parseLeadsFromCsv: blank consent cell falls back to file-level defaultConsent (#6)", () => {

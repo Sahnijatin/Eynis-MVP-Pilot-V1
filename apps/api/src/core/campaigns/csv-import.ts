@@ -65,19 +65,29 @@ export function parseMultipart(
 
 // ── E.164 normalisation ───────────────────────────────────────────────────────
 
+// Hard fallback country code (digits) used only when a campaign's
+// defaultCountryCode is missing/garbage — so a valid national number is never
+// rejected just because the campaign was misconfigured. India (+91) by default;
+// override with CAMPAIGN_DEFAULT_COUNTRY.
+const FALLBACK_COUNTRY_DIGITS = (process.env.CAMPAIGN_DEFAULT_COUNTRY ?? "91").replace(/\D/g, "") || "91";
+
+const validE164 = (e164: string): string | null => (/^\+[1-9]\d{7,14}$/.test(e164) ? e164 : null);
+
 export function normalizeToE164(raw: string | null | undefined, defaultCountryCode: string): string | null {
   if (!raw) return null;
-  let s = raw.replace(/[^\d+]/g, "");
-  if (!s) return null;
-  if (s.startsWith("00")) s = "+" + s.slice(2);
-  if (!s.startsWith("+")) {
-    // Sanitise the country code to digits only (tolerates "+91", "91", "+91 ").
-    const cc = defaultCountryCode.replace(/[^\d]/g, "");
-    if (!cc) return null; // a national number with no country code can't be normalised
-    s = "+" + cc + s.replace(/^0+/, ""); // drop national trunk zero before prefixing
-  }
-  // E.164: '+' then a country code that cannot start with 0, total 8–15 digits.
-  return /^\+[1-9]\d{7,14}$/.test(s) ? s : null;
+  const s = String(raw).trim();
+  let digits = s.replace(/\D/g, "");
+  if (!digits) return null;
+
+  // Already international: "+…" or "00…".
+  if (s.startsWith("+")) return validE164("+" + digits);
+  if (s.startsWith("00")) return validE164("+" + digits.replace(/^0+/, ""));
+
+  // National number: drop the trunk zero, prefix the country code. The country
+  // code is sanitised to digits; if it has none, fall back rather than reject.
+  digits = digits.replace(/^0+/, "");
+  const cc = (defaultCountryCode ?? "").replace(/\D/g, "") || FALLBACK_COUNTRY_DIGITS;
+  return validE164("+" + cc + digits);
 }
 
 // ── Parse + validate (pure) ───────────────────────────────────────────────────
@@ -143,8 +153,17 @@ export function parseLeadsFromCsv(
     const firstName = val("firstName");
     if (!firstName) { errors.push({ row, reason: "missing firstName" }); return; }
 
-    const phone = normalizeToE164(val("phone"), opts.defaultCountryCode);
-    if (!phone) { errors.push({ row, reason: "missing or invalid phone (need E.164)" }); return; }
+    const rawPhone = val("phone");
+    const phone = normalizeToE164(rawPhone, opts.defaultCountryCode);
+    if (!phone) {
+      // Distinguish "phone column not found/empty" from "value present but unparseable"
+      // so a misconfigured mapping or a genuinely bad number are easy to tell apart.
+      const reason = !headerFor.phone ? "phone column not mapped"
+        : rawPhone === null ? "phone cell is empty"
+        : `invalid phone "${rawPhone}" (could not normalise to E.164)`;
+      errors.push({ row, reason });
+      return;
+    }
 
     // Consent: per-row column if mapped AND the cell is non-empty; otherwise
     // fall back to the file-level attestation (so a blank cell doesn't override
