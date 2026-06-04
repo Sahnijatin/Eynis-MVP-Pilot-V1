@@ -51,6 +51,29 @@ test("parseLeadsFromCsv maps columns, normalises phone, and keeps custom fields 
   assert.deepEqual(JSON.parse(leads[0].rawData).Tier, "gold");
 });
 
+test("parseLeadsFromCsv tolerates space-padded headers + column-map keys (regression)", () => {
+  // Exporters often emit ", Phone, " — the column map keys are padded but the
+  // server must still match them after trimming (previously rejected as
+  // 'missing or invalid phone').
+  const csv = [
+    "First Name, Mobile, Company, Opted In",
+    "Sarah, 9876543210, Acme, yes",
+  ].join("\n");
+  const paddedMap: Record<string, EynisLeadField> = {
+    "First Name": "firstName", " Mobile": "phone", " Company": "company", " Opted In": "consent",
+  };
+  const { leads, errors } = parseLeadsFromCsv(csv, { columnMap: paddedMap, defaultCountryCode: "+91" });
+  assert.equal(errors.length, 0);
+  assert.equal(leads.length, 1);
+  assert.equal(leads[0].phone, "+919876543210");
+  assert.equal(leads[0].company, "Acme");
+});
+
+test("normalizeToE164 tolerates a space-padded country code", () => {
+  assert.equal(normalizeToE164("9876543210", "+91 "), "+919876543210");
+  assert.equal(normalizeToE164("9876543210", "91"), "+919876543210");
+});
+
 test("parseLeadsFromCsv rejects non-consented rows", () => {
   const csv = ["First Name,Mobile,Opted In", "Sarah,9876543210,no"].join("\n");
   const { leads, errors } = parseLeadsFromCsv(csv, { columnMap, defaultCountryCode: "+91" });
