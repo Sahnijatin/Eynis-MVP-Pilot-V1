@@ -10,7 +10,7 @@ const deps = { resolveSender: (c: string) => fakeSender(c), batchSize: 100 };
 
 async function setup(opts: { steps: any[]; exitOn?: string[]; leadOver?: Record<string, unknown> }) {
   const hotelId = "seq-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "Seq " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "Seq " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "draft", channels: JSON.stringify(["whatsapp"]) } });
   const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "L", phone: "+9190000" + uid().replace(/\D/g, "").slice(0, 5).padEnd(5, "0"), consent: true, consentSource: "csv_import", ...opts.leadOver } });
   const seq = await prisma.sequence.create({

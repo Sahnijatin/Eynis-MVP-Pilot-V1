@@ -16,7 +16,7 @@ const deps = (replyText = "Sure, happy to help!") => ({
 
 async function setup(opts: { agentEnabled?: boolean; agentPrompt?: string | null; calendlyLink?: string | null } = {}) {
   const hotelId = "wa-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "WA " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "WA " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
       hotelId, name: "C", status: "active", channels: JSON.stringify(["whatsapp"]),

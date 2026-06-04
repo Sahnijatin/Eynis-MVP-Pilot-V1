@@ -118,7 +118,7 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
       waContentSid = resolved.contentSid; waBody = resolved.body; waVars = resolved.variables;
     }
 
-    const hotel = await prisma.hotel.findUnique({ where: { id: e.hotelId }, select: { name: true } });
+    const hotel = await prisma.tenant.findUnique({ where: { id: e.hotelId }, select: { name: true } });
     const sender = resolveSender(step.channel);
     let status = "failed";
     let error: string | null = "no_sender";

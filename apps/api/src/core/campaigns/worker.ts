@@ -132,7 +132,7 @@ export async function processVoiceCampaign(
   ]);
   let a = aCount, b = bCount;
 
-  const hotel = await prisma.hotel.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
+  const hotel = await prisma.tenant.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
 
   for (const lead of leads) {
     if (slots <= 0) break;

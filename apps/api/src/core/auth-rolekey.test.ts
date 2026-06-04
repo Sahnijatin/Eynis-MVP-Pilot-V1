@@ -13,7 +13,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 
 
 async function seedHotelWithAdmin() {
   const hotelId = "rk-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "RK " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "RK " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   await seedDefaultRolesForHotel(hotelId);
   const adminRole = await prisma.role.findFirst({ where: { hotelId, key: "admin" }, select: { id: true } });
   const email = `admin+${hotelId}@test.local`;

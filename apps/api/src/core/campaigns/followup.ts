@@ -37,7 +37,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
   const [campaign, lead, tenant] = await Promise.all([
     prisma.voiceCampaign.findUnique({ where: { id: call.campaignId } }),
     prisma.campaignLead.findUnique({ where: { id: call.leadId } }),
-    prisma.hotel.findUnique({ where: { id: call.hotelId }, select: { name: true } }),
+    prisma.tenant.findUnique({ where: { id: call.hotelId }, select: { name: true } }),
   ]);
   if (!campaign || !lead) return { sent };
   if (lead.optedOut || lead.status === "opted_out") return { sent }; // never follow up an opt-out

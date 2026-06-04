@@ -33,7 +33,7 @@ const ageOut = (campaignId: string, channel: string, hours = 48) =>
 
 async function makeCampaign(opts: { spendCapCalls?: number; maxRetries?: number; retryDelayHours?: number } = {}) {
   const hotelId = "disp-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
       hotelId, name: "WA", status: "active", channels: JSON.stringify(["whatsapp"]),
@@ -84,7 +84,7 @@ test("dispatch skips leads that fail the pre-send guard (no consent / suppressed
 
 test("dispatch skips email recipients on the suppression list", async () => {
   const hotelId = "disp-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "Disp " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: { hotelId, name: "Email", status: "active", channels: JSON.stringify(["email"]), emailSubjectTemplate: "Hi", emailBodyTemplate: "Hello {lead.firstName}" },
   });

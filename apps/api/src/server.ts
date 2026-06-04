@@ -89,7 +89,7 @@ const asSafeOffset = (value: string | null) => {
 };
 
 const ensureHotelAccess = async (hotelId: string) => {
-  const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { id: true } });
+  const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { id: true } });
   return Boolean(hotel);
 };
 
@@ -643,7 +643,7 @@ const handleRequest = async (
 
       const hotelId = `hotel-${randomBytes(8).toString("hex")}`;
 
-      await prisma.hotel.create({ data: { id: hotelId, name: propertyName, timezone, industry } });
+      await prisma.tenant.create({ data: { id: hotelId, name: propertyName, timezone, industry } });
 
       await seedDefaultRolesForHotel(hotelId);
       await seedLicenseForHotel(hotelId, "starter", 5);
@@ -2465,7 +2465,7 @@ const handleRequest = async (
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const { hotelId } = auth.context;
-      const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+      const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
       const [openReqs, escalatedReqs, guestCount] = await Promise.all([
         prisma.serviceRequest.count({ where: { hotelId, status: "open" } }),
         prisma.serviceRequest.count({ where: { hotelId, status: "escalated" } }),
@@ -2600,7 +2600,7 @@ const handleRequest = async (
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const { hotelId } = auth.context;
-      const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+      const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
 
       const [totalUsers, offerStats] = await Promise.all([
         prisma.user.count({ where: { hotelId, isActive: true } }),
@@ -2652,7 +2652,7 @@ const handleRequest = async (
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured" }); return; }
 
       const { hotelId } = auth.context;
-      const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+      const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
       const today = new Date();
       const todayStart = new Date(today); todayStart.setHours(0, 0, 0, 0);
       const todayEnd = new Date(today); todayEnd.setHours(23, 59, 59, 999);
@@ -3681,7 +3681,7 @@ const handleRequest = async (
               }
               // Agent name the AI introduces itself with: explicit campaign value,
               // else the hotel name (never the persona label).
-              const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } });
+              const hotel = await prisma.tenant.findUnique({ where: { id: hotelId }, select: { name: true } });
               const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
               const provisioned = await provisionCampaignAssistants({
                 campaign: {

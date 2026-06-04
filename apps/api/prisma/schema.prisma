@@ -7,7 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Hotel {
+// The tenant / organization — the billable, isolated account. Named `Tenant`
+// (industry-neutral) but mapped to the existing `Hotel` table: model/code rename
+// only, no data migration (docs/industry-agnostic-and-white-label-plan.md, A5).
+// FK columns and `hotelId` claims are intentionally kept during this phase.
+model Tenant {
   id                    String                     @id @default(cuid())
   name                  String
   industry              String                     @default("hospitality")
@@ -44,6 +48,8 @@ model Hotel {
   doNotContacts         DoNotContact[]
   branding              TenantBranding?
   emailSuppressions     EmailSuppression[]
+
+  @@map("Hotel")
 }
 
 // Per-tenant email suppression list. Populated by the Resend webhook on hard
@@ -56,7 +62,7 @@ model EmailSuppression {
   email     String // lowercased
   reason    String   @default("bounced") // bounced | complained | manual
   createdAt DateTime @default(now())
-  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel     Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@unique([hotelId, email])
   @@index([hotelId])
@@ -65,12 +71,12 @@ model EmailSuppression {
 // Per-tenant white-label branding. All fields optional — anything left null
 // falls back to the tenant's industry defaults (see apps/web/lib/theme.ts), then
 // to the Eynis defaults. This is the white-label override layer; the model is
-// still keyed on `Hotel` (the tenant entity) pending the Hotel→Tenant rename
+// still keyed on `Tenant` (the tenant entity) pending the Tenant→Tenant rename
 // (see docs/industry-agnostic-and-white-label-plan.md).
 model TenantBranding {
   id            String   @id @default(cuid())
   hotelId       String   @unique
-  hotel         Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel         Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   brandName     String?  // overrides the sidebar title / wordmark
   tagline       String?  // overrides the industry tagline (sidebar subtitle)
   logoUrl       String?  // tenant logo (sidebar; later: emails, auth)
@@ -95,7 +101,7 @@ model User {
   isActive           Boolean                    @default(true)
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
-  hotel              Hotel                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel              Tenant                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   systemRole         Role?                      @relation(fields: [roleId], references: [id], onDelete: SetNull)
   assignedRequests   ServiceRequest[]           @relation("assigned_requests")
   changedTransitions ServiceRequestTransition[] @relation("transition_actor")
@@ -112,7 +118,7 @@ model Contact {
   visitCount      Int              @default(0)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
-  hotel           Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel           Tenant            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   stays           Stay[]
   serviceRequests ServiceRequest[]
 
@@ -129,7 +135,7 @@ model Stay {
   checkOutAt DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  hotel      Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel      Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   guest      Contact  @relation(fields: [guestId], references: [id], onDelete: Cascade)
 
   @@index([hotelId, guestId])
@@ -150,7 +156,7 @@ model ServiceRequest {
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
   resolvedAt       DateTime?
-  hotel            Hotel                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel            Tenant                      @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   guest            Contact                    @relation(fields: [guestId], references: [id], onDelete: Cascade)
   assignedTo       User?                      @relation("assigned_requests", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   transitions      ServiceRequestTransition[]
@@ -167,7 +173,7 @@ model ServiceRequestTransition {
   changedByUserId  String
   note             String?
   createdAt        DateTime       @default(now())
-  hotel            Hotel          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel            Tenant          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
   changedBy        User           @relation("transition_actor", fields: [changedByUserId], references: [id], onDelete: Restrict)
 
@@ -184,7 +190,7 @@ model OfferEvent {
   revenueInr  Int      @default(0)
   contextJson String
   createdAt   DateTime @default(now())
-  hotel       Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel       Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@index([hotelId, status])
 }
@@ -198,7 +204,7 @@ model AutomationRule {
   configJson           String
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
-  hotel                Hotel                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel                Tenant                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   automationExecutions AutomationExecution[]
 
   @@unique([hotelId, code])
@@ -215,7 +221,7 @@ model AutomationExecution {
   actionResult    String
   resultDetail    String?
   executedAt      DateTime       @default(now())
-  hotel           Hotel          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel           Tenant          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   rule            AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   @@index([hotelId, executedAt])
@@ -231,7 +237,7 @@ model AuditLog {
   entityId   String?
   metadata   String
   createdAt  DateTime @default(now())
-  hotel      Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel      Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@index([hotelId, createdAt])
 }
@@ -244,7 +250,7 @@ model ConnectorConfig {
   configJson   String   @default("{}")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  hotel        Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel        Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@unique([hotelId, connectorKey])
   @@index([hotelId, enabled])
@@ -271,7 +277,7 @@ model ConnectorEvent {
   replySentAt      DateTime?
   replyStatus      String?
   createdAt        DateTime  @default(now())
-  hotel            Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel            Tenant     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@index([hotelId, connectorKey, createdAt])
   @@index([hotelId, createdAt])
@@ -284,7 +290,7 @@ model NightAuditReport {
   contentJson String
   provider    String   @default("claude")
   generatedAt DateTime @default(now())
-  hotel       Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel       Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@unique([hotelId, reportDate])
   @@index([hotelId, generatedAt])
@@ -299,7 +305,7 @@ model License {
   razorpaySubId String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  hotel         Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel         Tenant     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 }
 
 model Role {
@@ -312,7 +318,7 @@ model Role {
   isCustom    Boolean      @default(false)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  hotel       Hotel        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel       Tenant        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   users       User[]
   invitations Invitation[]
 
@@ -330,7 +336,7 @@ model Invitation {
   acceptedAt  DateTime?
   invitedById String
   createdAt   DateTime  @default(now())
-  hotel       Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel       Tenant     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   role        Role      @relation(fields: [roleId], references: [id])
 
   @@index([hotelId, email])
@@ -387,7 +393,7 @@ model VoiceCampaign {
   segmentId             String? // optional saved segment; when set, only matching leads are contacted
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
-  hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel                 Tenant                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   segment               LeadSegment?           @relation(fields: [segmentId], references: [id], onDelete: SetNull)
   whatsappTemplate      MessageTemplate?       @relation(fields: [whatsappTemplateId], references: [id], onDelete: SetNull)
   leads                 CampaignLead[]
@@ -411,7 +417,7 @@ model Sequence {
   exitOn      String               @default("[\"opted_out\",\"replied\"]") // JSON string[] of exit conditions
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
-  hotel       Hotel                @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel       Tenant                @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   steps       SequenceStep[]
   enrollments SequenceEnrollment[]
   events      SequenceEvent[]
@@ -450,7 +456,7 @@ model SequenceEnrollment {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   sequence         Sequence        @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
-  hotel            Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel            Tenant           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   lead             CampaignLead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   events           SequenceEvent[]
 
@@ -470,7 +476,7 @@ model SequenceEvent {
   status       String // sent | failed | skipped | stopped
   error        String?
   createdAt    DateTime           @default(now())
-  hotel        Hotel              @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel        Tenant              @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   sequence     Sequence           @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
   enrollment   SequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
@@ -499,7 +505,7 @@ model MessageTemplate {
   submittedAt        DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
-  hotel              Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel              Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaigns          VoiceCampaign[]
   sequenceSteps      SequenceStep[]
 
@@ -516,7 +522,7 @@ model LeadSegment {
   rules     String          @default("{}") // JSON SegmentRules
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
-  hotel     Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel     Tenant           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaigns VoiceCampaign[]
 
   @@index([hotelId])
@@ -544,7 +550,7 @@ model CampaignLead {
   optedOut              Boolean                @default(false) // tenant-wide opt-out exclusion flag
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
-  hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel                 Tenant                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaign              VoiceCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   calls                 CallRecord[]
   deliveries            MessageDelivery[]
@@ -581,7 +587,7 @@ model CallRecord {
   startedAt       DateTime?
   endedAt         DateTime?
   createdAt       DateTime         @default(now())
-  hotel           Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel           Tenant            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaign        VoiceCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead            CampaignLead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   sentimentEvents SentimentEvent[]
@@ -602,7 +608,7 @@ model SentimentEvent {
   sentiment      String // positive | neutral | negative
   score          Float? // rolling numeric score
   createdAt      DateTime              @default(now())
-  hotel          Hotel                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel          Tenant                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   callRecord     CallRecord?           @relation(fields: [callRecordId], references: [id], onDelete: Cascade)
   conversation   WhatsappConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -621,7 +627,7 @@ model WhatsappConversation {
   threadSummary   String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
-  hotel           Hotel             @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel           Tenant             @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaign        VoiceCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead            CampaignLead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   messages        WhatsappMessage[]
@@ -641,7 +647,7 @@ model WhatsappMessage {
   sentiment      String? // positive | neutral | negative
   score          Float?
   createdAt      DateTime             @default(now())
-  hotel          Hotel                @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel          Tenant                @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
@@ -662,7 +668,7 @@ model MessageDelivery {
   error           String?
   sentAt          DateTime?
   createdAt       DateTime      @default(now())
-  hotel           Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel           Tenant         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   campaign        VoiceCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead            CampaignLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
@@ -679,7 +685,7 @@ model DoNotContact {
   phone     String // E.164
   reason    String   @default("opt_out") // opt_out | dnd | manual | gdpr_erasure
   createdAt DateTime @default(now())
-  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel     Tenant    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@unique([hotelId, phone])
   @@index([hotelId])

@@ -14,7 +14,7 @@ const baseDeps = { resolveCreds: async () => creds, initiateCall: okCall };
 
 async function makeVoiceCampaign(opts: { maxConcurrent?: number; spendCapCalls?: number } = {}) {
   const hotelId = "dial-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "Dial " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "Dial " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
       hotelId, name: "Calls", status: "active", channels: JSON.stringify(["voice"]),
