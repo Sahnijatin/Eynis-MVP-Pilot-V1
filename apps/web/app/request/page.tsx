@@ -9,11 +9,12 @@ export default async function RequestPage({
 }) {
   const query = searchParams ? await searchParams : {};
   // Accept the legacy `?hotelId=` param so QR codes / links printed before the
-  // rename still resolve to the right tenant.
+  // rename still resolve to the right tenant. Fallback is the demo tenant
+  // (matches the seed + EYNIS_DEMO_HOTEL_ID), so a param-less visit still works.
   const tenantId =
     typeof query.tenantId === "string" ? query.tenantId
     : typeof query.hotelId === "string" ? query.hotelId
-    : "eynis-pilot-hotel-1";
+    : (process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1");
   const result = typeof query.result === "string" ? query.result : "";
   const msg = typeof query.msg === "string" ? query.msg : "";
   const ackText =
