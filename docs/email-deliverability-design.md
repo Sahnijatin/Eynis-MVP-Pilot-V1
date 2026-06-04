@@ -22,7 +22,7 @@ volume grows:
    subdomains so their reputations are isolated — this is what Resend's insight
    is nudging us toward.
 2. **Multi-tenant scale.** Eynis is multi-tenant (every query is scoped to
-   `hotelId`). At thousands of sends across many hotels we need a deliberate
+   `hotelId`). At thousands of sends across many tenants we need a deliberate
    answer to: *what domain does each tenant send from, who owns DNS, and how is
    that configured in setup?*
 
@@ -78,26 +78,28 @@ deliverability globally.
 Who owns the sending domain? Three options; the data model is identical, only the
 domain differs.
 
-### Model A — Eynis-managed shared subdomains
-Eynis owns `mkt.eynis.com` / `tx.eynis.com`. Tenants send as
-`Crowne Plaza <crowne-plaza@mkt.eynis.com>`.
-- ✅ Zero DNS work for tenants — instant onboarding.
-- ✅ Eynis controls DKIM/DMARC, dedicated IP, warmup centrally.
-- ❌ Not the hotel's own domain (weaker branding; "via eynis.com" in some clients).
-- Per-tenant isolation via the local part or a per-tenant sub-subdomain
-  (`crowne.mkt.eynis.com`) if a noisy tenant needs quarantining.
-
-### Model B — per-tenant custom domains (white-label)
-Each hotel verifies `mail.crowneplaza.com`. We use Resend's **Domains API** to
+### Model B — per-tenant custom domains (white-label) — **chosen direction**
+Each tenant verifies their own `mail.acme.com`. We use Resend's **Domains API** to
 add the domain, fetch its DNS records, render them in the setup UI, and poll
 verification.
-- ✅ Full branding + best deliverability (hotel's own reputation).
+- ✅ Full branding + best deliverability (tenant's own reputation) — required by
+  the product's **white-label** principle.
 - ❌ Onboarding friction: tenant must add DNS records and wait for verification.
+- Tenant sends as `Acme Co <campaigns@mail.acme.com>`.
 
-### Recommended — Hybrid
-Default new tenants to **Model A** (works in 0 clicks). Offer an **upgrade to
-your own domain** path (Model B) for tenants who want white-label. Both coexist;
-`SendingDomain.ownership` records which is in play.
+### Model A — Eynis-managed shared subdomains (optional fallback)
+Eynis owns `mkt.eynis.com` / `tx.eynis.com`; a tenant *without* its own domain
+sends as `Acme Co <acme@mkt.eynis.com>`.
+- ✅ Zero DNS work — instant start for trials/pilots.
+- ❌ Not the tenant's own domain ("via eynis.com" in some clients) — **not**
+  acceptable as the end state for paying, white-labeled customers.
+
+### Decision
+**White-label own-domain (Model B) is the target** — customers run Eynis as their
+own product and must send from their own domain. Model A stays only as an
+optional zero-setup path for trials before a customer has connected their domain.
+`SendingDomain.ownership` records which is in play so both can coexist during
+onboarding.
 
 ---
 
@@ -110,8 +112,8 @@ registry.
 model SendingDomain {
   id            String   @id @default(cuid())
   hotelId       String
-  hotel         Hotel    @relation(fields: [hotelId], references: [id])
-  domain        String   // e.g. "mkt.eynis.com" or "mail.crowneplaza.com"
+  tenant         Tenant    @relation(fields: [hotelId], references: [id])
+  domain        String   // e.g. "mkt.eynis.com" or "mail.acme.com"
   stream        String   // "marketing" | "transactional"
   ownership     String   // "shared" | "custom"
   resendDomainId String? // Resend Domains API id (Model B)
@@ -166,13 +168,14 @@ phone suppression path in `dispatch.ts`.
 A new **Email** step in the connector/settings UI (`connector-config-panel.tsx`
 gains an `email_resend` field set, plus a richer domain panel):
 
-1. **Choose ownership:** "Use Eynis sending (recommended, no setup)" vs "Use your
-   own domain."
+1. **Choose ownership:** "Connect your own domain (recommended — white-label)" vs
+   "Use shared sending to start (trial, no setup)." White-labeled customers are
+   steered to their own domain; the shared option is a temporary trial path.
 2. **Custom domain path:** enter domain → backend calls Resend Domains API →
    UI shows the DNS records to add + a live **status badge** (pending/verified),
    polled until green.
 3. **Per-stream from-identity:** display name + local part for marketing and
-   transactional (e.g. `Crowne Plaza <campaigns@…>` and `<bookings@…>`).
+   transactional (e.g. `Acme Co <campaigns@…>` and `<bookings@…>`).
 4. **Health panel:** recent bounce/complaint rate per stream (from §6 events) so
    operators can see reputation before it becomes a problem.
 
@@ -184,20 +187,29 @@ gains an `email_resend` field set, plus a richer domain panel):
 |---|---|---|
 | **1 — Foundation** | In-app `email_resend` setup form + Resend webhook → email suppression (§6.1–6.2) | Makes today's single-domain sending **self-serve and safe**. Best value/effort; unblocks volume without subdomains. |
 | **2 — Streams** | `SendingDomain` model, marketing vs transactional subdomains, `resolveSender(hotelId, stream)` (§3, §5) | The reputation isolation Resend is asking for. |
-| **3 — White-label** | Per-tenant custom domains via Resend Domains API + in-app verification (§4 Model B, §7) | Branding/deliverability for larger clients; build once Phase 1–2 are proven. |
+| **3 — White-label domains** | Per-tenant custom domains via Resend Domains API + in-app verification (§4 Model B, §7) | **Committed requirement**, not optional — customers must send from their own domain. |
 
-**Recommendation:** ship **Phase 1 first.** Stream subdomains (Phase 2) are the
-right end-state, but they're moot if bounces and complaints aren't captured —
-that feedback loop is what actually protects a sending reputation at thousands of
-emails. Phase 1 also delivers immediate operator value (self-serve setup) with no
-DNS dependency.
+**Recommendation:** still ship **Phase 1 first** (it's required regardless of who
+owns the domain — bounces/complaints must be captured or reputation dies at
+volume), but Phase 3 (white-label own-domain) is now a **committed launch
+requirement**, not a "larger clients later" nice-to-have. Phase 1's setup form
+should be built domain-aware from the start (i.e. the "connect your own domain"
+flow), so Phase 3 extends it rather than replacing it. Phase 2 (transactional vs
+marketing stream split) can follow once own-domain sending is live.
 
 ---
 
-## 9. Open questions
+## 9. Decisions & open questions
 
-- **Shared-domain branding:** is "via eynis.com" acceptable for hotels, or is
-  white-label (Model B) a launch requirement for the segment we're selling to?
+**Decided (Jun 2026):**
+- **White-label own-domain is required.** Customers white-label Eynis and send
+  from **their own** domain (Model B). Shared sending (Model A) is only a trial
+  fallback. This resolves the original branding question.
+- **Industry-agnostic:** examples and copy in this doc and the build must stay
+  industry-neutral (no hospitality-specific assumptions) — see the Product
+  Principles in `CLAUDE.md`.
+
+**Still open:**
 - **One Resend account vs per-tenant accounts:** Model A implies a single
   platform Resend account (simpler, central reputation); Model B can use either.
   Sub-accounts affect billing and isolation.
