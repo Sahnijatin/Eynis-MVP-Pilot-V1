@@ -108,8 +108,9 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 | WhatsApp loop: broadcast → **configurable two-way agent** → opt-out / booking | ✅ |
 | Durable tenant-wide opt-out (survives deletion) + consent + DND guard | ✅ |
 | **A/B analytics** (funnel, sentiment, z-test winner gating) + calls list/detail/CSV | ✅ |
-| Operator **UI**: list · multi-channel builder · detail (overview + leads) · import wizard | ✅ |
-| Keys-last (runs/tests with no external keys) · **136/136 tests** | ✅ |
+| Operator **UI**: list · multi-channel builder · detail · import wizard | ✅ |
+| **Observability UI**: Calls tab + live sentiment meter · A/B comparison cards · WhatsApp thread view · live activity feed (`GET /campaigns/:id/deliveries`) · Settings edit form | ✅ |
+| Keys-last (runs/tests with no external keys) · **138/138 tests** | ✅ |
 
 ---
 
@@ -117,7 +118,6 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 
 | Area | What | Why it matters | Depends on |
 |---|---|---|---|
-| **UI — observability** | Calls tab + **live sentiment meter**, **A/B comparison cards** (uses Phase 9 analytics), **WhatsApp thread view**, **live activity feed** of sends/calls (+ a small `GET /campaigns/:id/deliveries` endpoint), **Settings edit form** (PATCH already wired) | Makes everything we built visible/demoable; lets operators edit after creation | Phase 7/9 data (done) |
 | **Phase 11 — Compliance hardening** | GDPR **erasure endpoint** (wire `gdprErase` + `suppressContact`); enforce `ENFORCE_DND_SCRUB` for India before go-live; verify disclosure non-removable in every script | Legal sign-off before real calls | — |
 | **Phase 12 — Launch** | **Demo seed** (a populated campaign to click through with no keys); full **live validation** with real Vapi/Twilio/Resend keys; CLAUDE.md/env docs refresh | Demoable + production-ready | accounts/keys |
 
@@ -131,13 +131,16 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 
 ## 5. Recommended next steps (in order)
 
-1. **Observability UI** — Calls tab + sentiment meter, A/B cards, WhatsApp thread,
-   live activity feed (+ the small deliveries endpoint), Settings edit form. This
-   surfaces all the Phase 7–9 data we already produce.
+1. ~~**Observability UI**~~ — ✅ done: Calls tab + live sentiment meter, A/B
+   comparison cards, WhatsApp thread view, live activity feed (+ the
+   `GET /campaigns/:id/deliveries` endpoint), Settings edit form.
 2. **Demo seed** — a populated campaign so the whole flow is clickable/demoable
    without any external keys.
 3. **Phase 11 hardening** — GDPR erasure endpoint + DND enforcement.
 4. **Phase 12 launch** — live validation once accounts/keys are provisioned.
+
+> Deploy note: `render.yaml` now pins the API's build/start commands and required
+> env-var keys so a stale build cache or missing var can't silently ship old code.
 
 ### Before going live (operational checklist)
 - [ ] Provision Vapi (+ branded phone number), ElevenLabs, Resend, Twilio WhatsApp

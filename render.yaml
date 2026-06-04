@@ -1,0 +1,46 @@
+# Render Blueprint for the Eynis API (apps/api).
+#
+# Why this file exists: the API is a long-running node:http server that depends
+# on @eynis/shared being built first. A deploy that skips the shared build, or
+# reuses a stale build cache, ships an API that compiles against old types or
+# serves outdated code. Pinning the build/start commands here keeps every deploy
+# reproducible (this is what prevented the CSV-import fix from going live until a
+# manual "Clear build cache & deploy").
+#
+# The web app (apps/web) is deployed separately on Vercel and is NOT defined here.
+#
+# Secrets (sync: false) are intentionally NOT stored in the repo — set their
+# values in the Render dashboard (Environment tab). This file only declares the
+# keys the service requires so a fresh environment is never silently missing one.
+
+services:
+  - type: web
+    name: eynis-api
+    runtime: node
+    plan: free
+    branch: main
+    # Build @eynis/shared before @eynis/api (order matters); --legacy-peer-deps
+    # mirrors the local install. The API's own build runs `prisma generate`.
+    buildCommand: npm ci --legacy-peer-deps && npm run build -w @eynis/shared && npm run build -w @eynis/api
+    # The api `start` script runs `prisma migrate deploy` then `node dist/server.js`.
+    startCommand: npm run start -w @eynis/api
+    healthCheckPath: /health
+    envVars:
+      - key: START_SERVER          # the server only listens when this is "true"
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      - key: CAMPAIGN_DEFAULT_COUNTRY  # E.164 fallback country (digits) for lead import
+        value: "91"
+      - key: DATABASE_URL          # Postgres connection string
+        sync: false
+      - key: JWT_SECRET            # JWT signing key
+        sync: false
+      - key: EYNIS_WEB_BASE_URL    # web origin, used to build invite links (e.g. https://demo.eynis.com)
+        sync: false
+      - key: API_PUBLIC_URL        # this API's public origin, used for the Vapi webhook callback
+        sync: false
+      - key: ANTHROPIC_API_KEY     # optional — keyword fallback used if absent
+        sync: false
+      - key: OPENAI_API_KEY        # optional
+        sync: false

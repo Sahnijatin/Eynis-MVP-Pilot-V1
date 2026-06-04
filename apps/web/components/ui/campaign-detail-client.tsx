@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "./badge";
+import { CampaignCallsTab } from "./campaign-calls-tab";
+import { CampaignAnalyticsTab } from "./campaign-analytics-tab";
+import { CampaignActivityTab } from "./campaign-activity-tab";
+import { CampaignSettingsForm } from "./campaign-settings-form";
 import type { CampaignDetail, CampaignLeadRow } from "../../lib/data";
 
 const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
@@ -11,6 +15,12 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> 
   pending: "neutral", called: "success", failed: "danger", opted_out: "danger",
 };
 const CHANNEL_LABEL: Record<string, string> = { voice: "Voice", whatsapp: "WhatsApp", email: "Email" };
+
+type Tab = "overview" | "leads" | "calls" | "analytics" | "activity" | "settings";
+const TABS: Tab[] = ["overview", "leads", "calls", "analytics", "activity", "settings"];
+const TAB_LABEL: Record<Tab, string> = {
+  overview: "Overview", leads: "Leads", calls: "Calls", analytics: "Analytics", activity: "Activity", settings: "Settings",
+};
 
 export function CampaignDetailClient({
   campaign, stats, leads, leadTotal,
@@ -21,7 +31,7 @@ export function CampaignDetailClient({
   leadTotal: number;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"overview" | "leads">("overview");
+  const [tab, setTab] = useState<Tab>("overview");
   const [busy, setBusy] = useState(false);
 
   async function act(action: "activate" | "pause" | "complete") {
@@ -55,16 +65,24 @@ export function CampaignDetailClient({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 18 }}>
-        {(["overview", "leads"] as const).map((t) => (
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 18, flexWrap: "wrap" }}>
+        {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
             style={{ ...tabBtn, borderBottom: tab === t ? "2px solid #0f766e" : "2px solid transparent", color: tab === t ? "#0f766e" : "#666" }}>
-            {t === "overview" ? "Overview" : `Leads (${leadTotal})`}
+            {t === "overview" ? "Overview" : t === "leads" ? `Leads (${leadTotal})` : TAB_LABEL[t]}
           </button>
         ))}
       </div>
 
-      {tab === "overview" ? (
+      {tab === "calls" ? (
+        <CampaignCallsTab campaignId={campaign.id} />
+      ) : tab === "analytics" ? (
+        <CampaignAnalyticsTab campaignId={campaign.id} />
+      ) : tab === "activity" ? (
+        <CampaignActivityTab campaignId={campaign.id} isActive={campaign.status === "active"} />
+      ) : tab === "settings" ? (
+        <CampaignSettingsForm campaign={campaign} />
+      ) : tab === "overview" ? (
         <div style={{ display: "grid", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             <Stat label="Total leads" value={stats?.totalLeads ?? 0} />
