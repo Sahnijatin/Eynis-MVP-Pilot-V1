@@ -31,7 +31,7 @@ npm run build -w @eynis/web          # Web only
 ### Testing & Lint
 ```bash
 npm run test                         # All packages
-npm run test -w @eynis/api           # API tests only (hits real SQLite — no mocking)
+npm run test -w @eynis/api           # API tests only (hits a real Postgres DB — no mocking)
 npm run lint                         # TypeScript type-check across packages
 
 # Run a single test by name (Node built-in test runner)
@@ -67,11 +67,11 @@ npm run build
 The entire API is one ~2400-line file with all routes as an `if/else` chain matching on `req.url` and `req.method`. There is no Express/Fastify — only `node:http`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
 
 **Route authorization pattern:**
-1. `getAuthenticatedContext(req)` → verifies JWT, loads user from DB
-2. `isAllowedRole(role, policyMap[route])` → checks RBAC
+1. `getAuthenticatedContext(req)` → verifies JWT, loads user + live permissions from DB
+2. `canAccess(permissions, "METHOD /path")` → looks up the route's required permission in `policyMap` and checks the user has it
 3. `ensureTenantAccess(tenantId)` → verifies the tenant exists
 
-`policyMap` at the top of `server.ts` is the authoritative list of all routes and which roles can access them. All four roles (`owner`, `front_desk`, `housekeeping`, `fnb_manager`) are defined in `@eynis/shared`.
+`policyMap` at the top of `server.ts` maps every route to the **permission** it requires (`null` = any authenticated user). RBAC is permission-based: generic system roles (`admin`/`manager`/`supervisor`/`agent`/`viewer`) carry permission sets in the `Role` table. The legacy hospitality role union (`owner`/`front_desk`/…) in `@eynis/shared` is **deprecated** and used only as a backward-compat fallback.
 
 **All API responses follow:** `{ ok: boolean, ...data }` on success or `{ ok: false, error: string }` on failure. Paginated endpoints return `{ items, page: { limit, offset, total, hasMore } }`.
 
@@ -115,7 +115,7 @@ All pages are Next.js **server components** with `export const dynamic = "force-
 Next.js API routes in `apps/web/app/api/` proxy specific API calls (SSE, public request intake, connector webhooks) so they are accessible without CORS configuration.
 
 ### Database Schema (`apps/api/prisma/schema.prisma`)
-SQLite via Prisma. Key models and relationships:
+PostgreSQL via Prisma. Key models and relationships:
 - `Tenant` (table `Hotel`) → `User[]`, `Contact[]`, `ServiceRequest[]`, `AutomationRule[]`, `ConnectorEvent[]`, `ConnectorConfig[]`, `AuditLog[]`
 - `ServiceRequest` → has `ServiceRequestTransition[]` (status history), `assignedTo` (User), SLA fields (`slaDueAt`, `slaBreachedAt`)
 - `ConnectorConfig` — per-hotel enabled/config for each connector key; secrets are masked in API responses
@@ -129,7 +129,7 @@ Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twi
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | — | SQLite path, e.g. `file:./apps/api/prisma/dev.db` |
+| `DATABASE_URL` | — | Postgres connection string, e.g. `postgresql://user:pass@host:5432/eynis` |
 | `PORT` | `4000` | API server port |
 | `JWT_SECRET` | `dev-only-secret-change-me` | JWT signing key |
 | `ANTHROPIC_API_KEY` | — | Claude AI (optional; keyword fallback used if absent) |

@@ -14,7 +14,7 @@ const asTrimmedString = (value: unknown): string | null =>
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
 function normalizeGeneric(body: UnknownRecord): NormalizedWhatsappInbound | null {
-  const tenantId = asTrimmedString(body.tenantId);
+  const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId
   const fromPhone = asTrimmedString(body.fromPhone);
   const message = asTrimmedString(body.message);
   const guestName = asTrimmedString(body.guestName) ?? "WhatsApp Guest";
@@ -29,7 +29,7 @@ function normalizeGeneric(body: UnknownRecord): NormalizedWhatsappInbound | null
 }
 
 function normalizeTwilio(body: UnknownRecord): NormalizedWhatsappInbound | null {
-  const tenantId = asTrimmedString(body.tenantId);
+  const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId
   const from = asTrimmedString(body.From);
   const message = asTrimmedString(body.Body);
   const profileName = asTrimmedString(body.ProfileName) ?? "WhatsApp Guest";
@@ -46,7 +46,7 @@ function normalizeTwilio(body: UnknownRecord): NormalizedWhatsappInbound | null 
 
 function normalizeInterakt(body: UnknownRecord): NormalizedWhatsappInbound | null {
   const data = (body.data ?? body.payload) as UnknownRecord | undefined;
-  const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(data?.tenantId);
+  const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId) ?? asTrimmedString(data?.tenantId) ?? asTrimmedString(data?.hotelId); // accept legacy hotelId
   const fromPhone =
     asTrimmedString(body.phone_number) ??
     asTrimmedString(data?.phone_number) ??

@@ -924,13 +924,14 @@ const handleRequest = async (
     if (req.url === "/public/requests" && req.method === "POST") {
       const body = (await parseBody(req)) as {
         tenantId?: unknown;
+        hotelId?: unknown;
         guestName?: unknown;
         guestPhone?: unknown;
         category?: unknown;
         summary?: unknown;
         source?: unknown;
       };
-      const tenantId = asTrimmedString(body.tenantId);
+      const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId from existing public links
       const guestName = asTrimmedString(body.guestName);
       const guestPhoneRaw = asTrimmedString(body.guestPhone);
       const category = asTrimmedString(body.category) ?? "general";
@@ -2880,11 +2881,11 @@ const handleRequest = async (
     if (req.url === "/connectors/pms/webhook" && req.method === "POST") {
       const rawBody = await parseRawBody(req);
       const body = (rawBody ? JSON.parse(rawBody) : {}) as {
-        tenantId?: unknown; event?: unknown;
+        tenantId?: unknown; hotelId?: unknown; event?: unknown;
         guest?: { name?: unknown; phone?: unknown };
         reservation?: { roomNumber?: unknown; checkIn?: unknown; checkOut?: unknown };
       };
-      const tenantId = asTrimmedString(body.tenantId);
+      const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId from existing PMS integrations
       const eventType = asTrimmedString(body.event) ?? "guest.checkin";
       if (!tenantId) { json(res, 400, { ok: false, error: "tenantId is required" }); return; }
       const hasAccess = await ensureTenantAccess(tenantId);

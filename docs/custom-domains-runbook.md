@@ -39,7 +39,7 @@ subdomain to the app. The tenant just sets their `slug`.
 
 ### B) Custom domain (`app.tempus.com`)
 1. **Tenant** adds a DNS record at their registrar:
-   `app.tempus.com  CNAME  cname.vercel-dns.com` (the Vercel target for our project).
+   `app.tempus.com  CNAME  cname.eynis.com` (our branded alias, itself pointing at the hosting provider).
 2. **Us** — register the domain on the Vercel project (Dashboard → Project →
    Domains → Add, or the Vercel Domains API). Vercel verifies the CNAME and
    auto-issues a Let's Encrypt certificate (minutes).
