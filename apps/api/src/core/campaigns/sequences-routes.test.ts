@@ -71,7 +71,13 @@ test("sequences: create with steps, enroll leads, list enrollments", async () =>
     const list = await (await fetch(base + `/sequences/${seq.id}/enrollments`, { headers: { authorization: token } })).json() as any;
     assert.equal(list.page.total, 2);
 
-    // activate via PATCH
+    // activating is blocked until the WhatsApp step has an approved template
+    const blocked = await fetch(base + `/sequences/${seq.id}`, { method: "PATCH", headers: { authorization: token, "content-type": "application/json" }, body: JSON.stringify({ status: "active" }) });
+    assert.equal(blocked.status, 400);
+
+    // attach an approved template to the WhatsApp step → activates
+    const tpl = await prisma.messageTemplate.create({ data: { hotelId, name: "T", channel: "whatsapp", body: "Hi", status: "approved", providerTemplateId: "HXok", variables: "[]" } });
+    await prisma.sequenceStep.updateMany({ where: { sequenceId: seq.id, channel: "whatsapp" }, data: { whatsappTemplateId: tpl.id } });
     const patched = await fetch(base + `/sequences/${seq.id}`, { method: "PATCH", headers: { authorization: token, "content-type": "application/json" }, body: JSON.stringify({ status: "active" }) });
     assert.equal(((await patched.json()) as any).sequence.status, "active");
   } finally {

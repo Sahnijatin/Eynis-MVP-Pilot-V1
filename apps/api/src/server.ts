@@ -3200,7 +3200,7 @@ const handleRequest = async (
           const created = await prisma.sequence.create({
             data: {
               hotelId, name, exitOn: JSON.stringify(exitOn),
-              steps: { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) },
+              steps: { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateId: s.whatsappTemplateId, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) },
             },
             include: { steps: true },
           });
@@ -3273,6 +3273,13 @@ const handleRequest = async (
         if (body.status !== undefined) {
           const st = asTrimmedString(body.status);
           if (!st || !["draft", "active", "archived"].includes(st)) { json(res, 400, { ok: false, error: "status must be draft|active|archived" }); return; }
+          // Activating: every WhatsApp step must reference an approved template.
+          if (st === "active") {
+            const { isApprovedWhatsappTemplate } = await import("./core/campaigns/whatsapp-template");
+            const waSteps = await prisma.sequenceStep.findMany({ where: { sequenceId: sequence.id, channel: "whatsapp" }, select: { order: true, whatsappTemplateId: true, whatsappTemplate: { select: { channel: true, status: true, providerTemplateId: true } } } });
+            const bad = waSteps.find((s) => !isApprovedWhatsappTemplate(s.whatsappTemplate));
+            if (bad) { json(res, 400, { ok: false, error: `Step ${bad.order + 1} (WhatsApp) needs an approved template before the sequence can be activated.` }); return; }
+          }
           data.status = st;
         }
         if (body.exitOn !== undefined) data.exitOn = JSON.stringify(seqMod.parseExitOn(body.exitOn));
@@ -3281,7 +3288,7 @@ const handleRequest = async (
           const stepsV = seqMod.validateSequenceSteps(body.steps);
           if (!stepsV.ok) { json(res, 400, { ok: false, error: stepsV.error }); return; }
           await prisma.sequenceStep.deleteMany({ where: { sequenceId: sequence.id } });
-          data.steps = { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) };
+          data.steps = { create: stepsV.value.map((s) => ({ order: s.order, waitMinutes: s.waitMinutes, channel: s.channel, whatsappContentSid: s.whatsappContentSid, whatsappTemplateId: s.whatsappTemplateId, whatsappTemplateBody: s.whatsappTemplateBody, whatsappVariables: JSON.stringify(s.whatsappVariables), emailSubject: s.emailSubject, emailBody: s.emailBody })) };
         }
         if (Object.keys(data).length === 0) { json(res, 400, { ok: false, error: "No updatable fields provided" }); return; }
         const updated = await prisma.sequence.update({ where: { id: sequence.id }, data, include: { steps: true } });
@@ -3403,7 +3410,7 @@ const handleRequest = async (
             voiceA: v.voiceA, voiceB: v.voiceB, personaA: v.personaA, personaB: v.personaB,
             outcomeTypes: JSON.stringify(v.outcomeTypes), followUpRules: JSON.stringify(v.followUpRules),
             calendlyLink: v.calendlyLink, agentName: v.agentName,
-            whatsappContentSid: v.whatsappContentSid, whatsappTemplateBody: v.whatsappTemplateBody,
+            whatsappContentSid: v.whatsappContentSid, whatsappTemplateId: v.whatsappTemplateId, whatsappTemplateBody: v.whatsappTemplateBody,
             whatsappVariables: JSON.stringify(v.whatsappVariables),
             whatsappAgentEnabled: v.whatsappAgentEnabled, whatsappAgentPrompt: v.whatsappAgentPrompt,
             emailSubjectTemplate: v.emailSubjectTemplate, emailBodyTemplate: v.emailBodyTemplate,
@@ -3542,6 +3549,18 @@ const handleRequest = async (
             json(res, 409, { ok: false, error: `Cannot activate a campaign in '${campaign.status}' status` }); return;
           }
           const channels = serializeCampaign(campaign).channels as string[];
+          // WhatsApp: cannot activate without an approved template (Meta forbids
+          // business-initiated sends on anything but a pre-approved template).
+          if (channels.includes("whatsapp")) {
+            const { isApprovedWhatsappTemplate } = await import("./core/campaigns/whatsapp-template");
+            const tpl = campaign.whatsappTemplateId
+              ? await prisma.messageTemplate.findFirst({ where: { id: campaign.whatsappTemplateId, hotelId }, select: { channel: true, status: true, providerTemplateId: true } })
+              : null;
+            if (!isApprovedWhatsappTemplate(tpl)) {
+              json(res, 400, { ok: false, error: "WhatsApp campaigns need an approved template. Get one approved in Templates, then select it in the campaign's settings." });
+              return;
+            }
+          }
           let vapiAssistantIdA = campaign.vapiAssistantIdA;
           let vapiAssistantIdB = campaign.vapiAssistantIdB;
           // Voice channel: provision Vapi assistants. Non-voice channels (WhatsApp/

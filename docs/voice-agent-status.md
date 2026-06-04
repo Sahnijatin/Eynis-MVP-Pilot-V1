@@ -1,6 +1,6 @@
 # Multi-Channel Campaign System — Status & Regroup
 
-_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **173/173 green**_
+_Last updated: 2026-06-04 · All work below is **merged to `main`** (PRs #13–#23) · API suite **178/178 green**_
 
 This is the executive view: the original plan, what we built, what changed, what's
 left, and the next steps. The phase-by-phase detail lives in
@@ -75,8 +75,8 @@ channels in parallel · pre-approved WhatsApp templates · `manage_campaigns` RB
   reasons.
 
 ### Health
-- **API tests: 173/173 passing** · TypeScript lint clean · `next build` clean.
-- 16 campaign modules + 26 test files; **10 DB migrations**.
+- **API tests: 178/178 passing** · TypeScript lint clean · `next build` clean.
+- 18 campaign modules + 28 test files; **11 DB migrations**.
 - Everything **keys-last**: runs and is fully testable with no Vapi/Twilio/Resend keys.
 
 ---
@@ -114,7 +114,8 @@ Import CSV (any size) ─▶ Build campaign: pick channel(s) + configure templat
 | **Scheduling**: scheduled start · daily send window / quiet-hours (per-tz, overnight-aware) · allowed weekdays — enforced by dispatcher + dialler | ✅ |
 | **Drip automation**: multi-step sequences (delay → channel action) · enroll by segment · runner advances enrollments · exit on reply/opt-out/booking (`/sequences`) | ✅ |
 | **Template library**: reusable WhatsApp/email templates with approval-status lifecycle (draft → submitted → approved/rejected) + recorded Content SID (`/templates`) | ✅ |
-| Keys-last (runs/tests with no external keys) · **173/173 tests** | ✅ |
+| **WhatsApp approval enforcement**: campaigns/sequences reference a library template; only **approved** templates can activate + send (Meta rule); picker in builder + settings | ✅ |
+| Keys-last (runs/tests with no external keys) · **178/178 tests** | ✅ |
 
 ---
 

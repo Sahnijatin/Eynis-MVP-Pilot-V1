@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CampaignDetail, LeadSegmentRow } from "../../lib/data";
+import type { CampaignDetail, LeadSegmentRow, MessageTemplateRow } from "../../lib/data";
 
 // Settings tab: edit a campaign's core config + per-channel templates via
 // PATCH /api/campaigns/:id. Only the fields most operators tweak post-creation
@@ -21,6 +21,8 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
   const [emailBodyTemplate, setEmailBody] = useState(campaign.emailBodyTemplate ?? "");
   const [segmentId, setSegmentId] = useState(campaign.segmentId ?? "");
   const [segments, setSegments] = useState<LeadSegmentRow[]>([]);
+  const [whatsappTemplateId, setWaTemplateId] = useState(campaign.whatsappTemplateId ?? "");
+  const [waTemplates, setWaTemplates] = useState<MessageTemplateRow[]>([]);
 
   // Scheduling
   const [scheduledStart, setScheduledStart] = useState(toLocalInput(campaign.scheduledStartAt));
@@ -37,10 +39,15 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
     let alive = true;
     (async () => {
       try {
-        const res = await fetch("/api/segments", { cache: "no-store" });
-        const data = await res.json();
-        if (alive && data.ok) setSegments(data.items);
-      } catch { /* segments are optional */ }
+        const [segRes, tplRes] = await Promise.all([
+          fetch("/api/segments", { cache: "no-store" }),
+          fetch("/api/templates?channel=whatsapp&status=approved", { cache: "no-store" }),
+        ]);
+        const segData = await segRes.json();
+        const tplData = await tplRes.json();
+        if (alive && segData.ok) setSegments(segData.items);
+        if (alive && tplData.ok) setWaTemplates(tplData.items);
+      } catch { /* optional */ }
     })();
     return () => { alive = false; };
   }, []);
@@ -60,6 +67,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
         emailSubjectTemplate: emailSubjectTemplate.trim() || null,
         emailBodyTemplate: emailBodyTemplate.trim() || null,
         segmentId: segmentId || null,
+        whatsappTemplateId: whatsappTemplateId || null,
         scheduledStartAt: scheduledStart ? new Date(scheduledStart).toISOString() : null,
         sendWindowStartMin: windowEnabled ? hhmmToMin(windowStart) : null,
         sendWindowEndMin: windowEnabled ? hhmmToMin(windowEnd) : null,
@@ -152,7 +160,18 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
       {channels.includes("whatsapp") && (
         <div style={card}>
           <div style={cardTitle}>WhatsApp</div>
-          <Field label="Template body"><textarea style={{ ...input, minHeight: 80 }} value={whatsappTemplateBody} onChange={(e) => setWaBody(e.target.value)} placeholder="Hi {{1}}, …" /></Field>
+          <Field label="Approved template">
+            <select style={input} value={whatsappTemplateId} onChange={(e) => setWaTemplateId(e.target.value)}>
+              <option value="">— select an approved template —</option>
+              {waTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
+              {waTemplates.length === 0
+                ? <>No approved WhatsApp templates yet. Create and get one approved in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a> — required before a WhatsApp campaign can be activated.</>
+                : <>Meta only allows sending pre-approved templates. Manage them in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a>.</>}
+            </div>
+          </Field>
+          <Field label="Template body (preview override)"><textarea style={{ ...input, minHeight: 70 }} value={whatsappTemplateBody} onChange={(e) => setWaBody(e.target.value)} placeholder="Hi {{1}}, …" /></Field>
         </div>
       )}
 

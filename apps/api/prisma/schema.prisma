@@ -316,7 +316,8 @@ model VoiceCampaign {
   vapiAssistantIdA      String? // provisioned on activation
   vapiAssistantIdB      String?
   // ── WhatsApp channel (pre-approved template) ──
-  whatsappContentSid    String? // provider-approved template id (Twilio Content SID / Meta template)
+  whatsappContentSid    String? // legacy raw provider template id (Twilio Content SID / Meta template)
+  whatsappTemplateId    String? // preferred: an approved MessageTemplate from the library
   whatsappTemplateBody  String? // approved text with {variable} placeholders (for preview)
   whatsappVariables     String                 @default("[]") // JSON ordered list of {variable} exprs for the template
   // ── WhatsApp two-way agent (configurable per campaign) ──
@@ -343,6 +344,7 @@ model VoiceCampaign {
   updatedAt             DateTime               @updatedAt
   hotel                 Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   segment               LeadSegment?           @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  whatsappTemplate      MessageTemplate?       @relation(fields: [whatsappTemplateId], references: [id], onDelete: SetNull)
   leads                 CampaignLead[]
   calls                 CallRecord[]
   deliveries            MessageDelivery[]
@@ -378,12 +380,14 @@ model SequenceStep {
   order                Int // 0-based position
   waitMinutes          Int      @default(0) // delay before this step (from enrollment for step 0, else from the previous step's run)
   channel              String // whatsapp | email
-  whatsappContentSid   String?
+  whatsappContentSid   String? // legacy raw template id
+  whatsappTemplateId   String? // preferred: an approved MessageTemplate from the library
   whatsappTemplateBody String?
   whatsappVariables    String   @default("[]") // JSON ordered list of {variable} exprs
   emailSubject         String?
   emailBody            String?
-  sequence             Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  sequence             Sequence         @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  whatsappTemplate     MessageTemplate? @relation(fields: [whatsappTemplateId], references: [id], onDelete: SetNull)
 
   @@unique([sequenceId, order])
   @@index([sequenceId])
@@ -451,6 +455,8 @@ model MessageTemplate {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   hotel              Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  campaigns          VoiceCampaign[]
+  sequenceSteps      SequenceStep[]
 
   @@index([hotelId, channel, status])
 }

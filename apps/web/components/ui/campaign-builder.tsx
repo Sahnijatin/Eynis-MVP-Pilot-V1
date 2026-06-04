@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { MessageTemplateRow } from "../../lib/data";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -67,6 +68,8 @@ export function CampaignBuilder() {
   const [agentName, setAgentName] = useState("");
   const [outcomeTypes, setOutcomeTypes] = useState("interested, not_now, not_interested");
   // whatsapp
+  const [whatsappTemplateId, setWaTemplateId] = useState("");
+  const [waTemplates, setWaTemplates] = useState<MessageTemplateRow[]>([]);
   const [whatsappContentSid, setWaSid] = useState("");
   const [whatsappTemplateBody, setWaBody] = useState("");
   const [whatsappVariables, setWaVars] = useState("");
@@ -82,6 +85,18 @@ export function CampaignBuilder() {
   const [defaultCountryCode, setCountry] = useState("+91");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/templates?channel=whatsapp&status=approved", { cache: "no-store" });
+        const data = await res.json();
+        if (alive && data.ok) setWaTemplates(data.items);
+      } catch { /* optional */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   function toggle(ch: string) {
     setChannels((prev) => {
@@ -112,6 +127,7 @@ export function CampaignBuilder() {
     }
     if (channels.has("whatsapp")) {
       Object.assign(payload, {
+        whatsappTemplateId: whatsappTemplateId || null,
         whatsappContentSid: whatsappContentSid.trim(),
         whatsappTemplateBody: whatsappTemplateBody.trim() || null,
         whatsappVariables: whatsappVariables.split("\n").map((s) => s.trim()).filter(Boolean),
@@ -183,7 +199,17 @@ export function CampaignBuilder() {
       {channels.has("whatsapp") && (
         <section style={section}>
           <div style={sectionTitle}>WhatsApp (pre-approved template)</div>
-          <label style={lbl}>Approved template id (Twilio Content SID)</label>
+          <label style={lbl}>Approved template</label>
+          <select value={whatsappTemplateId} onChange={(e) => setWaTemplateId(e.target.value)} style={input}>
+            <option value="">— select an approved template —</option>
+            {waTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <div style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 12px" }}>
+            {waTemplates.length === 0
+              ? <>No approved templates yet — create one in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a>. WhatsApp campaigns can't be activated without an approved template (Meta requirement).</>
+              : <>Required to activate. Manage in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a>.</>}
+          </div>
+          <label style={lbl}>Legacy: raw Content SID (optional, advanced)</label>
           <input value={whatsappContentSid} onChange={(e) => setWaSid(e.target.value)} placeholder="HX…" style={input} />
           <div style={{ marginTop: 12 }}>
             <TemplateField label="Template body (for preview)" value={whatsappTemplateBody} onChange={setWaBody} rows={3}
