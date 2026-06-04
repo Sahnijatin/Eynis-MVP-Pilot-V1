@@ -327,6 +327,12 @@ model VoiceCampaign {
   maxConcurrent         Int                    @default(5)
   spendCapCalls         Int? // auto-pause after this many total sends/dials
   defaultCountryCode    String                 @default("+91") // for phone normalisation
+  // ── Scheduling / send windows (compliance: TRAI 9–9, TCPA 8–9) ──
+  scheduledStartAt      DateTime? // do not contact before this instant
+  sendWindowStartMin    Int? // allowed window start, minutes from local midnight (e.g. 540 = 09:00)
+  sendWindowEndMin      Int? // allowed window end, minutes from local midnight (e.g. 1260 = 21:00)
+  sendDays              String                 @default("[]") // JSON int[] of allowed weekdays (0=Sun); empty = all days
+  sendTimeZone          String? // IANA tz for the window; falls back to the hotel's timezone
   // ── Targeting ──
   segmentId             String? // optional saved segment; when set, only matching leads are contacted
   createdAt             DateTime               @default(now())

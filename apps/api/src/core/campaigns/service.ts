@@ -11,6 +11,16 @@ import {
   type VapiCredentials,
   type VapiResult,
 } from "./vapi";
+import { asMinuteOfDay, parseSendDays } from "./schedule";
+
+// Parse an optional ISO datetime: null/empty → null; valid → Date; invalid → error sentinel.
+const INVALID_DATE = Symbol("invalid_date");
+function parseOptionalDate(v: unknown): Date | null | typeof INVALID_DATE {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v !== "string") return INVALID_DATE;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? INVALID_DATE : d;
+}
 
 // ── Create validation ─────────────────────────────────────────────────────────
 
@@ -46,6 +56,11 @@ export interface CampaignCreateValue {
   spendCapCalls: number | null;
   defaultCountryCode: string;
   segmentId: string | null;
+  scheduledStartAt: Date | null;
+  sendWindowStartMin: number | null;
+  sendWindowEndMin: number | null;
+  sendDays: number[];
+  sendTimeZone: string | null;
 }
 
 type Validated<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -130,6 +145,13 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
     return { ok: false, error: "email channel requires emailSubjectTemplate and emailBodyTemplate" };
   }
 
+  const scheduledStartAt = parseOptionalDate(body.scheduledStartAt);
+  if (scheduledStartAt === INVALID_DATE) return { ok: false, error: "scheduledStartAt must be an ISO datetime or null" };
+  const sendWindowStartMin = body.sendWindowStartMin == null ? null : asMinuteOfDay(body.sendWindowStartMin);
+  const sendWindowEndMin = body.sendWindowEndMin == null ? null : asMinuteOfDay(body.sendWindowEndMin);
+  if (body.sendWindowStartMin != null && sendWindowStartMin === null) return { ok: false, error: "sendWindowStartMin must be 0–1439 (minutes from midnight)" };
+  if (body.sendWindowEndMin != null && sendWindowEndMin === null) return { ok: false, error: "sendWindowEndMin must be 0–1439 (minutes from midnight)" };
+
   const outcomeTypes = validateOutcomeTypes(body.outcomeTypes);
   if (outcomeTypes === null) return { ok: false, error: "outcomeTypes must be an array of strings" };
 
@@ -173,6 +195,9 @@ export function validateCampaignCreate(body: Record<string, unknown>): Validated
       spendCapCalls,
       defaultCountryCode: str(body.defaultCountryCode) ?? "+91",
       segmentId: str(body.segmentId), // optional targeting segment
+      scheduledStartAt, sendWindowStartMin, sendWindowEndMin,
+      sendDays: parseSendDays(body.sendDays),
+      sendTimeZone: str(body.sendTimeZone),
     },
   };
 }
@@ -241,6 +266,23 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
   }
   if ("segmentId" in body) data.segmentId = str(body.segmentId); // string targets a segment; null clears it
 
+  // Scheduling / send window.
+  if ("scheduledStartAt" in body) {
+    const d = parseOptionalDate(body.scheduledStartAt);
+    if (d === INVALID_DATE) return { ok: false, error: "scheduledStartAt must be an ISO datetime or null" };
+    data.scheduledStartAt = d;
+  }
+  for (const f of ["sendWindowStartMin", "sendWindowEndMin"] as const) {
+    if (f in body) {
+      if (body[f] === null) { data[f] = null; continue; }
+      const m = asMinuteOfDay(body[f]);
+      if (m === null) return { ok: false, error: `${f} must be 0–1439 (minutes from midnight) or null` };
+      data[f] = m;
+    }
+  }
+  if ("sendDays" in body) data.sendDays = JSON.stringify(parseSendDays(body.sendDays));
+  if ("sendTimeZone" in body) data.sendTimeZone = str(body.sendTimeZone);
+
   if (Object.keys(data).length === 0) return { ok: false, error: "No updatable fields provided" };
   return { ok: true, value: data };
 }
@@ -257,7 +299,7 @@ const safeObject = (json: string): Record<string, unknown> => {
 };
 
 export function serializeCampaign<
-  T extends { outcomeTypes: string; followUpRules: string; channels?: string; whatsappVariables?: string },
+  T extends { outcomeTypes: string; followUpRules: string; channels?: string; whatsappVariables?: string; sendDays?: string },
 >(c: T) {
   return {
     ...c,
@@ -265,6 +307,7 @@ export function serializeCampaign<
     followUpRules: safeObject(c.followUpRules),
     ...(c.channels !== undefined ? { channels: safeArray(c.channels) } : {}),
     ...(c.whatsappVariables !== undefined ? { whatsappVariables: safeArray(c.whatsappVariables) } : {}),
+    ...(c.sendDays !== undefined ? { sendDays: safeArray(c.sendDays).map(Number) } : {}),
   };
 }
 

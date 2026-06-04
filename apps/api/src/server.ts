@@ -3176,6 +3176,8 @@ const handleRequest = async (
             maxRetries: v.maxRetries, retryDelayHours: v.retryDelayHours,
             maxConcurrent: v.maxConcurrent, spendCapCalls: v.spendCapCalls, defaultCountryCode: v.defaultCountryCode,
             segmentId: v.segmentId,
+            scheduledStartAt: v.scheduledStartAt, sendWindowStartMin: v.sendWindowStartMin,
+            sendWindowEndMin: v.sendWindowEndMin, sendDays: JSON.stringify(v.sendDays), sendTimeZone: v.sendTimeZone,
           },
         });
         json(res, 201, { ok: true, campaign: serializeCampaign(created) });
