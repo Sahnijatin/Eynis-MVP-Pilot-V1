@@ -1284,7 +1284,10 @@ const handleRequest = async (
       return;
     }
 
-    if (req.url?.startsWith("/service-requests") && req.method === "GET") {
+    // Match only the collection (with or without query string), NOT sub-resources
+    // like /service-requests/:id/transitions — otherwise this broad list handler
+    // shadows the specific routes declared below it (F-7).
+    if ((req.url === "/service-requests" || req.url?.startsWith("/service-requests?")) && req.method === "GET") {
       const auth = await getAuthenticatedContext(req);
       if (!auth.ok) {
         json(res, auth.status, { ok: false, error: auth.error });
@@ -2105,6 +2108,12 @@ const handleRequest = async (
         return;
       }
       const context = auth.context;
+      // Viewing a request's transition history requires the same permission as
+      // viewing requests (F-7: this check was missing while the route was dead).
+      if (!canAccess(context.permissions, "GET /service-requests")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
+        return;
+      }
       const transitionRequestId = /^\/service-requests\/([^/]+)\/transitions$/.exec(req.url)?.[1];
       if (!transitionRequestId) {
         json(res, 400, { ok: false, error: "Invalid path" });

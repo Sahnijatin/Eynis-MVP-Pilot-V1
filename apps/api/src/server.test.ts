@@ -372,11 +372,18 @@ test("assign endpoint updates assignee and transition history is readable", asyn
     );
     const transitionsPayload = (await transitionsResponse.json()) as {
       ok: boolean;
-      items: Array<{ toStatus: string }>;
+      items: Array<{ fromStatus: string; toStatus: string }>;
     };
     assert.equal(transitionsResponse.status, 200);
     assert.equal(transitionsPayload.ok, true);
     assert.equal(Array.isArray(transitionsPayload.items), true);
+    // F-7 regression: this must be the transitions route, not the shadowing list
+    // handler. The status change above produced a transition into "accepted".
+    assert.ok(transitionsPayload.items.length >= 1, "expected at least one transition");
+    assert.ok(
+      transitionsPayload.items.some((t) => t.toStatus === "accepted"),
+      "expected a transition into 'accepted' (proves the real transitions route, not a SR list)"
+    );
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve()))

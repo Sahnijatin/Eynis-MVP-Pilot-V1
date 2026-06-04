@@ -54,7 +54,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ☐ open |
 | F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ☐ open |
 | F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ☐ open |
-| F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ☐ open |
+| F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ✅ fixed (#54) |
 | F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
 | F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ☐ open |
 | F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ☐ open |
@@ -259,6 +259,13 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-7 (#54) — transitions route dead code — fixed.** The broad `GET /service-requests`
+  list handler matched `startsWith("/service-requests")`, swallowing
+  `/service-requests/:id/transitions` so it never ran. Narrowed the list match to the
+  collection path only (`=== "/service-requests"` or `?…`), unshadowing the transitions
+  route, and added the missing `view_requests` permission check to it. Strengthened the
+  existing test to assert a real transition (`toStatus: "accepted"`) — it previously passed
+  against the wrong handler. Suite: 211/211 green.
 - **F-2 (#49) — PMS webhook unauthenticated — fixed.** Added `verifySharedWebhookSecret`
   (constant-time, **fails closed in production** when `PMS_WEBHOOK_SECRET` is unset) and gated
   `POST /connectors/pms/webhook` behind it before any data write. `/connectors/pms/simulate`
