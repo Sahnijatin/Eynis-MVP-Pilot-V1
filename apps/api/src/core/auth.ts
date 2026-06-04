@@ -1,12 +1,15 @@
 import type { IncomingMessage } from "node:http";
 import { SignJWT, jwtVerify } from "jose";
-import { isValidRole, type UserRole } from "@eynis/shared";
+import { isValidRole, isSystemRoleKey, type UserRole, type SystemRoleKey } from "@eynis/shared";
 
 export interface AuthTokenClaims {
   sub: string;
   hotelId: string;
   email: string;
-  role: UserRole;
+  /** @deprecated legacy hospitality role — retained for backward compat. */
+  role?: UserRole | null;
+  /** Canonical generic role key (admin/manager/supervisor/agent/viewer). */
+  roleKey?: SystemRoleKey | null;
   permissions: string[];
 }
 
@@ -19,7 +22,10 @@ export const createAuthToken = async (claims: AuthTokenClaims) =>
   new SignJWT({
     hotelId: claims.hotelId,
     email: claims.email,
-    role: claims.role,
+    // Emit whichever role identities are present. A modern token carries roleKey;
+    // the legacy hospitality role is included only for backward compatibility.
+    ...(claims.role ? { role: claims.role } : {}),
+    ...(claims.roleKey ? { roleKey: claims.roleKey } : {}),
     permissions: claims.permissions
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
@@ -44,10 +50,15 @@ export const verifyAuthToken = async (token: string): Promise<AuthTokenClaims | 
     if (
       typeof payload.sub !== "string" ||
       typeof payload.hotelId !== "string" ||
-      typeof payload.email !== "string" ||
-      typeof payload.role !== "string" ||
-      !isValidRole(payload.role)
+      typeof payload.email !== "string"
     ) {
+      return null;
+    }
+    // Resolve both role identities. A token is valid if it carries at least one:
+    // the canonical roleKey OR the legacy hospitality role (backward compat).
+    const role = typeof payload.role === "string" && isValidRole(payload.role) ? payload.role : null;
+    const roleKey = typeof payload.roleKey === "string" && isSystemRoleKey(payload.roleKey) ? payload.roleKey : null;
+    if (!role && !roleKey) {
       return null;
     }
     const permissions = Array.isArray(payload.permissions)
@@ -57,7 +68,8 @@ export const verifyAuthToken = async (token: string): Promise<AuthTokenClaims | 
       sub: payload.sub,
       hotelId: payload.hotelId,
       email: payload.email,
-      role: payload.role,
+      role,
+      roleKey,
       permissions
     };
   } catch {
