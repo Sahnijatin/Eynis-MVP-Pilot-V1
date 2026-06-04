@@ -86,11 +86,16 @@ export async function processDueEnrollments(deps: SequenceDeps = {}, now = new D
     }
 
     // Compliance guard — suppression is always enforced (independent of exitOn).
-    const suppressed = e.lead.phone
+    // Phone-based DoNotContact applies to phone channels; an email step must not be
+    // force-suppressed just for lacking a phone (F-5).
+    const isEmailStep = step.channel === "email";
+    const suppressed = isEmailStep
+      ? Boolean(e.lead.email && await prisma.emailSuppression.findUnique({ where: { tenantId_email: { tenantId: e.tenantId, email: e.lead.email.trim().toLowerCase() } }, select: { id: true } }))
+      : e.lead.phone
       ? Boolean(await prisma.doNotContact.findUnique({ where: { tenantId_phone: { tenantId: e.tenantId, phone: e.lead.phone } }, select: { id: true } }))
       : true;
     const decision = evaluateContact(
-      { consent: e.lead.consent, consentSource: e.lead.consentSource, optedOut: e.lead.optedOut, phone: e.lead.phone },
+      { consent: e.lead.consent, consentSource: e.lead.consentSource, optedOut: e.lead.optedOut, phone: e.lead.phone, email: e.lead.email },
       { channel: step.channel as "whatsapp" | "email", suppressed },
     );
     if (!decision.ok) {

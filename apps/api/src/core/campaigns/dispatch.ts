@@ -166,9 +166,15 @@ export async function processCampaignChannel(
       continue;
     }
 
+    // Phone-based DoNotContact suppression applies to phone channels. Email
+    // suppression was already enforced above (suppressedEmails), so an email-only
+    // lead must not be force-suppressed here just for lacking a phone (F-5).
     const decision = evaluateContact(
-      { consent: lead.consent, consentSource: lead.consentSource, optedOut: lead.optedOut, phone: lead.phone },
-      { channel: channel as "whatsapp" | "email", suppressed: lead.phone ? suppressed.has(lead.phone) : true },
+      { consent: lead.consent, consentSource: lead.consentSource, optedOut: lead.optedOut, phone: lead.phone, email: lead.email },
+      {
+        channel: channel as "whatsapp" | "email",
+        suppressed: channel === "email" ? false : (lead.phone ? suppressed.has(lead.phone) : true),
+      },
     );
     if (!decision.ok) {
       await prisma.messageDelivery.create({

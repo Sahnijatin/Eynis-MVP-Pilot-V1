@@ -96,13 +96,30 @@ export interface ContactCandidate {
   consent: LeadConsent;
   optedOut: boolean; // tenant-wide opt-out flag resolved by the caller
   phone: string | null;
+  email?: string | null;
+  // Which channel the contact will happen on. Determines the required identifier:
+  // email needs a deliverable address, voice/WhatsApp need a phone. Defaults to a
+  // phone requirement when omitted (back-compat for voice/WhatsApp callers).
+  channel?: "voice" | "whatsapp" | "email";
+}
+
+// Minimal deliverable-address check — the email sender does fuller validation, but
+// the guard must reject empty/garbage so an email-only lead isn't skipped as
+// "missing_phone" yet also isn't sent to a non-address.
+export function isLikelyEmail(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 export function canContactLead(candidate: ContactCandidate): ContactDecision {
   if (candidate.optedOut) return { allowed: false, reason: "lead_opted_out" };
   if (!candidate.consent.consent) return { allowed: false, reason: "no_consent" };
   if (!candidate.consent.consentSource) return { allowed: false, reason: "consent_source_missing" };
-  if (!candidate.phone || candidate.phone.trim().length === 0) {
+  if (candidate.channel === "email") {
+    if (!isLikelyEmail(candidate.email)) {
+      return { allowed: false, reason: "missing_email" };
+    }
+  } else if (!candidate.phone || candidate.phone.trim().length === 0) {
     return { allowed: false, reason: "missing_phone" };
   }
   return { allowed: true };

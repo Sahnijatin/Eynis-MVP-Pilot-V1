@@ -17,6 +17,26 @@ test("evaluateContact blocks no-consent and opted-out", () => {
   assert.equal(evaluateContact({ ...consented, optedOut: true }, { channel: "email", suppressed: false }).ok, false);
 });
 
+// F-5: email-only leads (a valid email, no phone) used to be silently skipped as
+// "missing_phone". The guard is now channel-aware.
+test("evaluateContact allows an email-only lead on the email channel (F-5)", () => {
+  const emailOnly: GuardLead = { consent: true, consentSource: "csv_import", optedOut: false, phone: null, email: "lead@example.com" };
+  assert.deepEqual(evaluateContact(emailOnly, { channel: "email", suppressed: false }), { ok: true });
+});
+
+test("evaluateContact blocks an email-only lead on phone channels (missing_phone)", () => {
+  const emailOnly: GuardLead = { consent: true, consentSource: "csv_import", optedOut: false, phone: null, email: "lead@example.com" };
+  assert.deepEqual(evaluateContact(emailOnly, { channel: "whatsapp", suppressed: false }), { ok: false, reason: "missing_phone" });
+  assert.deepEqual(evaluateContact(emailOnly, { channel: "voice", suppressed: false }), { ok: false, reason: "missing_phone" });
+});
+
+test("evaluateContact blocks the email channel when there is no deliverable address (missing_email)", () => {
+  const noEmail: GuardLead = { consent: true, consentSource: "csv_import", optedOut: false, phone: "+14155550100", email: null };
+  assert.deepEqual(evaluateContact(noEmail, { channel: "email", suppressed: false }), { ok: false, reason: "missing_email" });
+  const badEmail: GuardLead = { consent: true, consentSource: "csv_import", optedOut: false, phone: null, email: "not-an-email" };
+  assert.deepEqual(evaluateContact(badEmail, { channel: "email", suppressed: false }), { ok: false, reason: "missing_email" });
+});
+
 test("DND scrub only blocks voice for +91 and only when enforced", () => {
   const india: GuardLead = { consent: true, consentSource: "csv_import", optedOut: false, phone: "+919876543210" };
   // not enforced (dev default) → allowed

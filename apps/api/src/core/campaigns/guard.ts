@@ -14,6 +14,7 @@ export interface GuardLead {
   consentSource: string | null;
   optedOut: boolean;
   phone: string | null;
+  email?: string | null;
 }
 
 export type GuardDecision = { ok: true } | { ok: false; reason: string };
@@ -26,16 +27,17 @@ export interface GuardOptions {
 export function evaluateContact(lead: GuardLead, opts: GuardOptions): GuardDecision {
   if (opts.suppressed) return { ok: false, reason: "suppressed" };
 
+  // Channel-aware identifier check: email needs a deliverable address, voice/
+  // WhatsApp need a phone (F-5 — previously this always required a phone, so
+  // email-only leads were silently skipped as "missing_phone").
   const consent = canContactLead({
     consent: { consent: lead.consent, consentSource: lead.consentSource as ConsentSource | null, consentAt: null },
     optedOut: lead.optedOut,
     phone: lead.phone,
+    email: lead.email ?? null,
+    channel: opts.channel,
   });
   if (!consent.allowed) return { ok: false, reason: consent.reason };
-
-  // Email needs an address, not a phone (the consent guard already required a phone
-  // for tenant scoping; an email-only send additionally needs a deliverable email,
-  // which the email sender validates).
 
   // DND/TRAI scrub applies to outbound voice in India. Enforced only when
   // ENFORCE_DND_SCRUB=true (until the live registry integration lands), matching

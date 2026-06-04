@@ -52,7 +52,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-2 | 🔴 | Security | `/connectors/pms/webhook` unauthenticated + trusts body `tenantId` | ✅ fixed (#49) |
 | F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ☐ open |
 | F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ☐ open |
-| F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ☐ open |
+| F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ✅ fixed (#52) |
 | F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ☐ open |
 | F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ✅ fixed (#54) |
 | F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
@@ -259,6 +259,12 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-5 (#52) — email-only leads never send — fixed.** `canContactLead` is now
+  channel-aware: the email channel requires a deliverable address (`isLikelyEmail`),
+  voice/WhatsApp require a phone (default). Threaded `email`+`channel` through `guard.ts`,
+  and fixed both dispatch and sequence-runner where email-only leads were additionally
+  force-suppressed for lacking a phone (email suppression is checked against the email
+  list instead). Added 3 regression tests. Suite: 214/214 green.
 - **F-7 (#54) — transitions route dead code — fixed.** The broad `GET /service-requests`
   list handler matched `startsWith("/service-requests")`, swallowing
   `/service-requests/:id/transitions` so it never ran. Narrowed the list match to the
