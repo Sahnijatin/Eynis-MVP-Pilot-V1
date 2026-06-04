@@ -57,9 +57,21 @@ Clerk sessions are domain-scoped, so each custom host must be allowed:
 - `PLATFORM_APP_DOMAIN` (API) — defaults to `eynis.com`; controls which hosts are
   treated as platform (not tenant) and how subdomains are parsed.
 
-## Remaining code step (next)
-A Next.js **middleware** that reads the `Host` header, calls `/tenant/resolve`,
-and passes the resolved tenant/branding into the sign-in + shell render (so the
-login page is themed pre-auth). It touches the auth boundary, so it should be
-landed and verified against the deployed environment + Clerk config rather than
-blind. The resolve endpoint it depends on is already live and tested.
+## Pre-auth theming — DONE (server-side, no middleware)
+The sign-in / sign-up pages (`app/sign-in`, `app/sign-up`) now resolve the tenant
+**server-side** from the `Host` header via `lib/host-theme.ts` → `GET
+/tenant/resolve`, and render the tenant's logo + brand name + primary color
+(including Clerk's `appearance.colorPrimary`). This is cleaner than a middleware
+and never touches the Clerk auth boundary — it degrades to the Eynis default on
+the platform host or any error/timeout (2.5s). Post-auth theming continues to
+come from the logged-in user's tenant via `/api/me` (A1).
+
+> We deliberately did **not** add a Next.js middleware: themed login is achieved
+> in the page render, and `clerkMiddleware` (auth) is left untouched.
+
+## What's left — purely operational (no code), validated on the live deploy
+1. **Vercel** — add each custom domain (and the `*.eynis.com` wildcard) to the
+   project; Vercel verifies the CNAME and issues TLS.
+2. **Clerk** — add those domains as allowed/satellite origins so sessions work
+   cross-domain (the one real gotcha; see §C).
+3. **Env** — set `PLATFORM_APP_DOMAIN` if the platform host isn't `eynis.com`.
