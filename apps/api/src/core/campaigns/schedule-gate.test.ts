@@ -12,7 +12,7 @@ const TZ = "Asia/Kolkata";
 
 async function campaignWithLeads(extra: Record<string, unknown>) {
   const hotelId = "sch-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "Sch " + hotelId.slice(-4), timezone: TZ } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "Sch " + hotelId.slice(-4), timezone: TZ } });
   const campaign = await prisma.voiceCampaign.create({
     data: { hotelId, name: "Sch", status: "active", channels: JSON.stringify(["whatsapp"]), whatsappContentSid: "HX", sendTimeZone: TZ, ...extra },
   });

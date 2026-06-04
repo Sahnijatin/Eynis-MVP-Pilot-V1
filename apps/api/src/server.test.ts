@@ -6,7 +6,7 @@ import { prisma } from "./db/prisma";
 const uniqueHotelId = () => "test-hotel-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 
 const createHotel = async (hotelId: string) => {
-  await prisma.hotel.create({
+  await prisma.tenant.create({
     data: {
       id: hotelId,
       name: "Test Hotel " + hotelId.slice(-4),

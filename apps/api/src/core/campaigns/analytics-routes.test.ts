@@ -9,7 +9,7 @@ let seq = 8000000000;
 const phone = () => "+1" + String(seq++);
 
 const createHotel = async (hotelId: string) => {
-  await prisma.hotel.create({ data: { id: hotelId, name: "AN " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "AN " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
 };
 const createUser = (hotelId: string, role: string, email: string) =>

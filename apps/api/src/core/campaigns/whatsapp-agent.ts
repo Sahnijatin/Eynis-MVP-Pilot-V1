@@ -133,7 +133,7 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
     tenant: { name: null },
     booking: { calendlyLink: campaign.calendlyLink },
   });
-  const tenant = await prisma.hotel.findUnique({ where: { id: input.hotelId }, select: { name: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { id: input.hotelId }, select: { name: true } });
   if (tenant?.name) vars["tenant.name"] = tenant.name;
 
   const recent = await prisma.whatsappMessage.findMany({

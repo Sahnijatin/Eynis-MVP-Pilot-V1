@@ -23,7 +23,7 @@ export async function campaignMaySendNow(c: ScheduledCampaign, now = new Date())
 
   let timeZone = c.sendTimeZone ?? null;
   if (!timeZone) {
-    const hotel = await prisma.hotel.findUnique({ where: { id: c.hotelId }, select: { timezone: true } });
+    const hotel = await prisma.tenant.findUnique({ where: { id: c.hotelId }, select: { timezone: true } });
     timeZone = hotel?.timezone ?? "Asia/Kolkata";
   }
   return isWithinSendWindow(now, {

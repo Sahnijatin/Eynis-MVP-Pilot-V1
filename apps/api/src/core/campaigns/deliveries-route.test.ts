@@ -7,7 +7,7 @@ import { prisma } from "../../db/prisma";
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 
 const createHotel = async (hotelId: string) => {
-  await prisma.hotel.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "VC " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   await prisma.license.create({ data: { hotelId, plan: "growth", maxSeats: 25 } });
 };
 const createUser = async (hotelId: string, role: string, email: string) =>

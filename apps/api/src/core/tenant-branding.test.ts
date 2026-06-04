@@ -9,7 +9,7 @@ import { prisma } from "../db/prisma";
 const uid = () => "brand-hotel-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 
 const createHotel = async (hotelId: string) => {
-  await prisma.hotel.create({ data: { id: hotelId, name: "Brand Test " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "Brand Test " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
 };
 const createUser = async (hotelId: string, role: "owner" | "housekeeping", email: string) => {
   await prisma.user.create({ data: { hotelId, fullName: "User " + role, email, role, isActive: true } });

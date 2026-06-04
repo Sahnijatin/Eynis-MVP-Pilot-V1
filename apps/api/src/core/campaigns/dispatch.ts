@@ -137,7 +137,7 @@ export async function processCampaignChannel(
     ? new Set((await prisma.emailSuppression.findMany({ where: { hotelId: campaign.hotelId, email: { in: emails } }, select: { email: true } })).map((r) => r.email))
     : new Set<string>();
 
-  const hotel = await prisma.hotel.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
+  const hotel = await prisma.tenant.findUnique({ where: { id: campaign.hotelId }, select: { name: true } });
   const senderCampaign = {
     name: campaign.name, calendlyLink: campaign.calendlyLink,
     whatsappContentSid: campaign.whatsappContentSid, whatsappTemplateBody: campaign.whatsappTemplateBody,

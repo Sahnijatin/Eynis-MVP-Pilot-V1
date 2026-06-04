@@ -10,7 +10,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 
 
 async function seedDelivery(opts: { providerId: string; to: string }) {
   const hotelId = "rw-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "RW " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "RW " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({ data: { hotelId, name: "C", status: "active", channels: JSON.stringify(["email"]) } });
   const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, hotelId, firstName: "A", email: opts.to, phone: "+919" + Date.now().toString().slice(-9), consent: true } });
   const delivery = await prisma.messageDelivery.create({ data: { hotelId, campaignId: campaign.id, leadId: lead.id, channel: "email", status: "sent", providerId: opts.providerId } });

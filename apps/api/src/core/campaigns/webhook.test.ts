@@ -9,7 +9,7 @@ const phone = () => "+1" + String(seq++);
 
 async function setup(opts: { followUpRules?: Record<string, string[]>; maxRetries?: number } = {}) {
   const hotelId = "wh-" + uid();
-  await prisma.hotel.create({ data: { id: hotelId, name: "WH " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
+  await prisma.tenant.create({ data: { id: hotelId, name: "WH " + hotelId.slice(-4), timezone: "Asia/Kolkata" } });
   const campaign = await prisma.voiceCampaign.create({
     data: {
       hotelId, name: "C", status: "active", channels: JSON.stringify(["voice"]),

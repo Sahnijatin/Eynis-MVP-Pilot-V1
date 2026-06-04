@@ -21,11 +21,15 @@ export type LicenseFeature =
   | "automations"
   | "night_audit";
 
-export interface Hotel {
+/** The tenant / organization — the billable, isolated account. */
+export interface Tenant {
   id: string;
   name: string;
   timezone: string;
 }
+
+/** @deprecated Hospitality name for {@link Tenant}; retained as an alias during the rename. */
+export type Hotel = Tenant;
 
 /** The end-customer a tenant engages (industry-neutral name for the Guest entity). */
 export interface Contact {
