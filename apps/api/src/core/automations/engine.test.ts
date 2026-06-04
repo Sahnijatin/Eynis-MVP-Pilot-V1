@@ -107,6 +107,21 @@ test("Rule 3 (checkin_welcome): records exactly one execution per recent check-i
   assert.equal(await prisma.automationExecution.count({ where: { ruleId: rule.id, triggerEntityId: stay.id } }), 1);
 });
 
+test("concurrent cycles record exactly one execution per entity (F-13 unique constraint)", async () => {
+  const tenantId = await makeTenant();
+  const rule = await makeRule(tenantId, "sla_breach_escalate");
+  const guest = await makeContact(tenantId);
+  const sr = await prisma.serviceRequest.create({
+    data: { tenantId, guestId: guest.id, category: "housekeeping", status: "open", summary: "Race", slaDueAt: new Date(Date.now() - 60_000) },
+  });
+
+  // Two cycles racing on the same breached SR: the DB unique constraint + the
+  // P2002-swallow in recordExecution must still yield exactly one execution row.
+  await Promise.all([evaluateSlaBreachEscalate(), evaluateSlaBreachEscalate()]);
+
+  assert.equal(await prisma.automationExecution.count({ where: { ruleId: rule.id, triggerEntityId: sr.id } }), 1);
+});
+
 test("multi-tenant: a rule only acts on its own tenant's entities", async () => {
   const tenantA = await makeTenant();
   const tenantB = await makeTenant();

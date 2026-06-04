@@ -226,8 +226,8 @@ model AutomationExecution {
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rule            AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
+  @@unique([ruleId, triggerEntityId])
   @@index([tenantId, executedAt])
-  @@index([ruleId, triggerEntityId])
 }
 
 model AuditLog {

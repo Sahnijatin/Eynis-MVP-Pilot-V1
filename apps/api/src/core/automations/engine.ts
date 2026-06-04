@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
+import { singleFlight } from "../single-flight";
 
 async function hasExecution(ruleId: string, triggerEntityId: string): Promise<boolean> {
   const existing = await prisma.automationExecution.findFirst({
@@ -21,7 +23,15 @@ async function recordExecution(data: {
   actionResult: ActionResult;
   resultDetail?: string;
 }) {
-  await prisma.automationExecution.create({ data });
+  try {
+    await prisma.automationExecution.create({ data });
+  } catch (err) {
+    // A unique-violation on (ruleId, triggerEntityId) means another cycle already
+    // recorded this execution — the entity is handled, so swallow it (F-13). The
+    // DB constraint is the backstop for the in-app hasExecution check.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return;
+    throw err;
+  }
 }
 
 // ── Rule 1: SLA breach → escalate service request ─────────────────────────────
@@ -236,21 +246,24 @@ export async function evaluateUpsellFollowup() {
 
 // ── Public: start worker ──────────────────────────────────────────────────────
 
-export function startAutomationWorker(intervalMs = 60_000): () => void {
-  const runCycle = async () => {
-    try {
-      await Promise.allSettled([
-        evaluateSlaBreachEscalate(),
-        evaluateSentimentLowFlag(),
-        evaluateCheckinWelcome(),
-        evaluateUpsellFollowup()
-      ]);
-    } catch (err) {
-      console.error("[AutomationEngine] Cycle error:", err);
-    }
-  };
+// Wrapped in singleFlight so a cycle that overruns the 60s interval can't overlap
+// the next one — overlapping cycles widen the check-then-act idempotency window
+// (F-13). The DB unique constraint on (ruleId, triggerEntityId) is the backstop.
+export const runAutomationCycle = singleFlight(async (): Promise<void> => {
+  try {
+    await Promise.allSettled([
+      evaluateSlaBreachEscalate(),
+      evaluateSentimentLowFlag(),
+      evaluateCheckinWelcome(),
+      evaluateUpsellFollowup()
+    ]);
+  } catch (err) {
+    console.error("[AutomationEngine] Cycle error:", err);
+  }
+});
 
-  void runCycle();
-  const id = setInterval(() => void runCycle(), intervalMs);
+export function startAutomationWorker(intervalMs = 60_000): () => void {
+  void runAutomationCycle();
+  const id = setInterval(() => void runAutomationCycle(), intervalMs);
   return () => clearInterval(id);
 }

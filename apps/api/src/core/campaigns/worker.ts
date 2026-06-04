@@ -21,7 +21,7 @@ import {
   resolveVapiCredentials, isVapiConfigured, initiateCall as realInitiateCall,
   type VapiCredentials, type VapiResult, type CallParams,
 } from "./vapi";
-import { singleFlight } from "./single-flight";
+import { singleFlight } from "../single-flight";
 
 const TICK_MS = Number(process.env.CAMPAIGN_DIALER_INTERVAL_MS ?? 30_000);
 const DEFAULT_MAX_CONCURRENT = 5;

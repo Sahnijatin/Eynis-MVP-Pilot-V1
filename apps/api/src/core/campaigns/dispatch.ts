@@ -15,7 +15,7 @@ import { campaignMaySendNow } from "./schedule-gate";
 import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
-import { singleFlight } from "./single-flight";
+import { singleFlight } from "../single-flight";
 
 // Resolve a campaign's optional targeting segment to a lead where-fragment.
 // Returns {} when no segment is set (or it was deleted) → contact all leads.

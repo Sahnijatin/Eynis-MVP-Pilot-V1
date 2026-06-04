@@ -60,7 +60,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ☐ open |
 | F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ✅ fixed (#58) |
 | F-12 | 🟠 | AI | AI routes have no try/catch → generic 500, cause swallowed | ✅ fixed (#59) |
-| F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ☐ open |
+| F-13 | 🟠 | Automation | Idempotency check-then-act race + overlapping `setInterval` | ✅ fixed (#60) |
 | F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ☐ open |
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ☐ open |
 | F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ☐ open |
@@ -259,6 +259,12 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-13 (#60) — automation idempotency race — fixed.** Wrapped the cycle in `singleFlight`
+  (`runAutomationCycle`) so a 60s cycle can't overlap the next, and added a DB
+  `@@unique([ruleId, triggerEntityId])` on `AutomationExecution` (migration dedupes any
+  pre-existing rows first) as the backstop; `recordExecution` now swallows the P2002
+  unique-violation as "already handled." Moved `singleFlight` to `core/single-flight.ts` (now
+  shared by both workers). Added a concurrent-cycle regression test. Suite: 235 → 236 green.
 - **F-11 / F-12 (#58, #59) — AI parsing + route error handling — fixed.** `extractJson` now
   returns `null` instead of throwing on no-match/parse-failure; a new `parseStructured<T>`
   validates the response is a plain object with the required keys, throwing a typed
