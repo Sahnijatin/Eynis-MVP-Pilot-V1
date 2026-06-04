@@ -48,7 +48,7 @@ async function upsertGuest(tenantId: string, guestName: string, phoneE164: strin
 }
 
 // Keyword fallback when AI is unavailable
-function keywordClassify(text: string): ClassificationResult {
+export function keywordClassify(text: string): ClassificationResult {
   const lower = text.toLowerCase();
   const category =
     lower.includes("towel") || lower.includes("clean") || lower.includes("housekeep") ? "housekeeping"

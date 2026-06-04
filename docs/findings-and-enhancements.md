@@ -53,7 +53,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-3 | 🔴 | Campaigns | Messaging dispatch has no atomic per-lead lock → double-send | ✅ fixed (#50) |
 | F-4 | 🔴 | Campaigns | Spend cap racy / double-counted across two workers | ✅ fixed (#51) |
 | F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ✅ fixed (#52) |
-| F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ☐ open |
+| F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ✅ fixed (#53) |
 | F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ✅ fixed (#54) |
 | F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
 | F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ☐ open |
@@ -259,6 +259,11 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-6 (#53) — no tests for AI + automation — fixed.** Added `engine.test.ts` (5 integration
+  tests: each of the 4 rules acts correctly + is idempotent, plus multi-tenant scoping),
+  `intelligence.test.ts` (`extractJson` success/embedded/nested/failure), and `ingest.test.ts`
+  (keyword classifier routing, priority/SLA, summary truncation). Exported the four rule
+  evaluators, `extractJson`, and `keywordClassify` as test seams. Suite: 217 → 232 green.
 - **F-3 / F-4 (#50, #51) — messaging double-send + spend-cap overshoot — fixed.** Root cause
   was `setInterval(() => void tick())` being fire-and-forget: a tick that overran the 30s
   interval overlapped the next, so two passes re-selected the same fresh leads (double-send)

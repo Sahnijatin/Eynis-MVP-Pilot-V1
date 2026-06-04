@@ -26,7 +26,7 @@ async function recordExecution(data: {
 
 // ── Rule 1: SLA breach → escalate service request ─────────────────────────────
 
-async function evaluateSlaBreachEscalate() {
+export async function evaluateSlaBreachEscalate() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sla_breach_escalate", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -83,7 +83,7 @@ async function evaluateSlaBreachEscalate() {
 
 // ── Rule 2: Negative sentiment → create review SR ─────────────────────────────
 
-async function evaluateSentimentLowFlag() {
+export async function evaluateSentimentLowFlag() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sentiment_low_flag", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -132,7 +132,7 @@ async function evaluateSentimentLowFlag() {
 
 // ── Rule 3: Check-in within last 30 min → send welcome WhatsApp ───────────────
 
-async function evaluateCheckinWelcome() {
+export async function evaluateCheckinWelcome() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "checkin_welcome", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -177,7 +177,7 @@ async function evaluateCheckinWelcome() {
 
 // ── Rule 4: SR resolved in last 2h → queue upsell offer ──────────────────────
 
-async function evaluateUpsellFollowup() {
+export async function evaluateUpsellFollowup() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "upsell_followup", isActive: true },
     select: { id: true, tenantId: true, code: true }

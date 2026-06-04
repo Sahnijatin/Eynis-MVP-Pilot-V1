@@ -44,7 +44,7 @@ Hotel context: You serve boutique and mid-scale hotels in India and Southeast As
 
 // ── Shared helper ─────────────────────────────────────────────────────────────
 
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   const match = /\{[\s\S]*\}/.exec(text);
   if (!match) throw new Error("No JSON object found in AI response");
   return JSON.parse(match[0]);
