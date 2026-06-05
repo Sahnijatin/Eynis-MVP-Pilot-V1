@@ -109,15 +109,15 @@ INCREMENT A — Pipeline + Deals + Forecasting   ✅ Done
   A8 Forecast strip + panel ✅
   A9 Tests & ship           ✅  (265/265 API tests pass, lint clean)
 
-INCREMENT B — Contacts Hub + Companies         ⬜ Not started
-  B1 Extend Contact + Company   ⬜
-  B2 Link & backfill            ⬜
-  B3 Contact APIs               ⬜
-  B4 Company APIs               ⬜
-  B5 Contact segments           ⬜
-  B6 Contacts & Companies UI    ⬜
-  B7 Wire deals to contacts     ⬜
-  B8 Tests & ship               ⬜
+INCREMENT B — Contacts Hub + Companies         ✅ Done
+  B1 Extend Contact + Company   ✅
+  B2 Link & backfill            ✅
+  B3 Contact APIs               ✅
+  B4 Company APIs               ✅
+  B5 Contact filtering          ✅
+  B6 Contacts & Companies UI    ✅
+  B7 Wire deals to contacts     ✅
+  B8 Tests & ship               ✅  (268/268 API tests pass, lint clean)
 
 INCREMENT C — Activities Timeline + AI         ⬜ Not started
   C1 Activity model         ⬜
@@ -131,5 +131,7 @@ INCREMENT C — Activities Timeline + AI         ⬜ Not started
   C9 Tests & ship          ⬜
 ```
 
-**Where we are today:** Increment A (Pipeline + Deals + Forecasting) is **built, tested, and
-shipped**. **Next step = Increment B (Contacts hub + Companies), starting at B1.**
+**Where we are today:** Increments A (Pipeline + Deals + Forecasting) and B (Contacts hub +
+Companies) are **built, tested, and shipped**. **Next step = Increment C (Activities timeline +
+AI), starting at C1** — including the AI that moves deals automatically based on call/WhatsApp/email
+conversations.
