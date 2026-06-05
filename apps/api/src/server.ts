@@ -344,6 +344,13 @@ const parseConnectorConfigPath = (url: string | undefined): string | null => {
   return decodeURIComponent(match[1]);
 };
 
+// CRM contact/company id routing: /contacts/:id, /companies/:id
+const parseCrmIdPath = (url: string | undefined, base: string): string | null => {
+  if (!url) return null;
+  const match = new RegExp(`^/${base}/([^/]+)$`).exec(parseUrl(url).pathname);
+  return match && match[1] ? decodeURIComponent(match[1]) : null;
+};
+
 // CRM deal routing: /deals/:id, /deals/:id/move  (note: /deals and /deals/forecast
 // are matched as exact pathnames before this parser is consulted).
 const DEAL_ACTIONS = new Set(["move"]);
@@ -520,6 +527,16 @@ const permissionMap: Record<string, Permission | null> = {
   "PATCH /deals/:id":                     "manage_crm",
   "DELETE /deals/:id":                    "manage_crm",
   "POST /deals/:id/move":                 "manage_crm",
+  "GET /contacts":                        "view_crm",
+  "POST /contacts":                       "manage_crm",
+  "GET /contacts/:id":                    "view_crm",
+  "PATCH /contacts/:id":                  "manage_crm",
+  "DELETE /contacts/:id":                 "manage_crm",
+  "GET /companies":                       "view_crm",
+  "POST /companies":                      "manage_crm",
+  "GET /companies/:id":                   "view_crm",
+  "PATCH /companies/:id":                 "manage_crm",
+  "DELETE /companies/:id":                "manage_crm",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3645,6 +3662,9 @@ const handleRequest = async (
         if (v.contactId && !(await prisma.contact.findFirst({ where: { id: v.contactId, tenantId } }))) {
           json(res, 400, { ok: false, error: "Contact not found" }); return;
         }
+        if (v.companyId && !(await prisma.company.findFirst({ where: { id: v.companyId, tenantId } }))) {
+          json(res, 400, { ok: false, error: "Company not found" }); return;
+        }
         if (v.ownerId && !(await prisma.user.findFirst({ where: { id: v.ownerId, tenantId } }))) {
           json(res, 400, { ok: false, error: "Owner not found" }); return;
         }
@@ -3654,12 +3674,12 @@ const handleRequest = async (
           data: {
             tenantId, title: v.title, value: v.value, currency: v.currency,
             pipelineId: pipeline.id, stageId: stage.id,
-            contactId: v.contactId, ownerId: v.ownerId,
+            contactId: v.contactId, companyId: v.companyId, ownerId: v.ownerId,
             expectedCloseAt: v.expectedCloseAt, source: v.source,
             status, closedAt: status === "open" ? null : new Date(),
             transitions: { create: { tenantId, toStageId: stage.id, changedById: auth.context.userId } },
           },
-          include: { stage: true, contact: true, owner: true },
+          include: { stage: true, contact: true, company: true, owner: true },
         });
         json(res, 201, { ok: true, deal: serializeDeal(created) });
         return;
@@ -3678,7 +3698,7 @@ const handleRequest = async (
       const status = qs.get("status"); if (status) where.status = status;
       const ownerId = qs.get("ownerId"); if (ownerId) where.ownerId = ownerId;
       const [rows, total] = await Promise.all([
-        prisma.deal.findMany({ where, orderBy: { updatedAt: "desc" }, take: limit, skip: offset, include: { stage: true, contact: true, owner: true } }),
+        prisma.deal.findMany({ where, orderBy: { updatedAt: "desc" }, take: limit, skip: offset, include: { stage: true, contact: true, company: true, owner: true } }),
         prisma.deal.count({ where }),
       ]);
       json(res, 200, { ok: true, items: rows.map(serializeDeal), page: { limit, offset, total, hasMore: offset + rows.length < total } });
@@ -3704,7 +3724,7 @@ const handleRequest = async (
           if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
           const full = await prisma.deal.findFirst({
             where: { id, tenantId },
-            include: { stage: true, contact: true, owner: true, transitions: { orderBy: { createdAt: "desc" } } },
+            include: { stage: true, contact: true, company: true, owner: true, transitions: { orderBy: { createdAt: "desc" } } },
           });
           json(res, 200, {
             ok: true,
@@ -3729,11 +3749,14 @@ const handleRequest = async (
           if (update.value.contactId && !(await prisma.contact.findFirst({ where: { id: update.value.contactId, tenantId } }))) {
             json(res, 400, { ok: false, error: "Contact not found" }); return;
           }
+          if (update.value.companyId && !(await prisma.company.findFirst({ where: { id: update.value.companyId, tenantId } }))) {
+            json(res, 400, { ok: false, error: "Company not found" }); return;
+          }
           if (update.value.ownerId && !(await prisma.user.findFirst({ where: { id: update.value.ownerId, tenantId } }))) {
             json(res, 400, { ok: false, error: "Owner not found" }); return;
           }
           const updated = await prisma.deal.update({
-            where: { id }, data: update.value, include: { stage: true, contact: true, owner: true },
+            where: { id }, data: update.value, include: { stage: true, contact: true, company: true, owner: true },
           });
           json(res, 200, { ok: true, deal: serializeDeal(updated) });
           return;
@@ -3763,7 +3786,7 @@ const handleRequest = async (
           const toStage = await prisma.stage.findFirst({ where: { id: toStageId, tenantId, pipelineId: deal.pipelineId } });
           if (!toStage) { json(res, 400, { ok: false, error: "Target stage is not in this deal's pipeline" }); return; }
           if (toStage.id === deal.stageId) {
-            const same = await prisma.deal.findFirst({ where: { id, tenantId }, include: { stage: true, contact: true, owner: true } });
+            const same = await prisma.deal.findFirst({ where: { id, tenantId }, include: { stage: true, contact: true, company: true, owner: true } });
             json(res, 200, { ok: true, deal: serializeDeal(same!) });
             return;
           }
@@ -3776,9 +3799,207 @@ const handleRequest = async (
               closedAt: status === "open" ? null : (deal.closedAt ?? new Date()),
               transitions: { create: { tenantId, fromStageId: deal.stageId, toStageId: toStage.id, changedById: auth.context.userId } },
             },
-            include: { stage: true, contact: true, owner: true },
+            include: { stage: true, contact: true, company: true, owner: true },
           });
           json(res, 200, { ok: true, deal: serializeDeal(updated) });
+          return;
+        }
+      }
+    }
+
+    // ── CRM: Contacts — create + list ───────────────────────────────────────
+    if (parseUrl(req.url).pathname === "/contacts" && (req.method === "POST" || req.method === "GET")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Tenant not found" }); return; }
+      const { validateContactCreate, serializeContact } = await import("./core/crm/contacts");
+
+      if (req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "POST /contacts")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const validated = validateContactCreate(body);
+        if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return; }
+        const v = validated.value;
+        if (v.companyId && !(await prisma.company.findFirst({ where: { id: v.companyId, tenantId } }))) {
+          json(res, 400, { ok: false, error: "Company not found" }); return;
+        }
+        if (v.ownerId && !(await prisma.user.findFirst({ where: { id: v.ownerId, tenantId } }))) {
+          json(res, 400, { ok: false, error: "Owner not found" }); return;
+        }
+        const created = await prisma.contact.create({
+          data: {
+            tenantId, fullName: v.fullName, phoneE164: v.phoneE164, email: v.email,
+            lifecycleStage: v.lifecycleStage, leadStatus: v.leadStatus,
+            companyId: v.companyId, ownerId: v.ownerId, tags: v.tags, source: v.source, notes: v.notes,
+          },
+          include: { company: true, owner: true, _count: { select: { deals: true } } },
+        });
+        json(res, 201, { ok: true, contact: serializeContact(created) });
+        return;
+      }
+
+      // GET /contacts — list with CRM filters
+      if (!canAccess(auth.context.permissions, "GET /contacts")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const qs = parseUrl(req.url).searchParams;
+      const limit = asSafeLimit(qs.get("limit"), 50, 200);
+      const offset = asSafeOffset(qs.get("offset"));
+      const search = asTrimmedString(qs.get("search"));
+      const where: Record<string, unknown> = { tenantId };
+      const lifecycleStage = qs.get("lifecycleStage"); if (lifecycleStage) where.lifecycleStage = lifecycleStage;
+      const leadStatus = qs.get("leadStatus"); if (leadStatus) where.leadStatus = leadStatus;
+      const companyId = qs.get("companyId"); if (companyId) where.companyId = companyId;
+      const ownerId = qs.get("ownerId"); if (ownerId) where.ownerId = ownerId;
+      const tag = asTrimmedString(qs.get("tag")); if (tag) where.tags = { has: tag };
+      if (search) where.OR = [
+        { fullName: { contains: search, mode: "insensitive" as const } },
+        { phoneE164: { contains: search, mode: "insensitive" as const } },
+        { email: { contains: search, mode: "insensitive" as const } },
+      ];
+      const [rows, total] = await Promise.all([
+        prisma.contact.findMany({ where, orderBy: { updatedAt: "desc" }, take: limit, skip: offset, include: { company: true, owner: true, _count: { select: { deals: true } } } }),
+        prisma.contact.count({ where }),
+      ]);
+      json(res, 200, { ok: true, items: rows.map(serializeContact), page: { limit, offset, total, hasMore: offset + rows.length < total } });
+      return;
+    }
+
+    // ── CRM: Contacts — single / update / delete ────────────────────────────
+    if (parseUrl(req.url).pathname.startsWith("/contacts/")) {
+      const id = parseCrmIdPath(req.url, "contacts");
+      if (id) {
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
+        const tenantId = auth.context.tenantId;
+        const { buildContactUpdate, serializeContact } = await import("./core/crm/contacts");
+        const { serializeDeal } = await import("./core/crm/deals");
+        const contact = await prisma.contact.findFirst({ where: { id, tenantId } });
+
+        if (req.method === "GET") {
+          if (!canAccess(auth.context.permissions, "GET /contacts/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!contact) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          const [full, deals] = await Promise.all([
+            prisma.contact.findFirst({ where: { id, tenantId }, include: { company: true, owner: true, _count: { select: { deals: true } } } }),
+            prisma.deal.findMany({ where: { tenantId, contactId: id }, orderBy: { updatedAt: "desc" }, include: { stage: true, contact: true, company: true, owner: true } }),
+          ]);
+          json(res, 200, { ok: true, contact: serializeContact(full!), deals: deals.map(serializeDeal) });
+          return;
+        }
+
+        if (req.method === "PATCH") {
+          if (!canAccess(auth.context.permissions, "PATCH /contacts/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!contact) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const update = buildContactUpdate(body);
+          if (!update.ok) { json(res, 400, { ok: false, error: update.error }); return; }
+          if (update.value.companyId && !(await prisma.company.findFirst({ where: { id: update.value.companyId, tenantId } }))) {
+            json(res, 400, { ok: false, error: "Company not found" }); return;
+          }
+          if (update.value.ownerId && !(await prisma.user.findFirst({ where: { id: update.value.ownerId, tenantId } }))) {
+            json(res, 400, { ok: false, error: "Owner not found" }); return;
+          }
+          const updated = await prisma.contact.update({ where: { id }, data: update.value, include: { company: true, owner: true, _count: { select: { deals: true } } } });
+          json(res, 200, { ok: true, contact: serializeContact(updated) });
+          return;
+        }
+
+        if (req.method === "DELETE") {
+          if (!canAccess(auth.context.permissions, "DELETE /contacts/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!contact) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          await prisma.contact.delete({ where: { id } });
+          json(res, 200, { ok: true });
+          return;
+        }
+      }
+    }
+
+    // ── CRM: Companies — create + list ──────────────────────────────────────
+    if (parseUrl(req.url).pathname === "/companies" && (req.method === "POST" || req.method === "GET")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Tenant not found" }); return; }
+      const { validateCompanyCreate, serializeCompany } = await import("./core/crm/companies");
+
+      if (req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "POST /companies")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const validated = validateCompanyCreate(body);
+        if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return; }
+        const v = validated.value;
+        if (v.ownerId && !(await prisma.user.findFirst({ where: { id: v.ownerId, tenantId } }))) {
+          json(res, 400, { ok: false, error: "Owner not found" }); return;
+        }
+        const created = await prisma.company.create({
+          data: { tenantId, name: v.name, domain: v.domain, industry: v.industry, size: v.size, ownerId: v.ownerId, tags: v.tags, notes: v.notes },
+          include: { owner: true, _count: { select: { contacts: true, deals: true } } },
+        });
+        json(res, 201, { ok: true, company: serializeCompany(created) });
+        return;
+      }
+
+      // GET /companies — list
+      if (!canAccess(auth.context.permissions, "GET /companies")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const qs = parseUrl(req.url).searchParams;
+      const limit = asSafeLimit(qs.get("limit"), 50, 200);
+      const offset = asSafeOffset(qs.get("offset"));
+      const search = asTrimmedString(qs.get("search"));
+      const where: Record<string, unknown> = { tenantId };
+      if (search) where.OR = [
+        { name: { contains: search, mode: "insensitive" as const } },
+        { domain: { contains: search, mode: "insensitive" as const } },
+      ];
+      const [rows, total] = await Promise.all([
+        prisma.company.findMany({ where, orderBy: { updatedAt: "desc" }, take: limit, skip: offset, include: { owner: true, _count: { select: { contacts: true, deals: true } } } }),
+        prisma.company.count({ where }),
+      ]);
+      json(res, 200, { ok: true, items: rows.map(serializeCompany), page: { limit, offset, total, hasMore: offset + rows.length < total } });
+      return;
+    }
+
+    // ── CRM: Companies — single / update / delete ───────────────────────────
+    if (parseUrl(req.url).pathname.startsWith("/companies/")) {
+      const id = parseCrmIdPath(req.url, "companies");
+      if (id) {
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
+        const tenantId = auth.context.tenantId;
+        const { buildCompanyUpdate, serializeCompany } = await import("./core/crm/companies");
+        const { serializeContact } = await import("./core/crm/contacts");
+        const { serializeDeal } = await import("./core/crm/deals");
+        const company = await prisma.company.findFirst({ where: { id, tenantId } });
+
+        if (req.method === "GET") {
+          if (!canAccess(auth.context.permissions, "GET /companies/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!company) { json(res, 404, { ok: false, error: "Company not found" }); return; }
+          const [full, contacts, deals] = await Promise.all([
+            prisma.company.findFirst({ where: { id, tenantId }, include: { owner: true, _count: { select: { contacts: true, deals: true } } } }),
+            prisma.contact.findMany({ where: { tenantId, companyId: id }, orderBy: { updatedAt: "desc" }, include: { company: true, owner: true } }),
+            prisma.deal.findMany({ where: { tenantId, companyId: id }, orderBy: { updatedAt: "desc" }, include: { stage: true, contact: true, company: true, owner: true } }),
+          ]);
+          json(res, 200, { ok: true, company: serializeCompany(full!), contacts: contacts.map(serializeContact), deals: deals.map(serializeDeal) });
+          return;
+        }
+
+        if (req.method === "PATCH") {
+          if (!canAccess(auth.context.permissions, "PATCH /companies/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!company) { json(res, 404, { ok: false, error: "Company not found" }); return; }
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const update = buildCompanyUpdate(body);
+          if (!update.ok) { json(res, 400, { ok: false, error: update.error }); return; }
+          if (update.value.ownerId && !(await prisma.user.findFirst({ where: { id: update.value.ownerId, tenantId } }))) {
+            json(res, 400, { ok: false, error: "Owner not found" }); return;
+          }
+          const updated = await prisma.company.update({ where: { id }, data: update.value, include: { owner: true, _count: { select: { contacts: true, deals: true } } } });
+          json(res, 200, { ok: true, company: serializeCompany(updated) });
+          return;
+        }
+
+        if (req.method === "DELETE") {
+          if (!canAccess(auth.context.permissions, "DELETE /companies/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!company) { json(res, 404, { ok: false, error: "Company not found" }); return; }
+          await prisma.company.delete({ where: { id } });
+          json(res, 200, { ok: true });
           return;
         }
       }
@@ -4050,6 +4271,9 @@ const handleRequest = async (
           consentSource,
         });
         const result = await bulkInsertLeads(campaignId, tenantId, leads, errors);
+        // Roll imported leads up to durable Contacts (CRM hub) — idempotent.
+        const { backfillContactsFromLeads } = await import("./core/crm/contacts");
+        await backfillContactsFromLeads(tenantId);
         json(res, 200, { ok: true, ...result });
         return;
       }

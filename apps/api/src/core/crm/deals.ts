@@ -41,6 +41,7 @@ export interface DealCreateValue {
   pipelineId: string | null;
   stageId: string | null;
   contactId: string | null;
+  companyId: string | null;
   ownerId: string | null;
   expectedCloseAt: Date | null;
   source: string;
@@ -66,6 +67,7 @@ export function validateDealCreate(body: Record<string, unknown>): Result<DealCr
       pipelineId: optString(body.pipelineId),
       stageId: optString(body.stageId),
       contactId: optString(body.contactId),
+      companyId: optString(body.companyId),
       ownerId: optString(body.ownerId),
       expectedCloseAt,
       source: optString(body.source) ?? "manual",
@@ -80,6 +82,7 @@ export interface DealUpdate {
   value?: number | null;
   currency?: string;
   contactId?: string | null;
+  companyId?: string | null;
   ownerId?: string | null;
   expectedCloseAt?: Date | null;
   lostReason?: string | null;
@@ -103,6 +106,7 @@ export function buildDealUpdate(body: Record<string, unknown>): Result<DealUpdat
     update.currency = optString(body.currency) ?? DEFAULT_CURRENCY;
   }
   if ("contactId" in body) update.contactId = optString(body.contactId);
+  if ("companyId" in body) update.companyId = optString(body.companyId);
   if ("ownerId" in body) update.ownerId = optString(body.ownerId);
   if ("expectedCloseAt" in body) {
     const d = parseOptionalDate(body.expectedCloseAt);
@@ -127,6 +131,7 @@ export function serializeDeal(d: {
   pipelineId: string;
   stageId: string;
   contactId: string | null;
+  companyId?: string | null;
   ownerId: string | null;
   status: string;
   expectedCloseAt: Date | null;
@@ -137,6 +142,7 @@ export function serializeDeal(d: {
   updatedAt: Date;
   stage?: { id: string; name: string; probability: number; isWon: boolean; isLost: boolean } | null;
   contact?: { id: string; fullName: string } | null;
+  company?: { id: string; name: string } | null;
   owner?: { id: string; fullName: string } | null;
 }) {
   return {
@@ -149,6 +155,8 @@ export function serializeDeal(d: {
     stageName: d.stage?.name ?? null,
     contactId: d.contactId,
     contactName: d.contact?.fullName ?? null,
+    companyId: d.companyId ?? null,
+    companyName: d.company?.name ?? null,
     ownerId: d.ownerId,
     ownerName: d.owner?.fullName ?? null,
     status: d.status,

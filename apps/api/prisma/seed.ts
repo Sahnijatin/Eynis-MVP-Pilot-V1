@@ -565,6 +565,49 @@ async function main() {
     });
   }
 
+  // ── CRM: companies + contact enrichment (Increment B) ────────────────────────
+  await prisma.company.deleteMany({ where: { tenantId: HOTEL_ID } });
+  const companyDefs = [
+    { name: "Meridian Events Pvt Ltd", domain: "meridianevents.in", industry: "Events", size: "51-200" },
+    { name: "Northwind Tours", domain: "northwindtours.com", industry: "Travel", size: "11-50" },
+    { name: "Apex Pharma", domain: "apexpharma.co", industry: "Healthcare", size: "200+" },
+  ];
+  const companyIds: string[] = [];
+  for (const c of companyDefs) {
+    const company = await prisma.company.create({
+      data: { tenantId: hotel.id, ownerId: dealOwners[0] ?? null, ...c },
+    });
+    companyIds.push(company.id);
+  }
+
+  // Enrich a few contacts with CRM fields (lifecycle, owner, company, tags).
+  const enrich = [
+    { idx: 0, lifecycleStage: "customer", leadStatus: "qualified", company: 0, tags: ["vip", "repeat"] },
+    { idx: 1, lifecycleStage: "opportunity", leadStatus: "connected", company: 0, tags: ["events"] },
+    { idx: 2, lifecycleStage: "sql", leadStatus: "qualified", company: 1, tags: ["corporate"] },
+    { idx: 3, lifecycleStage: "customer", leadStatus: "qualified", company: 2, tags: ["vip"] },
+    { idx: 4, lifecycleStage: "lead", leadStatus: "new", company: 1, tags: [] },
+  ];
+  const dealGuestIdList = Object.values(guestMap);
+  for (const e of enrich) {
+    const contactId = dealGuestIdList[e.idx];
+    if (!contactId) continue;
+    await prisma.contact.update({
+      where: { id: contactId },
+      data: {
+        lifecycleStage: e.lifecycleStage, leadStatus: e.leadStatus,
+        companyId: companyIds[e.company] ?? null, ownerId: dealOwners[e.idx % dealOwners.length] ?? null,
+        tags: e.tags, email: `contact${e.idx}@example.com`, source: "manual",
+      },
+    });
+  }
+
+  // Roll a couple of demo deals up to companies so account views aren't empty.
+  const someDeals = await prisma.deal.findMany({ where: { tenantId: HOTEL_ID }, orderBy: { createdAt: "asc" }, take: 4 });
+  for (let i = 0; i < someDeals.length; i++) {
+    await prisma.deal.update({ where: { id: someDeals[i].id }, data: { companyId: companyIds[i % companyIds.length] } });
+  }
+
   console.log("✓ Seed complete — The Riviera hotel loaded with full demo data.");
 }
 
