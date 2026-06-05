@@ -270,6 +270,34 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
   };
 };
 
+// The authenticated request context (the ok-branch of getAuthenticatedContext).
+type AuthOk = Extract<Awaited<ReturnType<typeof getAuthenticatedContext>>, { ok: true }>;
+export type RouteContext = AuthOk["context"];
+
+// Shared route guard (F-32). Collapses the auth → permission preamble that ~60
+// route handlers repeated inline (with two drifting formatting styles and an
+// inconsistent 401/403 ordering) into one call. It writes the 401/403 response
+// itself and returns { ok: false } so the caller just does `if (!auth.ok) return;`.
+// The success result keeps the same `.context` shape, so existing downstream
+// `auth.context.*` references are unchanged. Pass `permission: null` for routes
+// that only require authentication.
+async function authorize(
+  req: IncomingMessage,
+  res: ServerResponse,
+  permission: string | null,
+): Promise<{ ok: true; context: RouteContext } | { ok: false }> {
+  const auth = await getAuthenticatedContext(req);
+  if (!auth.ok) {
+    json(res, auth.status, { ok: false, error: auth.error });
+    return { ok: false };
+  }
+  if (permission && !canAccess(auth.context.permissions, permission)) {
+    json(res, 403, { ok: false, error: "Insufficient permissions" });
+    return { ok: false };
+  }
+  return { ok: true, context: auth.context };
+}
+
 
 const parseServiceRequestStatusPath = (url: string | undefined): string | null => {
   if (!url) {
@@ -1704,16 +1732,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/analytics/revenue-intelligence" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /analytics/revenue-intelligence");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/revenue-intelligence")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const licRevenue = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licRevenue.ok) { json(res, 403, { ok: false, error: licRevenue.error }); return; }
 
@@ -1787,16 +1808,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/analytics/staff-performance" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /analytics/staff-performance");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/staff-performance")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const licStaff = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licStaff.ok) { json(res, 403, { ok: false, error: licStaff.error }); return; }
 
@@ -2530,12 +2544,9 @@ const handleRequest = async (
 
     // ── GET /analytics/sentiment ─────────────────────────────────────────────
     if (req.url?.startsWith("/analytics/sentiment") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /analytics/sentiment");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/sentiment")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const licSentiment = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licSentiment.ok) { json(res, 403, { ok: false, error: licSentiment.error }); return; }
       json(res, 200, await computeSentimentAnalytics(context.tenantId));
@@ -2544,12 +2555,9 @@ const handleRequest = async (
 
     // ── GET /analytics/upsell-campaigns ─────────────────────────────────────
     if (req.url?.startsWith("/analytics/upsell-campaigns") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /analytics/upsell-campaigns");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/upsell-campaigns")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const licUpsell = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
       json(res, 200, await computeUpsellAnalytics(context.tenantId));
@@ -2558,18 +2566,16 @@ const handleRequest = async (
 
     // ── Inventory (vertical with real persistence) ───────────────────────────
     if (req.url === "/inventory/items" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /inventory/items")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const auth = await authorize(req, res, "GET /inventory/items");
+      if (!auth.ok) return;
       const items = await listInventory(auth.context.tenantId);
       json(res, 200, { ok: true, items });
       return;
     }
 
     if (req.url === "/inventory/items" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /inventory/items")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const auth = await authorize(req, res, "POST /inventory/items");
+      if (!auth.ok) return;
       const body = (await parseBody(req)) as Record<string, unknown>;
       const name = asTrimmedString(body.name);
       if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
@@ -2593,9 +2599,8 @@ const handleRequest = async (
 
     const invItemMatch = /^\/inventory\/items\/([^/]+)$/.exec(req.url ?? "");
     if (invItemMatch && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "PUT /inventory/items/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const auth = await authorize(req, res, "PUT /inventory/items/:id");
+      if (!auth.ok) return;
       const body = (await parseBody(req)) as Record<string, unknown>;
       const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostInr: number }> = {};
       const nm = asTrimmedString(body.name); if (nm) fields.name = nm;
@@ -2610,9 +2615,8 @@ const handleRequest = async (
       return;
     }
     if (invItemMatch && req.method === "DELETE") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "DELETE /inventory/items/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const auth = await authorize(req, res, "DELETE /inventory/items/:id");
+      if (!auth.ok) return;
       const removed = await deleteItem(auth.context.tenantId, invItemMatch[1]);
       if (!removed) { json(res, 404, { ok: false, error: "Item not found" }); return; }
       json(res, 200, { ok: true });
@@ -2621,22 +2625,16 @@ const handleRequest = async (
 
     // ── AI: Provider Status ─────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/providers") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/providers")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/providers");
+      if (!auth.ok) return;
       json(res, 200, { ok: true, claude: CLAUDE_AVAILABLE, openai: OPENAI_AVAILABLE });
       return;
     }
 
     // ── AI: Morning Briefing ────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/morning-briefing") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/morning-briefing")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/morning-briefing");
+      if (!auth.ok) return;
       const licBriefing = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licBriefing.ok) { json(res, 403, { ok: false, error: licBriefing.error }); return; }
       const provider = parseAIProvider(req.url);
@@ -2688,11 +2686,8 @@ const handleRequest = async (
 
     // ── AI: Classify Inbound Event ──────────────────────────────────────────
     if (req.url?.startsWith("/ai/classify-event") && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /ai/classify-event")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /ai/classify-event");
+      if (!auth.ok) return;
       const body = (await parseBody(req)) as { text?: unknown; provider?: unknown };
       const text = asTrimmedString(body.text);
       if (!text) { json(res, 400, { ok: false, error: "text is required" }); return; }
@@ -2712,11 +2707,8 @@ const handleRequest = async (
 
     // ── AI: Guest Intelligence ──────────────────────────────────────────────
     if (parseGuestIntelligencePath(req.url) && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/guest-intelligence/:guestId")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/guest-intelligence/:guestId");
+      if (!auth.ok) return;
       const licGuest = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licGuest.ok) { json(res, 403, { ok: false, error: licGuest.error }); return; }
       const provider = parseAIProvider(req.url);
@@ -2780,11 +2772,8 @@ const handleRequest = async (
 
     // ── AI: Revenue Insights ────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/revenue-insights") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/revenue-insights")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/revenue-insights");
+      if (!auth.ok) return;
       const licRevInsights = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licRevInsights.ok) { json(res, 403, { ok: false, error: licRevInsights.error }); return; }
       const provider = parseAIProvider(req.url);
@@ -2833,11 +2822,8 @@ const handleRequest = async (
 
     // ── POST /night-audit/generate ───────────────────────────────────────────
     if (req.url === "/night-audit/generate" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /night-audit/generate")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /night-audit/generate");
+      if (!auth.ok) return;
       const licNightGen = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!licNightGen.ok) { json(res, 403, { ok: false, error: licNightGen.error }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
