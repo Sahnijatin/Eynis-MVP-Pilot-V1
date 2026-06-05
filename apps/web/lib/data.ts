@@ -677,3 +677,71 @@ export async function fetchCampaignLeads(
   const res = await authedFetch(`/campaigns/${encodeURIComponent(id)}/leads?${q.toString()}`);
   return await res.json();
 }
+
+// ── CRM: Deals, Pipeline & Forecast (Increment A) ───────────────────────────
+export interface DealRow {
+  id: string;
+  title: string;
+  value: number | null;
+  currency: string;
+  pipelineId: string;
+  stageId: string;
+  stageName: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  status: string;
+  expectedCloseAt: string | null;
+  closedAt: string | null;
+  lostReason: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PipelineStage {
+  id: string;
+  name: string;
+  order: number;
+  probability: number;
+  isWon: boolean;
+  isLost: boolean;
+}
+
+export interface PipelineRow {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  stages: PipelineStage[];
+}
+
+export interface ForecastSummary {
+  currency: string;
+  openCount: number;
+  openValue: number;
+  weightedForecast: number;
+  byStage: Array<{ stageId: string; stageName: string; order: number; count: number; value: number; weighted: number }>;
+  byPeriod: { thisMonth: number; thisQuarter: number };
+  wonCount: number;
+  lostCount: number;
+  winRate: number;
+}
+
+export async function fetchPipelines(): Promise<{ ok: boolean; items: PipelineRow[] }> {
+  const res = await authedFetch("/pipelines");
+  return (await res.json()) as { ok: boolean; items: PipelineRow[] };
+}
+
+export async function fetchDeals(params: { pipelineId?: string } = {}): Promise<{ ok: boolean; items: DealRow[] }> {
+  const q = new URLSearchParams({ limit: "500" });
+  if (params.pipelineId) q.set("pipelineId", params.pipelineId);
+  const res = await authedFetch("/deals?" + q.toString());
+  return (await res.json()) as { ok: boolean; items: DealRow[] };
+}
+
+export async function fetchForecast(pipelineId?: string): Promise<{ ok: boolean; forecast?: ForecastSummary }> {
+  const path = "/deals/forecast" + (pipelineId ? "?pipelineId=" + encodeURIComponent(pipelineId) : "");
+  const res = await authedFetch(path);
+  return (await res.json()) as { ok: boolean; forecast?: ForecastSummary };
+}

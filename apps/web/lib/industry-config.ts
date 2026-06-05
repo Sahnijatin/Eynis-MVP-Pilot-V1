@@ -4,7 +4,7 @@ import {
   Zap, LineChart, Settings, FileText, ShoppingCart, Package,
   Calculator, CalendarDays, Plane, UtensilsCrossed,
   BarChart3, Brain, Warehouse, ClipboardList, UserCheck,
-  Building2, Factory, HeartPulse, Globe, ChefHat, Mic
+  Building2, Factory, HeartPulse, Globe, ChefHat, Mic, Handshake
 } from "lucide-react";
 
 export type Industry = "hospitality" | "manufacturing" | "fnb" | "travel" | "healthcare";
@@ -61,6 +61,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/guest-database", label: "Guest Database", icon: Database },
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
+      { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/sentiment-trends", label: "Sentiment Trends", icon: LineChart },
       { href: "/night-audit", label: "Night Audit", icon: FileText },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -92,6 +93,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/customers", label: "Client Intelligence", icon: UserCheck },
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
+      { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
     ],
@@ -122,6 +124,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/inventory", label: "Inventory", icon: Package },
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
+      { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/analytics", label: "Revenue Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -151,6 +154,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/customers", label: "Client Database", icon: Users },
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
+      { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/analytics", label: "Revenue Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -180,6 +184,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/patients", label: "Patient Records", icon: Users },
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
+      { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
