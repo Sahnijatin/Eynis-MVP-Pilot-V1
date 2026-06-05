@@ -37,7 +37,7 @@ export interface ScoreSignals {
 export function heuristicScore(s: ScoreSignals): ContactScore {
   let score = LIFECYCLE_BASE[s.lifecycleStage] ?? 30;
   const reasons: string[] = [`lifecycle stage: ${s.lifecycleStage}`];
-  if (s.openDealValue > 0) { score += 8; reasons.push(`₹${Math.round(s.openDealValue).toLocaleString("en-IN")} in open deals`); }
+  if (s.openDealValue > 0) { score += 8; reasons.push(`${Math.round(s.openDealValue).toLocaleString("en-US")} in open deal value`); }
   if (s.dealCount > 1) { score += 4; reasons.push(`${s.dealCount} deals on record`); }
   if (s.leadStatus === "qualified") { score += 6; reasons.push("marked qualified"); }
   if (s.leadStatus === "disqualified") { score -= 25; reasons.push("marked disqualified"); }
@@ -94,7 +94,10 @@ export async function scoreContact(tenantId: string, contactId: string, provider
     }
   }
 
-  await prisma.contact.update({ where: { id: contactId }, data: { leadScore: result.score, lastActivityAt: new Date() } });
+  // Only persist the score. Don't touch lastActivityAt — scoring isn't a
+  // customer interaction, and bumping it would reset the recency signal that
+  // the very next score depends on.
+  await prisma.contact.update({ where: { id: contactId }, data: { leadScore: result.score } });
   await prisma.activity.create({
     data: {
       tenantId, contactId, type: "ai_score",
