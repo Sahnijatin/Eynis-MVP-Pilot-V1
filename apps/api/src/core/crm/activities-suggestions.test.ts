@@ -169,6 +169,29 @@ test("safe-mode suggestion: generate → list → accept performs the move", asy
   } finally { await stop(server); }
 });
 
+test("deal timeline de-dupes an activity linked to both the deal and its contact", async () => {
+  const tenantId = "crm-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
+  const { server, base } = await startServer();
+  try {
+    const headers = await authHeaders(base, tenantId, email, "owner");
+    const contact = (await (await fetch(base + "/contacts", { method: "POST", headers, body: JSON.stringify({ fullName: "Dual" }) })).json()) as any;
+    const cid = contact.contact.id;
+    await fetch(base + "/pipelines", { headers });
+    const pipeline = (await (await fetch(base + "/pipelines", { headers })).json()) as any;
+    const deal = (await (await fetch(base + "/deals", { method: "POST", headers, body: JSON.stringify({ title: "D", contactId: cid, stageId: pipeline.items[0].stages[0].id }) })).json()) as any;
+    const did = deal.deal.id;
+    // A note logged on the contact AND linked to the deal — must not double-count.
+    const act = (await (await fetch(base + `/contacts/${cid}/activities`, { method: "POST", headers, body: JSON.stringify({ type: "note", title: "Dual note", dealId: did }) })).json()) as any;
+    const aid = act.activity.id;
+    const tl = (await (await fetch(base + `/deals/${did}/timeline`, { headers })).json()) as any;
+    const occurrences = tl.items.filter((i: any) => i.id === aid).length;
+    assert.equal(occurrences, 1);
+  } finally { await stop(server); }
+});
+
 test("tenant isolation: cannot accept another tenant's suggestion", async () => {
   const tenantA = "crm-" + uid();
   const tenantB = "crm-" + uid();

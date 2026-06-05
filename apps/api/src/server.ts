@@ -3873,10 +3873,15 @@ const handleRequest = async (
           const { buildContactTimeline } = await import("./core/crm/timeline");
           const dealActivities = await prisma.activity.findMany({ where: { tenantId, dealId: id }, include: { user: { select: { fullName: true } } }, orderBy: { createdAt: "desc" } });
           const contactItems = deal.contactId ? await buildContactTimeline(tenantId, deal.contactId) : [];
+          // De-dupe: an activity linked to both this deal and its contact is returned
+          // by both sources — keep one (keyed by kind+id).
+          const seen = new Set<string>();
           const items = [
-            ...dealActivities.map((a) => ({ id: a.id, kind: a.type, title: a.title, body: a.body, direction: a.direction, sentiment: null, status: a.status, at: a.createdAt.toISOString() })),
+            ...dealActivities.map((a) => ({ id: a.id, kind: a.type, title: a.title, body: a.body, direction: a.direction, sentiment: null as string | null, status: a.status, at: a.createdAt.toISOString() })),
             ...contactItems,
-          ].sort((x, y) => y.at.localeCompare(x.at));
+          ]
+            .filter((it) => { const k = it.kind + ":" + it.id; if (seen.has(k)) return false; seen.add(k); return true; })
+            .sort((x, y) => y.at.localeCompare(x.at));
           json(res, 200, { ok: true, items });
           return;
         }
