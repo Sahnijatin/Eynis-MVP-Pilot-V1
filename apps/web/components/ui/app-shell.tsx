@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { Bell, Building2, CalendarDays, X, ShieldCheck, ShieldAlert, Lock } from "lucide-react";
+import { Bell, Building2, CalendarDays, X, ShieldCheck, ShieldAlert, Lock, ChevronDown } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
-import { getIndustryConfig, type Industry } from "../../lib/industry-config";
+import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
 import {
   type OrgRole,
   ORG_ROLE_LABELS,
   SYSTEM_ROLES,
   canAccessRoute,
-  getAllowedNavItems,
+  getAllowedModules,
 } from "../../lib/rbac";
 
 // ── Notifications ────────────────────────────────────────────────────────────
@@ -189,6 +189,86 @@ function isPreviewRoute(pathname: string): boolean {
   return PREVIEW_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
 }
 
+// ── Sidebar module tree (E-2) ──────────────────────────────────────────────────
+
+function routeMatches(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
+// A module is "active" when its own landing route or any of its sub-items is the
+// current page. /dashboard only matches exactly so it doesn't light up everywhere.
+function isModuleActive(m: NavModule, pathname: string): boolean {
+  const selfMatch = m.href === "/dashboard" ? pathname === "/dashboard" : routeMatches(pathname, m.href);
+  if (selfMatch) return true;
+  return (m.children ?? []).some((c) => routeMatches(pathname, c.href));
+}
+
+function SidebarNav({ modules, pathname, accentColor }: { modules: NavModule[]; pathname: string; accentColor: string }) {
+  // Manually-toggled modules override the default (which auto-expands the module
+  // containing the active route). Keyed by module key.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const activeStyle = { background: accentColor + "22", color: "#fff", borderLeft: `3px solid ${accentColor}` };
+
+  return (
+    <nav className="sidebar-nav">
+      {modules.map((m) => {
+        const Icon = m.icon;
+        const children = m.children ?? [];
+        const moduleActive = isModuleActive(m, pathname);
+
+        if (children.length === 0) {
+          return (
+            <Link
+              key={m.key}
+              href={m.href}
+              className={`nav-link${moduleActive ? " active" : ""}`}
+              style={moduleActive ? activeStyle : undefined}
+            >
+              <Icon className="nav-icon" />
+              {m.label}
+            </Link>
+          );
+        }
+
+        const open = m.key in overrides ? overrides[m.key] : moduleActive;
+        return (
+          <div key={m.key}>
+            <div className={`nav-link nav-module${moduleActive ? " active" : ""}`} style={moduleActive ? activeStyle : undefined}>
+              <Link href={m.href} className="flex items-center gap-3 flex-1 min-w-0">
+                <Icon className="nav-icon" />
+                {m.label}
+              </Link>
+              <button
+                type="button"
+                className="nav-module-toggle"
+                aria-label={`${open ? "Collapse" : "Expand"} ${m.label}`}
+                aria-expanded={open}
+                onClick={() => setOverrides((s) => ({ ...s, [m.key]: !open }))}
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+              </button>
+            </div>
+            {open && (
+              <div className="sidebar-subnav">
+                {children.map((c) => {
+                  const CIcon = c.icon;
+                  const childActive = routeMatches(pathname, c.href);
+                  return (
+                    <Link key={c.href} href={c.href} className={`nav-sublink${childActive ? " active" : ""}`}>
+                      <CIcon className="nav-subicon" />
+                      {c.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 // ── AppShell ──────────────────────────────────────────────────────────────────
 
 interface AppShellProps {
@@ -269,7 +349,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
 
   // ── Industry / config ────────────────────────────────────────────────────
   const config = getIndustryConfig(industry);
-  const visibleNavItems = getAllowedNavItems(config.navItems, orgRole);
+  const visibleModules = getAllowedModules(config.modules, orgRole);
 
   // ── Resolved white-label theme (tenant ▶ industry ▶ Eynis) ─────────────────
   const theme = resolveTheme(branding, config);
@@ -385,22 +465,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
           </div>
         </div>
 
-        <nav className="sidebar-nav">
-          {visibleNavItems.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`nav-link${active ? " active" : ""}`}
-                style={active ? { background: config.accentColor + "22", color: "#fff", borderLeft: `3px solid ${config.accentColor}` } : {}}
-              >
-                <Icon className="nav-icon" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+        <SidebarNav modules={visibleModules} pathname={pathname} accentColor={config.accentColor} />
 
         <div className="sidebar-footer">
           <RoleSwitcher role={orgRole} accentColor={config.accentColor} onSwitch={setOrgRole} />

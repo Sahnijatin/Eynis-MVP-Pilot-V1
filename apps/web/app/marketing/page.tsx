@@ -5,9 +5,9 @@ import { ModuleLanding } from "../../components/ui/module-landing";
 
 export const dynamic = "force-dynamic";
 
-export default async function AnalyticsLandingPage() {
+export default async function MarketingLandingPage() {
   const { config } = await getUserWorkspace();
-  const mod = getModule(config, "analytics");
+  const mod = getModule(config, "marketing");
   if (!mod) return notFound();
   return <ModuleLanding module={mod} accentColor={config.accentColor} />;
 }

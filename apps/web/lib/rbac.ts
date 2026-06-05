@@ -116,8 +116,15 @@ export const SYSTEM_ROLES: OrgRoleDefinition[] = [
 // Route → required permission. First match wins.
 export const ROUTE_PERMISSIONS: Array<{ pattern: string; permission: Permission }> = [
   { pattern: "/settings",            permission: "manage_settings" },
+  { pattern: "/integrations",        permission: "manage_settings" },
   { pattern: "/automations",         permission: "manage_automations" },
   { pattern: "/campaigns",           permission: "manage_automations" },
+  // Marketing module landing + the sequence/template builders share the same gate
+  // as campaigns/automations so the whole module appears together.
+  { pattern: "/marketing",           permission: "manage_automations" },
+  { pattern: "/sequences",           permission: "manage_automations" },
+  { pattern: "/templates",           permission: "manage_automations" },
+  { pattern: "/reports",             permission: "view_reports" },
   { pattern: "/analytics",           permission: "view_analytics" },
   { pattern: "/revenue-intelligence",permission: "view_analytics" },
   { pattern: "/sentiment-trends",    permission: "view_analytics" },
@@ -155,11 +162,24 @@ export function canAccessRoute(role: OrgRole, pathname: string): boolean {
   return true; // No restriction = accessible to all roles
 }
 
-export function getAllowedNavItems<T extends { href: string }>(
-  items: T[],
+// Filter the sidebar module tree for a role (E-2). Children are filtered
+// individually; an expandable module (one with children) is hidden when none of
+// its children are accessible, and a leaf module is hidden when its own route is
+// not accessible. Returned modules carry only the children the role may see.
+export function getAllowedModules<C extends { href: string }, M extends { href: string; children?: C[] }>(
+  modules: M[],
   role: OrgRole
-): T[] {
-  return items.filter(item => canAccessRoute(role, item.href));
+): M[] {
+  const result: M[] = [];
+  for (const m of modules) {
+    if (m.children && m.children.length > 0) {
+      const children = m.children.filter(c => canAccessRoute(role, c.href));
+      if (children.length > 0) result.push({ ...m, children });
+    } else if (canAccessRoute(role, m.href)) {
+      result.push(m);
+    }
+  }
+  return result;
 }
 
 export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
