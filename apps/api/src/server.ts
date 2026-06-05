@@ -32,7 +32,7 @@ import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/cli
 import { checkWebhookSignature, verifySharedWebhookSecret } from "./core/connectors/webhook-verify";
 import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
-import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel } from "./core/rbac";
+import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel, syncSystemRolePermissions } from "./core/rbac";
 import { enforceLicenseFeature } from "./core/license";
 import { type Permission, ALL_PERMISSIONS } from "./core/permissions";
 
@@ -4733,6 +4733,10 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
   const server = buildServer();
   server.listen(port, () => {
     console.log("Eynis API listening on port " + port);
+    // Back-fill any tenant whose system roles predate newer permissions (e.g. CRM).
+    void syncSystemRolePermissions()
+      .then(() => console.log("Eynis system-role permissions synced"))
+      .catch((err) => console.error("system-role permission sync failed", err));
     startAutomationWorker(60_000);
     console.log("Eynis AutomationEngine started — 60s cycle");
     startCampaignDispatchWorker();

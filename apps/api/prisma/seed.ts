@@ -67,7 +67,8 @@ async function main() {
   for (const [key, perms] of Object.entries(ROLE_PERMISSIONS)) {
     const r = await prisma.role.upsert({
       where: { tenantId_key: { tenantId: HOTEL_ID, key } },
-      update: {},
+      // Keep system-role permissions in sync on re-seed (they aren't user-editable).
+      update: { permissions: JSON.stringify(perms), isSystem: true, isCustom: false },
       create: {
         tenantId: HOTEL_ID,
         key,

@@ -54,7 +54,11 @@ export const seedDefaultRolesForHotel = async (tenantId: string): Promise<void> 
     const perms = DEFAULT_ROLE_PERMISSIONS[key] ?? [];
     await prisma.role.upsert({
       where: { tenantId_key: { tenantId, key } },
-      update: {},
+      // System-role permissions are not user-editable (only the displayName can
+      // be renamed), so keep them in sync with the code-defined defaults. This
+      // back-fills permissions added after the tenant was first seeded (e.g. the
+      // CRM permissions) instead of leaving the role on a stale snapshot.
+      update: { permissions: JSON.stringify(perms), isSystem: true, isCustom: false },
       create: {
         tenantId,
         key,
@@ -63,6 +67,22 @@ export const seedDefaultRolesForHotel = async (tenantId: string): Promise<void> 
         isSystem: true,
         isCustom: false,
       },
+    });
+  }
+};
+
+// Self-healing back-fill: keep every existing tenant's SYSTEM role permissions
+// in sync with the current DEFAULT_ROLE_PERMISSIONS. Safe to run on every boot —
+// it only touches `isSystem` roles (custom roles carry their own permissions and
+// are never matched), and is idempotent. Because permissions are loaded live
+// from the Role table on each request, the next request after this runs picks up
+// the corrected set without any token re-issue.
+export const syncSystemRolePermissions = async (): Promise<void> => {
+  for (const key of SYSTEM_ROLE_KEYS) {
+    const perms = JSON.stringify(DEFAULT_ROLE_PERMISSIONS[key] ?? []);
+    await prisma.role.updateMany({
+      where: { key, isSystem: true },
+      data: { permissions: perms },
     });
   }
 };
