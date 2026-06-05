@@ -40,29 +40,48 @@ async function findDefaultPipeline(tenantId: string) {
 }
 
 // Idempotent: returns the tenant's default pipeline, creating the standard one
-// (with INR-friendly defaults) on first use. Safe to call on every request.
+// on first use. Safe to call on every request.
+//
+// First-time creation is serialized per tenant with a transaction-scoped
+// Postgres advisory lock so two concurrent callers can't both create a default
+// pipeline (a plain "find then create" races and leaves a duplicate row). The
+// lock auto-releases at transaction end; steady-state callers short-circuit on
+// the initial find and never take the lock.
 export async function ensureDefaultPipeline(tenantId: string) {
   const existing = await findDefaultPipeline(tenantId);
   if (existing) return existing;
-  await prisma.pipeline.create({
-    data: {
-      tenantId,
-      name: "Sales Pipeline",
-      isDefault: true,
-      stages: {
-        create: DEFAULT_STAGES.map((s) => ({
-          tenantId,
-          name: s.name,
-          order: s.order,
-          probability: s.probability,
-          isWon: s.isWon ?? false,
-          isLost: s.isLost ?? false,
-        })),
+
+  return prisma.$transaction(async (tx) => {
+    // Serialize concurrent first-time creators for this tenant.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+
+    // Re-check inside the lock: a racing caller may have just created it.
+    const again = await tx.pipeline.findFirst({
+      where: { tenantId, archived: false },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+      include: { stages: { orderBy: { order: "asc" } } },
+    });
+    if (again) return again;
+
+    return tx.pipeline.create({
+      data: {
+        tenantId,
+        name: "Sales Pipeline",
+        isDefault: true,
+        stages: {
+          create: DEFAULT_STAGES.map((s) => ({
+            tenantId,
+            name: s.name,
+            order: s.order,
+            probability: s.probability,
+            isWon: s.isWon ?? false,
+            isLost: s.isLost ?? false,
+          })),
+        },
       },
-    },
-  });
-  // Re-read so a concurrent caller that lost the create race still gets one row.
-  return (await findDefaultPipeline(tenantId)) as NonNullable<PipelineWithStages>;
+      include: { stages: { orderBy: { order: "asc" } } },
+    });
+  }) as Promise<NonNullable<PipelineWithStages>>;
 }
 
 type StageRow = {
