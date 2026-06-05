@@ -19,15 +19,18 @@ function StatusBadge({ status }: { status: ConnectorRegistryItem["status"] }) {
     planned: { label: "Planned", cls: "badge-slate" },
     disabled: { label: "Disabled", cls: "badge-amber" },
   } as const;
-  const s = map[status];
+  const s = map[status] ?? map.disabled;
   return <span className={`badge ${s.cls}`}>{s.label}</span>;
 }
 
 export function IntegrationsClient({ items, statusLoaded = true }: { items: ConnectorRegistryItem[]; statusLoaded?: boolean }) {
   const [active, setActive] = useState<ConnectorRegistryItem | null>(null);
 
+  // Be defensive: never let a malformed/empty payload crash the page into the
+  // error boundary — the Integrations module must always render its shell.
+  const safeItems = Array.isArray(items) ? items : [];
   const byCategory = new Map<string, ConnectorRegistryItem[]>();
-  for (const it of items) {
+  for (const it of safeItems) {
     if (!byCategory.has(it.category)) byCategory.set(it.category, []);
     byCategory.get(it.category)!.push(it);
   }
@@ -56,11 +59,17 @@ export function IntegrationsClient({ items, statusLoaded = true }: { items: Conn
         </div>
       )}
 
+      {categories.length === 0 && (
+        <div className="card text-center py-10 text-sm text-slate-500">
+          No connectors to show right now. Try refreshing, or check back shortly.
+        </div>
+      )}
+
       {categories.map((cat) => {
         const list = byCategory.get(cat)!;
         return (
           <div key={cat} className="mb-7">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">{list[0].categoryLabel}</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">{list[0]?.categoryLabel ?? cat}</h2>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
               {list.map((c) => (
                 <ConnectorTile key={c.key} item={c} onConnect={() => setActive(c)} />

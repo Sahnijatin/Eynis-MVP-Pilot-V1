@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Fallback tiles rendered straight from the shared catalog when the per-tenant
 // status call is unavailable (e.g. the web tier can't mint an API token). The
 // page stays useful instead of showing an empty error state.
-const CATALOG_ITEMS: ConnectorRegistryItem[] = CONNECTOR_CATALOG.map((c) => ({
+const CATALOG_ITEMS: ConnectorRegistryItem[] = (Array.isArray(CONNECTOR_CATALOG) ? CONNECTOR_CATALOG : []).map((c) => ({
   key: c.key,
   category: c.category,
   categoryLabel: CONNECTOR_CATEGORY_LABELS[c.category],
