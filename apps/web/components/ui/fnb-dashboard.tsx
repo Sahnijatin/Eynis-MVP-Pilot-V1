@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { ShoppingCart, TrendingUp, ChevronRight, AlertCircle } from "lucide-react";
+import { SmartInsights } from "./smart-insights";
 
 export function FnbDashboard() {
   return (
     <div>
+      <SmartInsights industry="fnb" />
       <div className="kpi-grid mb-5">
         <div className="card">
           <div className="kpi-label">Revenue Today</div>

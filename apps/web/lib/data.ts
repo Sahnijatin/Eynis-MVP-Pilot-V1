@@ -456,28 +456,6 @@ export async function fetchAIProviders(): Promise<AIProvidersResponse> {
   }
 }
 
-export interface MorningBriefingResponse {
-  ok: boolean;
-  provider?: string;
-  briefing?: {
-    headline: string;
-    operationalAlerts: string[];
-    revenueHighlight: string;
-    guestExperienceNote: string;
-    topPriority: string;
-  };
-  error?: string;
-}
-
-export async function fetchMorningBriefing(provider: "claude" | "openai" = "claude"): Promise<MorningBriefingResponse> {
-  try {
-    const res = await authedFetch(`/ai/morning-briefing?provider=${provider}`);
-    return (await res.json()) as MorningBriefingResponse;
-  } catch {
-    return { ok: false, error: "Unable to reach AI service" };
-  }
-}
-
 export interface GuestIntelligenceResponse {
   ok: boolean;
   guestId?: string;

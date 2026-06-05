@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { CalendarDays, Users, TrendingUp, AlertCircle, ChevronRight } from "lucide-react";
+import { SmartInsights } from "./smart-insights";
 
 export function HealthcareDashboard() {
   return (
     <div>
+      <SmartInsights industry="healthcare" />
       <div className="kpi-grid mb-5">
         <div className="card">
           <div className="kpi-label">Appointments Today</div>
