@@ -534,39 +534,9 @@ async function main() {
   const dealOwners = [userMap["vikram@theriviera.com"], userMap["sarah@theriviera.com"], userMap["marcus@theriviera.com"]].filter(Boolean);
   const dealGuestIds = Object.values(guestMap);
   const dayMs = 24 * 60 * 60 * 1000;
-  const dealDefs = [
-    { title: "Corporate retreat — 30 rooms", value: 850000, stage: "Lead In", closeInDays: 25, guest: 0 },
-    { title: "Wedding package — Grand Ballroom", value: 1200000, stage: "Qualified", closeInDays: 18, guest: 1 },
-    { title: "Q3 conference block booking", value: 640000, stage: "Qualified", closeInDays: 40, guest: 2 },
-    { title: "Annual loyalty suite upgrade", value: 220000, stage: "Proposal", closeInDays: 10, guest: 3 },
-    { title: "Spa & dining membership — VIP", value: 180000, stage: "Proposal", closeInDays: 12, guest: 4 },
-    { title: "Film crew long-stay (3 weeks)", value: 980000, stage: "Negotiation", closeInDays: 6, guest: 5 },
-    { title: "New Year gala — full property", value: 1500000, stage: "Negotiation", closeInDays: 8, guest: 6 },
-    { title: "Diwali corporate gifting + stay", value: 410000, stage: "Won", closeInDays: -3, guest: 7 },
-    { title: "Off-site team workshop", value: 150000, stage: "Lost", closeInDays: -8, guest: 8 },
-  ];
-  for (let i = 0; i < dealDefs.length; i++) {
-    const d = dealDefs[i];
-    const stageId = stageByName[d.stage];
-    const isWon = d.stage === "Won";
-    const isLost = d.stage === "Lost";
-    const status = isWon ? "won" : isLost ? "lost" : "open";
-    await prisma.deal.create({
-      data: {
-        tenantId: hotel.id, title: d.title, value: d.value, currency: "INR",
-        pipelineId: pipeline.id, stageId,
-        contactId: dealGuestIds[d.guest] ?? null,
-        ownerId: dealOwners[i % dealOwners.length] ?? null,
-        status,
-        expectedCloseAt: new Date(now.getTime() + d.closeInDays * dayMs),
-        closedAt: status === "open" ? null : new Date(now.getTime() + d.closeInDays * dayMs),
-        source: "manual",
-        transitions: { create: { tenantId: hotel.id, toStageId: stageId, changedById: dealOwners[0] ?? null } },
-      },
-    });
-  }
 
-  // ── CRM: companies + contact enrichment (Increment B) ────────────────────────
+  // Companies are created before deals so B2B deals can be linked to them
+  // (companyId). They're also reused by the contact-enrichment step below.
   await prisma.company.deleteMany({ where: { tenantId: HOTEL_ID } });
   const companyDefs = [
     { name: "Meridian Events Pvt Ltd", domain: "meridianevents.in", industry: "Events", size: "51-200" },
@@ -581,7 +551,41 @@ async function main() {
     companyIds.push(company.id);
   }
 
-  // Enrich a few contacts with CRM fields (lifecycle, owner, company, tags).
+  // `company` indexes into companyDefs above (null = no company on the deal).
+  const dealDefs = [
+    { title: "Corporate retreat — 30 rooms", value: 850000, stage: "Lead In", closeInDays: 25, guest: 0, company: 0 },
+    { title: "Wedding package — Grand Ballroom", value: 1200000, stage: "Qualified", closeInDays: 18, guest: 1, company: 0 },
+    { title: "Q3 conference block booking", value: 640000, stage: "Qualified", closeInDays: 40, guest: 2, company: 1 },
+    { title: "Annual loyalty suite upgrade", value: 220000, stage: "Proposal", closeInDays: 10, guest: 3, company: null },
+    { title: "Spa & dining membership — VIP", value: 180000, stage: "Proposal", closeInDays: 12, guest: 4, company: null },
+    { title: "Film crew long-stay (3 weeks)", value: 980000, stage: "Negotiation", closeInDays: 6, guest: 5, company: 2 },
+    { title: "New Year gala — full property", value: 1500000, stage: "Negotiation", closeInDays: 8, guest: 6, company: 0 },
+    { title: "Diwali corporate gifting + stay", value: 410000, stage: "Won", closeInDays: -3, guest: 7, company: 2 },
+    { title: "Off-site team workshop", value: 150000, stage: "Lost", closeInDays: -8, guest: 8, company: 1 },
+  ];
+  for (let i = 0; i < dealDefs.length; i++) {
+    const d = dealDefs[i];
+    const stageId = stageByName[d.stage];
+    const isWon = d.stage === "Won";
+    const isLost = d.stage === "Lost";
+    const status = isWon ? "won" : isLost ? "lost" : "open";
+    await prisma.deal.create({
+      data: {
+        tenantId: hotel.id, title: d.title, value: d.value, currency: "INR",
+        pipelineId: pipeline.id, stageId,
+        contactId: dealGuestIds[d.guest] ?? null,
+        companyId: d.company != null ? (companyIds[d.company] ?? null) : null,
+        ownerId: dealOwners[i % dealOwners.length] ?? null,
+        status,
+        expectedCloseAt: new Date(now.getTime() + d.closeInDays * dayMs),
+        closedAt: status === "open" ? null : new Date(now.getTime() + d.closeInDays * dayMs),
+        source: "manual",
+        transitions: { create: { tenantId: hotel.id, toStageId: stageId, changedById: dealOwners[0] ?? null } },
+      },
+    });
+  }
+
+  // ── CRM: contact enrichment (Increment B) ────────────────────────────────────
   const enrich = [
     { idx: 0, lifecycleStage: "customer", leadStatus: "qualified", company: 0, tags: ["vip", "repeat"] },
     { idx: 1, lifecycleStage: "opportunity", leadStatus: "connected", company: 0, tags: ["events"] },
@@ -601,12 +605,6 @@ async function main() {
         tags: e.tags, email: `contact${e.idx}@example.com`, source: "manual",
       },
     });
-  }
-
-  // Roll a couple of demo deals up to companies so account views aren't empty.
-  const someDeals = await prisma.deal.findMany({ where: { tenantId: HOTEL_ID }, orderBy: { createdAt: "asc" }, take: 4 });
-  for (let i = 0; i < someDeals.length; i++) {
-    await prisma.deal.update({ where: { id: someDeals[i].id }, data: { companyId: companyIds[i % companyIds.length] } });
   }
 
   // ── CRM: demo activities / tasks (Increment C) ───────────────────────────────
