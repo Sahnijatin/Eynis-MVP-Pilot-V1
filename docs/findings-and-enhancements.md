@@ -69,20 +69,20 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ◐ inventory built for real (#66); others still mock |
 | F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ☐ open |
 | F-21 | 🟡 | White-label | `eynis.com` hardcoded in billing alert (customer-facing) | ☐ open |
-| F-22 | 🟡 | Security | `JWT_SECRET` defaults to dev string; no startup assertion in prod | ☐ open |
-| F-23 | 🟡 | Security | Unknown legacy role silently grants `viewer` read access (default-allow) | ☐ open |
-| F-24 | 🟡 | Security | `GET /auth/identify` is an unauthenticated email-enumeration oracle | ☐ open |
+| F-22 | 🟡 | Security | `JWT_SECRET` defaults to dev string; no startup assertion in prod | ✅ fixed (#69) |
+| F-23 | 🟡 | Security | Unknown legacy role silently grants `viewer` read access (default-allow) | ✅ fixed (#70) |
+| F-24 | 🟡 | Security | `GET /auth/identify` is an unauthenticated email-enumeration oracle | ✅ fixed (#71) |
 | F-25 | 🟡 | AI | Model `claude-opus-4-7` lags the `opus-4-8` runtime | ☐ open |
-| F-26 | 🟡 | Correctness | Guest search case-sensitive & unindexed (`contains`, no `mode`) | ☐ open |
+| F-26 | 🟡 | Correctness | Guest search case-sensitive & unindexed (`contains`, no `mode`) | ✅ fixed (#73) |
 | F-27 | 🟡 | Correctness | `hasMore` pagination computed inconsistently across routes | ☐ open |
-| F-28 | 🟡 | Campaigns | Retry budget off-by-one (`> maxRetries` → `maxRetries+1` attempts) | ☐ open |
+| F-28 | 🟡 | Campaigns | Retry budget off-by-one (`> maxRetries` → `maxRetries+1` attempts) | ✖ not a bug (verified) |
 | F-29 | 🟡 | Campaigns | Twilio outbound drops message SID → `providerId: null` | ☐ open |
 | F-30 | 🟡 | Campaigns | Provider 5xx auto-pause only covers voice, not messaging | ☐ open |
 | F-31 | 🟡 | Architecture | `request-context.ts` header-trust stub (delete before it's wired) | ☐ open |
 | F-32 | 🟡 | Architecture | `server.ts` is a 4,136-line single function; route ordering load-bearing | ☐ open |
 | F-33 | 🟡 | Quality | Duplicated `safeArray`/`safeObject` + send-context block across 5 files | ☐ open |
-| F-34 | 🟡 | Security | Body parsing has no size limit (memory-exhaustion DoS) | ☐ open |
-| F-35 | 🟡 | Correctness | `assignedToUserId` auto-assign keys off deprecated legacy role | ☐ open |
+| F-34 | 🟡 | Security | Body parsing has no size limit (memory-exhaustion DoS) | ✅ fixed (#81) |
+| F-35 | 🟡 | Correctness | `assignedToUserId` auto-assign keys off deprecated legacy role | ✅ fixed (#82) |
 
 ---
 
@@ -259,6 +259,23 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **LOW security/correctness sweep (decision: "just security/correctness LOWs") — fixed.**
+  - **F-22 (#69)** — `assertJwtSecretConfigured()` fails server boot in production when `JWT_SECRET`
+    is unset or equals the dev default.
+  - **F-23 (#70)** — `getPermissionsForLegacyRole` now default-**denies** an unrecognised role
+    (returns `[]`) instead of silently granting `viewer` read access; still maps legacy roles and
+    valid new role keys.
+  - **F-24 (#71)** — `GET /auth/identify` is throttled per client IP (20/min, new
+    `core/rate-limit.ts`), closing the email-enumeration oracle. +3 tests.
+  - **F-26 (#73)** — guest search uses `mode: "insensitive"` (case-insensitive `LIKE`).
+  - **F-28 (#75)** — **not a bug.** Verified against the existing test: `maxRetries` means
+    *retries beyond the first attempt*, so `> maxRetries` correctly caps total attempts at
+    `maxRetries + 1`. Reverted the speculative change.
+  - **F-34 (#81)** — `parseRawBody` caps request bodies at `MAX_BODY_BYTES` (1 MiB default) and the
+    top-level handler returns `413`, preventing memory-exhaustion on public endpoints.
+  - **F-35 (#82)** — SR auto-assignment keys off the canonical `roleKey` ("manager") with a legacy
+    fallback, not the deprecated `role` union.
+  - Suite: 254 → 257 green.
 - **F-19 (#66) — inventory vertical built for real (decision: "build one vertical").** New
   `InventoryItem` model (migration), `core/inventory/service.ts` (tenant-scoped list / stock
   movement upsert / update / delete with derived ok/warning/critical status), and real

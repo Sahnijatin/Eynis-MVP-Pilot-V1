@@ -4,7 +4,7 @@ import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
 import type { UserRole, SystemRoleKey } from "@eynis/shared";
 import { isValidConsentSource } from "@eynis/shared";
-import { createAuthToken, parseBearerToken, verifyAuthToken } from "./core/auth";
+import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
 import {
@@ -24,6 +24,7 @@ import { startAutomationWorker } from "./core/automations/engine";
 import { computeSentimentAnalytics } from "./core/analytics/sentiment";
 import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
+import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
@@ -56,10 +57,25 @@ const aiError = (res: ServerResponse, label: string, e: unknown) => {
   json(res, 502, { ok: false, error: e instanceof AiResponseError ? `AI response error: ${message}` : "AI provider request failed" });
 };
 
+// Cap request bodies so an unauthenticated endpoint (public intake, webhooks,
+// registration) can't be used to exhaust memory with a huge payload (F-34).
+const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 1_048_576); // 1 MiB default
+
+class PayloadTooLargeError extends Error {
+  constructor() { super("Request body too large"); this.name = "PayloadTooLargeError"; }
+}
+
 const parseRawBody = async (req: IncomingMessage): Promise<string> => {
   const chunks: Uint8Array[] = [];
+  let total = 0;
   for await (const chunk of req) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    total += buf.length;
+    if (total > MAX_BODY_BYTES) {
+      req.destroy();
+      throw new PayloadTooLargeError();
+    }
+    chunks.push(buf);
   }
   return Buffer.concat(chunks).toString("utf8").trim();
 };
@@ -582,6 +598,14 @@ const handleRequest = async (
     // would let anyone consume a pending invitation just by knowing the address, and a
     // GET must never have side effects.
     if (req.url?.startsWith("/auth/identify") && req.method === "GET") {
+      // Throttle per client IP — this is an unauthenticated email→tenant lookup,
+      // so without a limit it's an email-enumeration oracle (F-24).
+      const fwd = req.headers["x-forwarded-for"];
+      const ip = (typeof fwd === "string" ? fwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(`identify:${ip}`, 20, 60_000)) {
+        json(res, 429, { ok: false, error: "Too many requests" });
+        return;
+      }
       const email = parseUrl(req.url).searchParams.get("email")?.toLowerCase().trim();
       if (!email) {
         json(res, 400, { ok: false, error: "email is required" });
@@ -1296,7 +1320,10 @@ const handleRequest = async (
           status: "open",
           source: sourceInput,
           summary: summaryInput,
-          assignedToUserId: context.role === "front_desk" ? context.userId : null,
+          // Front-line operators self-assign requests they log. Key off the
+          // canonical roleKey ("manager" ≡ legacy "front_desk"), falling back to
+          // the deprecated legacy role only for older tokens (F-35).
+          assignedToUserId: (context.roleKey === "manager" || context.role === "front_desk") ? context.userId : null,
           priority: priorityInput,
           slaDueAt
         },
@@ -2350,8 +2377,8 @@ const handleRequest = async (
       const where = {
         tenantId: context.tenantId,
         ...(search ? { OR: [
-          { fullName: { contains: search } },
-          { phoneE164: { contains: search } }
+          { fullName: { contains: search, mode: "insensitive" as const } },
+          { phoneE164: { contains: search, mode: "insensitive" as const } }
         ] } : {})
       };
       const [guests, total] = await Promise.all([
@@ -4197,6 +4224,10 @@ const handleRequest = async (
 
     json(res, 404, { ok: false, error: "Not found" });
   } catch (_error) {
+    if (_error instanceof PayloadTooLargeError) {
+      json(res, 413, { ok: false, error: "Request body too large" });
+      return;
+    }
     json(res, 500, { ok: false, error: "Internal server error" });
   }
 };
@@ -4207,6 +4238,7 @@ export const buildServer = () =>
   });
 
 export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
+  assertJwtSecretConfigured(); // refuse to boot prod with the default/blank JWT secret (F-22)
   const server = buildServer();
   server.listen(port, () => {
     console.log("Eynis API listening on port " + port);

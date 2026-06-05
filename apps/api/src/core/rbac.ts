@@ -33,7 +33,12 @@ export const hasPermission = (
 // the old UserRole string stored in User.role.
 
 export const getPermissionsForLegacyRole = (role: string): string[] => {
-  const key = LEGACY_ROLE_TO_KEY[role] ?? "viewer";
+  // Accept a legacy hospitality role, or (defensively) a new role key. An
+  // unrecognised role grants NOTHING — previously it silently defaulted to
+  // "viewer", handing read access to requests/guests/reports to any unknown
+  // role (F-23: default-deny instead of default-allow).
+  const key = LEGACY_ROLE_TO_KEY[role] ?? (DEFAULT_ROLE_PERMISSIONS[role] ? role : null);
+  if (!key) return [];
   return (DEFAULT_ROLE_PERMISSIONS[key] ?? []) as string[];
 };
 
