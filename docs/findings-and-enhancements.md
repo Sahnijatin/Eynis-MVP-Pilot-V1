@@ -14,10 +14,15 @@
 |---|---|
 | `npm run build` (shared → api → web, incl. `next build`) | ✅ passes |
 | `npm run lint` (`tsc --noEmit` on api + web) | ✅ clean |
-| `npm run test -w @eynis/api` (real Postgres, no mocking) | ✅ **204 / 204 passing** |
+| `npm run test -w @eynis/api` (real Postgres, no mocking) | ✅ **257 / 257 passing** (was 204 at audit time) |
 | CI (`.github/workflows/ci.yml`) | ✅ real — Postgres service, lint → build → migrate → test |
-| Prisma models | 32 models, 14 ordered migrations |
-| `apps/api/src/server.ts` | **4,136 lines** — single-function `if/else` router |
+| Prisma models | 33 models, 17 ordered migrations |
+| `apps/api/src/server.ts` | single-function `if/else` router (F-32 refactor deferred) |
+
+> **Update:** after the fix work in this PR — all 7 🔴 HIGH fixed; 🟠 MED all addressed (F-17/18/19
+> partial by product decision); 🟡 security/correctness LOWs fixed (F-22/23/24/26/31/34/35; F-28 a
+> verified non-bug). Remaining open are cosmetic/white-label + larger refactors (F-20/21/25/27/29/30/
+> 32/33), intentionally out of scope per the agreed priorities.
 
 ---
 
