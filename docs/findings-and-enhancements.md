@@ -78,7 +78,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-28 | 🟡 | Campaigns | Retry budget off-by-one (`> maxRetries` → `maxRetries+1` attempts) | ✖ not a bug (verified) |
 | F-29 | 🟡 | Campaigns | Twilio outbound drops message SID → `providerId: null` | ☐ open |
 | F-30 | 🟡 | Campaigns | Provider 5xx auto-pause only covers voice, not messaging | ☐ open |
-| F-31 | 🟡 | Architecture | `request-context.ts` header-trust stub (delete before it's wired) | ☐ open |
+| F-31 | 🟡 | Architecture | `request-context.ts` header-trust stub (delete before it's wired) | ✅ fixed (#78) |
 | F-32 | 🟡 | Architecture | `server.ts` is a 4,136-line single function; route ordering load-bearing | ☐ open |
 | F-33 | 🟡 | Quality | Duplicated `safeArray`/`safeObject` + send-context block across 5 files | ☐ open |
 | F-34 | 🟡 | Security | Body parsing has no size limit (memory-exhaustion DoS) | ✅ fixed (#81) |
@@ -259,6 +259,10 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-31 (#78) — deleted the header-trust stub.** Removed the unused
+  `core/request-context.ts` (derived identity from unverified `x-hotel-id`/`x-user-role` headers —
+  a tenant-isolation bypass if ever wired in) and the only file importing it,
+  `events/audit-log.ts` (also unused). The wired `event-bus.ts` was left in place.
 - **LOW security/correctness sweep (decision: "just security/correctness LOWs") — fixed.**
   - **F-22 (#69)** — `assertJwtSecretConfigured()` fails server boot in production when `JWT_SECRET`
     is unset or equals the dev default.
