@@ -55,7 +55,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-5 | 🔴 | Campaigns | Email-only leads silently never send (guard hard-requires phone) | ✅ fixed (#52) |
 | F-6 | 🔴 | Tests | Zero tests for `intelligence.ts` and `engine.ts` | ✅ fixed (#53) |
 | F-7 | 🔴 | Correctness | `GET /service-requests/:id/transitions` is dead code (route shadowing) | ✅ fixed (#54) |
-| F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ☐ open |
+| F-8 | 🟠 | Frontend | 4 analytics pages render mock data; real API + fetchers already exist | ✅ fixed (#55) |
 | F-9 | 🟠 | Security | Webhook signature verification defaults off & is omission-bypassable | ✅ fixed (#56) |
 | F-10 | 🟠 | Security | Resend webhook: no replay/timestamp check; unauth when secret unset | ✅ fixed (#57) |
 | F-11 | 🟠 | AI | `extractJson()` fragile + results blindly cast (no runtime validation) | ✅ fixed (#58) |
@@ -64,7 +64,7 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ✅ fixed (#61) |
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ✅ fixed (#62) |
 | F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ✅ fixed (#63) |
-| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ◐ partial (#64) |
+| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ◐ sentiment+upsell real; revenue/staff = sample (no PMS) (#64) |
 | F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ☐ open |
 | F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ☐ open |
 | F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ☐ open |
@@ -259,6 +259,13 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-8 (#55) — analytics pages wired to real data (decision: "wire real, label the rest").**
+  `sentiment-trends` and `upsell-campaigns` are now server components that fetch the live
+  endpoints (new `sentiment-trends-client.tsx` / `upsell-campaigns-client.tsx`), rendering real
+  breakdown/drivers/series and offer performance with honest empty-states. `revenue-intelligence`
+  and `staff-performance` carry a clear amber **"Sample data"** badge (no PMS/ratings source
+  yet), and `analytics` keeps its existing sample label — nothing fabricated is shown as real.
+  Web build green.
 - **F-17 (#64) — fabricated analytics — sentiment done (partial).** The `/analytics/sentiment`
   endpoint no longer uses `Math.random()`/hard-coded drivers — extracted
   `core/analytics/sentiment.ts` which computes real breakdown, net score, by-source counts, a

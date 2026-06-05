@@ -190,12 +190,12 @@ export interface SentimentResponse {
   ok: boolean;
   netScore: number;
   totalFeedback: number;
-  surveyCompletionRate: number;
+  surveyCompletionRate: number | null;
   breakdown: { positive: number; neutral: number; negative: number };
   bySource: Array<{ source: string; count: number }>;
   drivers: Array<{ term: string; weight: number; sentiment: string }>;
-  timeSeries: Array<{ day: number; score: number }>;
-  alert: { type: string; message: string };
+  timeSeries: Array<{ day: number; score: number | null }>;
+  alert: { type: string; message: string } | null;
 }
 
 export interface UpsellCampaignsResponse {
@@ -209,7 +209,6 @@ export interface UpsellCampaignsResponse {
     conversions: number;
     conversionRate: number;
     revenueInr: number;
-    createdAt: string;
   }>;
   total: number;
   weeklyData: Array<{ day: string; executions: number; conversions: number }>;
