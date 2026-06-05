@@ -9,20 +9,13 @@ import {
   LayoutDashboard, Users, Bell, DollarSign, AlertCircle, AlertTriangle, ChevronRight, Zap
 } from "lucide-react";
 import { OccupancyChart } from "../../components/ui/charts";
-import { AIMorningBriefing } from "../../components/ui/ai-morning-briefing";
+import { SmartInsights } from "../../components/ui/smart-insights";
 import { InboundPipeline } from "../../components/ui/inbound-pipeline";
 import { LiveFeedSSE } from "../../components/ui/live-feed-sse";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage({
-  searchParams
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = searchParams ? await searchParams : {};
-  const aiProvider = (typeof params.aiProvider === "string" && params.aiProvider === "openai") ? "openai" : "claude";
-
+export default async function DashboardPage() {
   // Resolve industry defensively. If workspace resolution fails for any reason
   // (API down, DB hiccup, bad metadata) we fall through to the hospitality
   // default — the user still sees a populated dashboard, never a blank page.
@@ -80,7 +73,7 @@ export default async function DashboardPage({
     <div>
       {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
 
-      <AIMorningBriefing provider={aiProvider} baseHref="/dashboard" />
+      <SmartInsights industry={industry} />
 
       <div className="kpi-grid mb-5">
         <div className="card">

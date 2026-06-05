@@ -14,7 +14,7 @@ import {
   type AIProvider,
   classifyInboundEvent,
   generateGuestIntelligence,
-  generateMorningBriefing,
+  generateSmartInsights,
   generateRevenueInsights,
   generateNightAuditReport,
   AiResponseError,
@@ -503,7 +503,7 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /connectors/events":              "view_requests",
   "POST /connectors/whatsapp/send":       "manage_connectors",
   "GET /ai/providers":                    null,
-  "GET /ai/morning-briefing":             "view_reports",
+  "GET /ai/smart-insights":               "view_reports",
   "POST /ai/classify-event":              "manage_requests",
   "GET /ai/guest-intelligence/:guestId":  "view_guests",
   "GET /ai/revenue-insights":             "view_reports",
@@ -2561,25 +2561,27 @@ const handleRequest = async (
       return;
     }
 
-    // ── AI: Morning Briefing ────────────────────────────────────────────────
-    if (req.url?.startsWith("/ai/morning-briefing") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /ai/morning-briefing");
+    // ── AI: Smart Insights ──────────────────────────────────────────────────
+    if (req.url?.startsWith("/ai/smart-insights") && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /ai/smart-insights");
       if (!auth.ok) return;
-      const licBriefing = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
-      if (!licBriefing.ok) { json(res, 403, { ok: false, error: licBriefing.error }); return; }
+      const licInsights = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
+      if (!licInsights.ok) { json(res, 403, { ok: false, error: licInsights.error }); return; }
       const provider = parseAIProvider(req.url);
       if (provider === "openai" && !OPENAI_AVAILABLE) { json(res, 503, { ok: false, error: "OpenAI not configured — set OPENAI_API_KEY" }); return; }
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const { tenantId } = auth.context;
-      const todayStartBrief = new Date(); todayStartBrief.setHours(0, 0, 0, 0);
-      const todayEndBrief = new Date(); todayEndBrief.setHours(23, 59, 59, 999);
-      const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-      const [openReqs, escalatedReqs, arrivalsToday, sentiment] = await Promise.all([
+      const todayStartInsights = new Date(); todayStartInsights.setHours(0, 0, 0, 0);
+      const todayEndInsights = new Date(); todayEndInsights.setHours(23, 59, 59, 999);
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, industry: true } });
+      const [openReqs, escalatedReqs, newContactsToday, sentiment] = await Promise.all([
         prisma.serviceRequest.count({ where: { tenantId, status: "open" } }),
         prisma.serviceRequest.count({ where: { tenantId, status: "escalated" } }),
-        prisma.stay.count({ where: { tenantId, checkInAt: { gte: todayStartBrief, lte: todayEndBrief } } }),
+        // Industry-agnostic "incoming" metric: contacts created today (every
+        // industry has contacts; stays/check-ins are hospitality-only).
+        prisma.contact.count({ where: { tenantId, createdAt: { gte: todayStartInsights, lte: todayEndInsights } } }),
         computeSentimentAnalytics(tenantId)
       ]);
       const topCategories = await prisma.serviceRequest.groupBy({
@@ -2594,22 +2596,22 @@ const handleRequest = async (
       const avgSentimentScore = sentiment.totalFeedback > 0 ? sentiment.netScore : null;
 
       try {
-        const briefing = await generateMorningBriefing({
-          hotelName: hotel?.name ?? tenantId,
+        const insights = await generateSmartInsights({
+          tenantName: tenant?.name ?? tenantId,
+          industry: tenant?.industry ?? null,
           date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
           openRequests: openReqs,
           escalatedRequests: escalatedReqs,
-          // Occupancy + room revenue require a PMS source we don't have yet — pass
+          // Revenue requires an external billing/POS source we don't have yet — pass
           // null (rendered "not available") instead of fabricated constants (F-17).
-          occupancyPct: null,
           todayRevenue: null,
-          arrivingGuests: arrivalsToday,
+          newContacts: newContactsToday,
           avgSentimentScore,
           topPendingCategories: topCategories.map((c) => c.category)
         }, provider);
-        json(res, 200, { ok: true, provider, briefing });
+        json(res, 200, { ok: true, provider, insights, generatedAt: new Date().toISOString() });
       } catch (e) {
-        aiError(res, "morning-briefing", e);
+        aiError(res, "smart-insights", e);
       }
       return;
     }

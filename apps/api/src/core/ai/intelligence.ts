@@ -96,32 +96,57 @@ function claudeTextContent(response: Anthropic.Message): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-// Metrics that depend on a property-management / revenue source are nullable:
-// when no PMS is connected we pass null and the prompt says "not available" rather
-// than feeding the model fabricated constants (F-17).
-interface HotelBriefingData {
-  hotelName: string;
+// Industry-agnostic terminology so the generated copy uses each tenant's own
+// vocabulary (orders / bookings / appointments …) instead of hospitality nouns.
+// Kept self-contained here so the API has no dependency on the web's
+// industry-config (CLAUDE.md product principle #1).
+interface IndustryTerms {
+  label: string;        // human-readable industry name
+  request: string;      // singular unit of work ("service request", "order" …)
+  requestPlural: string;
+  contactPlural: string; // people the tenant serves ("guests", "patients" …)
+}
+
+const INDUSTRY_TERMS: Record<string, IndustryTerms> = {
+  hospitality: { label: "Hospitality", request: "service request", requestPlural: "service requests", contactPlural: "guests" },
+  manufacturing: { label: "Manufacturing", request: "order", requestPlural: "orders", contactPlural: "clients" },
+  fnb: { label: "Food & Beverage", request: "order", requestPlural: "orders", contactPlural: "diners" },
+  travel: { label: "Travel", request: "booking", requestPlural: "bookings", contactPlural: "travellers" },
+  healthcare: { label: "Healthcare", request: "appointment", requestPlural: "appointments", contactPlural: "patients" }
+};
+
+export function getIndustryTerms(industry: string | null | undefined): IndustryTerms {
+  return (industry && INDUSTRY_TERMS[industry]) || {
+    label: "Operations", request: "request", requestPlural: "requests", contactPlural: "contacts"
+  };
+}
+
+// Metrics that depend on an external source (PMS / POS / billing) are nullable:
+// when no source is connected we pass null and the prompt says "not available"
+// rather than feeding the model fabricated constants (F-17).
+interface SmartInsightsData {
+  tenantName: string;
+  industry: string | null;
   date: string;
   openRequests: number;
   escalatedRequests: number;
-  occupancyPct: number | null;
   todayRevenue: number | null;
-  arrivingGuests: number;
+  newContacts: number;
   avgSentimentScore: number | null;
   topPendingCategories: string[];
 }
 
 // Renders a value the model should not invent when its source is absent.
-const fmtPct = (v: number | null): string => (v == null ? "not available (no property-management data connected)" : `${v}%`);
-const fmtInr = (v: number | null): string => (v == null ? "not available (no property-management/revenue data connected)" : `₹${v.toLocaleString("en-IN")}`);
+const fmtInr = (v: number | null): string => (v == null ? "not available (no revenue source connected)" : `₹${v.toLocaleString("en-IN")}`);
 const fmtScore = (v: number | null): string => (v == null ? "no feedback yet" : `${v}/100`);
 const fmtNum = (v: number | null): string => (v == null ? "not available" : String(v));
+const fmtPct = (v: number | null): string => (v == null ? "not available" : `${v}%`);
 
-export interface MorningBriefing {
+export interface SmartInsights {
   headline: string;
   operationalAlerts: string[];
   revenueHighlight: string;
-  guestExperienceNote: string;
+  experienceNote: string;
   topPriority: string;
 }
 
@@ -174,24 +199,24 @@ export interface RevenueInsight {
 
 // ── Prompt builders (shared across providers) ─────────────────────────────────
 
-function briefingPrompt(data: HotelBriefingData): string {
-  return `Generate a morning operations briefing for ${data.hotelName} on ${data.date}.
+function insightsPrompt(data: SmartInsightsData): string {
+  const t = getIndustryTerms(data.industry);
+  return `Generate smart operational insights for ${data.tenantName} (${t.label}) on ${data.date}.
 
-Operational data (do not invent figures marked "not available"):
-- Occupancy: ${fmtPct(data.occupancyPct)}
-- Open service requests: ${data.openRequests} (${data.escalatedRequests} escalated)
+Operational data (do not invent figures marked "not available"; use the tenant's own vocabulary — ${t.requestPlural}, ${t.contactPlural}):
+- Open ${t.requestPlural}: ${data.openRequests} (${data.escalatedRequests} escalated)
 - Today's revenue so far: ${fmtInr(data.todayRevenue)}
-- Arrivals today: ${data.arrivingGuests}
+- New ${t.contactPlural} today: ${data.newContacts}
 - Sentiment score: ${fmtScore(data.avgSentimentScore)}
-- Pending request categories: ${data.topPendingCategories.join(", ")}
+- Pending ${t.request} categories: ${data.topPendingCategories.join(", ") || "none"}
 
 Return a JSON object with exactly these keys:
 {
   "headline": "one-sentence executive summary of today's status",
   "operationalAlerts": ["up to 3 specific action items the team must address today"],
-  "revenueHighlight": "one sentence on revenue position vs typical day",
-  "guestExperienceNote": "one sentence on guest satisfaction trend",
-  "topPriority": "single most important thing for the GM to handle first"
+  "revenueHighlight": "one sentence on revenue position vs a typical day (say so plainly if revenue data is not available)",
+  "experienceNote": "one sentence on ${t.contactPlural} satisfaction trend",
+  "topPriority": "single most important thing for the operator or manager to handle first"
 }`;
 }
 
@@ -276,8 +301,8 @@ async function claudeCall(userContent: string): Promise<string> {
   return claudeTextContent(res);
 }
 
-async function claudeMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
-  return parseStructured<MorningBriefing>(await claudeCall(briefingPrompt(data)), BRIEFING_KEYS);
+async function claudeSmartInsights(data: SmartInsightsData): Promise<SmartInsights> {
+  return parseStructured<SmartInsights>(await claudeCall(insightsPrompt(data)), INSIGHTS_KEYS);
 }
 
 async function claudeClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
@@ -316,8 +341,8 @@ export async function aiComplete(userContent: string, provider: AIProvider = "cl
   return provider === "openai" ? openaiCall(userContent) : claudeCall(userContent);
 }
 
-async function openaiMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
-  return parseStructured<MorningBriefing>(await openaiCall(briefingPrompt(data)), BRIEFING_KEYS);
+async function openaiSmartInsights(data: SmartInsightsData): Promise<SmartInsights> {
+  return parseStructured<SmartInsights>(await openaiCall(insightsPrompt(data)), INSIGHTS_KEYS);
 }
 
 async function openaiClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
@@ -396,7 +421,7 @@ async function openaiNightAudit(data: NightAuditData): Promise<NightAuditResult>
 }
 
 // Required-key sets used to validate each provider response shape (F-11).
-const BRIEFING_KEYS = ["headline", "operationalAlerts", "revenueHighlight", "guestExperienceNote", "topPriority"] as const;
+const INSIGHTS_KEYS = ["headline", "operationalAlerts", "revenueHighlight", "experienceNote", "topPriority"] as const;
 const CLASSIFICATION_KEYS = ["category", "priority", "summary", "sentiment", "routingHint", "slaMinutes"] as const;
 const GUEST_KEYS = ["arrivalBrief", "keyPreferences", "upsellOpportunities", "attentionFlags", "vipScore"] as const;
 const REVENUE_KEYS = ["summary", "recommendations", "quickWin", "riskAlert"] as const;
@@ -404,11 +429,11 @@ const NIGHT_AUDIT_KEYS = ["headline", "executiveSummary", "highlights", "concern
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function generateMorningBriefing(
-  data: HotelBriefingData,
+export async function generateSmartInsights(
+  data: SmartInsightsData,
   provider: AIProvider = "claude"
-): Promise<MorningBriefing> {
-  return provider === "openai" ? openaiMorningBriefing(data) : claudeMorningBriefing(data);
+): Promise<SmartInsights> {
+  return provider === "openai" ? openaiSmartInsights(data) : claudeSmartInsights(data);
 }
 
 export async function classifyInboundEvent(
