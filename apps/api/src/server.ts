@@ -22,6 +22,7 @@ import {
 } from "./core/ai/intelligence";
 import { startAutomationWorker } from "./core/automations/engine";
 import { computeSentimentAnalytics } from "./core/analytics/sentiment";
+import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
@@ -2511,40 +2512,7 @@ const handleRequest = async (
       }
       const licUpsell = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
-      const rules = await prisma.automationRule.findMany({
-        where: { tenantId: context.tenantId },
-        orderBy: { createdAt: "asc" }
-      });
-      const campaignTriggers: Record<string, string> = {
-        pre_arrival_welcome: "Pre-arrival email (T-48h)",
-        checkin_breakfast_bundle: "Check-in Kiosk",
-        spa_happy_hour: "Post-lunch SMS",
-        late_checkout_upsell: "Departure Eve Push",
-        post_stay_review: "Post Check-Out"
-      };
-      const items = rules.map((r) => {
-        let config: Record<string, unknown> = {};
-        try { config = JSON.parse(r.configJson) as Record<string, unknown>; } catch { /**/ }
-        const exec = (config.executions as number) ?? 0;
-        const conv = (config.conversions as number) ?? 0;
-        return {
-          id: r.id,
-          name: r.name,
-          status: r.isActive ? "Active" : "Paused",
-          trigger: campaignTriggers[r.code] ?? r.code,
-          recipients: exec,
-          conversions: conv,
-          conversionRate: exec > 0 ? Math.round((conv / exec) * 1000) / 10 : 0,
-          revenueInr: (config.revenueInr as number) ?? 0,
-          createdAt: r.createdAt
-        };
-      });
-      const weeklyData = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((day, i) => ({
-        day,
-        executions: 200 + i * 40,
-        conversions: 60 + i * 15
-      }));
-      json(res, 200, { ok: true, items, total: items.length, weeklyData });
+      json(res, 200, await computeUpsellAnalytics(context.tenantId));
       return;
     }
 
