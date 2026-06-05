@@ -309,6 +309,13 @@ async function openaiCall(userContent: string): Promise<string> {
   return res.choices[0]?.message.content ?? "{}";
 }
 
+// Generic single-shot completion, provider-selectable. Used by the CRM AI layer
+// (scoring / next-best-action). Callers must gate on CLAUDE_AVAILABLE/OPENAI_AVAILABLE
+// and provide their own deterministic fallback when no key is configured.
+export async function aiComplete(userContent: string, provider: AIProvider = "claude"): Promise<string> {
+  return provider === "openai" ? openaiCall(userContent) : claudeCall(userContent);
+}
+
 async function openaiMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
   return parseStructured<MorningBriefing>(await openaiCall(briefingPrompt(data)), BRIEFING_KEYS);
 }

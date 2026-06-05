@@ -56,6 +56,8 @@ model Tenant {
   deals                 Deal[]
   dealTransitions       DealTransition[]
   companies             Company[]
+  activities            Activity[]
+  dealSuggestions       DealSuggestion[]
 
   @@map("Hotel")
 }
@@ -137,6 +139,7 @@ model User {
   changedDealTransitions DealTransition[]       @relation("deal_transition_actor")
   ownedContacts      Contact[]                  @relation("contact_owner")
   ownedCompanies     Company[]                  @relation("company_owner")
+  activities         Activity[]                 @relation("activity_actor")
 }
 
 // The end-customer a tenant engages. Named `Contact` (industry-neutral) but
@@ -169,6 +172,7 @@ model Contact {
   serviceRequests ServiceRequest[]
   deals           Deal[]
   campaignLeads   CampaignLead[]
+  activities      Activity[]
 
   @@index([tenantId])
   @@index([companyId])
@@ -194,8 +198,65 @@ model Company {
   owner        User?     @relation("company_owner", fields: [ownerId], references: [id], onDelete: SetNull)
   contacts     Contact[]
   deals        Deal[]
+  activities   Activity[]
 
   @@index([tenantId])
+}
+
+// ── CRM: Activities timeline + AI suggestions (Increment C) ───────────────────
+
+// A single timeline entry. Manual entries (note/task/meeting) are stored here;
+// channel events (calls, WhatsApp, service requests) are projected in at read
+// time (see core/crm/timeline.ts) — only manual + AI-authored rows persist here.
+model Activity {
+  id          String    @id @default(cuid())
+  tenantId    String
+  contactId   String?
+  dealId      String?
+  companyId   String?
+  userId      String? // actor who logged it (null = system/AI)
+  type        String // note | task | meeting | ai_score | ai_suggestion | system
+  title       String
+  body        String?
+  direction   String? // inbound | outbound | null
+  dueAt       DateTime? // tasks
+  completedAt DateTime? // tasks
+  status      String    @default("logged") // logged | open | done
+  meta        Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact     Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal        Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?     @relation("activity_actor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([tenantId, status, dueAt])
+}
+
+// A pending AI proposal to move a deal to another stage. SAFE MODE: a human must
+// accept (which performs the move) or dismiss — the AI never moves a deal itself.
+model DealSuggestion {
+  id               String    @id @default(cuid())
+  tenantId         String
+  dealId           String
+  fromStageId      String?
+  suggestedStageId String
+  reason           String
+  confidence       Int? // 0–100
+  source           String    @default("ai") // ai | rule
+  status           String    @default("pending") // pending | accepted | dismissed
+  createdAt        DateTime  @default(now())
+  resolvedAt       DateTime?
+  resolvedById     String?
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal             Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([dealId])
 }
 
 model Stay {
@@ -837,6 +898,8 @@ model Deal {
   company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
   owner           User?            @relation("deal_owner", fields: [ownerId], references: [id], onDelete: SetNull)
   transitions     DealTransition[]
+  activities      Activity[]
+  suggestions     DealSuggestion[]
 
   @@index([tenantId])
   @@index([pipelineId])

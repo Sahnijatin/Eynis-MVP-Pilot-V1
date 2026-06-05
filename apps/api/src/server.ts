@@ -351,9 +351,23 @@ const parseCrmIdPath = (url: string | undefined, base: string): string | null =>
   return match && match[1] ? decodeURIComponent(match[1]) : null;
 };
 
-// CRM deal routing: /deals/:id, /deals/:id/move  (note: /deals and /deals/forecast
-// are matched as exact pathnames before this parser is consulted).
-const DEAL_ACTIONS = new Set(["move"]);
+// CRM contact sub-routes: /contacts/:id/{timeline,activities,score}
+const parseContactSubPath = (url: string | undefined): { id: string; action: string } | null => {
+  if (!url) return null;
+  const m = /^\/contacts\/([^/]+)\/(timeline|activities|score)$/.exec(parseUrl(url).pathname);
+  return m && m[1] ? { id: decodeURIComponent(m[1]), action: m[2] } : null;
+};
+
+// CRM deal suggestion routing: /deals/suggestions/:id/{accept,dismiss}
+const parseSuggestionPath = (url: string | undefined): { id: string; action: string } | null => {
+  if (!url) return null;
+  const m = /^\/deals\/suggestions\/([^/]+)\/(accept|dismiss)$/.exec(parseUrl(url).pathname);
+  return m && m[1] ? { id: decodeURIComponent(m[1]), action: m[2] } : null;
+};
+
+// CRM deal routing: /deals/:id, /deals/:id/{move,timeline,suggest}  (note: /deals,
+// /deals/forecast and /deals/suggestions are matched as exact paths beforehand).
+const DEAL_ACTIONS = new Set(["move", "timeline", "suggest"]);
 const parseDealPath = (
   url: string | undefined,
 ): { id: string; action: string | null } | null => {
@@ -537,6 +551,17 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /companies/:id":                   "view_crm",
   "PATCH /companies/:id":                 "manage_crm",
   "DELETE /companies/:id":                "manage_crm",
+  "GET /contacts/:id/timeline":           "view_crm",
+  "POST /contacts/:id/activities":        "manage_crm",
+  "POST /contacts/:id/score":             "manage_crm",
+  "GET /tasks":                           "view_crm",
+  "PATCH /activities/:id":                "manage_crm",
+  "DELETE /activities/:id":               "manage_crm",
+  "GET /deals/:id/timeline":              "view_crm",
+  "POST /deals/:id/suggest":              "manage_crm",
+  "GET /deals/suggestions":               "view_crm",
+  "POST /deals/suggestions/:id/accept":   "manage_crm",
+  "POST /deals/suggestions/:id/dismiss":  "manage_crm",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3705,6 +3730,42 @@ const handleRequest = async (
       return;
     }
 
+    // ── CRM: Deal AI suggestions — list (safe mode) ─────────────────────────
+    if (parseUrl(req.url).pathname === "/deals/suggestions" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /deals/suggestions");
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      const { serializeSuggestion } = await import("./core/crm/suggestions");
+      const status = parseUrl(req.url).searchParams.get("status") ?? "pending";
+      const where: Record<string, unknown> = { tenantId };
+      if (status !== "all") where.status = status;
+      const rows = await prisma.dealSuggestion.findMany({
+        where, orderBy: { createdAt: "desc" }, take: 100,
+        include: { deal: { select: { title: true, pipeline: { select: { stages: { orderBy: { order: "asc" } } } } } } },
+      });
+      const items = rows.map((s) => serializeSuggestion(s, s.deal.title, s.deal.pipeline.stages));
+      json(res, 200, { ok: true, items });
+      return;
+    }
+
+    // ── CRM: Deal AI suggestions — accept / dismiss ─────────────────────────
+    {
+      const sp = parseSuggestionPath(req.url);
+      if (sp && req.method === "POST") {
+        const permKey = sp.action === "accept" ? "POST /deals/suggestions/:id/accept" : "POST /deals/suggestions/:id/dismiss";
+        const auth = await authorize(req, res, permKey);
+        if (!auth.ok) return;
+        const tenantId = auth.context.tenantId;
+        const { acceptSuggestion, dismissSuggestion } = await import("./core/crm/suggestions");
+        const result = sp.action === "accept"
+          ? await acceptSuggestion(tenantId, sp.id, auth.context.userId)
+          : await dismissSuggestion(tenantId, sp.id, auth.context.userId);
+        if (!result.ok) { json(res, result.status, { ok: false, error: result.error }); return; }
+        json(res, 200, { ok: true });
+        return;
+      }
+    }
+
     // ── CRM: Deals — single / update / delete / move ────────────────────────
     if (parseUrl(req.url).pathname.startsWith("/deals/")) {
       const parsed = parseDealPath(req.url);
@@ -3804,6 +3865,32 @@ const handleRequest = async (
           json(res, 200, { ok: true, deal: serializeDeal(updated) });
           return;
         }
+
+        // GET /deals/:id/timeline
+        if (action === "timeline" && req.method === "GET") {
+          if (!canAccess(auth.context.permissions, "GET /deals/:id/timeline")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
+          const { buildContactTimeline } = await import("./core/crm/timeline");
+          const dealActivities = await prisma.activity.findMany({ where: { tenantId, dealId: id }, include: { user: { select: { fullName: true } } }, orderBy: { createdAt: "desc" } });
+          const contactItems = deal.contactId ? await buildContactTimeline(tenantId, deal.contactId) : [];
+          const items = [
+            ...dealActivities.map((a) => ({ id: a.id, kind: a.type, title: a.title, body: a.body, direction: a.direction, sentiment: null, status: a.status, at: a.createdAt.toISOString() })),
+            ...contactItems,
+          ].sort((x, y) => y.at.localeCompare(x.at));
+          json(res, 200, { ok: true, items });
+          return;
+        }
+
+        // POST /deals/:id/suggest — generate a safe-mode AI stage suggestion
+        if (action === "suggest" && req.method === "POST") {
+          if (!canAccess(auth.context.permissions, "POST /deals/:id/suggest")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
+          const { generateDealSuggestion } = await import("./core/crm/suggestions");
+          const provider = parseAIProvider(req.url);
+          const suggestion = await generateDealSuggestion(tenantId, id, provider);
+          json(res, 200, { ok: true, suggestion });
+          return;
+        }
       }
     }
 
@@ -3862,6 +3949,104 @@ const handleRequest = async (
       ]);
       json(res, 200, { ok: true, items: rows.map(serializeContact), page: { limit, offset, total, hasMore: offset + rows.length < total } });
       return;
+    }
+
+    // ── CRM: Contact timeline / activities / AI score (Increment C) ──────────
+    {
+      const sub = parseContactSubPath(req.url);
+      if (sub) {
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
+        const tenantId = auth.context.tenantId;
+        const contact = await prisma.contact.findFirst({ where: { id: sub.id, tenantId }, select: { id: true } });
+
+        // GET /contacts/:id/timeline
+        if (sub.action === "timeline" && req.method === "GET") {
+          if (!canAccess(auth.context.permissions, "GET /contacts/:id/timeline")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!contact) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          const { buildContactTimeline } = await import("./core/crm/timeline");
+          const items = await buildContactTimeline(tenantId, sub.id);
+          json(res, 200, { ok: true, items });
+          return;
+        }
+
+        // POST /contacts/:id/activities — log a note / task / meeting
+        if (sub.action === "activities" && req.method === "POST") {
+          if (!canAccess(auth.context.permissions, "POST /contacts/:id/activities")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!contact) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          const { validateActivityCreate, serializeActivity } = await import("./core/crm/activities");
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const validated = validateActivityCreate(body);
+          if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return; }
+          const v = validated.value;
+          if (v.dealId && !(await prisma.deal.findFirst({ where: { id: v.dealId, tenantId } }))) { json(res, 400, { ok: false, error: "Deal not found" }); return; }
+          const created = await prisma.activity.create({
+            data: { tenantId, contactId: sub.id, dealId: v.dealId, userId: auth.context.userId, type: v.type, title: v.title, body: v.body, dueAt: v.dueAt, status: v.status },
+            include: { user: { select: { id: true, fullName: true } } },
+          });
+          await prisma.contact.update({ where: { id: sub.id }, data: { lastActivityAt: new Date() } });
+          json(res, 201, { ok: true, activity: serializeActivity(created) });
+          return;
+        }
+
+        // POST /contacts/:id/score — AI (or heuristic) lead score
+        if (sub.action === "score" && req.method === "POST") {
+          if (!canAccess(auth.context.permissions, "POST /contacts/:id/score")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!contact) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          const { scoreContact } = await import("./core/crm/scoring");
+          const provider = parseAIProvider(req.url);
+          const result = await scoreContact(tenantId, sub.id, provider);
+          if (!result) { json(res, 404, { ok: false, error: "Contact not found" }); return; }
+          json(res, 200, { ok: true, score: result });
+          return;
+        }
+      }
+    }
+
+    // ── CRM: Tasks (open activities across the tenant) ──────────────────────
+    if (parseUrl(req.url).pathname === "/tasks" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /tasks");
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      const { serializeActivity } = await import("./core/crm/activities");
+      const qs = parseUrl(req.url).searchParams;
+      const status = qs.get("status") ?? "open";
+      const where: Record<string, unknown> = { tenantId, type: "task" };
+      if (status !== "all") where.status = status;
+      if (qs.get("mine") === "true") where.userId = auth.context.userId;
+      const rows = await prisma.activity.findMany({ where, orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }], take: 200, include: { user: { select: { id: true, fullName: true } }, contact: { select: { id: true, fullName: true } } } });
+      json(res, 200, { ok: true, items: rows.map((a) => ({ ...serializeActivity(a), contactName: a.contact?.fullName ?? null })) });
+      return;
+    }
+
+    // ── CRM: Activity update / delete (complete a task, edit a note) ─────────
+    if (parseUrl(req.url).pathname.startsWith("/activities/")) {
+      const id = parseCrmIdPath(req.url, "activities");
+      if (id) {
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
+        const tenantId = auth.context.tenantId;
+        const activity = await prisma.activity.findFirst({ where: { id, tenantId } });
+
+        if (req.method === "PATCH") {
+          if (!canAccess(auth.context.permissions, "PATCH /activities/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!activity) { json(res, 404, { ok: false, error: "Activity not found" }); return; }
+          const { buildActivityUpdate, serializeActivity } = await import("./core/crm/activities");
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const update = buildActivityUpdate(body);
+          if (!update.ok) { json(res, 400, { ok: false, error: update.error }); return; }
+          const updated = await prisma.activity.update({ where: { id }, data: update.value, include: { user: { select: { id: true, fullName: true } } } });
+          json(res, 200, { ok: true, activity: serializeActivity(updated) });
+          return;
+        }
+        if (req.method === "DELETE") {
+          if (!canAccess(auth.context.permissions, "DELETE /activities/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+          if (!activity) { json(res, 404, { ok: false, error: "Activity not found" }); return; }
+          await prisma.activity.delete({ where: { id } });
+          json(res, 200, { ok: true });
+          return;
+        }
+      }
     }
 
     // ── CRM: Contacts — single / update / delete ────────────────────────────

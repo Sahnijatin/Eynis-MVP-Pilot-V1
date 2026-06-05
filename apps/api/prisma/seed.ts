@@ -608,6 +608,18 @@ async function main() {
     await prisma.deal.update({ where: { id: someDeals[i].id }, data: { companyId: companyIds[i % companyIds.length] } });
   }
 
+  // ── CRM: demo activities / tasks (Increment C) ───────────────────────────────
+  await prisma.activity.deleteMany({ where: { tenantId: HOTEL_ID } });
+  const firstContact = dealGuestIdList[0];
+  const secondContact = dealGuestIdList[1];
+  if (firstContact) {
+    await prisma.activity.create({ data: { tenantId: hotel.id, contactId: firstContact, userId: dealOwners[0] ?? null, type: "note", title: "Intro call", body: "Discussed corporate retreat needs. Customer confirmed budget and is keen to go ahead — wants a proposal this week." } });
+    await prisma.activity.create({ data: { tenantId: hotel.id, contactId: firstContact, userId: dealOwners[0] ?? null, type: "task", title: "Send retreat proposal", status: "open", dueAt: new Date(now.getTime() + 2 * dayMs) } });
+  }
+  if (secondContact) {
+    await prisma.activity.create({ data: { tenantId: hotel.id, contactId: secondContact, userId: dealOwners[0] ?? null, type: "task", title: "Follow up on wedding package", status: "open", dueAt: new Date(now.getTime() - dayMs) } });
+  }
+
   console.log("✓ Seed complete — The Riviera hotel loaded with full demo data.");
 }
 
