@@ -32,22 +32,59 @@ function getOpenAIClient(): OpenAI {
 
 // ── Shared system prompt ──────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are Eynis, an AI intelligence layer for hotel operations. You analyze hotel data and produce concise, actionable intelligence for hotel managers and owners.
+// Industry-agnostic system prompt (CLAUDE.md product principle #1). The platform
+// serves many verticals — never assume hospitality. Domain vocabulary and currency
+// come from the per-request context, not from a hardcoded "hotels in India / INR"
+// assumption (F-20).
+const SYSTEM_PROMPT = `You are an AI intelligence layer for business operations. You analyze operational data and produce concise, actionable intelligence for operators, managers, and owners across many industries.
 
 Your outputs must be:
 - Specific and data-driven (reference actual numbers from the context provided)
 - Actionable (each insight should suggest what to do, not just what is happening)
-- Concise (hotel managers are busy — no filler sentences)
+- Concise (operators are busy — no filler sentences)
 - Formatted as clean JSON when asked for structured output
 
-Hotel context: You serve boutique and mid-scale hotels in India and Southeast Asia. Currency is INR unless specified otherwise.`;
+Use the domain vocabulary and currency that appear in the context provided. Do not assume a specific industry or currency.`;
 
 // ── Shared helper ─────────────────────────────────────────────────────────────
 
-function extractJson(text: string): unknown {
+// Thrown when a provider returns something we can't parse into the expected shape.
+// AI route handlers catch this to return a clean error instead of a generic 500 (F-12).
+export class AiResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiResponseError";
+  }
+}
+
+// Pulls a JSON object out of a free-text model response. Returns null (never throws)
+// when no balanced-looking object is present or it doesn't parse — callers decide how
+// to handle the absence (F-11: previously this threw a raw SyntaxError that bubbled
+// to a generic 500).
+export function extractJson(text: string): unknown | null {
   const match = /\{[\s\S]*\}/.exec(text);
-  if (!match) throw new Error("No JSON object found in AI response");
-  return JSON.parse(match[0]);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+}
+
+// Parses a provider response and guarantees a plain object, with the given required
+// keys present. Throws AiResponseError on any shape problem so structurally-invalid AI
+// output is rejected rather than cast through to the DB/client unchecked (F-11).
+export function parseStructured<T>(text: string, requiredKeys: ReadonlyArray<keyof T & string>): T {
+  const parsed = extractJson(text);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new AiResponseError("AI response did not contain a JSON object");
+  }
+  const obj = parsed as Record<string, unknown>;
+  const missing = requiredKeys.filter((k) => !(k in obj));
+  if (missing.length > 0) {
+    throw new AiResponseError(`AI response missing required field(s): ${missing.join(", ")}`);
+  }
+  return parsed as T;
 }
 
 function claudeTextContent(response: Anthropic.Message): string {
@@ -59,17 +96,26 @@ function claudeTextContent(response: Anthropic.Message): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Metrics that depend on a property-management / revenue source are nullable:
+// when no PMS is connected we pass null and the prompt says "not available" rather
+// than feeding the model fabricated constants (F-17).
 interface HotelBriefingData {
   hotelName: string;
   date: string;
   openRequests: number;
   escalatedRequests: number;
-  occupancyPct: number;
-  todayRevenue: number;
+  occupancyPct: number | null;
+  todayRevenue: number | null;
   arrivingGuests: number;
-  avgSentimentScore: number;
+  avgSentimentScore: number | null;
   topPendingCategories: string[];
 }
+
+// Renders a value the model should not invent when its source is absent.
+const fmtPct = (v: number | null): string => (v == null ? "not available (no property-management data connected)" : `${v}%`);
+const fmtInr = (v: number | null): string => (v == null ? "not available (no property-management/revenue data connected)" : `₹${v.toLocaleString("en-IN")}`);
+const fmtScore = (v: number | null): string => (v == null ? "no feedback yet" : `${v}/100`);
+const fmtNum = (v: number | null): string => (v == null ? "not available" : String(v));
 
 export interface MorningBriefing {
   headline: string;
@@ -110,13 +156,13 @@ export interface EventClassification {
 
 interface RevenueData {
   hotelName: string;
-  occupancyPct: number;
-  adrInr: number;
-  revParInr: number;
+  occupancyPct: number | null;
+  adrInr: number | null;
+  revParInr: number | null;
   upsellConversionPct: number;
   topCategories: Array<{ name: string; revenueInr: number }>;
   weekTrend: "up" | "flat" | "down";
-  availableRooms: number;
+  availableRooms: number | null;
 }
 
 export interface RevenueInsight {
@@ -131,12 +177,12 @@ export interface RevenueInsight {
 function briefingPrompt(data: HotelBriefingData): string {
   return `Generate a morning operations briefing for ${data.hotelName} on ${data.date}.
 
-Hotel data:
-- Occupancy: ${data.occupancyPct}%
+Operational data (do not invent figures marked "not available"):
+- Occupancy: ${fmtPct(data.occupancyPct)}
 - Open service requests: ${data.openRequests} (${data.escalatedRequests} escalated)
-- Today's revenue so far: ₹${data.todayRevenue.toLocaleString("en-IN")}
-- Guests arriving today: ${data.arrivingGuests}
-- Guest sentiment score: ${data.avgSentimentScore}/100
+- Today's revenue so far: ${fmtInr(data.todayRevenue)}
+- Arrivals today: ${data.arrivingGuests}
+- Sentiment score: ${fmtScore(data.avgSentimentScore)}
 - Pending request categories: ${data.topPendingCategories.join(", ")}
 
 Return a JSON object with exactly these keys:
@@ -192,14 +238,14 @@ Return a JSON object with exactly these keys:
 function revenuePrompt(data: RevenueData): string {
   return `Analyze revenue performance and provide specific, actionable recommendations for ${data.hotelName}.
 
-Revenue data:
-- Occupancy: ${data.occupancyPct}%
-- ADR: ₹${data.adrInr.toLocaleString("en-IN")}
-- RevPAR: ₹${data.revParInr.toLocaleString("en-IN")}
+Revenue data (do not invent figures marked "not available"; base recommendations on what is present, especially upsell performance):
+- Occupancy: ${fmtPct(data.occupancyPct)}
+- ADR: ${fmtInr(data.adrInr)}
+- RevPAR: ${fmtInr(data.revParInr)}
 - Upsell conversion rate: ${data.upsellConversionPct}%
 - Weekly trend: ${data.weekTrend}
-- Available rooms right now: ${data.availableRooms}
-- Top revenue categories: ${data.topCategories.map((c) => `${c.name} (₹${c.revenueInr.toLocaleString("en-IN")})`).join(", ")}
+- Available rooms right now: ${fmtNum(data.availableRooms)}
+- Top revenue categories: ${data.topCategories.map((c) => `${c.name} (₹${c.revenueInr.toLocaleString("en-IN")})`).join(", ") || "none yet"}
 
 Return a JSON object with exactly these keys:
 {
@@ -212,7 +258,7 @@ Return a JSON object with exactly these keys:
 
 // ── Claude implementations ────────────────────────────────────────────────────
 
-const CLAUDE_MODEL = "claude-opus-4-7";
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? "claude-opus-4-8";
 const CLAUDE_PARAMS = {
   max_tokens: 1024,
   thinking: { type: "adaptive" as const },
@@ -231,19 +277,19 @@ async function claudeCall(userContent: string): Promise<string> {
 }
 
 async function claudeMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
-  return extractJson(await claudeCall(briefingPrompt(data))) as MorningBriefing;
+  return parseStructured<MorningBriefing>(await claudeCall(briefingPrompt(data)), BRIEFING_KEYS);
 }
 
 async function claudeClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
-  return extractJson(await claudeCall(classifyPrompt(tenantId, text))) as EventClassification;
+  return parseStructured<EventClassification>(await claudeCall(classifyPrompt(tenantId, text)), CLASSIFICATION_KEYS);
 }
 
 async function claudeGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
-  return extractJson(await claudeCall(guestPrompt(data))) as GuestIntelligence;
+  return parseStructured<GuestIntelligence>(await claudeCall(guestPrompt(data)), GUEST_KEYS);
 }
 
 async function claudeRevenueInsights(data: RevenueData): Promise<RevenueInsight> {
-  return extractJson(await claudeCall(revenuePrompt(data))) as RevenueInsight;
+  return parseStructured<RevenueInsight>(await claudeCall(revenuePrompt(data)), REVENUE_KEYS);
 }
 
 // ── OpenAI implementations ────────────────────────────────────────────────────
@@ -264,19 +310,19 @@ async function openaiCall(userContent: string): Promise<string> {
 }
 
 async function openaiMorningBriefing(data: HotelBriefingData): Promise<MorningBriefing> {
-  return JSON.parse(await openaiCall(briefingPrompt(data))) as MorningBriefing;
+  return parseStructured<MorningBriefing>(await openaiCall(briefingPrompt(data)), BRIEFING_KEYS);
 }
 
 async function openaiClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
-  return JSON.parse(await openaiCall(classifyPrompt(tenantId, text))) as EventClassification;
+  return parseStructured<EventClassification>(await openaiCall(classifyPrompt(tenantId, text)), CLASSIFICATION_KEYS);
 }
 
 async function openaiGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
-  return JSON.parse(await openaiCall(guestPrompt(data))) as GuestIntelligence;
+  return parseStructured<GuestIntelligence>(await openaiCall(guestPrompt(data)), GUEST_KEYS);
 }
 
 async function openaiRevenueInsights(data: RevenueData): Promise<RevenueInsight> {
-  return JSON.parse(await openaiCall(revenuePrompt(data))) as RevenueInsight;
+  return parseStructured<RevenueInsight>(await openaiCall(revenuePrompt(data)), REVENUE_KEYS);
 }
 
 // ── Night Audit ───────────────────────────────────────────────────────────────
@@ -284,7 +330,7 @@ async function openaiRevenueInsights(data: RevenueData): Promise<RevenueInsight>
 export interface NightAuditData {
   hotelName: string;
   reportDate: string;
-  occupancyPct: number;
+  occupancyPct: number | null;
   checkIns: number;
   checkOuts: number;
   inHouseGuests: number;
@@ -312,8 +358,8 @@ export interface NightAuditResult {
 function nightAuditPrompt(data: NightAuditData): string {
   return `Generate a night audit report for ${data.hotelName} for ${data.reportDate}.
 
-Day summary:
-- Occupancy: ${data.occupancyPct}%
+Day summary (do not invent figures marked "not available"):
+- Occupancy: ${fmtPct(data.occupancyPct)}
 - Check-ins today: ${data.checkIns}, Check-outs: ${data.checkOuts}, In-house: ${data.inHouseGuests}
 - Service requests: ${data.resolvedRequests} resolved, ${data.escalatedRequests} escalated, ${data.openRequests} still open
 - Average resolution time: ${data.avgResolutionMins} minutes
@@ -335,12 +381,19 @@ Return a JSON object with exactly these keys:
 }
 
 async function claudeNightAudit(data: NightAuditData): Promise<NightAuditResult> {
-  return extractJson(await claudeCall(nightAuditPrompt(data))) as NightAuditResult;
+  return parseStructured<NightAuditResult>(await claudeCall(nightAuditPrompt(data)), NIGHT_AUDIT_KEYS);
 }
 
 async function openaiNightAudit(data: NightAuditData): Promise<NightAuditResult> {
-  return JSON.parse(await openaiCall(nightAuditPrompt(data))) as NightAuditResult;
+  return parseStructured<NightAuditResult>(await openaiCall(nightAuditPrompt(data)), NIGHT_AUDIT_KEYS);
 }
+
+// Required-key sets used to validate each provider response shape (F-11).
+const BRIEFING_KEYS = ["headline", "operationalAlerts", "revenueHighlight", "guestExperienceNote", "topPriority"] as const;
+const CLASSIFICATION_KEYS = ["category", "priority", "summary", "sentiment", "routingHint", "slaMinutes"] as const;
+const GUEST_KEYS = ["arrivalBrief", "keyPreferences", "upsellOpportunities", "attentionFlags", "vipScore"] as const;
+const REVENUE_KEYS = ["summary", "recommendations", "quickWin", "riskAlert"] as const;
+const NIGHT_AUDIT_KEYS = ["headline", "executiveSummary", "highlights", "concerns", "tomorrowRecommendations", "operationalScore"] as const;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 

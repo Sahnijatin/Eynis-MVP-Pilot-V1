@@ -112,7 +112,7 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
     data: { tenantId: input.tenantId, conversationId: conversation.id, direction: "in", body, providerId: input.providerMessageId ?? null, sentiment: inboundSentiment.sentiment, score: inboundSentiment.score },
   });
   await prisma.whatsappConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
-  broadcastSSEEvent({ type: "whatsapp_message", tenantId: input.tenantId, campaignId: campaign.id, conversationId: conversation.id, direction: "in", sentiment: inboundSentiment.sentiment });
+  broadcastSSEEvent(input.tenantId, { type: "whatsapp_message", tenantId: input.tenantId, campaignId: campaign.id, conversationId: conversation.id, direction: "in", sentiment: inboundSentiment.sentiment });
 
   const sendMessage = deps.sendMessage ?? ((h: string, to: string, msg: string) => sendWhatsAppReply(h, to, msg).then((r) => ({ sent: r.sent, id: r.id, error: r.error })));
 
@@ -160,7 +160,7 @@ export async function handleInboundWhatsApp(input: InboundWhatsApp, deps: AgentD
     where: { id: conversation.id },
     data: { state: booked ? "booked" : "awaiting_reply", lastMessageAt: new Date(), threadSummary: body.slice(0, 200) },
   });
-  broadcastSSEEvent({ type: "whatsapp_message", tenantId: input.tenantId, campaignId: campaign.id, conversationId: conversation.id, direction: "out" });
+  broadcastSSEEvent(input.tenantId, { type: "whatsapp_message", tenantId: input.tenantId, campaignId: campaign.id, conversationId: conversation.id, direction: "out" });
 
   return { handled: true, reason: sent.sent ? "replied" : "reply_failed" };
 }

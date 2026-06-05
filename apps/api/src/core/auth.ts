@@ -18,6 +18,15 @@ const defaultSecret = "dev-only-secret-change-me";
 
 const getSecret = () => encoder.encode(process.env.JWT_SECRET ?? defaultSecret);
 
+// Fail fast at startup if a production deploy is still using the hardcoded dev
+// secret (or none): with the default secret, anyone who reads the source can forge
+// tokens for any tenant (F-22).
+export const assertJwtSecretConfigured = (): void => {
+  if (process.env.NODE_ENV === "production" && (!process.env.JWT_SECRET || process.env.JWT_SECRET === defaultSecret)) {
+    throw new Error("JWT_SECRET must be set to a strong, non-default value in production");
+  }
+};
+
 export const createAuthToken = async (claims: AuthTokenClaims) =>
   new SignJWT({
     tenantId: claims.tenantId,

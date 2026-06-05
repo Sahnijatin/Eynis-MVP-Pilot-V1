@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
+import { singleFlight } from "../single-flight";
 
 async function hasExecution(ruleId: string, triggerEntityId: string): Promise<boolean> {
   const existing = await prisma.automationExecution.findFirst({
@@ -21,12 +23,20 @@ async function recordExecution(data: {
   actionResult: ActionResult;
   resultDetail?: string;
 }) {
-  await prisma.automationExecution.create({ data });
+  try {
+    await prisma.automationExecution.create({ data });
+  } catch (err) {
+    // A unique-violation on (ruleId, triggerEntityId) means another cycle already
+    // recorded this execution — the entity is handled, so swallow it (F-13). The
+    // DB constraint is the backstop for the in-app hasExecution check.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return;
+    throw err;
+  }
 }
 
 // ── Rule 1: SLA breach → escalate service request ─────────────────────────────
 
-async function evaluateSlaBreachEscalate() {
+export async function evaluateSlaBreachEscalate() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sla_breach_escalate", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -83,7 +93,7 @@ async function evaluateSlaBreachEscalate() {
 
 // ── Rule 2: Negative sentiment → create review SR ─────────────────────────────
 
-async function evaluateSentimentLowFlag() {
+export async function evaluateSentimentLowFlag() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sentiment_low_flag", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -132,7 +142,7 @@ async function evaluateSentimentLowFlag() {
 
 // ── Rule 3: Check-in within last 30 min → send welcome WhatsApp ───────────────
 
-async function evaluateCheckinWelcome() {
+export async function evaluateCheckinWelcome() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "checkin_welcome", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -142,6 +152,15 @@ async function evaluateCheckinWelcome() {
   const thirtyMinsAgo = new Date(now.getTime() - 30 * 60000);
 
   for (const rule of rules) {
+    // White-label: the welcome message must carry the tenant's own brand, never a
+    // hardcoded "The Riviera" / "Your Concierge Team" (F-20). Prefer the branding
+    // override, fall back to the tenant's name.
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: rule.tenantId },
+      select: { name: true, branding: { select: { brandName: true } } }
+    });
+    const brandName = tenant?.branding?.brandName?.trim() || tenant?.name?.trim() || "us";
+
     const recentStays = await prisma.stay.findMany({
       where: { tenantId: rule.tenantId, checkInAt: { gte: thirtyMinsAgo, lte: now } },
       include: { guest: { select: { id: true, fullName: true, phoneE164: true } } }
@@ -152,7 +171,7 @@ async function evaluateCheckinWelcome() {
 
       const { guest } = stay;
       const firstName = guest.fullName.split(" ")[0] ?? guest.fullName;
-      const message = `Welcome to The Riviera, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — Your Concierge Team`;
+      const message = `Welcome to ${brandName}, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — The ${brandName} Team`;
 
       try {
         const result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);
@@ -177,7 +196,7 @@ async function evaluateCheckinWelcome() {
 
 // ── Rule 4: SR resolved in last 2h → queue upsell offer ──────────────────────
 
-async function evaluateUpsellFollowup() {
+export async function evaluateUpsellFollowup() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "upsell_followup", isActive: true },
     select: { id: true, tenantId: true, code: true }
@@ -236,21 +255,24 @@ async function evaluateUpsellFollowup() {
 
 // ── Public: start worker ──────────────────────────────────────────────────────
 
-export function startAutomationWorker(intervalMs = 60_000): () => void {
-  const runCycle = async () => {
-    try {
-      await Promise.allSettled([
-        evaluateSlaBreachEscalate(),
-        evaluateSentimentLowFlag(),
-        evaluateCheckinWelcome(),
-        evaluateUpsellFollowup()
-      ]);
-    } catch (err) {
-      console.error("[AutomationEngine] Cycle error:", err);
-    }
-  };
+// Wrapped in singleFlight so a cycle that overruns the 60s interval can't overlap
+// the next one — overlapping cycles widen the check-then-act idempotency window
+// (F-13). The DB unique constraint on (ruleId, triggerEntityId) is the backstop.
+export const runAutomationCycle = singleFlight(async (): Promise<void> => {
+  try {
+    await Promise.allSettled([
+      evaluateSlaBreachEscalate(),
+      evaluateSentimentLowFlag(),
+      evaluateCheckinWelcome(),
+      evaluateUpsellFollowup()
+    ]);
+  } catch (err) {
+    console.error("[AutomationEngine] Cycle error:", err);
+  }
+});
 
-  void runCycle();
-  const id = setInterval(() => void runCycle(), intervalMs);
+export function startAutomationWorker(intervalMs = 60_000): () => void {
+  void runAutomationCycle();
+  const id = setInterval(() => void runAutomationCycle(), intervalMs);
   return () => clearInterval(id);
 }

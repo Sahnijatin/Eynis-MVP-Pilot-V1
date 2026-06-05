@@ -176,6 +176,19 @@ function RoleSwitcher({ role, accentColor, onSwitch }: RoleSwitcherProps) {
   );
 }
 
+// Vertical pages that still render demonstration data and don't persist through
+// the API yet (F-19). The `inventory` vertical is fully wired and is the template
+// the rest follow; until each is built on it, we label them honestly as "Preview"
+// so demos don't overpromise.
+const PREVIEW_ROUTES = [
+  "/materials", "/menu", "/orders", "/patients", "/appointments",
+  "/bookings", "/quotes", "/customers", "/ai-brain",
+];
+
+function isPreviewRoute(pathname: string): boolean {
+  return PREVIEW_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
+}
+
 // ── AppShell ──────────────────────────────────────────────────────────────────
 
 interface AppShellProps {
@@ -489,6 +502,17 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
             <button onClick={() => setAccessDenied(false)} className="ml-auto text-red-400 hover:text-red-600">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {/* Honest "Preview" banner for vertical pages not yet backed by the API (F-19) */}
+        {!isPublicRoute && isPreviewRoute(pathname) && (
+          <div className="flex items-center gap-3 px-5 py-2.5 text-xs text-amber-800 bg-amber-50 border-b border-amber-100">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+            <span>
+              <strong>Preview</strong> — this page shows demonstration data and does not yet persist
+              changes to your account. The Inventory module is the live template the rest are built on.
+            </span>
           </div>
         )}
 

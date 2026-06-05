@@ -63,7 +63,7 @@ export default function AIBrainPage() {
             <div className="font-semibold text-slate-800">Eynis AI Brain</div>
             <div className="text-xs text-slate-400">Answers sourced from your own data — orders, clients, materials, reports</div>
           </div>
-          <span className="ml-auto badge" style={{ background: "#d1fae5", color: "#059669" }}>● Live</span>
+          <span className="ml-auto badge" style={{ background: "#fef3c7", color: "#b45309" }}>Preview</span>
         </div>
 
         {/* Messages */}

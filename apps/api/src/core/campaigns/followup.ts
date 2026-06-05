@@ -8,13 +8,8 @@
 import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { getSender, type SendContext } from "./senders";
-
-const safeObject = (json: string): Record<string, string[]> => {
-  try { const v = JSON.parse(json); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch { return {}; }
-};
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
+import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
+import { safeArray, safeObject } from "./json-utils";
 
 export interface FollowUpDeps {
   resolveSender?: typeof getSender;
@@ -23,7 +18,7 @@ export interface FollowUpDeps {
 // Resolves which channels to fire for a given outcome and sends them.
 export function channelsForOutcome(followUpRulesJson: string, outcome: string | null): string[] {
   if (!outcome) return [];
-  const rules = safeObject(followUpRulesJson);
+  const rules = safeObject<string[]>(followUpRulesJson);
   return (rules[outcome] ?? []).filter((c) => c === "whatsapp" || c === "email");
 }
 
@@ -44,16 +39,47 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
 
   const channels = channelsForOutcome(campaign.followUpRules, call.outcome);
   for (const channel of channels) {
+    // Idempotency: a re-delivered end-of-call webhook must not re-send. The
+    // per-channel flags on the call record mark what's already gone out (F-14).
+    if (channel === "whatsapp" && call.whatsappSent) continue;
+    if (channel === "email" && call.emailSent) continue;
+
     const sender = resolveSender(channel);
     if (!sender) continue;
+
+    // Durable suppression — honour the tenant-wide DoNotContact (phone) and email
+    // suppression lists, exactly like the dispatcher does (F-14: previously the
+    // follow-up only checked lead.optedOut).
+    if (channel === "whatsapp") {
+      if (!lead.phone) continue;
+      const dnc = await prisma.doNotContact.findUnique({ where: { tenantId_phone: { tenantId: call.tenantId, phone: lead.phone } }, select: { id: true } });
+      if (dnc) continue;
+    }
+    if (channel === "email") {
+      if (!lead.email) continue;
+      const sup = await prisma.emailSuppression.findUnique({ where: { tenantId_email: { tenantId: call.tenantId, email: lead.email.trim().toLowerCase() } }, select: { id: true } });
+      if (sup) continue;
+    }
+
+    // WhatsApp: enforce the approved library template, same as dispatch — Meta
+    // forbids un-approved business-initiated sends (F-14).
+    let whatsappContentSid = campaign.whatsappContentSid;
+    let whatsappTemplateBody = campaign.whatsappTemplateBody;
+    let whatsappVariables = safeArray(campaign.whatsappVariables);
+    if (channel === "whatsapp" && campaign.whatsappTemplateId) {
+      const resolved = await resolveApprovedWhatsappTemplate(campaign.whatsappTemplateId);
+      if (!resolved) continue; // template no longer approved → skip this channel
+      whatsappContentSid = resolved.contentSid;
+      whatsappTemplateBody = resolved.body;
+      whatsappVariables = resolved.variables;
+    }
 
     const ctx: SendContext = {
       tenantId: call.tenantId,
       tenantName: tenant?.name ?? null,
       campaign: {
         name: campaign.name, calendlyLink: campaign.calendlyLink,
-        whatsappContentSid: campaign.whatsappContentSid, whatsappTemplateBody: campaign.whatsappTemplateBody,
-        whatsappVariables: safeArray(campaign.whatsappVariables),
+        whatsappContentSid, whatsappTemplateBody, whatsappVariables,
         emailSubjectTemplate: campaign.emailSubjectTemplate, emailBodyTemplate: campaign.emailBodyTemplate,
       },
       lead: {
@@ -80,7 +106,7 @@ export async function handlePostCallFollowUp(callRecordId: string, deps: FollowU
   }
 
   if (sent.length > 0) {
-    broadcastSSEEvent({ type: "campaign_followup_sent", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, channels: sent });
+    broadcastSSEEvent(call.tenantId, { type: "campaign_followup_sent", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, channels: sent });
   }
   return { sent };
 }

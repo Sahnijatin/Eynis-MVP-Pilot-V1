@@ -12,6 +12,7 @@ import {
   type VapiResult,
 } from "./vapi";
 import { asMinuteOfDay, parseSendDays } from "./schedule";
+import { safeArray, safeObject } from "./json-utils";
 
 // Parse an optional ISO datetime: null/empty → null; valid → Date; invalid → error sentinel.
 const INVALID_DATE = Symbol("invalid_date");
@@ -293,13 +294,6 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
 // ── Response serialisation ────────────────────────────────────────────────────
 // Parses the JSON-as-String fields back into structured values for API
 // responses. Secrets (vapiAssistantIds) are kept — they are not sensitive.
-
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
-const safeObject = (json: string): Record<string, unknown> => {
-  try { const v = JSON.parse(json); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch { return {}; }
-};
 
 export function serializeCampaign<
   T extends { outcomeTypes: string; followUpRules: string; channels?: string; whatsappVariables?: string; sendDays?: string },

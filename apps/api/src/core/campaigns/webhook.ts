@@ -85,7 +85,7 @@ export async function handleUtterance(callId: string, role: "customer" | "agent"
   await prisma.sentimentEvent.create({
     data: { tenantId: call.tenantId, callRecordId: call.id, speaker: role, text: text.slice(0, 500), sentiment, score },
   });
-  broadcastSSEEvent({ type: "campaign_sentiment_update", tenantId: call.tenantId, campaignId: call.campaignId, callRecordId: call.id, speaker: role, sentiment, score });
+  broadcastSSEEvent(call.tenantId, { type: "campaign_sentiment_update", tenantId: call.tenantId, campaignId: call.campaignId, callRecordId: call.id, speaker: role, sentiment, score });
 
   // Sentiment-driven safety: a customer opt-out mid-call suppresses the lead
   // tenant-wide and ends the call as opted_out.
@@ -138,7 +138,7 @@ export async function handleEndOfCall(ev: Extract<InternalEvent, { kind: "end-of
     }
   }
 
-  broadcastSSEEvent({ type: "campaign_call_ended", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, outcome, sentiment: finalSentiment });
+  broadcastSSEEvent(call.tenantId, { type: "campaign_call_ended", tenantId: call.tenantId, campaignId: call.campaignId, leadId: call.leadId, outcome, sentiment: finalSentiment });
 
   // Follow-ups (skipped automatically for opted-out leads).
   await handlePostCallFollowUp(call.id, deps);

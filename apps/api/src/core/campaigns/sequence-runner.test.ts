@@ -55,6 +55,21 @@ test("runner: advances through steps with delay, logs events, completes", async 
   assert.equal(e!.status, "completed");
 });
 
+test("runner: defers a step that falls outside the campaign send window (F-15)", async () => {
+  const { lead, enrollment } = await setup({ steps: [wa()] });
+  // Force the lead's campaign to start in the future → "now" is outside its window.
+  await prisma.voiceCampaign.update({ where: { id: lead.campaignId }, data: { scheduledStartAt: new Date(Date.now() + 3_600_000) } });
+
+  const r = await processDueEnrollments(deps);
+
+  assert.equal(r.sent, 0, "must not send outside the send window");
+  const e = await prisma.sequenceEnrollment.findUnique({ where: { id: enrollment.id } });
+  assert.equal(e!.status, "active", "deferred, not stopped");
+  assert.equal(e!.currentStepOrder, 0, "step must not advance");
+  assert.ok(e!.nextRunAt.getTime() > Date.now(), "nextRunAt should be pushed forward");
+  assert.equal(await prisma.sequenceEvent.count({ where: { enrollmentId: enrollment.id, status: "sent" } }), 0);
+});
+
 test("runner: exits early when the lead has replied", async () => {
   const { tenantId, lead, enrollment } = await setup({ steps: [wa()], exitOn: ["replied"] });
   // an inbound WhatsApp message after enrollment

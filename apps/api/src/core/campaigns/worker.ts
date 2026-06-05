@@ -21,6 +21,8 @@ import {
   resolveVapiCredentials, isVapiConfigured, initiateCall as realInitiateCall,
   type VapiCredentials, type VapiResult, type CallParams,
 } from "./vapi";
+import { singleFlight } from "../single-flight";
+import { safeArray, isServerError } from "./json-utils";
 
 const TICK_MS = Number(process.env.CAMPAIGN_DIALER_INTERVAL_MS ?? 30_000);
 const DEFAULT_MAX_CONCURRENT = 5;
@@ -31,12 +33,6 @@ export interface DialerDeps {
   initiateCall?: (creds: VapiCredentials, params: CallParams) => Promise<VapiResult<{ id: string }>>;
   now?: () => Date;
 }
-
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
-
-const isServerError = (msg: string): boolean => /error 5\d\d/i.test(msg);
 
 // Resets calls stuck in-flight beyond the threshold so a crashed/abandoned dial
 // never pins a slot forever; the lead returns to the queue.
@@ -84,7 +80,7 @@ export async function processVoiceCampaign(
     budget = campaign.spendCapCalls - (calls + deliveries);
     if (budget <= 0) {
       await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-      broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
       return { dialed, skipped, failed };
     }
   }
@@ -183,7 +179,7 @@ export async function processVoiceCampaign(
       await prisma.callRecord.update({ where: { id: call.id }, data: { status: "in_progress", vapiCallId: result.data.id, startedAt: ts } });
       dialed++;
       slots--;
-      broadcastSSEEvent({ type: "campaign_call_started", tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_call_started", tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant });
     } else {
       // No silent failures: fail the record, return the lead to the queue.
       await prisma.callRecord.update({ where: { id: call.id }, data: { status: "failed", error: result.error } });
@@ -192,7 +188,7 @@ export async function processVoiceCampaign(
       // Provider outage → auto-pause and stop this tick (manual resume).
       if (isServerError(result.error)) {
         await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-        broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
+        broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
         break;
       }
     }
@@ -201,7 +197,11 @@ export async function processVoiceCampaign(
   return { dialed, skipped, failed };
 }
 
-export async function runDialerTick(deps: DialerDeps = {}): Promise<void> {
+// Wrapped in singleFlight — a dial pass that overruns the interval must not overlap
+// the next one, or both passes would independently pass the spend-cap check and
+// overshoot the budget (F-4). The per-lead pending→calling lock already prevents
+// double-dialling; this keeps the cap safe by running one pass at a time.
+export const runDialerTick = singleFlight(async (deps: DialerDeps = {}): Promise<void> => {
   const active = await prisma.voiceCampaign.findMany({ where: { status: "active" }, select: { id: true, channels: true } });
   for (const campaign of active) {
     if (!safeArray(campaign.channels).includes("voice")) continue;
@@ -211,7 +211,7 @@ export async function runDialerTick(deps: DialerDeps = {}): Promise<void> {
       console.error(`[Dialer] campaign ${campaign.id} failed:`, (e as Error).message);
     }
   }
-}
+});
 
 let timer: ReturnType<typeof setInterval> | null = null;
 

@@ -15,6 +15,8 @@ import { campaignMaySendNow } from "./schedule-gate";
 import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
+import { singleFlight } from "../single-flight";
+import { safeArray, isServerError } from "./json-utils";
 
 // Resolve a campaign's optional targeting segment to a lead where-fragment.
 // Returns {} when no segment is set (or it was deleted) → contact all leads.
@@ -31,10 +33,6 @@ export interface DispatchDeps {
   resolveSender?: (channel: string) => ChannelSender | null;
   batchSize?: number;
 }
-
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
 
 // Processes one (campaign, channel) pair for up to `batchSize` leads. Returns
 // how many were sent/skipped/failed this tick. Reusable + unit-testable via the
@@ -65,7 +63,7 @@ export async function processCampaignChannel(
     const remaining = campaign.spendCapCalls - (deliveries + calls);
     if (remaining <= 0) {
       await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
-      broadcastSSEEvent({ type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "spend_cap_reached" });
       return { sent, failed, skipped };
     }
     batchSize = Math.min(batchSize, remaining);
@@ -166,9 +164,15 @@ export async function processCampaignChannel(
       continue;
     }
 
+    // Phone-based DoNotContact suppression applies to phone channels. Email
+    // suppression was already enforced above (suppressedEmails), so an email-only
+    // lead must not be force-suppressed here just for lacking a phone (F-5).
     const decision = evaluateContact(
-      { consent: lead.consent, consentSource: lead.consentSource, optedOut: lead.optedOut, phone: lead.phone },
-      { channel: channel as "whatsapp" | "email", suppressed: lead.phone ? suppressed.has(lead.phone) : true },
+      { consent: lead.consent, consentSource: lead.consentSource, optedOut: lead.optedOut, phone: lead.phone, email: lead.email },
+      {
+        channel: channel as "whatsapp" | "email",
+        suppressed: channel === "email" ? false : (lead.phone ? suppressed.has(lead.phone) : true),
+      },
     );
     if (!decision.ok) {
       await prisma.messageDelivery.create({
@@ -191,17 +195,28 @@ export async function processCampaignChannel(
     });
     if (result.ok) {
       sent++;
-      broadcastSSEEvent({ type: "campaign_message_sent", tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel });
+      broadcastSSEEvent(campaign.tenantId, { type: "campaign_message_sent", tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel });
     } else {
       failed++;
+      // Provider outage (5xx) → auto-pause the campaign and stop this tick instead
+      // of hammering the provider on every remaining lead and every subsequent tick
+      // (F-30, mirroring the voice dialler's behaviour in worker.ts).
+      if (isServerError(result.error)) {
+        await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
+        broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
+        break;
+      }
     }
   }
 
   return { sent, failed, skipped };
 }
 
-// One pass over all active campaigns' messaging channels.
-export async function runDispatchTick(deps: DispatchDeps = {}): Promise<void> {
+// One pass over all active campaigns' messaging channels. Wrapped in singleFlight
+// so a tick that overruns the interval can't overlap the next one — overlapping
+// passes would re-select the same fresh leads (F-3 double-send) and each spend the
+// full remaining budget (F-4 cap overshoot).
+export const runDispatchTick = singleFlight(async (deps: DispatchDeps = {}): Promise<void> => {
   const active = await prisma.voiceCampaign.findMany({ where: { status: "active" }, select: { id: true, channels: true } });
   for (const campaign of active) {
     const channels = safeArray(campaign.channels).filter((c) => MESSAGING_CHANNELS.includes(c));
@@ -213,7 +228,7 @@ export async function runDispatchTick(deps: DispatchDeps = {}): Promise<void> {
       }
     }
   }
-}
+});
 
 let timer: ReturnType<typeof setInterval> | null = null;
 

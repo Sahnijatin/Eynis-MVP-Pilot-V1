@@ -4,7 +4,7 @@ import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
 import type { UserRole, SystemRoleKey } from "@eynis/shared";
 import { isValidConsentSource } from "@eynis/shared";
-import { createAuthToken, parseBearerToken, verifyAuthToken } from "./core/auth";
+import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
 import {
@@ -17,14 +17,19 @@ import {
   generateMorningBriefing,
   generateRevenueInsights,
   generateNightAuditReport,
+  AiResponseError,
   type NightAuditData
 } from "./core/ai/intelligence";
 import { startAutomationWorker } from "./core/automations/engine";
+import { computeSentimentAnalytics } from "./core/analytics/sentiment";
+import { computeUpsellAnalytics } from "./core/analytics/upsell";
+import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
+import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
-import { checkWebhookSignature } from "./core/connectors/webhook-verify";
+import { checkWebhookSignature, verifySharedWebhookSecret } from "./core/connectors/webhook-verify";
 import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel } from "./core/rbac";
@@ -43,10 +48,34 @@ const json = (res: ServerResponse, status: number, payload: unknown) => {
   res.end(JSON.stringify(payload));
 };
 
+// Turns an AI provider/parse failure into a clean 502 instead of letting it bubble
+// to the generic 500 with the cause swallowed (F-12). AiResponseError carries a safe,
+// specific message (bad shape); any other error is reported generically.
+const aiError = (res: ServerResponse, label: string, e: unknown) => {
+  const message = e instanceof Error ? e.message : String(e);
+  console.error(`[AI] ${label} failed:`, message);
+  json(res, 502, { ok: false, error: e instanceof AiResponseError ? `AI response error: ${message}` : "AI provider request failed" });
+};
+
+// Cap request bodies so an unauthenticated endpoint (public intake, webhooks,
+// registration) can't be used to exhaust memory with a huge payload (F-34).
+const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 1_048_576); // 1 MiB default
+
+class PayloadTooLargeError extends Error {
+  constructor() { super("Request body too large"); this.name = "PayloadTooLargeError"; }
+}
+
 const parseRawBody = async (req: IncomingMessage): Promise<string> => {
   const chunks: Uint8Array[] = [];
+  let total = 0;
   for await (const chunk of req) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    total += buf.length;
+    if (total > MAX_BODY_BYTES) {
+      req.destroy();
+      throw new PayloadTooLargeError();
+    }
+    chunks.push(buf);
   }
   return Buffer.concat(chunks).toString("utf8").trim();
 };
@@ -241,6 +270,34 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
   };
 };
 
+// The authenticated request context (the ok-branch of getAuthenticatedContext).
+type AuthOk = Extract<Awaited<ReturnType<typeof getAuthenticatedContext>>, { ok: true }>;
+export type RouteContext = AuthOk["context"];
+
+// Shared route guard (F-32). Collapses the auth → permission preamble that ~60
+// route handlers repeated inline (with two drifting formatting styles and an
+// inconsistent 401/403 ordering) into one call. It writes the 401/403 response
+// itself and returns { ok: false } so the caller just does `if (!auth.ok) return;`.
+// The success result keeps the same `.context` shape, so existing downstream
+// `auth.context.*` references are unchanged. Pass `permission: null` for routes
+// that only require authentication.
+async function authorize(
+  req: IncomingMessage,
+  res: ServerResponse,
+  permission: string | null,
+): Promise<{ ok: true; context: RouteContext } | { ok: false }> {
+  const auth = await getAuthenticatedContext(req);
+  if (!auth.ok) {
+    json(res, auth.status, { ok: false, error: auth.error });
+    return { ok: false };
+  }
+  if (permission && !canAccess(auth.context.permissions, permission)) {
+    json(res, 403, { ok: false, error: "Insufficient permissions" });
+    return { ok: false };
+  }
+  return { ok: true, context: auth.context };
+}
+
 
 const parseServiceRequestStatusPath = (url: string | undefined): string | null => {
   if (!url) {
@@ -396,6 +453,10 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /analytics/staff-performance":     "view_reports",
   "GET /analytics/sentiment":             "view_reports",
   "GET /analytics/upsell-campaigns":      "manage_campaigns",
+  "GET /inventory/items":                 "view_reports",
+  "POST /inventory/items":                "manage_inventory",
+  "PUT /inventory/items/:id":             "manage_inventory",
+  "DELETE /inventory/items/:id":          "manage_inventory",
   "GET /automations":                     "manage_automations",
   "GET /automations/executions":          "manage_automations",
   "GET /connectors/registry":             "manage_connectors",
@@ -565,6 +626,14 @@ const handleRequest = async (
     // would let anyone consume a pending invitation just by knowing the address, and a
     // GET must never have side effects.
     if (req.url?.startsWith("/auth/identify") && req.method === "GET") {
+      // Throttle per client IP — this is an unauthenticated email→tenant lookup,
+      // so without a limit it's an email-enumeration oracle (F-24).
+      const fwd = req.headers["x-forwarded-for"];
+      const ip = (typeof fwd === "string" ? fwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(`identify:${ip}`, 20, 60_000)) {
+        json(res, 429, { ok: false, error: "Too many requests" });
+        return;
+      }
       const email = parseUrl(req.url).searchParams.get("email")?.toLowerCase().trim();
       if (!email) {
         json(res, 400, { ok: false, error: "email is required" });
@@ -733,17 +802,34 @@ const handleRequest = async (
     // ── Vapi end-of-call webhook (public; verified by x-vapi-secret) ─────────
     if (req.url === "/webhooks/vapi" && req.method === "POST") {
       const rawBody = await parseRawBody(req);
-      const { verifyWebhook } = await import("./core/campaigns/vapi");
+      let payload: unknown = {};
+      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
+
+      const { verifyWebhook, resolveVapiCredentials } = await import("./core/campaigns/vapi");
+      const { normalizeVapiMessage, processVapiWebhook } = await import("./core/campaigns/webhook");
+
+      // Resolve the expected secret per-tenant: assistants are provisioned with the
+      // tenant's webhookSecret (ConnectorConfig, falling back to env), so verifying
+      // only against the global env var rejects tenants with their own secret (F-16).
+      // Mapping the call→tenant uses the unverified callId purely to pick which
+      // secret to check against — the caller must still present that secret.
+      let expectedSecret = asTrimmedString(process.env.VAPI_WEBHOOK_SECRET);
+      const evt = normalizeVapiMessage(payload);
+      if (evt.kind !== "ignore") {
+        const call = await prisma.callRecord.findUnique({ where: { vapiCallId: evt.callId }, select: { tenantId: true } });
+        if (call) {
+          const creds = await resolveVapiCredentials(call.tenantId);
+          if (creds.webhookSecret) expectedSecret = creds.webhookSecret;
+        }
+      }
+
       const verdict = verifyWebhook({
         provided: (req.headers["x-vapi-secret"] as string) ?? null,
-        expected: asTrimmedString(process.env.VAPI_WEBHOOK_SECRET),
+        expected: expectedSecret,
         enforce: String(process.env.VERIFY_WEBHOOKS ?? "").toLowerCase() === "true",
       });
       if (!verdict.ok) { json(res, 401, { ok: false, error: verdict.reason ?? "Invalid webhook secret" }); return; }
 
-      let payload: unknown = {};
-      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
-      const { processVapiWebhook } = await import("./core/campaigns/webhook");
       const result = await processVapiWebhook(payload);
       json(res, 200, { ok: true, ...result });
       return;
@@ -751,8 +837,8 @@ const handleRequest = async (
 
     // ── GET /sse/live-feed — real-time event stream ───────────────────────────
     if (req.url?.startsWith("/sse/live-feed") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
 
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -762,7 +848,7 @@ const handleRequest = async (
         "X-Accel-Buffering": "no"
       });
 
-      const clientId = registerSSEClient(res);
+      const clientId = registerSSEClient(res, auth.context.tenantId);
       res.write(`data: ${JSON.stringify({ type: "connected", clientId })}\n\n`);
 
       const heartbeat = setInterval(() => {
@@ -774,11 +860,8 @@ const handleRequest = async (
     }
 
     if (req.url === "/context" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
 
       const hasAccess = await ensureTenantAccess(auth.context.tenantId);
       if (!hasAccess) {
@@ -796,8 +879,8 @@ const handleRequest = async (
 
     // ── Tenant branding (white-label) ───────────────────────────────────────────
     if (req.url === "/tenant/branding" && (req.method === "GET" || req.method === "PUT")) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const { tenantId, permissions } = auth.context;
       if (!(await ensureTenantAccess(tenantId))) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
@@ -830,8 +913,8 @@ const handleRequest = async (
 
     // ── Tenant white-label routing identity (slug + custom domain) ──────────────
     if (req.url === "/tenant/domains" && (req.method === "GET" || req.method === "PUT")) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const { tenantId, permissions } = auth.context;
       if (!(await ensureTenantAccess(tenantId))) {
         json(res, 403, { ok: false, error: "Tenant not found or access denied" });
@@ -883,16 +966,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/events/service-request-created" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "POST /events/service-request-created");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "POST /events/service-request-created")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
@@ -984,10 +1060,21 @@ const handleRequest = async (
     if (req.url === "/webhooks/resend" && req.method === "POST") {
       const rawBody = await parseRawBody(req);
       const secret = asTrimmedString(process.env.RESEND_WEBHOOK_SECRET);
-      if (secret) {
+      if (!secret) {
+        // Fail closed in production: without the secret, forged bounce/complaint
+        // events could suppress arbitrary recipients (F-10). Accept-all only in dev.
+        if (process.env.NODE_ENV === "production") { json(res, 503, { ok: false, error: "Webhook secret not configured" }); return; }
+      } else {
         const hdr = (k: string) => (typeof req.headers[k] === "string" ? (req.headers[k] as string) : null);
+        const tsHeader = hdr("svix-timestamp");
+        // Replay protection: reject stale or missing timestamps (Svix sends unix
+        // seconds) so a captured signed payload can't be replayed forever (F-10).
+        const tsSec = tsHeader ? Number(tsHeader) : NaN;
+        if (!Number.isFinite(tsSec) || Math.abs(Date.now() / 1000 - tsSec) > 300) {
+          json(res, 401, { ok: false, error: "Stale or missing webhook timestamp" }); return;
+        }
         const valid = verifyResendSignature(secret, {
-          id: hdr("svix-id"), timestamp: hdr("svix-timestamp"), signature: hdr("svix-signature"),
+          id: hdr("svix-id"), timestamp: tsHeader, signature: hdr("svix-signature"),
         }, rawBody ?? "");
         if (!valid) { json(res, 401, { ok: false, error: "Invalid webhook signature" }); return; }
       }
@@ -999,19 +1086,24 @@ const handleRequest = async (
     }
 
     if (req.url === "/integrations/whatsapp/webhook" && req.method === "POST") {
-      const expected = asTrimmedString(process.env.WHATSAPP_WEBHOOK_SECRET);
       const provided = req.headers["x-webhook-secret"];
-      const providedSecret =
-        typeof provided === "string" ? provided : Array.isArray(provided) ? provided[0] : null;
-      if (expected && providedSecret !== expected) {
-        json(res, 401, { ok: false, error: "Invalid webhook secret" });
-        return;
-      }
+      const secretCheck = verifySharedWebhookSecret({
+        expected: process.env.WHATSAPP_WEBHOOK_SECRET,
+        provided: typeof provided === "string" ? provided : Array.isArray(provided) ? provided[0] : null,
+        isProduction: process.env.NODE_ENV === "production"
+      });
+      if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
 
       const rawBody = await parseRawBody(req);
       const enforce = process.env.VERIFY_WEBHOOKS === "true";
 
       const twilioSig = typeof req.headers["x-twilio-signature"] === "string" ? req.headers["x-twilio-signature"] : null;
+      const interaktSigPresent = typeof req.headers["x-hub-signature-256"] === "string" || typeof req.headers["x-interakt-signature"] === "string";
+      // Close the omission bypass: when enforcing, a request with no provider
+      // signature at all must be rejected rather than silently accepted (F-9).
+      if (enforce && twilioSig === null && !interaktSigPresent) {
+        json(res, 401, { ok: false, error: "Missing webhook signature" }); return;
+      }
       if (twilioSig !== null) {
         const fullUrl = `http://${req.headers.host ?? "localhost"}${req.url}`;
         const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: {}, enforce });
@@ -1080,11 +1172,8 @@ const handleRequest = async (
 
     // ── Connector: unified ingest endpoint ──────────────────────────────────
     if (req.url?.startsWith("/connectors/events/ingest") && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /connectors/events/ingest")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /connectors/events/ingest");
+      if (!auth.ok) return;
 
       const body = (await parseBody(req)) as {
         connectorKey?: unknown; eventType?: unknown; guestPhone?: unknown;
@@ -1115,11 +1204,8 @@ const handleRequest = async (
 
     // ── Connector: event log ────────────────────────────────────────────────
     if (req.url?.startsWith("/connectors/events") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /connectors/events")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /connectors/events");
+      if (!auth.ok) return;
 
       const qs = parseUrl(req.url).searchParams;
       const limit = Math.min(Number(qs.get("limit") ?? 20), 100);
@@ -1142,17 +1228,14 @@ const handleRequest = async (
         prisma.connectorEvent.count({ where: { tenantId: auth.context.tenantId, ...(connectorKey ? { connectorKey } : {}) } })
       ]);
 
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
     // ── Connector: outbound WhatsApp send ───────────────────────────────────
     if (req.url?.startsWith("/connectors/whatsapp/send") && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /connectors/whatsapp/send")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /connectors/whatsapp/send");
+      if (!auth.ok) return;
 
       const body = (await parseBody(req)) as { toPhone?: unknown; message?: unknown };
       const toPhone = asTrimmedString(body.toPhone);
@@ -1168,11 +1251,8 @@ const handleRequest = async (
     }
 
     if (req.url === "/service-requests" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const context = auth.context;
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
@@ -1246,7 +1326,10 @@ const handleRequest = async (
           status: "open",
           source: sourceInput,
           summary: summaryInput,
-          assignedToUserId: context.role === "front_desk" ? context.userId : null,
+          // Front-line operators self-assign requests they log. Key off the
+          // canonical roleKey ("manager" ≡ legacy "front_desk"), falling back to
+          // the deprecated legacy role only for older tokens (F-35).
+          assignedToUserId: (context.roleKey === "manager" || context.role === "front_desk") ? context.userId : null,
           priority: priorityInput,
           slaDueAt
         },
@@ -1284,12 +1367,12 @@ const handleRequest = async (
       return;
     }
 
-    if (req.url?.startsWith("/service-requests") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+    // Match only the collection (with or without query string), NOT sub-resources
+    // like /service-requests/:id/transitions — otherwise this broad list handler
+    // shadows the specific routes declared below it (F-7).
+    if ((req.url === "/service-requests" || req.url?.startsWith("/service-requests?")) && req.method === "GET") {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const context = auth.context;
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
@@ -1366,16 +1449,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/service-requests/sla/refresh" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "POST /service-requests/sla/refresh");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "POST /service-requests/sla/refresh")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const now = new Date();
       const result = await prisma.serviceRequest.updateMany({
@@ -1396,16 +1472,9 @@ const handleRequest = async (
 
     const requestId = parseServiceRequestStatusPath(req.url);
     if (requestId && req.method === "PATCH") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "PATCH /service-requests/:id/status");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "PATCH /service-requests/:id/status")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const body = (await parseBody(req)) as { status?: unknown };
       const nextStatus = asTrimmedString(body.status);
@@ -1478,22 +1547,15 @@ const handleRequest = async (
         }
       });
 
-      broadcastSSEEvent({ type: "sr_updated", data: { id: updated.id, status: nextStatus } });
+      broadcastSSEEvent(context.tenantId, { type: "sr_updated", data: { id: updated.id, status: nextStatus } });
       json(res, 200, { ok: true, item: updated });
       return;
     }
 
     if (req.url === "/dashboard/overview" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /dashboard/overview");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/overview")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const [openCount, resolvedTodayCount, escalatedOpenCount, slaBreachedOpenCount] =
         await Promise.all([
           prisma.serviceRequest.count({
@@ -1531,16 +1593,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/dashboard/queue-summary" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /dashboard/queue-summary");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/queue-summary")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const rows = await prisma.serviceRequest.findMany({
         where: { tenantId: context.tenantId, status: { not: "resolved" } },
@@ -1567,16 +1622,9 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/dashboard/trends") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /dashboard/overview");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/overview")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const parsedUrl = parseUrl(req.url);
       const days = asSafeLimit(parsedUrl.searchParams.get("days"), 7, 30);
@@ -1624,16 +1672,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/analytics/revenue-intelligence" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /analytics/revenue-intelligence");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/revenue-intelligence")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const licRevenue = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licRevenue.ok) { json(res, 403, { ok: false, error: licRevenue.error }); return; }
 
@@ -1707,27 +1748,28 @@ const handleRequest = async (
     }
 
     if (req.url === "/analytics/staff-performance" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /analytics/staff-performance");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/staff-performance")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const licStaff = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licStaff.ok) { json(res, 403, { ok: false, error: licStaff.error }); return; }
 
-      const users = await prisma.user.findMany({
-        where: { tenantId: context.tenantId, isActive: true },
-        select: { id: true, fullName: true, role: true }
-      });
-      const requests = await prisma.serviceRequest.findMany({
-        where: { tenantId: context.tenantId },
-        select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
-      });
+      const [users, requests, staffSentiment] = await Promise.all([
+        prisma.user.findMany({
+          where: { tenantId: context.tenantId, isActive: true },
+          select: { id: true, fullName: true, role: true }
+        }),
+        prisma.serviceRequest.findMany({
+          where: { tenantId: context.tenantId },
+          select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
+        }),
+        computeSentimentAnalytics(context.tenantId)
+      ]);
+      // Real guest rating derived from sentiment feedback (0..100 net score → 0..5),
+      // or null when there's no feedback — never a hardcoded 0 (F-17).
+      const avgGuestRating = staffSentiment.totalFeedback > 0
+        ? Math.round((staffSentiment.netScore / 20) * 10) / 10
+        : null;
 
       const byUser = new Map<string, { completed: number; minutesTotal: number; open: number }>();
       for (const u of users) byUser.set(u.id, { completed: 0, minutesTotal: 0, open: 0 });
@@ -1807,7 +1849,7 @@ const handleRequest = async (
         summary: {
           avgResolutionMinutes,
           completionRate,
-          avgGuestRating: 0,
+          avgGuestRating,
           utilizationRate
         },
         leaderboard,
@@ -1818,16 +1860,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/connectors/registry" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /connectors/registry");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /connectors/registry")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const configs = await prisma.connectorConfig.findMany({
         where: { tenantId: context.tenantId },
@@ -1852,16 +1887,9 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/connectors/configs") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /connectors/configs");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /connectors/configs")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const items = await prisma.connectorConfig.findMany({
         where: { tenantId: context.tenantId },
@@ -1891,16 +1919,9 @@ const handleRequest = async (
 
     const connectorConfigKey = parseConnectorConfigPath(req.url);
     if (connectorConfigKey && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "PUT /connectors/configs/:key");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "PUT /connectors/configs/:key")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       if (!envFlagByConnectorKey.has(connectorConfigKey)) {
         json(res, 404, { ok: false, error: "Unknown connector key" });
         return;
@@ -1957,16 +1978,9 @@ const handleRequest = async (
     }
 
     if (connectorConfigKey && req.method === "DELETE") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "DELETE /connectors/configs/:key");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "DELETE /connectors/configs/:key")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       await prisma.connectorConfig.deleteMany({
         where: { tenantId: context.tenantId, connectorKey: connectorConfigKey }
@@ -1986,16 +2000,9 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/users") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /users");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /users")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const parsedUrl = parseUrl(req.url);
       const roleFilter = asTrimmedString(parsedUrl.searchParams.get("role"));
@@ -2037,16 +2044,9 @@ const handleRequest = async (
 
     const assignRequestId = parseServiceRequestAssignPath(req.url);
     if (assignRequestId && req.method === "PATCH") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "PATCH /service-requests/:id/assign");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "PATCH /service-requests/:id/assign")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const body = (await parseBody(req)) as { assigneeEmail?: unknown };
       const assigneeEmail = asTrimmedString(body.assigneeEmail)?.toLowerCase();
@@ -2099,12 +2099,15 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/service-requests/") && req.url.endsWith("/transitions") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const context = auth.context;
+      // Viewing a request's transition history requires the same permission as
+      // viewing requests (F-7: this check was missing while the route was dead).
+      if (!canAccess(context.permissions, "GET /service-requests")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
         return;
       }
-      const context = auth.context;
       const transitionRequestId = /^\/service-requests\/([^/]+)\/transitions$/.exec(req.url)?.[1];
       if (!transitionRequestId) {
         json(res, 400, { ok: false, error: "Invalid path" });
@@ -2152,16 +2155,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/audit" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /audit");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /audit")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
@@ -2201,12 +2197,9 @@ const handleRequest = async (
 
     // ── GET /dashboard/live-feed ─────────────────────────────────────────────
     if (req.url?.startsWith("/dashboard/live-feed") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /dashboard/live-feed");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/live-feed")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const items = await prisma.serviceRequest.findMany({
         where: { tenantId: context.tenantId, status: { not: "resolved" } },
         orderBy: { createdAt: "desc" },
@@ -2230,11 +2223,8 @@ const handleRequest = async (
     // ── GET /guests/:id ──────────────────────────────────────────────────────
     const guestIdMatch = /^\/guests\/([^/?]+)/.exec(req.url ?? "");
     if (guestIdMatch && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /guests/:id")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /guests/:id");
+      if (!auth.ok) return;
       const guestId = guestIdMatch[1]!;
       const { tenantId } = auth.context;
       const guest = await prisma.contact.findFirst({
@@ -2278,12 +2268,9 @@ const handleRequest = async (
 
     // ── GET /guests ──────────────────────────────────────────────────────────
     if (req.url?.startsWith("/guests") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /guests");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /guests")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const parsedUrl = parseUrl(req.url);
       const limit = asSafeLimit(parsedUrl.searchParams.get("limit"), 20, 100);
       const offset = asSafeOffset(parsedUrl.searchParams.get("offset"));
@@ -2291,8 +2278,8 @@ const handleRequest = async (
       const where = {
         tenantId: context.tenantId,
         ...(search ? { OR: [
-          { fullName: { contains: search } },
-          { phoneE164: { contains: search } }
+          { fullName: { contains: search, mode: "insensitive" as const } },
+          { phoneE164: { contains: search, mode: "insensitive" as const } }
         ] } : {})
       };
       const [guests, total] = await Promise.all([
@@ -2337,11 +2324,8 @@ const handleRequest = async (
 
     // ── GET /automations/executions ──────────────────────────────────────────
     if (req.url?.startsWith("/automations/executions") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /automations/executions")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /automations/executions");
+      if (!auth.ok) return;
       const licExec = await enforceLicenseFeature(auth.context.tenantId, "automations");
       if (!licExec.ok) { json(res, 403, { ok: false, error: licExec.error }); return; }
       const u = parseUrl(req.url);
@@ -2364,19 +2348,16 @@ const handleRequest = async (
           actionType: e.actionType, actionResult: e.actionResult,
           resultDetail: e.resultDetail, executedAt: e.executedAt
         })),
-        page: { limit, offset, total, hasMore: offset + limit < total }
+        page: { limit, offset, total, hasMore: offset + execs.length < total }
       });
       return;
     }
 
     // ── GET /automations ─────────────────────────────────────────────────────
     if (req.url?.startsWith("/automations") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /automations");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /automations")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
       if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
       const rules = await prisma.automationRule.findMany({
@@ -2436,120 +2417,97 @@ const handleRequest = async (
 
     // ── GET /analytics/sentiment ─────────────────────────────────────────────
     if (req.url?.startsWith("/analytics/sentiment") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /analytics/sentiment");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/sentiment")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const licSentiment = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licSentiment.ok) { json(res, 403, { ok: false, error: licSentiment.error }); return; }
-      // Compute sentiment from resolved service requests (used as proxy for feedback)
-      const resolved = await prisma.serviceRequest.findMany({
-        where: { tenantId: context.tenantId, status: "resolved" },
-        select: { createdAt: true, resolvedAt: true, category: true }
-      });
-      const netScore = Math.min(99, 72 + resolved.length * 2);
-      const positive = Math.round(resolved.length * 0.68);
-      const neutral = Math.round(resolved.length * 0.17);
-      const negative = resolved.length - positive - neutral;
-      const bySource = [
-        { source: "Post-Stay Survey", count: Math.round(resolved.length * 1.5) + 20 },
-        { source: "Google Reviews", count: Math.round(resolved.length * 1.2) + 15 },
-        { source: "TripAdvisor", count: Math.round(resolved.length * 0.9) + 10 },
-        { source: "Booking.com", count: Math.round(resolved.length * 0.7) + 5 }
-      ];
-      const drivers = [
-        { term: "Welcoming", weight: 0.9, sentiment: "positive" },
-        { term: "Pristine", weight: 0.7, sentiment: "positive" },
-        { term: "Prompt Service", weight: 0.8, sentiment: "positive" },
-        { term: "Noisy AC", weight: 0.4, sentiment: "negative" },
-        { term: "Wait times", weight: 0.3, sentiment: "negative" },
-        { term: "Room view", weight: 0.6, sentiment: "positive" }
-      ];
-      const timeSeries = Array.from({ length: 30 }, (_, i) => ({
-        day: i + 1,
-        score: Math.round(60 + Math.random() * 30 + i * 0.5)
-      }));
-      json(res, 200, {
-        ok: true,
-        netScore: Math.min(netScore, 99),
-        totalFeedback: positive + neutral + Math.max(0, negative),
-        surveyCompletionRate: 0.68,
-        breakdown: { positive, neutral, negative: Math.max(0, negative) },
-        bySource,
-        drivers,
-        timeSeries,
-        alert: { type: "warning", message: "Negative trend in F&B reviews" }
-      });
+      json(res, 200, await computeSentimentAnalytics(context.tenantId));
       return;
     }
 
     // ── GET /analytics/upsell-campaigns ─────────────────────────────────────
     if (req.url?.startsWith("/analytics/upsell-campaigns") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /analytics/upsell-campaigns");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /analytics/upsell-campaigns")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const licUpsell = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
-      const rules = await prisma.automationRule.findMany({
-        where: { tenantId: context.tenantId },
-        orderBy: { createdAt: "asc" }
-      });
-      const campaignTriggers: Record<string, string> = {
-        pre_arrival_welcome: "Pre-arrival email (T-48h)",
-        checkin_breakfast_bundle: "Check-in Kiosk",
-        spa_happy_hour: "Post-lunch SMS",
-        late_checkout_upsell: "Departure Eve Push",
-        post_stay_review: "Post Check-Out"
-      };
-      const items = rules.map((r) => {
-        let config: Record<string, unknown> = {};
-        try { config = JSON.parse(r.configJson) as Record<string, unknown>; } catch { /**/ }
-        const exec = (config.executions as number) ?? 0;
-        const conv = (config.conversions as number) ?? 0;
-        return {
-          id: r.id,
-          name: r.name,
-          status: r.isActive ? "Active" : "Paused",
-          trigger: campaignTriggers[r.code] ?? r.code,
-          recipients: exec,
-          conversions: conv,
-          conversionRate: exec > 0 ? Math.round((conv / exec) * 1000) / 10 : 0,
-          revenueInr: (config.revenueInr as number) ?? 0,
-          createdAt: r.createdAt
-        };
-      });
-      const weeklyData = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((day, i) => ({
-        day,
-        executions: 200 + i * 40,
-        conversions: 60 + i * 15
-      }));
-      json(res, 200, { ok: true, items, total: items.length, weeklyData });
+      json(res, 200, await computeUpsellAnalytics(context.tenantId));
+      return;
+    }
+
+    // ── Inventory (vertical with real persistence) ───────────────────────────
+    if (req.url === "/inventory/items" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /inventory/items");
+      if (!auth.ok) return;
+      const items = await listInventory(auth.context.tenantId);
+      json(res, 200, { ok: true, items });
+      return;
+    }
+
+    if (req.url === "/inventory/items" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /inventory/items");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const name = asTrimmedString(body.name);
+      if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+      const txType = (["received", "used", "waste"].includes(String(body.txType)) ? body.txType : "received") as MovementType;
+      const qty = Number(body.qty);
+      if (!Number.isFinite(qty) || qty < 0) { json(res, 400, { ok: false, error: "qty must be a non-negative number" }); return; }
+      try {
+        const item = await applyMovement(auth.context.tenantId, {
+          name, txType, qty,
+          category: asTrimmedString(body.category) ?? undefined,
+          unit: asTrimmedString(body.unit) ?? undefined,
+          reorderLevel: body.reorderLevel != null ? Number(body.reorderLevel) : undefined,
+          unitCostInr: body.unitCostInr != null ? Math.round(Number(body.unitCostInr)) : undefined,
+        });
+        json(res, 200, { ok: true, item });
+      } catch (e) {
+        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid request" });
+      }
+      return;
+    }
+
+    const invItemMatch = /^\/inventory\/items\/([^/]+)$/.exec(req.url ?? "");
+    if (invItemMatch && req.method === "PUT") {
+      const auth = await authorize(req, res, "PUT /inventory/items/:id");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostInr: number }> = {};
+      const nm = asTrimmedString(body.name); if (nm) fields.name = nm;
+      const cat = asTrimmedString(body.category); if (cat) fields.category = cat;
+      const un = asTrimmedString(body.unit); if (un) fields.unit = un;
+      if (body.stock != null && Number.isFinite(Number(body.stock))) fields.stock = Math.max(0, Number(body.stock));
+      if (body.reorderLevel != null && Number.isFinite(Number(body.reorderLevel))) fields.reorderLevel = Math.max(0, Number(body.reorderLevel));
+      if (body.unitCostInr != null && Number.isFinite(Number(body.unitCostInr))) fields.unitCostInr = Math.round(Number(body.unitCostInr));
+      const item = await updateItem(auth.context.tenantId, invItemMatch[1], fields);
+      if (!item) { json(res, 404, { ok: false, error: "Item not found" }); return; }
+      json(res, 200, { ok: true, item });
+      return;
+    }
+    if (invItemMatch && req.method === "DELETE") {
+      const auth = await authorize(req, res, "DELETE /inventory/items/:id");
+      if (!auth.ok) return;
+      const removed = await deleteItem(auth.context.tenantId, invItemMatch[1]);
+      if (!removed) { json(res, 404, { ok: false, error: "Item not found" }); return; }
+      json(res, 200, { ok: true });
       return;
     }
 
     // ── AI: Provider Status ─────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/providers") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/providers")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/providers");
+      if (!auth.ok) return;
       json(res, 200, { ok: true, claude: CLAUDE_AVAILABLE, openai: OPENAI_AVAILABLE });
       return;
     }
 
     // ── AI: Morning Briefing ────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/morning-briefing") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/morning-briefing")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/morning-briefing");
+      if (!auth.ok) return;
       const licBriefing = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licBriefing.ok) { json(res, 403, { ok: false, error: licBriefing.error }); return; }
       const provider = parseAIProvider(req.url);
@@ -2558,11 +2516,14 @@ const handleRequest = async (
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const { tenantId } = auth.context;
+      const todayStartBrief = new Date(); todayStartBrief.setHours(0, 0, 0, 0);
+      const todayEndBrief = new Date(); todayEndBrief.setHours(23, 59, 59, 999);
       const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-      const [openReqs, escalatedReqs, guestCount] = await Promise.all([
+      const [openReqs, escalatedReqs, arrivalsToday, sentiment] = await Promise.all([
         prisma.serviceRequest.count({ where: { tenantId, status: "open" } }),
         prisma.serviceRequest.count({ where: { tenantId, status: "escalated" } }),
-        prisma.contact.count({ where: { tenantId } })
+        prisma.stay.count({ where: { tenantId, checkInAt: { gte: todayStartBrief, lte: todayEndBrief } } }),
+        computeSentimentAnalytics(tenantId)
       ]);
       const topCategories = await prisma.serviceRequest.groupBy({
         by: ["category"],
@@ -2571,35 +2532,35 @@ const handleRequest = async (
         orderBy: { _count: { category: "desc" } },
         take: 3
       });
-      const offerAggregate = await prisma.offerEvent.aggregate({
-        where: { tenantId },
-        _avg: { revenueInr: true }
-      });
-      const avgSentimentScore = Math.min(100, Math.max(40, Math.round((offerAggregate._avg.revenueInr ?? 0) / 100 + 68)));
+      // Real sentiment from voice + inbound feedback; null when there is none, so
+      // the prompt says "no feedback yet" rather than inventing a score (F-17).
+      const avgSentimentScore = sentiment.totalFeedback > 0 ? sentiment.netScore : null;
 
-      const briefing = await generateMorningBriefing({
-        hotelName: hotel?.name ?? tenantId,
-        date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
-        openRequests: openReqs,
-        escalatedRequests: escalatedReqs,
-        occupancyPct: 72,
-        todayRevenue: 284000,
-        arrivingGuests: guestCount,
-        avgSentimentScore,
-        topPendingCategories: topCategories.map((c) => c.category)
-      }, provider);
-
-      json(res, 200, { ok: true, provider, briefing });
+      try {
+        const briefing = await generateMorningBriefing({
+          hotelName: hotel?.name ?? tenantId,
+          date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+          openRequests: openReqs,
+          escalatedRequests: escalatedReqs,
+          // Occupancy + room revenue require a PMS source we don't have yet — pass
+          // null (rendered "not available") instead of fabricated constants (F-17).
+          occupancyPct: null,
+          todayRevenue: null,
+          arrivingGuests: arrivalsToday,
+          avgSentimentScore,
+          topPendingCategories: topCategories.map((c) => c.category)
+        }, provider);
+        json(res, 200, { ok: true, provider, briefing });
+      } catch (e) {
+        aiError(res, "morning-briefing", e);
+      }
       return;
     }
 
     // ── AI: Classify Inbound Event ──────────────────────────────────────────
     if (req.url?.startsWith("/ai/classify-event") && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /ai/classify-event")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /ai/classify-event");
+      if (!auth.ok) return;
       const body = (await parseBody(req)) as { text?: unknown; provider?: unknown };
       const text = asTrimmedString(body.text);
       if (!text) { json(res, 400, { ok: false, error: "text is required" }); return; }
@@ -2608,18 +2569,19 @@ const handleRequest = async (
       if (provider === "claude" && !CLAUDE_AVAILABLE) { json(res, 503, { ok: false, error: "Claude not configured — set ANTHROPIC_API_KEY" }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
-      const classification = await classifyInboundEvent(auth.context.tenantId, text, provider);
-      json(res, 200, { ok: true, provider, classification });
+      try {
+        const classification = await classifyInboundEvent(auth.context.tenantId, text, provider);
+        json(res, 200, { ok: true, provider, classification });
+      } catch (e) {
+        aiError(res, "classify-event", e);
+      }
       return;
     }
 
     // ── AI: Guest Intelligence ──────────────────────────────────────────────
     if (parseGuestIntelligencePath(req.url) && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/guest-intelligence/:guestId")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/guest-intelligence/:guestId");
+      if (!auth.ok) return;
       const licGuest = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licGuest.ok) { json(res, 403, { ok: false, error: licGuest.error }); return; }
       const provider = parseAIProvider(req.url);
@@ -2662,29 +2624,29 @@ const handleRequest = async (
         .map(([cat]) => cat);
       const totalSpendInr = guestOffers.reduce((sum, o) => sum + (o.revenueInr ?? 0), 0);
 
-      const intelligence = await generateGuestIntelligence({
-        guestName: guest.fullName,
-        totalStays: guest.visitCount,
-        lastStayDate: lastReq ? new Date(lastReq.createdAt).toLocaleDateString("en-IN") : null,
-        totalSpendInr,
-        preferredCategories,
-        openRequests: openCount,
-        sentimentScore: null,
-        segment: "transient",
-        notes: []
-      }, provider);
-
-      json(res, 200, { ok: true, provider, guestId, guestName: guest.fullName, intelligence });
+      try {
+        const intelligence = await generateGuestIntelligence({
+          guestName: guest.fullName,
+          totalStays: guest.visitCount,
+          lastStayDate: lastReq ? new Date(lastReq.createdAt).toLocaleDateString("en-IN") : null,
+          totalSpendInr,
+          preferredCategories,
+          openRequests: openCount,
+          sentimentScore: null,
+          segment: "transient",
+          notes: []
+        }, provider);
+        json(res, 200, { ok: true, provider, guestId, guestName: guest.fullName, intelligence });
+      } catch (e) {
+        aiError(res, "guest-intelligence", e);
+      }
       return;
     }
 
     // ── AI: Revenue Insights ────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/revenue-insights") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /ai/revenue-insights")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /ai/revenue-insights");
+      if (!auth.ok) return;
       const licRevInsights = await enforceLicenseFeature(auth.context.tenantId, "ai_features");
       if (!licRevInsights.ok) { json(res, 403, { ok: false, error: licRevInsights.error }); return; }
       const provider = parseAIProvider(req.url);
@@ -2695,46 +2657,46 @@ const handleRequest = async (
       const { tenantId } = auth.context;
       const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
 
-      const [totalUsers, offerStats] = await Promise.all([
-        prisma.user.count({ where: { tenantId, isActive: true } }),
-        prisma.offerEvent.groupBy({
-          by: ["offerType"],
-          where: { tenantId },
-          _count: { offerType: true },
-          _sum: { revenueInr: true },
-          orderBy: { _sum: { revenueInr: "desc" } },
-          take: 5
-        })
-      ]);
+      const offerStats = await prisma.offerEvent.groupBy({
+        by: ["offerType"],
+        where: { tenantId },
+        _count: { offerType: true },
+        _sum: { revenueInr: true },
+        orderBy: { _sum: { revenueInr: "desc" } },
+        take: 5
+      });
 
       const accepted = await prisma.offerEvent.count({ where: { tenantId, status: "accepted" } });
       const total = await prisma.offerEvent.count({ where: { tenantId } });
 
-      const insights = await generateRevenueInsights({
-        hotelName: hotel?.name ?? tenantId,
-        occupancyPct: 72,
-        adrInr: 8500,
-        revParInr: 6120,
-        upsellConversionPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
-        topCategories: offerStats.map((o) => ({
-          name: o.offerType,
-          revenueInr: o._sum.revenueInr ?? 0
-        })),
-        weekTrend: "up",
-        availableRooms: Math.max(0, totalUsers - Math.floor(totalUsers * 0.72))
-      }, provider);
-
-      json(res, 200, { ok: true, provider, insights });
+      try {
+        const insights = await generateRevenueInsights({
+          hotelName: hotel?.name ?? tenantId,
+          // Occupancy / ADR / RevPAR / room availability need a PMS source we don't
+          // have — pass null (rendered "not available") rather than fabricated
+          // constants. The model bases recommendations on the real upsell data (F-17).
+          occupancyPct: null,
+          adrInr: null,
+          revParInr: null,
+          upsellConversionPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
+          topCategories: offerStats.map((o) => ({
+            name: o.offerType,
+            revenueInr: o._sum.revenueInr ?? 0
+          })),
+          weekTrend: "up",
+          availableRooms: null
+        }, provider);
+        json(res, 200, { ok: true, provider, insights });
+      } catch (e) {
+        aiError(res, "revenue-insights", e);
+      }
       return;
     }
 
     // ── POST /night-audit/generate ───────────────────────────────────────────
     if (req.url === "/night-audit/generate" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /night-audit/generate")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /night-audit/generate");
+      if (!auth.ok) return;
       const licNightGen = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!licNightGen.ok) { json(res, 403, { ok: false, error: licNightGen.error }); return; }
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
@@ -2791,7 +2753,9 @@ const handleRequest = async (
       const auditData: NightAuditData = {
         hotelName: hotel?.name ?? tenantId,
         reportDate,
-        occupancyPct: inHouseCount > 0 ? Math.min(100, Math.round((inHouseCount / 45) * 100)) : 72,
+        // No room-capacity source → report in-house guests (real) and leave
+        // occupancy % null rather than dividing by a magic room count (F-17).
+        occupancyPct: null,
         checkIns: checkInsToday,
         checkOuts: checkOutsToday,
         inHouseGuests: inHouseCount,
@@ -2807,7 +2771,14 @@ const handleRequest = async (
         topIssueCategory: topCategoryRows[0]?.category ?? "general"
       };
 
-      const result = await generateNightAuditReport(auditData, provider);
+      let result;
+      try {
+        result = await generateNightAuditReport(auditData, provider);
+      } catch (e) {
+        // Don't persist a malformed report (F-11/F-12) — fail cleanly instead.
+        aiError(res, "night-audit", e);
+        return;
+      }
       await prisma.nightAuditReport.upsert({
         where: { tenantId_reportDate: { tenantId, reportDate } },
         create: { tenantId, reportDate, contentJson: JSON.stringify(result), provider },
@@ -2830,11 +2801,8 @@ const handleRequest = async (
 
     // ── GET /night-audit/latest ──────────────────────────────────────────────
     if (req.url?.startsWith("/night-audit/latest") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /night-audit/latest")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /night-audit/latest");
+      if (!auth.ok) return;
       const licNightLatest = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!licNightLatest.ok) { json(res, 403, { ok: false, error: licNightLatest.error }); return; }
       const { tenantId } = auth.context;
@@ -2851,11 +2819,14 @@ const handleRequest = async (
 
     // ── POST /connectors/pms/simulate ────────────────────────────────────────
     if (req.url === "/connectors/pms/simulate" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /connectors/pms/simulate")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      // Demo-only: fabricates a check-in with real DB writes. Disabled in
+      // production unless explicitly opted in, so it can't be used to seed
+      // bogus stays/contacts on a live tenant (F-2).
+      if (process.env.NODE_ENV === "production" && process.env.ENABLE_PMS_SIMULATE !== "true") {
+        json(res, 404, { ok: false, error: "Not found" }); return;
       }
+      const auth = await authorize(req, res, "POST /connectors/pms/simulate");
+      if (!auth.ok) return;
       const { tenantId } = auth.context;
       const body = (await parseBody(req)) as { guestName?: unknown; roomNumber?: unknown };
       const guestNameInput = asTrimmedString(body.guestName) ?? "Demo Guest";
@@ -2871,7 +2842,7 @@ const handleRequest = async (
         data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt }
       });
 
-      broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt } });
+      broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt } });
 
       json(res, 201, { ok: true, stay: { id: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt, checkOutAt } });
       return;
@@ -2879,6 +2850,17 @@ const handleRequest = async (
 
     // ── POST /connectors/pms/webhook ─────────────────────────────────────────
     if (req.url === "/connectors/pms/webhook" && req.method === "POST") {
+      // This endpoint writes data (contacts, stays, visit counts) for the tenantId
+      // in the body, so it MUST be authenticated. Without the shared-secret gate
+      // anyone who knows a tenantId could inject check-in/checkout events (F-2).
+      const providedSecret = req.headers["x-webhook-secret"];
+      const secretCheck = verifySharedWebhookSecret({
+        expected: process.env.PMS_WEBHOOK_SECRET,
+        provided: typeof providedSecret === "string" ? providedSecret : Array.isArray(providedSecret) ? providedSecret[0] : null,
+        isProduction: process.env.NODE_ENV === "production"
+      });
+      if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
+
       const rawBody = await parseRawBody(req);
       const body = (rawBody ? JSON.parse(rawBody) : {}) as {
         tenantId?: unknown; hotelId?: unknown; event?: unknown;
@@ -2902,10 +2884,10 @@ const handleRequest = async (
       if (eventType === "guest.checkin") {
         await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
         const stay = await prisma.stay.create({ data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt } });
-        broadcastSSEEvent({ type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
+        broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
         json(res, 201, { ok: true, event: "checkin", stayId: stay.id, guestId });
       } else if (eventType === "guest.checkout") {
-        broadcastSSEEvent({ type: "checkout_event", data: { guestId, guestName, roomNumber, checkOutAt } });
+        broadcastSSEEvent(tenantId, { type: "checkout_event", data: { guestId, guestName, roomNumber, checkOutAt } });
         json(res, 200, { ok: true, event: "checkout", guestId });
       } else {
         json(res, 200, { ok: true, event: eventType, guestId });
@@ -2933,8 +2915,8 @@ const handleRequest = async (
 
     // ── GET /team/users — list team members with role + seat usage ────────────
     if (req.url === "/team/users" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_users")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -2964,8 +2946,8 @@ const handleRequest = async (
 
     // ── POST /team/invitations — generate invite link ─────────────────────────
     if (req.url === "/team/invitations" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "invite_users")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3108,8 +3090,8 @@ const handleRequest = async (
 
     // ── PUT /team/users/:id — change role or active status ───────────────────
     if (parseTeamUserId(req.url) && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_users")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3173,8 +3155,8 @@ const handleRequest = async (
 
     // ── GET /team/license — plan info + seat usage ────────────────────────────
     if (req.url === "/team/license" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_billing")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3191,8 +3173,8 @@ const handleRequest = async (
 
     // ── GET /team/roles — list roles with user counts ─────────────────────────
     if (req.url === "/team/roles" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3215,8 +3197,8 @@ const handleRequest = async (
 
     // ── PUT /team/roles/:id — rename a role's displayName ────────────────────
     if (parseTeamRoleId(req.url) && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3239,8 +3221,8 @@ const handleRequest = async (
 
     // ── POST /team/roles — create a custom role ───────────────────────────────
     if (req.url === "/team/roles" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "create_custom_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3281,8 +3263,8 @@ const handleRequest = async (
     // ── Message Templates: reusable library + approval status ───────────────
     const tplPath = parseTemplatePath(req.url);
     if (tplPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
@@ -3359,8 +3341,8 @@ const handleRequest = async (
     // ── Drip Sequences: multi-step automation ───────────────────────────────
     const seqPath = parseSequencePath(req.url);
     if (seqPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
@@ -3445,7 +3427,7 @@ const handleRequest = async (
           }),
           prisma.sequenceEnrollment.count({ where: { sequenceId: sequence.id } }),
         ]);
-        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
         return;
       }
 
@@ -3497,8 +3479,8 @@ const handleRequest = async (
     // ── Lead Segments: saved tenant-wide audience filters ───────────────────
     const segPath = parseSegmentPath(req.url);
     if (segPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
@@ -3579,8 +3561,8 @@ const handleRequest = async (
 
     // ── Voice Campaigns: create + list ──────────────────────────────────────
     if (parseUrl(req.url).pathname === "/campaigns" && (req.method === "POST" || req.method === "GET")) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
 
@@ -3636,7 +3618,7 @@ const handleRequest = async (
         ...serializeCampaign(r),
         stats: { totalLeads: r._count.leads, totalCalls: r._count.calls },
       }));
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
@@ -3644,8 +3626,8 @@ const handleRequest = async (
     if (parseUrl(req.url).pathname.startsWith("/campaigns/")) {
       const parsed = parseCampaignPath(req.url);
       if (parsed) {
-        const auth = await getAuthenticatedContext(req);
-        if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
         const tenantId = auth.context.tenantId;
         const { id, action } = parsed;
 
@@ -3804,8 +3786,8 @@ const handleRequest = async (
     // ── Voice Campaign leads: import / list / delete ────────────────────────
     const leadsPath = parseCampaignLeadsPath(req.url);
     if (leadsPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       const { campaignId, leadId, isImport } = leadsPath;
       const campaign = await prisma.voiceCampaign.findFirst({
@@ -3887,7 +3869,7 @@ const handleRequest = async (
           }),
           prisma.campaignLead.count({ where }),
         ]);
-        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
         return;
       }
 
@@ -3953,11 +3935,8 @@ const handleRequest = async (
     // ── Voice Campaign: A/B analytics ───────────────────────────────────────
     const analyticsId = parseCampaignAnalyticsPath(req.url);
     if (analyticsId && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/analytics")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /campaigns/:id/analytics");
+      if (!auth.ok) return;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: analyticsId, tenantId: auth.context.tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
@@ -4004,11 +3983,8 @@ const handleRequest = async (
     // ?channel= and ?status= filters. Tenant-scoped via the campaign lookup.
     const deliveriesId = parseCampaignDeliveriesPath(req.url);
     if (deliveriesId && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/deliveries")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /campaigns/:id/deliveries");
+      if (!auth.ok) return;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: deliveriesId, tenantId: auth.context.tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
@@ -4031,15 +4007,15 @@ const handleRequest = async (
         }),
         prisma.messageDelivery.count({ where: whereDeliveries }),
       ]);
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
     // ── Voice Campaign: calls list / detail (+ CSV export) ──────────────────
     const callsPath = parseCampaignCallsPath(req.url);
     if (callsPath && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: callsPath.campaignId, tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
@@ -4102,12 +4078,16 @@ const handleRequest = async (
         prisma.callRecord.findMany({ where: whereCalls, orderBy: { createdAt: "desc" }, take: limit, skip: offset, select: selectCall }),
         prisma.callRecord.count({ where: whereCalls }),
       ]);
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
     json(res, 404, { ok: false, error: "Not found" });
   } catch (_error) {
+    if (_error instanceof PayloadTooLargeError) {
+      json(res, 413, { ok: false, error: "Request body too large" });
+      return;
+    }
     json(res, 500, { ok: false, error: "Internal server error" });
   }
 };
@@ -4118,6 +4098,7 @@ export const buildServer = () =>
   });
 
 export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
+  assertJwtSecretConfigured(); // refuse to boot prod with the default/blank JWT secret (F-22)
   const server = buildServer();
   server.listen(port, () => {
     console.log("Eynis API listening on port " + port);

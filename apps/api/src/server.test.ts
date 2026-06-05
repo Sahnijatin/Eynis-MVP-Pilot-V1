@@ -372,11 +372,18 @@ test("assign endpoint updates assignee and transition history is readable", asyn
     );
     const transitionsPayload = (await transitionsResponse.json()) as {
       ok: boolean;
-      items: Array<{ toStatus: string }>;
+      items: Array<{ fromStatus: string; toStatus: string }>;
     };
     assert.equal(transitionsResponse.status, 200);
     assert.equal(transitionsPayload.ok, true);
     assert.equal(Array.isArray(transitionsPayload.items), true);
+    // F-7 regression: this must be the transitions route, not the shadowing list
+    // handler. The status change above produced a transition into "accepted".
+    assert.ok(transitionsPayload.items.length >= 1, "expected at least one transition");
+    assert.ok(
+      transitionsPayload.items.some((t) => t.toStatus === "accepted"),
+      "expected a transition into 'accepted' (proves the real transitions route, not a SR list)"
+    );
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve()))
@@ -589,6 +596,60 @@ test("whatsapp webhook skeleton creates request and returns ack", async () => {
   );
 });
 
+test("whatsapp webhook rejects a request with no signature when VERIFY_WEBHOOKS=true (F-9)", async () => {
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Failed to bind test server");
+  const base = "http://127.0.0.1:" + address.port;
+
+  const prev = process.env.VERIFY_WEBHOOKS;
+  process.env.VERIFY_WEBHOOKS = "true";
+  try {
+    const resp = await fetch(base + "/integrations/whatsapp/webhook", {
+      method: "POST",
+      headers: { "content-type": "application/json" }, // no x-twilio-signature / x-hub-signature-256
+      body: JSON.stringify({ tenantId, fromPhone: "+919100000111", message: "hi" })
+    });
+    assert.equal(resp.status, 401);
+    const payload = (await resp.json()) as { ok: boolean; error: string };
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /signature/i);
+  } finally {
+    if (prev === undefined) delete process.env.VERIFY_WEBHOOKS; else process.env.VERIFY_WEBHOOKS = prev;
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test("resend webhook rejects a stale svix-timestamp when a secret is configured (F-10)", async () => {
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Failed to bind test server");
+  const base = "http://127.0.0.1:" + address.port;
+
+  const prev = process.env.RESEND_WEBHOOK_SECRET;
+  process.env.RESEND_WEBHOOK_SECRET = "whsec_test";
+  try {
+    const staleTs = String(Math.floor(Date.now() / 1000) - 3600); // 1h old → outside the 5m window
+    const resp = await fetch(base + "/webhooks/resend", {
+      method: "POST",
+      headers: { "content-type": "application/json", "svix-id": "msg_1", "svix-timestamp": staleTs, "svix-signature": "v1,deadbeef" },
+      body: JSON.stringify({ type: "email.bounced", data: {} })
+    });
+    assert.equal(resp.status, 401);
+    const payload = (await resp.json()) as { ok: boolean; error: string };
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /timestamp/i);
+  } finally {
+    if (prev === undefined) delete process.env.RESEND_WEBHOOK_SECRET; else process.env.RESEND_WEBHOOK_SECRET = prev;
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
 test("whatsapp webhook normalization supports twilio payload", async () => {
   const tenantId = uniqueHotelId();
   await createHotel(tenantId);
@@ -728,6 +789,49 @@ test("analytics endpoints and connector registry return real payloads", async ()
   await new Promise<void>((resolve, reject) =>
     server.close((err) => (err ? reject(err) : resolve()))
   );
+});
+
+test("inventory items persist via the API and enforce manage_inventory (F-19)", async () => {
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+inv+" + tenantId + "@test.local");
+  await createUser(tenantId, "housekeeping", "hk+inv+" + tenantId + "@test.local");
+
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Failed to bind test server");
+  const base = "http://127.0.0.1:" + address.port;
+
+  const owner = await getAuthHeaders(base, tenantId, "owner+inv+" + tenantId + "@test.local", "owner");
+  const housekeeping = await getAuthHeaders(base, tenantId, "hk+inv+" + tenantId + "@test.local", "housekeeping");
+
+  try {
+    // Owner (admin → manage_inventory) creates an item via a stock movement.
+    const createRes = await fetch(base + "/inventory/items", {
+      method: "POST", headers: { "content-type": "application/json", ...owner },
+      body: JSON.stringify({ name: "Truffle Oil", category: "Specialty", txType: "received", qty: 10, unit: "bottles", reorderLevel: 6 }),
+    });
+    const created = (await createRes.json()) as { ok: boolean; item: { id: string; stock: number; status: string } };
+    assert.equal(createRes.status, 200);
+    assert.equal(created.item.stock, 10);
+    assert.equal(created.item.status, "ok");
+
+    // Persisted — the list reflects it.
+    const listRes = await fetch(base + "/inventory/items", { headers: owner });
+    const list = (await listRes.json()) as { ok: boolean; items: Array<{ name: string }> };
+    assert.equal(listRes.status, 200);
+    assert.ok(list.items.some((i) => i.name === "Truffle Oil"));
+
+    // A role without manage_inventory is rejected on writes.
+    const forbidden = await fetch(base + "/inventory/items", {
+      method: "POST", headers: { "content-type": "application/json", ...housekeeping },
+      body: JSON.stringify({ name: "X", txType: "received", qty: 1 }),
+    });
+    assert.equal(forbidden.status, 403);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
 });
 
 test("connector configs are persisted per hotel and reflected in registry", async () => {
