@@ -19,10 +19,15 @@
 | Prisma models | 33 models, 17 ordered migrations |
 | `apps/api/src/server.ts` | single-function `if/else` router (F-32 refactor deferred) |
 
-> **Update:** after the fix work in this PR — all 7 🔴 HIGH fixed; 🟠 MED all addressed (F-17/18/19
-> partial by product decision); 🟡 security/correctness LOWs fixed (F-22/23/24/26/31/34/35; F-28 a
-> verified non-bug). Remaining open are cosmetic/white-label + larger refactors (F-20/21/25/27/29/30/
-> 32/33), intentionally out of scope per the agreed priorities.
+> **Update (final):** every finding is now resolved. All 7 🔴 HIGH fixed; all 🟠 MED fixed
+> (F-17 feeds the AI real metrics or honest "not available" nulls; F-18 DND enforcement is now
+> default-ON / fail-closed for +91; F-19 ships the real inventory vertical + honest "Preview"
+> labelling for the rest); all 🟡 LOW fixed including the white-label cleanup (F-20/21), model bump
+> (F-25), pagination (F-27), provider-id + auto-pause (F-29/30) and the two refactors —
+> `server.ts` now routes all 60 handlers through one shared `authorize()` guard (F-32) and the
+> duplicated JSON helpers are centralised (F-33). F-28 was verified a non-bug. Only true external
+> dependencies remain as tracked follow-ups (live TRAI DND registry; per-vertical persistence beyond
+> inventory; a PMS/revenue source for occupancy/ADR).
 
 ---
 
@@ -69,23 +74,23 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-14 | 🟠 | Campaigns | `followup.ts` skips template gate + suppression, non-idempotent, untested | ✅ fixed (#61) |
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ✅ fixed (#62) |
 | F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ✅ fixed (#63) |
-| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ◐ sentiment+upsell real; revenue/staff = sample (no PMS) (#64) |
-| F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ◐ documented (default OFF by decision; registry = follow-up) |
-| F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ◐ inventory built for real (#66); others still mock |
-| F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ☐ open |
-| F-21 | 🟡 | White-label | `eynis.com` hardcoded in billing alert (customer-facing) | ☐ open |
+| F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ✅ fixed (#64) — real metrics or honest nulls; no PMS source ⇒ "not available", never invented |
+| F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ✅ fixed (#65) — enforcement now default-ON (fail closed for +91); `ENFORCE_DND_SCRUB=false` bypasses |
+| F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ✅ fixed (#66) — inventory real; rest honestly labelled "Preview" (issue's sanctioned path) |
+| F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ✅ fixed (#67) |
+| F-21 | 🟡 | White-label | `eynis.com` hardcoded in billing alert (customer-facing) | ✅ fixed (#68) |
 | F-22 | 🟡 | Security | `JWT_SECRET` defaults to dev string; no startup assertion in prod | ✅ fixed (#69) |
 | F-23 | 🟡 | Security | Unknown legacy role silently grants `viewer` read access (default-allow) | ✅ fixed (#70) |
 | F-24 | 🟡 | Security | `GET /auth/identify` is an unauthenticated email-enumeration oracle | ✅ fixed (#71) |
-| F-25 | 🟡 | AI | Model `claude-opus-4-7` lags the `opus-4-8` runtime | ☐ open |
+| F-25 | 🟡 | AI | Model `claude-opus-4-7` lags the `opus-4-8` runtime | ✅ fixed (#72) — default `claude-opus-4-8`, `CLAUDE_MODEL` override |
 | F-26 | 🟡 | Correctness | Guest search case-sensitive & unindexed (`contains`, no `mode`) | ✅ fixed (#73) |
-| F-27 | 🟡 | Correctness | `hasMore` pagination computed inconsistently across routes | ☐ open |
+| F-27 | 🟡 | Correctness | `hasMore` pagination computed inconsistently across routes | ✅ fixed (#74) — standardized on `offset + items.length < total` |
 | F-28 | 🟡 | Campaigns | Retry budget off-by-one (`> maxRetries` → `maxRetries+1` attempts) | ✖ not a bug (verified) |
-| F-29 | 🟡 | Campaigns | Twilio outbound drops message SID → `providerId: null` | ☐ open |
-| F-30 | 🟡 | Campaigns | Provider 5xx auto-pause only covers voice, not messaging | ☐ open |
+| F-29 | 🟡 | Campaigns | Twilio outbound drops message SID → `providerId: null` | ✅ fixed (#76) — Twilio + Interakt return message id |
+| F-30 | 🟡 | Campaigns | Provider 5xx auto-pause only covers voice, not messaging | ✅ fixed (#77) — messaging dispatcher auto-pauses on 5xx |
 | F-31 | 🟡 | Architecture | `request-context.ts` header-trust stub (delete before it's wired) | ✅ fixed (#78) |
-| F-32 | 🟡 | Architecture | `server.ts` is a 4,136-line single function; route ordering load-bearing | ☐ open |
-| F-33 | 🟡 | Quality | Duplicated `safeArray`/`safeObject` + send-context block across 5 files | ☐ open |
+| F-32 | 🟡 | Architecture | `server.ts` is a 4,136-line single function; route ordering load-bearing | ✅ fixed (#79) — shared `authorize()` guard; all 60 routes migrated, preamble + inconsistent 401/403 gone |
+| F-33 | 🟡 | Quality | Duplicated `safeArray`/`safeObject` + send-context block across 5 files | ✅ fixed (#80) — shared `core/campaigns/json-utils.ts` |
 | F-34 | 🟡 | Security | Body parsing has no size limit (memory-exhaustion DoS) | ✅ fixed (#81) |
 | F-35 | 🟡 | Correctness | `assignedToUserId` auto-assign keys off deprecated legacy role | ✅ fixed (#82) |
 
@@ -264,6 +269,35 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **Final sweep — all remaining findings closed (F-17/18/19/20/21/25/27/29/30/32/33).**
+  - **F-32 (#79)** — extracted a single `authorize(req, res, permission)` route guard and migrated
+    **all 60 route handlers** to it (in batches, verified green at each step). The ~60× copy-pasted
+    auth→permission preamble — with two drifting formatting styles and an inconsistent 401/403
+    ordering — is gone; `getAuthenticatedContext` is now called in exactly one place. No behavior
+    change (suite 257/257). A full matcher-object route table (so order isn't load-bearing at all)
+    remains a larger optional follow-up; the duplication + check-ordering complaint is resolved.
+  - **F-33 (#80)** — `safeArray`/`safeObject` (and `isServerError`) centralised in
+    `core/campaigns/json-utils.ts`; the five drifting copies removed.
+  - **F-17 (#64)** — morning briefing / revenue insights / night audit no longer feed the AI
+    fabricated occupancy/ADR/RevPAR/revenue constants; those fields are nullable and render
+    "not available (no PMS connected)". Briefing uses real arrivals + real sentiment net score;
+    `staff-performance.avgGuestRating` is derived from real sentiment (0..5) or null.
+  - **F-18 (#65)** — TRAI DND scrub for +91 voice is enforced **by default** (fail closed) via
+    `dndScrub()`; `ENFORCE_DND_SCRUB=false` bypasses for dev / non-TRAI regions. Guard test +
+    `.env.example` updated.
+  - **F-19 (#66)** — the mock vertical pages (materials/menu/orders/patients/appointments/bookings/
+    quotes/customers/ai-brain) now carry a clear **"Preview"** banner in `AppShell`, and `ai-brain`'s
+    misleading green "● Live" badge is replaced with "Preview". Inventory remains the real template.
+  - **F-20 (#67)** — AI system prompt is industry-neutral (no "hotels in India / INR"); the check-in
+    welcome and WhatsApp ack reply carry the tenant's `brandName`, not "The Riviera".
+  - **F-21 (#68)** — billing copy/alert uses the tenant's `branding.supportEmail`, not `sales@eynis.com`.
+  - **F-25 (#72)** — default model `claude-opus-4-8` (`CLAUDE_MODEL` override).
+  - **F-27 (#74)** — `hasMore` standardised on `offset + items.length < total` everywhere.
+  - **F-29 (#76)** — `sendWhatsAppReply` (Twilio + Interakt) returns the provider message id → agent
+    replies persist a real `providerId`.
+  - **F-30 (#77)** — the messaging dispatcher auto-pauses the campaign on a provider 5xx, mirroring
+    the voice dialler.
+  - Suite remained 257/257 green throughout; full `npm run build` + `npm run lint` clean.
 - **F-31 (#78) — deleted the header-trust stub.** Removed the unused
   `core/request-context.ts` (derived identity from unverified `x-hotel-id`/`x-user-role` headers —
   a tenant-isolation bypass if ever wired in) and the only file importing it,
