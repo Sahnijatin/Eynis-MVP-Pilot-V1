@@ -700,3 +700,180 @@ export async function fetchCampaignLeads(
   const res = await authedFetch(`/campaigns/${encodeURIComponent(id)}/leads?${q.toString()}`);
   return await res.json();
 }
+
+// ── CRM: Deals, Pipeline & Forecast (Increment A) ───────────────────────────
+export interface DealRow {
+  id: string;
+  title: string;
+  value: number | null;
+  currency: string;
+  pipelineId: string;
+  stageId: string;
+  stageName: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  status: string;
+  expectedCloseAt: string | null;
+  closedAt: string | null;
+  lostReason: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PipelineStage {
+  id: string;
+  name: string;
+  order: number;
+  probability: number;
+  isWon: boolean;
+  isLost: boolean;
+}
+
+export interface PipelineRow {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  stages: PipelineStage[];
+}
+
+export interface ForecastSummary {
+  currency: string;
+  openCount: number;
+  openValue: number;
+  weightedForecast: number;
+  byStage: Array<{ stageId: string; stageName: string; order: number; count: number; value: number; weighted: number }>;
+  byPeriod: { thisMonth: number; thisQuarter: number };
+  wonCount: number;
+  lostCount: number;
+  winRate: number;
+}
+
+export async function fetchPipelines(): Promise<{ ok: boolean; items: PipelineRow[] }> {
+  const res = await authedFetch("/pipelines");
+  return (await res.json()) as { ok: boolean; items: PipelineRow[] };
+}
+
+export async function fetchDeals(params: { pipelineId?: string } = {}): Promise<{ ok: boolean; items: DealRow[] }> {
+  const q = new URLSearchParams({ limit: "500" });
+  if (params.pipelineId) q.set("pipelineId", params.pipelineId);
+  const res = await authedFetch("/deals?" + q.toString());
+  return (await res.json()) as { ok: boolean; items: DealRow[] };
+}
+
+export async function fetchForecast(pipelineId?: string): Promise<{ ok: boolean; forecast?: ForecastSummary }> {
+  const path = "/deals/forecast" + (pipelineId ? "?pipelineId=" + encodeURIComponent(pipelineId) : "");
+  const res = await authedFetch(path);
+  return (await res.json()) as { ok: boolean; forecast?: ForecastSummary };
+}
+
+// ── CRM: Contacts & Companies (Increment B) ─────────────────────────────────
+export interface ContactRow {
+  id: string;
+  fullName: string;
+  phoneE164: string;
+  email: string | null;
+  visitCount: number;
+  companyId: string | null;
+  companyName: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  lifecycleStage: string;
+  leadStatus: string | null;
+  leadScore: number | null;
+  source: string | null;
+  tags: string[];
+  notes: string | null;
+  dealCount?: number;
+  lastActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyRow {
+  id: string;
+  name: string;
+  domain: string | null;
+  industry: string | null;
+  size: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  tags: string[];
+  notes: string | null;
+  contactCount?: number;
+  dealCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchContacts(params: { search?: string; lifecycleStage?: string; companyId?: string } = {}): Promise<{ ok: boolean; items: ContactRow[]; page?: { total: number; hasMore: boolean } }> {
+  const q = new URLSearchParams({ limit: "200" });
+  if (params.search) q.set("search", params.search);
+  if (params.lifecycleStage) q.set("lifecycleStage", params.lifecycleStage);
+  if (params.companyId) q.set("companyId", params.companyId);
+  const res = await authedFetch("/contacts?" + q.toString());
+  return (await res.json()) as { ok: boolean; items: ContactRow[]; page?: { total: number; hasMore: boolean } };
+}
+
+export async function fetchCompanies(params: { search?: string } = {}): Promise<{ ok: boolean; items: CompanyRow[] }> {
+  const q = new URLSearchParams({ limit: "200" });
+  if (params.search) q.set("search", params.search);
+  const res = await authedFetch("/companies?" + q.toString());
+  return (await res.json()) as { ok: boolean; items: CompanyRow[] };
+}
+
+// ── CRM: Activities, Tasks & AI Suggestions (Increment C) ───────────────────
+export interface TimelineItem {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  direction: string | null;
+  sentiment: string | null;
+  status: string | null;
+  at: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface TaskRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  status: string;
+  dueAt: string | null;
+  completedAt: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  userName: string | null;
+  createdAt: string;
+}
+
+export interface DealSuggestionRow {
+  id: string;
+  dealId: string;
+  dealTitle: string;
+  fromStageName: string | null;
+  suggestedStageId: string;
+  suggestedStageName: string | null;
+  reason: string;
+  confidence: number | null;
+  source: string;
+  status: string;
+  createdAt: string;
+}
+
+export async function fetchTasks(params: { status?: string; mine?: boolean } = {}): Promise<{ ok: boolean; items: TaskRow[] }> {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.mine) q.set("mine", "true");
+  const res = await authedFetch("/tasks" + (q.toString() ? "?" + q.toString() : ""));
+  return (await res.json()) as { ok: boolean; items: TaskRow[] };
+}
+
+export async function fetchDealSuggestions(status = "pending"): Promise<{ ok: boolean; items: DealSuggestionRow[] }> {
+  const res = await authedFetch("/deals/suggestions?status=" + encodeURIComponent(status));
+  return (await res.json()) as { ok: boolean; items: DealSuggestionRow[] };
+}

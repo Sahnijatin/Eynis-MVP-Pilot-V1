@@ -51,6 +51,13 @@ model Tenant {
   branding              TenantBranding?
   emailSuppressions     EmailSuppression[]
   inventoryItems        InventoryItem[]
+  pipelines             Pipeline[]
+  pipelineStages        Stage[]
+  deals                 Deal[]
+  dealTransitions       DealTransition[]
+  companies             Company[]
+  activities            Activity[]
+  dealSuggestions       DealSuggestion[]
 
   @@map("Hotel")
 }
@@ -128,6 +135,11 @@ model User {
   systemRole         Role?                      @relation(fields: [roleId], references: [id], onDelete: SetNull)
   assignedRequests   ServiceRequest[]           @relation("assigned_requests")
   changedTransitions ServiceRequestTransition[] @relation("transition_actor")
+  ownedDeals         Deal[]                     @relation("deal_owner")
+  changedDealTransitions DealTransition[]       @relation("deal_transition_actor")
+  ownedContacts      Contact[]                  @relation("contact_owner")
+  ownedCompanies     Company[]                  @relation("company_owner")
+  activities         Activity[]                 @relation("activity_actor")
 }
 
 // The end-customer a tenant engages. Named `Contact` (industry-neutral) but
@@ -139,14 +151,112 @@ model Contact {
   fullName        String
   phoneE164       String
   visitCount      Int              @default(0)
+  // ── CRM hub fields (Increment B) ──────────────────────────────────────────
+  email           String?
+  companyId       String?
+  ownerId         String?
+  lifecycleStage  String           @default("lead") // subscriber|lead|mql|sql|opportunity|customer (tenant-configurable)
+  leadStatus      String? // new|attempting|connected|qualified|disqualified
+  leadScore       Int? // 0–100, AI/rules-derived (Increment C)
+  source          String? // manual|campaign|connector|import
+  tags            String[]         @default([])
+  customFields    Json? // tenant-defined fields (see docs/crm-design.md §5.5)
+  notes           String? // lightweight free-text; full activity timeline is Increment C
+  lastActivityAt  DateTime?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner           User?            @relation("contact_owner", fields: [ownerId], references: [id], onDelete: SetNull)
   stays           Stay[]
   serviceRequests ServiceRequest[]
+  deals           Deal[]
+  campaignLeads   CampaignLead[]
+  activities      Activity[]
 
   @@index([tenantId])
+  @@index([companyId])
   @@map("Guest")
+}
+
+// A company / account (B2B). Optional: B2C tenants simply never create one.
+// New table — physical column is `tenantId` directly (no legacy @@map).
+model Company {
+  id           String    @id @default(cuid())
+  tenantId     String
+  name         String
+  domain       String?
+  industry     String?
+  size         String? // e.g. "1-10", "11-50", "51-200", "200+"
+  ownerId      String?
+  tags         String[]  @default([])
+  customFields Json?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner        User?     @relation("company_owner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contacts     Contact[]
+  deals        Deal[]
+  activities   Activity[]
+
+  @@index([tenantId])
+}
+
+// ── CRM: Activities timeline + AI suggestions (Increment C) ───────────────────
+
+// A single timeline entry. Manual entries (note/task/meeting) are stored here;
+// channel events (calls, WhatsApp, service requests) are projected in at read
+// time (see core/crm/timeline.ts) — only manual + AI-authored rows persist here.
+model Activity {
+  id          String    @id @default(cuid())
+  tenantId    String
+  contactId   String?
+  dealId      String?
+  companyId   String?
+  userId      String? // actor who logged it (null = system/AI)
+  type        String // note | task | meeting | ai_score | ai_suggestion | system
+  title       String
+  body        String?
+  direction   String? // inbound | outbound | null
+  dueAt       DateTime? // tasks
+  completedAt DateTime? // tasks
+  status      String    @default("logged") // logged | open | done
+  meta        Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact     Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal        Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?     @relation("activity_actor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([tenantId, status, dueAt])
+}
+
+// A pending AI proposal to move a deal to another stage. SAFE MODE: a human must
+// accept (which performs the move) or dismiss — the AI never moves a deal itself.
+model DealSuggestion {
+  id               String    @id @default(cuid())
+  tenantId         String
+  dealId           String
+  fromStageId      String?
+  suggestedStageId String
+  reason           String
+  confidence       Int? // 0–100
+  source           String    @default("ai") // ai | rule
+  status           String    @default("pending") // pending | accepted | dismissed
+  createdAt        DateTime  @default(now())
+  resolvedAt       DateTime?
+  resolvedById     String?
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal             Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([dealId])
 }
 
 model Stay {
@@ -571,10 +681,12 @@ model CampaignLead {
   consentSource         String? // ConsentSource (@eynis/shared)
   consentAt             DateTime?
   optedOut              Boolean                @default(false) // tenant-wide opt-out exclusion flag
+  contactId             String? // links to the durable Contact hub (Increment B)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   campaign              VoiceCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact               Contact?               @relation(fields: [contactId], references: [id], onDelete: SetNull)
   calls                 CallRecord[]
   deliveries            MessageDelivery[]
   whatsappConversations WhatsappConversation[]
@@ -587,6 +699,7 @@ model CampaignLead {
   @@unique([campaignId, phone])
   @@index([campaignId, status])
   @@index([tenantId, phone]) // tenant-wide opt-out lookup by phone
+  @@index([contactId])
 }
 
 model CallRecord {
@@ -712,4 +825,104 @@ model DoNotContact {
 
   @@unique([tenantId, phone])
   @@index([tenantId])
+}
+
+// ── CRM: Pipelines, Deals & Forecasting (Increment A) ─────────────────────────
+// Industry-neutral sales/relationship pipeline. These are NEW tables, so the
+// physical column is `tenantId` directly (no legacy @@map shim). Every row is
+// tenant-scoped; labels/stages/probabilities are per-tenant configurable
+// (white-label). See docs/crm-design.md §12 and docs/crm-implementation-roadmap.md.
+
+// A configurable funnel a Deal travels through. A tenant can have several;
+// exactly one is the default (used when a deal is created without a pipeline).
+model Pipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  isDefault Boolean  @default(false)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stages    Stage[]
+  deals     Deal[]
+
+  @@index([tenantId])
+}
+
+// A single step in a pipeline. `probability` (0–100) drives the weighted
+// forecast. `isWon`/`isLost` mark the terminal stages that close a deal.
+model Stage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  pipelineId  String
+  name        String
+  order       Int
+  probability Int      @default(0) // 0–100; weight applied to deal value in the forecast
+  isWon       Boolean  @default(false)
+  isLost      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals       Deal[]
+
+  @@index([tenantId])
+  @@index([pipelineId])
+}
+
+// An opportunity / revenue motion. Optionally linked to a Contact (the person)
+// and an owner (a User). `value` is money in `currency` (default INR).
+model Deal {
+  id              String           @id @default(cuid())
+  tenantId        String
+  title           String
+  value           Decimal?         @db.Decimal(14, 2)
+  currency        String           @default("INR")
+  pipelineId      String
+  stageId         String
+  contactId       String?
+  companyId       String?
+  ownerId         String?
+  status          String           @default("open") // open | won | lost
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  lostReason      String?
+  source          String? // manual | campaign | connector | import
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline        Pipeline         @relation(fields: [pipelineId], references: [id])
+  stage           Stage            @relation(fields: [stageId], references: [id])
+  contact         Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner           User?            @relation("deal_owner", fields: [ownerId], references: [id], onDelete: SetNull)
+  transitions     DealTransition[]
+  activities      Activity[]
+  suggestions     DealSuggestion[]
+
+  @@index([tenantId])
+  @@index([pipelineId])
+  @@index([stageId])
+  @@index([contactId])
+  @@index([companyId])
+}
+
+// Stage-change history for a deal. Powers the activity trail now and velocity /
+// forecast-accuracy reporting later (Increment C).
+model DealTransition {
+  id          String   @id @default(cuid())
+  tenantId    String
+  dealId      String
+  fromStageId String?
+  toStageId   String
+  changedById String?
+  note        String?
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal        Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  changedBy   User?    @relation("deal_transition_actor", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([dealId])
 }
