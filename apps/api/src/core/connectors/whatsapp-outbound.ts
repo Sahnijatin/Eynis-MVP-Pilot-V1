@@ -46,7 +46,10 @@ async function sendViaTwilio(config: Record<string, unknown>, toPhone: string, m
     const err = await res.text().catch(() => res.statusText);
     return { sent: false, provider: "twilio", error: `Twilio API error ${res.status}: ${err}` };
   }
-  return { sent: true, provider: "twilio" };
+  // Return the Twilio message SID so callers can persist providerId for delivery
+  // correlation (F-29) — previously this path dropped it, leaving providerId null.
+  const data = (await res.json().catch(() => ({}))) as { sid?: string };
+  return { sent: true, provider: "twilio", id: data.sid };
 }
 
 // ── Interakt outbound ─────────────────────────────────────────────────────────
@@ -84,7 +87,8 @@ async function sendViaInterakt(config: Record<string, unknown>, toPhone: string,
     const err = await res.text().catch(() => res.statusText);
     return { sent: false, provider: "interakt", error: `Interakt API error ${res.status}: ${err}` };
   }
-  return { sent: true, provider: "interakt" };
+  const data = (await res.json().catch(() => ({}))) as { id?: string };
+  return { sent: true, provider: "interakt", id: data.id };
 }
 
 // ── Public: send WhatsApp message ─────────────────────────────────────────────
@@ -169,8 +173,12 @@ export async function sendWhatsAppTemplate(
   }
 }
 
-export function buildReplyMessage(guestName: string, summary: string, requestId: string): string {
+// White-label: the sign-off carries the tenant's own brand, never a hardcoded
+// "The Riviera" (F-20). `brandName` is the tenant's branding override or name;
+// falls back to a neutral sign-off when unknown.
+export function buildReplyMessage(guestName: string, summary: string, requestId: string, brandName?: string | null): string {
   const firstName = guestName.split(" ")[0] ?? guestName;
   const shortId = requestId.slice(-6).toUpperCase();
-  return `Hi ${firstName}! We've received your request and our team is on it.\n\n"${summary}"\n\nRef: #${shortId} — The Riviera`;
+  const signOff = brandName?.trim() ? ` — ${brandName.trim()}` : "";
+  return `Hi ${firstName}! We've received your request and our team is on it.\n\n"${summary}"\n\nRef: #${shortId}${signOff}`;
 }

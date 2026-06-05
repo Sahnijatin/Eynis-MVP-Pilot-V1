@@ -16,6 +16,7 @@ import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { parseSegmentRules, buildLeadWhere } from "./segments";
 import { getSender, MESSAGING_CHANNELS, type ChannelSender, type SendContext } from "./senders";
 import { singleFlight } from "../single-flight";
+import { safeArray, isServerError } from "./json-utils";
 
 // Resolve a campaign's optional targeting segment to a lead where-fragment.
 // Returns {} when no segment is set (or it was deleted) → contact all leads.
@@ -32,10 +33,6 @@ export interface DispatchDeps {
   resolveSender?: (channel: string) => ChannelSender | null;
   batchSize?: number;
 }
-
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
 
 // Processes one (campaign, channel) pair for up to `batchSize` leads. Returns
 // how many were sent/skipped/failed this tick. Reusable + unit-testable via the
@@ -201,6 +198,14 @@ export async function processCampaignChannel(
       broadcastSSEEvent(campaign.tenantId, { type: "campaign_message_sent", tenantId: campaign.tenantId, campaignId, leadId: lead.id, channel });
     } else {
       failed++;
+      // Provider outage (5xx) → auto-pause the campaign and stop this tick instead
+      // of hammering the provider on every remaining lead and every subsequent tick
+      // (F-30, mirroring the voice dialler's behaviour in worker.ts).
+      if (isServerError(result.error)) {
+        await prisma.voiceCampaign.update({ where: { id: campaignId }, data: { status: "paused" } });
+        broadcastSSEEvent(campaign.tenantId, { type: "campaign_paused", tenantId: campaign.tenantId, campaignId, reason: "provider_error" });
+        break;
+      }
     }
   }
 

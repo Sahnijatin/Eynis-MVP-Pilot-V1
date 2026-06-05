@@ -9,13 +9,7 @@ import { prisma } from "../../db/prisma";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { getSender, type SendContext } from "./senders";
 import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
-
-const safeObject = (json: string): Record<string, string[]> => {
-  try { const v = JSON.parse(json); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch { return {}; }
-};
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
+import { safeArray, safeObject } from "./json-utils";
 
 export interface FollowUpDeps {
   resolveSender?: typeof getSender;
@@ -24,7 +18,7 @@ export interface FollowUpDeps {
 // Resolves which channels to fire for a given outcome and sends them.
 export function channelsForOutcome(followUpRulesJson: string, outcome: string | null): string[] {
   if (!outcome) return [];
-  const rules = safeObject(followUpRulesJson);
+  const rules = safeObject<string[]>(followUpRulesJson);
   return (rules[outcome] ?? []).filter((c) => c === "whatsapp" || c === "email");
 }
 

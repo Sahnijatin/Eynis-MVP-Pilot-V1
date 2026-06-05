@@ -12,6 +12,7 @@ import { getSender, type ChannelSender, type SendContext } from "./senders";
 import { resolveApprovedWhatsappTemplate } from "./whatsapp-template";
 import { campaignMaySendNow } from "./schedule-gate";
 import { parseExitOn, nextRunFrom, type ExitCondition } from "./sequences";
+import { safeArray } from "./json-utils";
 
 const TICK_MS = Number(process.env.SEQUENCE_RUNNER_INTERVAL_MS ?? 60_000);
 const BATCH = Number(process.env.SEQUENCE_RUNNER_BATCH ?? 200);
@@ -24,9 +25,6 @@ export interface SequenceDeps {
   batchSize?: number;
 }
 
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
 
 interface ExitCtx { tenantId: string; leadId: string; enrolledAt: Date; leadOptedOut: boolean; leadPhone: string | null }
 

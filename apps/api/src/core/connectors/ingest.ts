@@ -159,7 +159,12 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
 
       // 5. Build and send outbound reply
       if (sendReply && guestPhone) {
-        replyMessage = buildReplyMessage(guestName, classification.summary, sr.id);
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { name: true, branding: { select: { brandName: true } } }
+        });
+        const brandName = tenant?.branding?.brandName?.trim() || tenant?.name?.trim() || null;
+        replyMessage = buildReplyMessage(guestName, classification.summary, sr.id, brandName);
         const replyResult = await sendWhatsAppReply(tenantId, guestPhone, replyMessage);
         replySent = replyResult.sent;
 

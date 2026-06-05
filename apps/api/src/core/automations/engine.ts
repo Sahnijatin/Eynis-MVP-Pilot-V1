@@ -152,6 +152,15 @@ export async function evaluateCheckinWelcome() {
   const thirtyMinsAgo = new Date(now.getTime() - 30 * 60000);
 
   for (const rule of rules) {
+    // White-label: the welcome message must carry the tenant's own brand, never a
+    // hardcoded "The Riviera" / "Your Concierge Team" (F-20). Prefer the branding
+    // override, fall back to the tenant's name.
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: rule.tenantId },
+      select: { name: true, branding: { select: { brandName: true } } }
+    });
+    const brandName = tenant?.branding?.brandName?.trim() || tenant?.name?.trim() || "us";
+
     const recentStays = await prisma.stay.findMany({
       where: { tenantId: rule.tenantId, checkInAt: { gte: thirtyMinsAgo, lte: now } },
       include: { guest: { select: { id: true, fullName: true, phoneE164: true } } }
@@ -162,7 +171,7 @@ export async function evaluateCheckinWelcome() {
 
       const { guest } = stay;
       const firstName = guest.fullName.split(" ")[0] ?? guest.fullName;
-      const message = `Welcome to The Riviera, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — Your Concierge Team`;
+      const message = `Welcome to ${brandName}, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — The ${brandName} Team`;
 
       try {
         const result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);

@@ -22,6 +22,7 @@ import {
   type VapiCredentials, type VapiResult, type CallParams,
 } from "./vapi";
 import { singleFlight } from "../single-flight";
+import { safeArray, isServerError } from "./json-utils";
 
 const TICK_MS = Number(process.env.CAMPAIGN_DIALER_INTERVAL_MS ?? 30_000);
 const DEFAULT_MAX_CONCURRENT = 5;
@@ -32,12 +33,6 @@ export interface DialerDeps {
   initiateCall?: (creds: VapiCredentials, params: CallParams) => Promise<VapiResult<{ id: string }>>;
   now?: () => Date;
 }
-
-const safeArray = (json: string): string[] => {
-  try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
-};
-
-const isServerError = (msg: string): boolean => /error 5\d\d/i.test(msg);
 
 // Resets calls stuck in-flight beyond the threshold so a crashed/abandoned dial
 // never pins a slot forever; the lead returns to the queue.

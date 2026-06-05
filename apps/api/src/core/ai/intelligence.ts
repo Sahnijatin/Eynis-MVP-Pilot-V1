@@ -32,15 +32,19 @@ function getOpenAIClient(): OpenAI {
 
 // ── Shared system prompt ──────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are Eynis, an AI intelligence layer for hotel operations. You analyze hotel data and produce concise, actionable intelligence for hotel managers and owners.
+// Industry-agnostic system prompt (CLAUDE.md product principle #1). The platform
+// serves many verticals — never assume hospitality. Domain vocabulary and currency
+// come from the per-request context, not from a hardcoded "hotels in India / INR"
+// assumption (F-20).
+const SYSTEM_PROMPT = `You are an AI intelligence layer for business operations. You analyze operational data and produce concise, actionable intelligence for operators, managers, and owners across many industries.
 
 Your outputs must be:
 - Specific and data-driven (reference actual numbers from the context provided)
 - Actionable (each insight should suggest what to do, not just what is happening)
-- Concise (hotel managers are busy — no filler sentences)
+- Concise (operators are busy — no filler sentences)
 - Formatted as clean JSON when asked for structured output
 
-Hotel context: You serve boutique and mid-scale hotels in India and Southeast Asia. Currency is INR unless specified otherwise.`;
+Use the domain vocabulary and currency that appear in the context provided. Do not assume a specific industry or currency.`;
 
 // ── Shared helper ─────────────────────────────────────────────────────────────
 
@@ -245,7 +249,7 @@ Return a JSON object with exactly these keys:
 
 // ── Claude implementations ────────────────────────────────────────────────────
 
-const CLAUDE_MODEL = "claude-opus-4-7";
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? "claude-opus-4-8";
 const CLAUDE_PARAMS = {
   max_tokens: 1024,
   thinking: { type: "adaptive" as const },
