@@ -92,6 +92,43 @@
     @apply w-4 h-4 shrink-0;
   }
 
+  /* Expandable module header (E-2): a row holding the module link + a chevron. */
+  .nav-module {
+    @apply cursor-pointer;
+  }
+
+  .nav-module-toggle {
+    @apply ml-auto p-0.5 rounded shrink-0 transition-transform;
+    color: inherit;
+  }
+
+  /* Sub-items revealed under an expanded module. */
+  .sidebar-subnav {
+    @apply flex flex-col gap-0.5 mt-0.5 mb-1;
+    margin-left: 1.35rem;
+    padding-left: 0.6rem;
+    border-left: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .nav-sublink {
+    @apply flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors;
+    color: #8aa6c6;
+  }
+
+  .nav-sublink:hover {
+    background: rgba(255,255,255,0.06);
+    color: #d4e8f9;
+  }
+
+  .nav-sublink.active {
+    background: rgba(255,255,255,0.10);
+    @apply text-white font-semibold;
+  }
+
+  .nav-sublink .nav-subicon {
+    @apply w-3.5 h-3.5 shrink-0;
+  }
+
   .sidebar-footer {
     @apply px-3 pb-4;
   }

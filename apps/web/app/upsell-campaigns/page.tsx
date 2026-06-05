@@ -1,9 +1,7 @@
-import { fetchUpsellCampaigns } from "../../lib/data";
-import { UpsellCampaignsClient } from "../../components/ui/upsell-campaigns-client";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function UpsellCampaignsPage() {
-  const data = await fetchUpsellCampaigns();
-  return <UpsellCampaignsClient data={data} />;
+// E-2: "Upsell Campaigns" merged into the single Campaigns surface under Marketing.
+// The old route is kept as a permanent redirect so existing links keep working.
+export default function UpsellCampaignsRedirect() {
+  redirect("/campaigns");
 }

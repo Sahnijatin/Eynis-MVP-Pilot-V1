@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { INDUSTRY_CONFIGS, type Industry } from "../../lib/industry-config";
+import { INDUSTRY_CONFIGS, flattenModuleLinks, type Industry } from "../../lib/industry-config";
 import { CheckCircle, ArrowRight, Loader2, Check } from "lucide-react";
 
 const INDUSTRIES = Object.values(INDUSTRY_CONFIGS);
@@ -279,7 +279,7 @@ export function IndustryOnboarding() {
           <div className="onboarding-modules-preview">
             <div className="onboarding-modules-label">Modules included in your workspace</div>
             <div className="onboarding-modules-list">
-              {config.navItems.filter((n) => n.href !== "/settings").map((item) => {
+              {flattenModuleLinks(config.modules).filter((n) => n.href !== "/settings").map((item) => {
                 const Icon = item.icon;
                 return (
                   <div key={item.href} className="onboarding-module-chip" style={{ borderColor: config.accentColor + "33", color: config.accentColor, background: config.accentColor + "08" }}>
