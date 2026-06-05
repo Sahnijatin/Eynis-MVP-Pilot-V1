@@ -23,6 +23,7 @@ import {
 import { startAutomationWorker } from "./core/automations/engine";
 import { computeSentimentAnalytics } from "./core/analytics/sentiment";
 import { computeUpsellAnalytics } from "./core/analytics/upsell";
+import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
@@ -408,6 +409,10 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /analytics/staff-performance":     "view_reports",
   "GET /analytics/sentiment":             "view_reports",
   "GET /analytics/upsell-campaigns":      "manage_campaigns",
+  "GET /inventory/items":                 "view_reports",
+  "POST /inventory/items":                "manage_inventory",
+  "PUT /inventory/items/:id":             "manage_inventory",
+  "DELETE /inventory/items/:id":          "manage_inventory",
   "GET /automations":                     "manage_automations",
   "GET /automations/executions":          "manage_automations",
   "GET /connectors/registry":             "manage_connectors",
@@ -2513,6 +2518,69 @@ const handleRequest = async (
       const licUpsell = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
       json(res, 200, await computeUpsellAnalytics(context.tenantId));
+      return;
+    }
+
+    // ── Inventory (vertical with real persistence) ───────────────────────────
+    if (req.url === "/inventory/items" && req.method === "GET") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!canAccess(auth.context.permissions, "GET /inventory/items")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const items = await listInventory(auth.context.tenantId);
+      json(res, 200, { ok: true, items });
+      return;
+    }
+
+    if (req.url === "/inventory/items" && req.method === "POST") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!canAccess(auth.context.permissions, "POST /inventory/items")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const name = asTrimmedString(body.name);
+      if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+      const txType = (["received", "used", "waste"].includes(String(body.txType)) ? body.txType : "received") as MovementType;
+      const qty = Number(body.qty);
+      if (!Number.isFinite(qty) || qty < 0) { json(res, 400, { ok: false, error: "qty must be a non-negative number" }); return; }
+      try {
+        const item = await applyMovement(auth.context.tenantId, {
+          name, txType, qty,
+          category: asTrimmedString(body.category) ?? undefined,
+          unit: asTrimmedString(body.unit) ?? undefined,
+          reorderLevel: body.reorderLevel != null ? Number(body.reorderLevel) : undefined,
+          unitCostInr: body.unitCostInr != null ? Math.round(Number(body.unitCostInr)) : undefined,
+        });
+        json(res, 200, { ok: true, item });
+      } catch (e) {
+        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid request" });
+      }
+      return;
+    }
+
+    const invItemMatch = /^\/inventory\/items\/([^/]+)$/.exec(req.url ?? "");
+    if (invItemMatch && req.method === "PUT") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!canAccess(auth.context.permissions, "PUT /inventory/items/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostInr: number }> = {};
+      const nm = asTrimmedString(body.name); if (nm) fields.name = nm;
+      const cat = asTrimmedString(body.category); if (cat) fields.category = cat;
+      const un = asTrimmedString(body.unit); if (un) fields.unit = un;
+      if (body.stock != null && Number.isFinite(Number(body.stock))) fields.stock = Math.max(0, Number(body.stock));
+      if (body.reorderLevel != null && Number.isFinite(Number(body.reorderLevel))) fields.reorderLevel = Math.max(0, Number(body.reorderLevel));
+      if (body.unitCostInr != null && Number.isFinite(Number(body.unitCostInr))) fields.unitCostInr = Math.round(Number(body.unitCostInr));
+      const item = await updateItem(auth.context.tenantId, invItemMatch[1], fields);
+      if (!item) { json(res, 404, { ok: false, error: "Item not found" }); return; }
+      json(res, 200, { ok: true, item });
+      return;
+    }
+    if (invItemMatch && req.method === "DELETE") {
+      const auth = await getAuthenticatedContext(req);
+      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      if (!canAccess(auth.context.permissions, "DELETE /inventory/items/:id")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+      const removed = await deleteItem(auth.context.tenantId, invItemMatch[1]);
+      if (!removed) { json(res, 404, { ok: false, error: "Item not found" }); return; }
+      json(res, 200, { ok: true });
       return;
     }
 

@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   NIGHT_AUDIT:         "night_audit",
   MANAGE_CONNECTORS:   "manage_connectors",
   MANAGE_CAMPAIGNS:    "manage_campaigns",
+  MANAGE_INVENTORY:    "manage_inventory",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -34,6 +35,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "manage_connectors",
     "manage_campaigns",
     "manage_settings",
+    "manage_inventory",
   ],
   supervisor: [
     "view_reports",
@@ -42,6 +44,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "view_guests",
     "manage_guests",
     "manage_campaigns",
+    "manage_inventory",
   ],
   agent:  ["view_requests", "manage_requests", "view_guests"],
   viewer: ["view_reports",  "view_requests",   "view_guests"],

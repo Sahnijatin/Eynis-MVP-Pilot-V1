@@ -791,6 +791,49 @@ test("analytics endpoints and connector registry return real payloads", async ()
   );
 });
 
+test("inventory items persist via the API and enforce manage_inventory (F-19)", async () => {
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+inv+" + tenantId + "@test.local");
+  await createUser(tenantId, "housekeeping", "hk+inv+" + tenantId + "@test.local");
+
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Failed to bind test server");
+  const base = "http://127.0.0.1:" + address.port;
+
+  const owner = await getAuthHeaders(base, tenantId, "owner+inv+" + tenantId + "@test.local", "owner");
+  const housekeeping = await getAuthHeaders(base, tenantId, "hk+inv+" + tenantId + "@test.local", "housekeeping");
+
+  try {
+    // Owner (admin → manage_inventory) creates an item via a stock movement.
+    const createRes = await fetch(base + "/inventory/items", {
+      method: "POST", headers: { "content-type": "application/json", ...owner },
+      body: JSON.stringify({ name: "Truffle Oil", category: "Specialty", txType: "received", qty: 10, unit: "bottles", reorderLevel: 6 }),
+    });
+    const created = (await createRes.json()) as { ok: boolean; item: { id: string; stock: number; status: string } };
+    assert.equal(createRes.status, 200);
+    assert.equal(created.item.stock, 10);
+    assert.equal(created.item.status, "ok");
+
+    // Persisted — the list reflects it.
+    const listRes = await fetch(base + "/inventory/items", { headers: owner });
+    const list = (await listRes.json()) as { ok: boolean; items: Array<{ name: string }> };
+    assert.equal(listRes.status, 200);
+    assert.ok(list.items.some((i) => i.name === "Truffle Oil"));
+
+    // A role without manage_inventory is rejected on writes.
+    const forbidden = await fetch(base + "/inventory/items", {
+      method: "POST", headers: { "content-type": "application/json", ...housekeeping },
+      body: JSON.stringify({ name: "X", txType: "received", qty: 1 }),
+    });
+    assert.equal(forbidden.status, 403);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
 test("connector configs are persisted per hotel and reflected in registry", async () => {
   const tenantId = uniqueHotelId();
   await createHotel(tenantId);

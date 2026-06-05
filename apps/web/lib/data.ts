@@ -397,6 +397,27 @@ export async function fetchUpsellCampaigns() {
   return (await res.json()) as UpsellCampaignsResponse;
 }
 
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string;
+  stock: number;
+  unit: string;
+  reorderLevel: number;
+  unitCostInr: number;
+  status: "ok" | "warning" | "critical";
+  updatedAt: string;
+}
+export interface InventoryResponse {
+  ok: boolean;
+  items: InventoryItem[];
+}
+
+export async function fetchInventory() {
+  const res = await authedFetch("/inventory/items");
+  return (await res.json()) as InventoryResponse;
+}
+
 export interface AIProvidersResponse {
   ok: boolean;
   claude: boolean;

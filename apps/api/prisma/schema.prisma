@@ -50,8 +50,29 @@ model Tenant {
   doNotContacts         DoNotContact[]
   branding              TenantBranding?
   emailSuppressions     EmailSuppression[]
+  inventoryItems        InventoryItem[]
 
   @@map("Hotel")
+}
+
+// Inventory — the first non-hospitality vertical wired end-to-end (real
+// persistence, not a frontend mock). Industry-neutral: an "item" works for F&B
+// stock, manufacturing materials, retail SKUs, etc.
+model InventoryItem {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("hotelId")
+  name         String
+  category     String   @default("Other")
+  stock        Float    @default(0)
+  unit         String   @default("units")
+  reorderLevel Float    @default(5)
+  unitCostInr  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 // Per-tenant email suppression list. Populated by the Resend webhook on hard

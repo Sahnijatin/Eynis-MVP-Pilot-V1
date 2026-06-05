@@ -65,8 +65,8 @@ GitHub issue number = finding number + 47 (F-1 → #48 … F-35 → #82).
 | F-15 | 🟠 | Campaigns | Sequence runner ignores send-windows / quiet-hours | ✅ fixed (#62) |
 | F-16 | 🟠 | Campaigns | Per-tenant Vapi webhook secret never used for verification | ✅ fixed (#63) |
 | F-17 | 🟠 | Backend | Analytics endpoints fabricate data (`Math.random`, hardcoded constants) | ◐ sentiment+upsell real; revenue/staff = sample (no PMS) (#64) |
-| F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ☐ open |
-| F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ☐ open |
+| F-18 | 🟠 | Compliance | TRAI DND scrub is a stub AND enforcement defaults off | ◐ documented (default OFF by decision; registry = follow-up) |
+| F-19 | 🟠 | Frontend | Vertical pages (inventory/orders/patients/…) are pure frontend mock | ◐ inventory built for real (#66); others still mock |
 | F-20 | 🟡 | White-label | Hardcoded "Riviera"/INR/hotel branding in AI prompts + automation Rule 3 | ☐ open |
 | F-21 | 🟡 | White-label | `eynis.com` hardcoded in billing alert (customer-facing) | ☐ open |
 | F-22 | 🟡 | Security | `JWT_SECRET` defaults to dev string; no startup assertion in prod | ☐ open |
@@ -259,6 +259,17 @@ a route table (F-32) · remaining 🟡 items.
 
 Fixes are recorded here as they land (newest first).
 
+- **F-19 (#66) — inventory vertical built for real (decision: "build one vertical").** New
+  `InventoryItem` model (migration), `core/inventory/service.ts` (tenant-scoped list / stock
+  movement upsert / update / delete with derived ok/warning/critical status), and real
+  `GET/POST/PUT/DELETE /inventory/items` routes gated by a new `manage_inventory` permission
+  (reads via `view_reports`). The `/inventory` page is now a server component fetching live data
+  with a client that persists movements, CSV import, and deletes through proxy routes — no more
+  module-level mock. Added service unit tests + an RBAC integration test (9 tests). The other
+  vertical pages remain mock (this is the template to extend). API 249→254 green; web build green.
+- **F-18 (#65) — TRAI DND — documented (decision: leave default OFF).** Enforcement stays gated
+  by `ENFORCE_DND_SCRUB` (default off); the live registry integration needs an external provider
+  and remains a tracked follow-up. `compliance.ts` already documents the Phase-1 stub.
 - **F-8 (#55) — analytics pages wired to real data (decision: "wire real, label the rest").**
   `sentiment-trends` and `upsell-campaigns` are now server components that fetch the live
   endpoints (new `sentiment-trends-client.tsx` / `upsell-campaigns-client.tsx`), rendering real
