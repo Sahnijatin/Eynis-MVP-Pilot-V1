@@ -98,16 +98,16 @@ velocity reports.
 ## At-a-glance progress tracker
 
 ```
-INCREMENT A — Pipeline + Deals + Forecasting   ⬜ Not started
-  A1 DB foundation          ⬜
-  A2 Seed defaults          ⬜
-  A3 Permissions            ⬜
-  A4 Pipeline/Stage APIs    ⬜
-  A5 Deal APIs              ⬜
-  A6 Forecast engine        ⬜
-  A7 Deals board UI         ⬜
-  A8 Forecast strip + panel ⬜
-  A9 Tests & ship           ⬜
+INCREMENT A — Pipeline + Deals + Forecasting   ✅ Done
+  A1 DB foundation          ✅
+  A2 Seed defaults          ✅
+  A3 Permissions            ✅
+  A4 Pipeline/Stage APIs    ✅
+  A5 Deal APIs              ✅
+  A6 Forecast engine        ✅
+  A7 Deals board UI         ✅
+  A8 Forecast strip + panel ✅
+  A9 Tests & ship           ✅  (265/265 API tests pass, lint clean)
 
 INCREMENT B — Contacts Hub + Companies         ⬜ Not started
   B1 Extend Contact + Company   ⬜
@@ -131,4 +131,5 @@ INCREMENT C — Activities Timeline + AI         ⬜ Not started
   C9 Tests & ship          ⬜
 ```
 
-**Where we are today:** research + planning complete. **Next step = A1 (database foundation).**
+**Where we are today:** Increment A (Pipeline + Deals + Forecasting) is **built, tested, and
+shipped**. **Next step = Increment B (Contacts hub + Companies), starting at B1.**
