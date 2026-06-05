@@ -969,16 +969,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/events/service-request-created" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "POST /events/service-request-created");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "POST /events/service-request-created")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
@@ -1182,11 +1175,8 @@ const handleRequest = async (
 
     // ── Connector: unified ingest endpoint ──────────────────────────────────
     if (req.url?.startsWith("/connectors/events/ingest") && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /connectors/events/ingest")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /connectors/events/ingest");
+      if (!auth.ok) return;
 
       const body = (await parseBody(req)) as {
         connectorKey?: unknown; eventType?: unknown; guestPhone?: unknown;
@@ -1217,11 +1207,8 @@ const handleRequest = async (
 
     // ── Connector: event log ────────────────────────────────────────────────
     if (req.url?.startsWith("/connectors/events") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /connectors/events")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /connectors/events");
+      if (!auth.ok) return;
 
       const qs = parseUrl(req.url).searchParams;
       const limit = Math.min(Number(qs.get("limit") ?? 20), 100);
@@ -1250,11 +1237,8 @@ const handleRequest = async (
 
     // ── Connector: outbound WhatsApp send ───────────────────────────────────
     if (req.url?.startsWith("/connectors/whatsapp/send") && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /connectors/whatsapp/send")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /connectors/whatsapp/send");
+      if (!auth.ok) return;
 
       const body = (await parseBody(req)) as { toPhone?: unknown; message?: unknown };
       const toPhone = asTrimmedString(body.toPhone);
@@ -1474,16 +1458,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/service-requests/sla/refresh" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "POST /service-requests/sla/refresh");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "POST /service-requests/sla/refresh")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const now = new Date();
       const result = await prisma.serviceRequest.updateMany({
@@ -1504,16 +1481,9 @@ const handleRequest = async (
 
     const requestId = parseServiceRequestStatusPath(req.url);
     if (requestId && req.method === "PATCH") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "PATCH /service-requests/:id/status");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "PATCH /service-requests/:id/status")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const body = (await parseBody(req)) as { status?: unknown };
       const nextStatus = asTrimmedString(body.status);
@@ -1592,16 +1562,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/dashboard/overview" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /dashboard/overview");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/overview")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const [openCount, resolvedTodayCount, escalatedOpenCount, slaBreachedOpenCount] =
         await Promise.all([
           prisma.serviceRequest.count({
@@ -1639,16 +1602,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/dashboard/queue-summary" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /dashboard/queue-summary");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/queue-summary")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const rows = await prisma.serviceRequest.findMany({
         where: { tenantId: context.tenantId, status: { not: "resolved" } },
@@ -1675,16 +1631,9 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/dashboard/trends") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /dashboard/overview");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/overview")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const parsedUrl = parseUrl(req.url);
       const days = asSafeLimit(parsedUrl.searchParams.get("days"), 7, 30);
@@ -1920,16 +1869,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/connectors/registry" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /connectors/registry");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /connectors/registry")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const configs = await prisma.connectorConfig.findMany({
         where: { tenantId: context.tenantId },
@@ -1954,16 +1896,9 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/connectors/configs") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /connectors/configs");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /connectors/configs")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const items = await prisma.connectorConfig.findMany({
         where: { tenantId: context.tenantId },
@@ -1993,16 +1928,9 @@ const handleRequest = async (
 
     const connectorConfigKey = parseConnectorConfigPath(req.url);
     if (connectorConfigKey && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "PUT /connectors/configs/:key");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "PUT /connectors/configs/:key")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       if (!envFlagByConnectorKey.has(connectorConfigKey)) {
         json(res, 404, { ok: false, error: "Unknown connector key" });
         return;
@@ -2059,16 +1987,9 @@ const handleRequest = async (
     }
 
     if (connectorConfigKey && req.method === "DELETE") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "DELETE /connectors/configs/:key");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "DELETE /connectors/configs/:key")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       await prisma.connectorConfig.deleteMany({
         where: { tenantId: context.tenantId, connectorKey: connectorConfigKey }
@@ -2088,16 +2009,9 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/users") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /users");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /users")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const parsedUrl = parseUrl(req.url);
       const roleFilter = asTrimmedString(parsedUrl.searchParams.get("role"));
@@ -2139,16 +2053,9 @@ const handleRequest = async (
 
     const assignRequestId = parseServiceRequestAssignPath(req.url);
     if (assignRequestId && req.method === "PATCH") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "PATCH /service-requests/:id/assign");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "PATCH /service-requests/:id/assign")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
 
       const body = (await parseBody(req)) as { assigneeEmail?: unknown };
       const assigneeEmail = asTrimmedString(body.assigneeEmail)?.toLowerCase();
@@ -2260,16 +2167,9 @@ const handleRequest = async (
     }
 
     if (req.url === "/audit" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, "GET /audit");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /audit")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" });
-        return;
-      }
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
@@ -2309,12 +2209,9 @@ const handleRequest = async (
 
     // ── GET /dashboard/live-feed ─────────────────────────────────────────────
     if (req.url?.startsWith("/dashboard/live-feed") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /dashboard/live-feed");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /dashboard/live-feed")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const items = await prisma.serviceRequest.findMany({
         where: { tenantId: context.tenantId, status: { not: "resolved" } },
         orderBy: { createdAt: "desc" },
@@ -2338,11 +2235,8 @@ const handleRequest = async (
     // ── GET /guests/:id ──────────────────────────────────────────────────────
     const guestIdMatch = /^\/guests\/([^/?]+)/.exec(req.url ?? "");
     if (guestIdMatch && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /guests/:id")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /guests/:id");
+      if (!auth.ok) return;
       const guestId = guestIdMatch[1]!;
       const { tenantId } = auth.context;
       const guest = await prisma.contact.findFirst({
@@ -2386,12 +2280,9 @@ const handleRequest = async (
 
     // ── GET /guests ──────────────────────────────────────────────────────────
     if (req.url?.startsWith("/guests") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /guests");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /guests")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const parsedUrl = parseUrl(req.url);
       const limit = asSafeLimit(parsedUrl.searchParams.get("limit"), 20, 100);
       const offset = asSafeOffset(parsedUrl.searchParams.get("offset"));
@@ -2445,11 +2336,8 @@ const handleRequest = async (
 
     // ── GET /automations/executions ──────────────────────────────────────────
     if (req.url?.startsWith("/automations/executions") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /automations/executions")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /automations/executions");
+      if (!auth.ok) return;
       const licExec = await enforceLicenseFeature(auth.context.tenantId, "automations");
       if (!licExec.ok) { json(res, 403, { ok: false, error: licExec.error }); return; }
       const u = parseUrl(req.url);
@@ -2479,12 +2367,9 @@ const handleRequest = async (
 
     // ── GET /automations ─────────────────────────────────────────────────────
     if (req.url?.startsWith("/automations") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, "GET /automations");
+      if (!auth.ok) return;
       const context = auth.context;
-      if (!canAccess(context.permissions, "GET /automations")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
       if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
       const rules = await prisma.automationRule.findMany({
@@ -2928,11 +2813,8 @@ const handleRequest = async (
 
     // ── GET /night-audit/latest ──────────────────────────────────────────────
     if (req.url?.startsWith("/night-audit/latest") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /night-audit/latest")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /night-audit/latest");
+      if (!auth.ok) return;
       const licNightLatest = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!licNightLatest.ok) { json(res, 403, { ok: false, error: licNightLatest.error }); return; }
       const { tenantId } = auth.context;
@@ -2955,11 +2837,8 @@ const handleRequest = async (
       if (process.env.NODE_ENV === "production" && process.env.ENABLE_PMS_SIMULATE !== "true") {
         json(res, 404, { ok: false, error: "Not found" }); return;
       }
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "POST /connectors/pms/simulate")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "POST /connectors/pms/simulate");
+      if (!auth.ok) return;
       const { tenantId } = auth.context;
       const body = (await parseBody(req)) as { guestName?: unknown; roomNumber?: unknown };
       const guestNameInput = asTrimmedString(body.guestName) ?? "Demo Guest";
@@ -4068,11 +3947,8 @@ const handleRequest = async (
     // ── Voice Campaign: A/B analytics ───────────────────────────────────────
     const analyticsId = parseCampaignAnalyticsPath(req.url);
     if (analyticsId && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/analytics")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /campaigns/:id/analytics");
+      if (!auth.ok) return;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: analyticsId, tenantId: auth.context.tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
@@ -4119,11 +3995,8 @@ const handleRequest = async (
     // ?channel= and ?status= filters. Tenant-scoped via the campaign lookup.
     const deliveriesId = parseCampaignDeliveriesPath(req.url);
     if (deliveriesId && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
-      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/deliveries")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
+      const auth = await authorize(req, res, "GET /campaigns/:id/deliveries");
+      if (!auth.ok) return;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: deliveriesId, tenantId: auth.context.tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
