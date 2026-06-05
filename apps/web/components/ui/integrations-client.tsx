@@ -23,7 +23,7 @@ function StatusBadge({ status }: { status: ConnectorRegistryItem["status"] }) {
   return <span className={`badge ${s.cls}`}>{s.label}</span>;
 }
 
-export function IntegrationsClient({ items }: { items: ConnectorRegistryItem[] }) {
+export function IntegrationsClient({ items, statusLoaded = true }: { items: ConnectorRegistryItem[]; statusLoaded?: boolean }) {
   const [active, setActive] = useState<ConnectorRegistryItem | null>(null);
 
   const byCategory = new Map<string, ConnectorRegistryItem[]>();
@@ -48,6 +48,13 @@ export function IntegrationsClient({ items }: { items: ConnectorRegistryItem[] }
           Connect the tools that power your operation. Each connector stores its credentials securely per workspace.
         </p>
       </div>
+
+      {!statusLoaded && (
+        <div className="mb-5 px-3 py-2.5 rounded-lg text-sm flex items-center gap-2 bg-amber-50 text-amber-800 border border-amber-100">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+          Showing the connector catalog — sign in to your workspace to view and manage live connection status.
+        </div>
+      )}
 
       {categories.map((cat) => {
         const list = byCategory.get(cat)!;

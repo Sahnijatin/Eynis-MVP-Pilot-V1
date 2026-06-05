@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
 import type { UserRole, SystemRoleKey } from "@eynis/shared";
-import { isValidConsentSource } from "@eynis/shared";
+import { isValidConsentSource, CONNECTOR_CATALOG, CONNECTOR_CATEGORY_LABELS, connectorEnvFlag } from "@eynis/shared";
 import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
@@ -569,126 +569,11 @@ const canAccess = (permissions: string[], key: string): boolean => {
   return req === null || hasPermission(permissions, req);
 };
 
-// Connector registry. Each entry carries the display metadata the Integrations
-// module renders (name, description, what it needs, icon/brand) plus the env flag
-// and ingest modes used by the runtime. `planned` marks connectors that aren't
-// wired for real use yet — the UI shows a "Planned" badge and disables Connect.
-type ConnectorField = { key: string; label: string; secret?: boolean; placeholder?: string };
-
-const CONNECTOR_CATEGORY_LABELS: Record<string, string> = {
-  communication: "Communication",
-  pms: "PMS",
-  pos: "POS",
-  payments: "Payments",
-  voice: "Voice",
-  email: "Email",
-};
-
-const connectorRegistry = [
-  {
-    key: "whatsapp_interakt",
-    category: "communication",
-    envFlag: "CONNECTOR_WHATSAPP_INTERAKT_ENABLED",
-    ingestModes: ["webhook", "outbound_api"],
-    name: "WhatsApp · Interakt",
-    description: "Receive and reply to customer messages on WhatsApp via Interakt.",
-    icon: "💬", brandColor: "#25D366", planned: false,
-    requiredFields: [{ key: "apiKey", label: "Interakt API Key", secret: true, placeholder: "your_interakt_api_key" }] as ConnectorField[],
-  },
-  {
-    key: "whatsapp_twilio",
-    category: "communication",
-    envFlag: "CONNECTOR_WHATSAPP_TWILIO_ENABLED",
-    ingestModes: ["webhook", "outbound_api"],
-    name: "WhatsApp · Twilio",
-    description: "Two-way WhatsApp messaging through your Twilio account.",
-    icon: "💬", brandColor: "#F22F46", planned: false,
-    requiredFields: [
-      { key: "accountSid", label: "Account SID", placeholder: "ACxxxxxxxx" },
-      { key: "authToken", label: "Auth Token", secret: true, placeholder: "your_auth_token" },
-      { key: "fromNumber", label: "WhatsApp From Number", placeholder: "whatsapp:+14155238886" },
-    ] as ConnectorField[],
-  },
-  {
-    key: "pms_hotelogix",
-    category: "pms",
-    envFlag: "CONNECTOR_PMS_HOTELOGIX_ENABLED",
-    ingestModes: ["api", "webhook"],
-    name: "Hotelogix PMS",
-    description: "Sync reservations and guest profiles from Hotelogix.",
-    icon: "🏨", brandColor: "#2563eb", planned: true,
-    requiredFields: [
-      { key: "apiKey", label: "API Key", secret: true },
-      { key: "propertyId", label: "Property ID" },
-    ] as ConnectorField[],
-  },
-  {
-    key: "pms_ezee",
-    category: "pms",
-    envFlag: "CONNECTOR_PMS_EZEE_ENABLED",
-    ingestModes: ["api"],
-    name: "eZee PMS",
-    description: "Sync reservations and guest profiles from eZee.",
-    icon: "🏨", brandColor: "#2563eb", planned: true,
-    requiredFields: [
-      { key: "apiKey", label: "API Key", secret: true },
-      { key: "hotelCode", label: "Hotel Code" },
-    ] as ConnectorField[],
-  },
-  {
-    key: "pos_petpooja",
-    category: "pos",
-    envFlag: "CONNECTOR_POS_PETPOOJA_ENABLED",
-    ingestModes: ["api"],
-    name: "Petpooja POS",
-    description: "Pull orders and menu data from Petpooja.",
-    icon: "🍽️", brandColor: "#ea580c", planned: true,
-    requiredFields: [
-      { key: "apiKey", label: "API Key", secret: true },
-      { key: "restaurantId", label: "Restaurant ID" },
-    ] as ConnectorField[],
-  },
-  {
-    key: "payments_razorpay",
-    category: "payments",
-    envFlag: "CONNECTOR_PAYMENTS_RAZORPAY_ENABLED",
-    ingestModes: ["api", "payment_link"],
-    name: "Razorpay",
-    description: "Collect payments and send payment links via Razorpay.",
-    icon: "💳", brandColor: "#0f766e", planned: true,
-    requiredFields: [
-      { key: "keyId", label: "Key ID" },
-      { key: "keySecret", label: "Key Secret", secret: true },
-    ] as ConnectorField[],
-  },
-  {
-    key: "voice_vapi",
-    category: "voice",
-    envFlag: "CONNECTOR_VOICE_VAPI_ENABLED",
-    ingestModes: ["api", "webhook"],
-    name: "Voice Agent · Vapi",
-    description: "AI voice calls for outreach and reminders via Vapi.",
-    icon: "📞", brandColor: "#7c3aed", planned: false,
-    requiredFields: [
-      { key: "apiKey", label: "Vapi API Key", secret: true },
-      { key: "assistantId", label: "Assistant ID" },
-    ] as ConnectorField[],
-  },
-  {
-    key: "email_resend",
-    category: "email",
-    envFlag: "CONNECTOR_EMAIL_RESEND_ENABLED",
-    ingestModes: ["outbound_api"],
-    name: "Email · Resend",
-    description: "Send transactional and campaign email from your own domain via Resend.",
-    icon: "✉️", brandColor: "#0891b2", planned: false,
-    requiredFields: [
-      { key: "apiKey", label: "Resend API Key", secret: true, placeholder: "re_xxxxxxxx" },
-      { key: "fromAddress", label: "From Address", placeholder: "campaigns@yourdomain.com" },
-      { key: "fromName", label: "From Name", placeholder: "Your Brand" },
-    ] as ConnectorField[],
-  },
-] as const;
+// Connector registry. The static catalog (name, description, what it needs,
+// icon/brand, planned flag) is shared with the web Integrations module via
+// @eynis/shared; here we add the runtime env flag. The GET handler overlays
+// per-tenant status and config.
+const connectorRegistry = CONNECTOR_CATALOG.map((c) => ({ ...c, envFlag: connectorEnvFlag(c.key) }));
 
 const envFlagByConnectorKey = new Map<string, string>(
   connectorRegistry.map((item) => [item.key, item.envFlag])
