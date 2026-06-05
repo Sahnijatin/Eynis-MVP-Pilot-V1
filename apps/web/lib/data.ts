@@ -360,9 +360,23 @@ export async function fetchGuestProfile(guestId: string): Promise<GuestProfileRe
   }
 }
 
-export async function fetchSentiment() {
-  const res = await authedFetch("/analytics/sentiment");
-  return (await res.json()) as SentimentResponse;
+export async function fetchSentiment(): Promise<SentimentResponse> {
+  // Degrade gracefully: a 403 (e.g. analytics not in the tenant's plan), a 5xx,
+  // or a network error must render the page's empty state, never throw and trip
+  // the workspace error boundary ("Couldn't load this page").
+  const empty: SentimentResponse = {
+    ok: false, netScore: 0, totalFeedback: 0, surveyCompletionRate: null,
+    breakdown: { positive: 0, neutral: 0, negative: 0 },
+    bySource: [], drivers: [], timeSeries: [], alert: null,
+  };
+  try {
+    const res = await authedFetch("/analytics/sentiment");
+    if (!res.ok) return empty;
+    const data = (await res.json()) as Partial<SentimentResponse>;
+    return { ...empty, ...data };
+  } catch {
+    return empty;
+  }
 }
 
 export interface ConnectorEventsResponse {
@@ -392,9 +406,18 @@ export async function fetchConnectorEvents(limit = 10): Promise<ConnectorEventsR
   return (await res.json()) as ConnectorEventsResponse;
 }
 
-export async function fetchUpsellCampaigns() {
-  const res = await authedFetch("/analytics/upsell-campaigns");
-  return (await res.json()) as UpsellCampaignsResponse;
+export async function fetchUpsellCampaigns(): Promise<UpsellCampaignsResponse> {
+  // Same graceful-degradation contract as fetchSentiment — never throw on a 403/
+  // 5xx/network failure; render the empty state instead.
+  const empty: UpsellCampaignsResponse = { ok: false, items: [], total: 0, weeklyData: [] };
+  try {
+    const res = await authedFetch("/analytics/upsell-campaigns");
+    if (!res.ok) return empty;
+    const data = (await res.json()) as Partial<UpsellCampaignsResponse>;
+    return { ...empty, ...data };
+  } catch {
+    return empty;
+  }
 }
 
 export interface InventoryItem {
