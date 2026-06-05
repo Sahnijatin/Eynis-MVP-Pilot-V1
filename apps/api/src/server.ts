@@ -1216,7 +1216,7 @@ const handleRequest = async (
         prisma.connectorEvent.count({ where: { tenantId: auth.context.tenantId, ...(connectorKey ? { connectorKey } : {}) } })
       ]);
 
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
@@ -2450,7 +2450,7 @@ const handleRequest = async (
           actionType: e.actionType, actionResult: e.actionResult,
           resultDetail: e.resultDetail, executedAt: e.executedAt
         })),
-        page: { limit, offset, total, hasMore: offset + limit < total }
+        page: { limit, offset, total, hasMore: offset + execs.length < total }
       });
       return;
     }
@@ -3561,7 +3561,7 @@ const handleRequest = async (
           }),
           prisma.sequenceEnrollment.count({ where: { sequenceId: sequence.id } }),
         ]);
-        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
         return;
       }
 
@@ -3752,7 +3752,7 @@ const handleRequest = async (
         ...serializeCampaign(r),
         stats: { totalLeads: r._count.leads, totalCalls: r._count.calls },
       }));
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
@@ -4003,7 +4003,7 @@ const handleRequest = async (
           }),
           prisma.campaignLead.count({ where }),
         ]);
-        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+        json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
         return;
       }
 
@@ -4147,7 +4147,7 @@ const handleRequest = async (
         }),
         prisma.messageDelivery.count({ where: whereDeliveries }),
       ]);
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 
@@ -4218,7 +4218,7 @@ const handleRequest = async (
         prisma.callRecord.findMany({ where: whereCalls, orderBy: { createdAt: "desc" }, take: limit, skip: offset, select: selectCall }),
         prisma.callRecord.count({ where: whereCalls }),
       ]);
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + limit < total } });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
       return;
     }
 

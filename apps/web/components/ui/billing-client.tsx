@@ -44,9 +44,13 @@ function getPlans(industry: string) {
 interface Props {
   license: TeamLicenseResponse["license"] | null;
   industry?: string;
+  // The tenant's own support address (white-label, F-21). Never hardcode an
+  // eynis.com identity into customer-facing copy.
+  supportEmail?: string | null;
 }
 
-export default function BillingClient({ license, industry = "hospitality" }: Props) {
+export default function BillingClient({ license, industry = "hospitality", supportEmail }: Props) {
+  const billingContact = supportEmail?.trim() || "your account administrator";
   const PLANS = getPlans(industry);
   const config = getIndustryConfig(industry);
   const accentColor = config.accentColor;
@@ -195,7 +199,7 @@ export default function BillingClient({ license, industry = "hospitality" }: Pro
                   ) : (
                     <button
                       onClick={() => {
-                        alert("Razorpay integration coming soon. Contact sales@eynis.com to upgrade.");
+                        alert(`Online upgrades are coming soon. Contact ${billingContact} to upgrade.`);
                       }}
                       className="w-full py-2 text-xs font-medium rounded-lg text-white transition-colors"
                       style={{ background: "#0f766e" }}
@@ -223,7 +227,7 @@ export default function BillingClient({ license, industry = "hospitality" }: Pro
           <p className="text-xs text-slate-500 leading-relaxed">
             All plan changes are processed through Razorpay. Your subscription will be billed monthly
             in INR. To modify your subscription, upgrade/downgrade above or contact{" "}
-            <span className="text-teal-700 font-medium">support@eynis.com</span>.
+            <span className="text-teal-700 font-medium">{billingContact}</span>.
           </p>
         </div>
       </div>

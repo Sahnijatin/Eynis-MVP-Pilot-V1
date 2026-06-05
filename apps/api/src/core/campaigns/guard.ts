@@ -6,7 +6,7 @@
 // and passed in as `suppressed` (keeps this allocation-free per lead and lets
 // the dispatcher resolve thousands of phones in chunked queries).
 
-import { canContactLead, requiresDndScrub } from "./compliance";
+import { canContactLead, dndScrub } from "./compliance";
 import type { ConsentSource } from "@eynis/shared";
 
 export interface GuardLead {
@@ -39,10 +39,14 @@ export function evaluateContact(lead: GuardLead, opts: GuardOptions): GuardDecis
   });
   if (!consent.allowed) return { ok: false, reason: consent.reason };
 
-  // DND/TRAI scrub applies to outbound voice in India. Enforced only when
-  // ENFORCE_DND_SCRUB=true (until the live registry integration lands), matching
-  // the VERIFY_WEBHOOKS dev-friendly default.
-  if (opts.channel === "voice" && requiresDndScrub(lead.phone) && process.env.ENFORCE_DND_SCRUB === "true") {
+  // DND/TRAI scrub applies to outbound voice in India. Now enforced by DEFAULT
+  // (fail closed): an Indian (+91) number must be scrubbed against the DND
+  // registry before dialling, and until the Phase-2 registry connector lands the
+  // stub never returns "clear" — so +91 voice leads are skipped rather than
+  // dialled un-scrubbed (F-18). Set ENFORCE_DND_SCRUB=false to bypass in dev/test
+  // or in regions where TRAI DND does not apply. Messaging channels are unaffected.
+  const dndEnforced = process.env.ENFORCE_DND_SCRUB !== "false";
+  if (opts.channel === "voice" && dndEnforced && dndScrub(lead.phone).status !== "clear") {
     return { ok: false, reason: "dnd_scrub_required" };
   }
 

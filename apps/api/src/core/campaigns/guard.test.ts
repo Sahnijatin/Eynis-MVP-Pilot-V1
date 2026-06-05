@@ -37,14 +37,15 @@ test("evaluateContact blocks the email channel when there is no deliverable addr
   assert.deepEqual(evaluateContact(badEmail, { channel: "email", suppressed: false }), { ok: false, reason: "missing_email" });
 });
 
-test("DND scrub only blocks voice for +91 and only when enforced", () => {
+test("DND scrub blocks +91 voice by default (fail closed), and only voice", () => {
   const india: GuardLead = { consent: true, consentSource: "csv_import", optedOut: false, phone: "+919876543210" };
-  // not enforced (dev default) → allowed
+  // Default (unset) is now enforced → +91 voice blocked until the registry lands (F-18).
   delete process.env.ENFORCE_DND_SCRUB;
-  assert.equal(evaluateContact(india, { channel: "voice", suppressed: false }).ok, true);
-  // enforced → voice blocked, but messaging channels still allowed
-  process.env.ENFORCE_DND_SCRUB = "true";
   assert.equal(evaluateContact(india, { channel: "voice", suppressed: false }).ok, false);
+  // …but messaging channels are never DND-gated.
   assert.equal(evaluateContact(india, { channel: "whatsapp", suppressed: false }).ok, true);
+  // Explicit opt-out (dev / non-TRAI region) → voice allowed again.
+  process.env.ENFORCE_DND_SCRUB = "false";
+  assert.equal(evaluateContact(india, { channel: "voice", suppressed: false }).ok, true);
   delete process.env.ENFORCE_DND_SCRUB;
 });
