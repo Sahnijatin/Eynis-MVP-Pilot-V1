@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   Button, Card, PageHeader, Field, Input, Select, Badge, EmptyState, Modal, Spinner, useToast, tokens as t,
 } from "../ds";
+import { DataGrid, type GridColumn } from "./data-grid";
+import { CrmTabs } from "./crm-tabs";
 import type { DealRow, PipelineRow, PipelineStage, ForecastSummary, DealSuggestionRow } from "../../lib/data";
+
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 // ── Money formatting ──────────────────────────────────────────────────────────
 function fmtMoney(amount: number, currency = "INR"): string {
@@ -55,6 +59,7 @@ export function DealsBoardClient({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<"kanban" | "grid">("kanban");
 
   // Re-sync from the server after router.refresh() lands new props.
   useEffect(() => setDeals(initialDeals), [initialDeals]);
@@ -136,9 +141,49 @@ export function DealsBoardClient({
     }
   }
 
+  // Inline grid edit. Stage changes go through the move endpoint (logs a
+  // transition + auto-sets won/lost); everything else is a plain PATCH.
+  async function editDealCell(row: DealRow, key: string, value: string) {
+    if (key === "stage") { await moveDeal(row.id, value); return; }
+    const payload: Record<string, unknown> =
+      key === "value" ? { value: value === "" ? null : Number(value) } :
+      key === "owner" ? { ownerId: value || null } :
+      key === "expectedClose" ? { expectedCloseAt: value || null } :
+      { [key]: value || null };
+    const res = await fetch(`/api/deals/${row.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Update failed");
+    toast.push("Deal updated", "success");
+    router.refresh();
+  }
+
+  async function deleteDeals(rows: DealRow[]) {
+    for (const r of rows) {
+      const res = await fetch(`/api/deals/${r.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+    }
+    toast.push(`Deleted ${rows.length} deal(s)`, "success");
+    router.refresh();
+  }
+
+  const ownerOptions = owners.map((o) => ({ value: o.id, label: o.fullName }));
+  const gridColumns: GridColumn<DealRow>[] = [
+    { key: "title", header: "Deal", accessor: (d) => d.title, editable: true, width: 220 },
+    { key: "value", header: "Value", type: "number", accessor: (d) => d.value ?? "", editable: true, align: "right", render: (d) => d.value != null ? fmtMoney(d.value, d.currency || currency) : <span>—</span> },
+    { key: "stage", header: "Stage", type: "select", accessor: (d) => d.stageName ?? "", editAccessor: (d) => d.stageId, editable: true, options: stages.map((s) => ({ value: s.id, label: s.name })) },
+    { key: "contact", header: "Contact", accessor: (d) => d.contactName ?? "" },
+    { key: "owner", header: "Owner", type: "select", accessor: (d) => d.ownerName ?? "", editAccessor: (d) => d.ownerId ?? "", editable: true, options: ownerOptions },
+    { key: "status", header: "Status", accessor: (d) => d.status, render: (d) => <Badge tone={d.status === "won" ? "success" : d.status === "lost" ? "danger" : "neutral"}>{d.status}</Badge> },
+    { key: "expectedClose", header: "Expected close", type: "date", accessor: (d) => d.expectedCloseAt ?? "", editable: true, render: (d) => fmtDate(d.expectedCloseAt) || <span>—</span> },
+    { key: "source", header: "Source", accessor: (d) => d.source ?? "", defaultHidden: true },
+    { key: "createdAt", header: "Created", type: "date", accessor: (d) => d.createdAt, render: (d) => fmtDate(d.createdAt), defaultHidden: true },
+  ];
+
   if (!pipeline) {
     return (
       <div style={{ padding: 24 }}>
+        <CrmTabs />
         <PageHeader title="Deals" subtitle="Pipeline & forecasting" />
         <EmptyState
           title="No pipeline yet"
@@ -153,11 +198,20 @@ export function DealsBoardClient({
 
   return (
     <div style={{ padding: 24 }}>
+      <CrmTabs />
       <PageHeader
         title="Deals"
         subtitle="Track opportunities through your pipeline and forecast revenue"
         actions={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", border: `1px solid ${t.color.border}`, borderRadius: t.radius.md, overflow: "hidden" }}>
+              {(["kanban", "grid"] as const).map((v) => (
+                <button key={v} onClick={() => setView(v)} style={{
+                  padding: "7px 12px", fontSize: t.font.sm, fontWeight: 600, border: "none", cursor: "pointer",
+                  background: view === v ? t.color.accent : t.color.surface, color: view === v ? "#fff" : t.color.textMuted,
+                }}>{v === "kanban" ? "Kanban" : "Grid"}</button>
+              ))}
+            </div>
             {initialPipelines.length > 1 && (
               <Select value={pipelineId} onChange={(e) => setPipelineId(e.target.value)} style={{ minWidth: 160 }}>
                 {initialPipelines.map((p) => (
@@ -200,13 +254,25 @@ export function DealsBoardClient({
       {/* Forecast strip */}
       <ForecastStrip forecast={forecast} currency={currency} />
 
-      {/* Board */}
+      {/* Board / Grid */}
       {!hasDeals ? (
         <EmptyState
           title="No deals yet"
           description="Create your first deal to start tracking your pipeline and forecast."
           icon="📊"
           action={<Button onClick={() => setCreating(true)}>+ New deal</Button>}
+        />
+      ) : view === "grid" ? (
+        <DataGrid<DealRow>
+          rows={deals.filter((d) => d.pipelineId === pipeline.id)}
+          columns={gridColumns}
+          getId={(d) => d.id}
+          storageKey="deals"
+          exportFilename="deals"
+          onEditCell={editDealCell}
+          onDeleteRows={deleteDeals}
+          searchPlaceholder="Search deals…"
+          emptyTitle="No deals"
         />
       ) : (
         <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>

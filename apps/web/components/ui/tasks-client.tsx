@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, PageHeader, Badge, EmptyState, Button, useToast, tokens as t } from "../ds";
+import { PageHeader, Badge, useToast } from "../ds";
+import { DataGrid, type GridColumn } from "./data-grid";
+import { CrmTabs } from "./crm-tabs";
 import type { TaskRow } from "../../lib/data";
+
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "");
+const isOverdue = (due: string | null) => !!due && new Date(due).getTime() < Date.now();
 
 export function TasksClient({ initialTasks }: { initialTasks: TaskRow[] }) {
   const router = useRouter();
@@ -11,50 +16,45 @@ export function TasksClient({ initialTasks }: { initialTasks: TaskRow[] }) {
   const [tasks, setTasks] = useState<TaskRow[]>(initialTasks);
   useEffect(() => setTasks(initialTasks), [initialTasks]);
 
-  async function complete(task: TaskRow) {
-    setTasks((prev) => prev.filter((t) => t.id !== task.id)); // optimistic
-    try {
-      const res = await fetch(`/api/activities/${task.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ completed: true }) });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
-      toast.push("Task completed", "success");
-      router.refresh();
-    } catch (e) {
-      toast.push(e instanceof Error ? e.message : "Failed", "error");
-      setTasks((prev) => [task, ...prev]); // roll back
-    }
+  // Inline status edit: setting a task to "done" marks the activity complete.
+  async function editCell(row: TaskRow, key: string, value: string) {
+    if (key !== "status") return;
+    if (value !== "done") return;
+    const res = await fetch(`/api/activities/${row.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ completed: true }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
+    toast.push("Task completed", "success");
+    router.refresh();
   }
 
-  function overdue(due: string | null): boolean {
-    return !!due && new Date(due).getTime() < Date.now();
-  }
+  const columns: GridColumn<TaskRow>[] = [
+    { key: "status", header: "Status", type: "select", accessor: () => "Open", editAccessor: () => "open", editable: true,
+      options: [{ value: "open", label: "Open" }, { value: "done", label: "Done" }], width: 90, filterable: false },
+    { key: "title", header: "Task", accessor: (t) => t.title, width: 280 },
+    { key: "contact", header: "Contact", accessor: (t) => t.contactName ?? "" },
+    { key: "due", header: "Due", type: "date", accessor: (t) => t.dueAt ?? "",
+      render: (t) => t.dueAt ? <Badge tone={isOverdue(t.dueAt) ? "danger" : "neutral"}>{isOverdue(t.dueAt) ? "overdue · " : ""}{fmtDate(t.dueAt)}</Badge> : <span>—</span> },
+    { key: "type", header: "Type", accessor: (t) => t.type },
+    { key: "assignedBy", header: "Assigned by", accessor: (t) => t.userName ?? "", defaultHidden: true },
+  ];
 
   return (
     <div style={{ padding: 24 }}>
+      <CrmTabs />
       <PageHeader title="Tasks" subtitle="Your open follow-ups across every contact and deal" />
-      {tasks.length === 0 ? (
-        <EmptyState title="No open tasks" description="Tasks you add on a contact show up here so nothing slips through the cracks." icon="✅" />
-      ) : (
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          {tasks.map((task) => (
-            <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderTop: `1px solid ${t.color.border}` }}>
-              <button onClick={() => complete(task)} title="Mark done" style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${t.color.borderStrong}`, background: "none", cursor: "pointer", flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: t.color.text, fontSize: t.font.sm }}>{task.title}</div>
-                <div style={{ fontSize: t.font.xs, color: t.color.textMuted }}>
-                  {task.contactName ? `${task.contactName} · ` : ""}{task.userName ? `assigned by ${task.userName}` : ""}
-                </div>
-              </div>
-              {task.dueAt && (
-                <Badge tone={overdue(task.dueAt) ? "danger" : "neutral"}>
-                  {overdue(task.dueAt) ? "overdue · " : ""}{new Date(task.dueAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                </Badge>
-              )}
-              <Button variant="secondary" onClick={() => complete(task)}>Done</Button>
-            </div>
-          ))}
-        </Card>
-      )}
+      <DataGrid<TaskRow>
+        rows={tasks}
+        columns={columns}
+        getId={(t) => t.id}
+        storageKey="tasks"
+        exportFilename="tasks"
+        onEditCell={editCell}
+        searchPlaceholder="Search tasks…"
+        emptyTitle="No open tasks"
+        emptyDescription="Tasks you add on a contact show up here so nothing slips through the cracks."
+      />
     </div>
   );
 }
