@@ -15,6 +15,8 @@ export const PERMISSIONS = {
   MANAGE_CONNECTORS:   "manage_connectors",
   MANAGE_CAMPAIGNS:    "manage_campaigns",
   MANAGE_INVENTORY:    "manage_inventory",
+  VIEW_CRM:            "view_crm",
+  MANAGE_CRM:          "manage_crm",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -36,6 +38,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "manage_campaigns",
     "manage_settings",
     "manage_inventory",
+    "view_crm",
+    "manage_crm",
   ],
   supervisor: [
     "view_reports",
@@ -45,9 +49,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "manage_guests",
     "manage_campaigns",
     "manage_inventory",
+    "view_crm",
+    "manage_crm",
   ],
-  agent:  ["view_requests", "manage_requests", "view_guests"],
-  viewer: ["view_reports",  "view_requests",   "view_guests"],
+  agent:  ["view_requests", "manage_requests", "view_guests", "view_crm", "manage_crm"],
+  viewer: ["view_reports",  "view_requests",   "view_guests", "view_crm"],
 };
 
 // Old UserRole → new Role.key (for loading permissions from legacy JWT role)

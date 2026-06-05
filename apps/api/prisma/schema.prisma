@@ -51,6 +51,10 @@ model Tenant {
   branding              TenantBranding?
   emailSuppressions     EmailSuppression[]
   inventoryItems        InventoryItem[]
+  pipelines             Pipeline[]
+  pipelineStages        Stage[]
+  deals                 Deal[]
+  dealTransitions       DealTransition[]
 
   @@map("Hotel")
 }
@@ -128,6 +132,8 @@ model User {
   systemRole         Role?                      @relation(fields: [roleId], references: [id], onDelete: SetNull)
   assignedRequests   ServiceRequest[]           @relation("assigned_requests")
   changedTransitions ServiceRequestTransition[] @relation("transition_actor")
+  ownedDeals         Deal[]                     @relation("deal_owner")
+  changedDealTransitions DealTransition[]       @relation("deal_transition_actor")
 }
 
 // The end-customer a tenant engages. Named `Contact` (industry-neutral) but
@@ -144,6 +150,7 @@ model Contact {
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   stays           Stay[]
   serviceRequests ServiceRequest[]
+  deals           Deal[]
 
   @@index([tenantId])
   @@map("Guest")
@@ -712,4 +719,99 @@ model DoNotContact {
 
   @@unique([tenantId, phone])
   @@index([tenantId])
+}
+
+// ── CRM: Pipelines, Deals & Forecasting (Increment A) ─────────────────────────
+// Industry-neutral sales/relationship pipeline. These are NEW tables, so the
+// physical column is `tenantId` directly (no legacy @@map shim). Every row is
+// tenant-scoped; labels/stages/probabilities are per-tenant configurable
+// (white-label). See docs/crm-design.md §12 and docs/crm-implementation-roadmap.md.
+
+// A configurable funnel a Deal travels through. A tenant can have several;
+// exactly one is the default (used when a deal is created without a pipeline).
+model Pipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  isDefault Boolean  @default(false)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stages    Stage[]
+  deals     Deal[]
+
+  @@index([tenantId])
+}
+
+// A single step in a pipeline. `probability` (0–100) drives the weighted
+// forecast. `isWon`/`isLost` mark the terminal stages that close a deal.
+model Stage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  pipelineId  String
+  name        String
+  order       Int
+  probability Int      @default(0) // 0–100; weight applied to deal value in the forecast
+  isWon       Boolean  @default(false)
+  isLost      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals       Deal[]
+
+  @@index([tenantId])
+  @@index([pipelineId])
+}
+
+// An opportunity / revenue motion. Optionally linked to a Contact (the person)
+// and an owner (a User). `value` is money in `currency` (default INR).
+model Deal {
+  id              String           @id @default(cuid())
+  tenantId        String
+  title           String
+  value           Decimal?         @db.Decimal(14, 2)
+  currency        String           @default("INR")
+  pipelineId      String
+  stageId         String
+  contactId       String?
+  ownerId         String?
+  status          String           @default("open") // open | won | lost
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  lostReason      String?
+  source          String? // manual | campaign | connector | import
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline        Pipeline         @relation(fields: [pipelineId], references: [id])
+  stage           Stage            @relation(fields: [stageId], references: [id])
+  contact         Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner           User?            @relation("deal_owner", fields: [ownerId], references: [id], onDelete: SetNull)
+  transitions     DealTransition[]
+
+  @@index([tenantId])
+  @@index([pipelineId])
+  @@index([stageId])
+  @@index([contactId])
+}
+
+// Stage-change history for a deal. Powers the activity trail now and velocity /
+// forecast-accuracy reporting later (Increment C).
+model DealTransition {
+  id          String   @id @default(cuid())
+  tenantId    String
+  dealId      String
+  fromStageId String?
+  toStageId   String
+  changedById String?
+  note        String?
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal        Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  changedBy   User?    @relation("deal_transition_actor", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([dealId])
 }

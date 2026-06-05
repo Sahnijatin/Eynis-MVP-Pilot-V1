@@ -344,6 +344,21 @@ const parseConnectorConfigPath = (url: string | undefined): string | null => {
   return decodeURIComponent(match[1]);
 };
 
+// CRM deal routing: /deals/:id, /deals/:id/move  (note: /deals and /deals/forecast
+// are matched as exact pathnames before this parser is consulted).
+const DEAL_ACTIONS = new Set(["move"]);
+const parseDealPath = (
+  url: string | undefined,
+): { id: string; action: string | null } | null => {
+  if (!url) return null;
+  const { pathname } = parseUrl(url);
+  const match = /^\/deals\/([^/]+)(?:\/([^/]+))?$/.exec(pathname);
+  if (!match || !match[1]) return null;
+  const action = match[2] ? decodeURIComponent(match[2]) : null;
+  if (action !== null && !DEAL_ACTIONS.has(action)) return null;
+  return { id: decodeURIComponent(match[1]), action };
+};
+
 // Voice campaign routing: /campaigns, /campaigns/:id, /campaigns/:id/:action
 const CAMPAIGN_ACTIONS = new Set(["activate", "pause", "complete"]);
 const parseCampaignPath = (
@@ -497,6 +512,14 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /campaigns/:id/calls/:callId":     "manage_campaigns",
   "GET /campaigns/:id/analytics":         "manage_campaigns",
   "GET /campaigns/:id/deliveries":        "manage_campaigns",
+  "GET /pipelines":                       "view_crm",
+  "GET /deals":                           "view_crm",
+  "GET /deals/forecast":                  "view_crm",
+  "GET /deals/:id":                       "view_crm",
+  "POST /deals":                          "manage_crm",
+  "PATCH /deals/:id":                     "manage_crm",
+  "DELETE /deals/:id":                    "manage_crm",
+  "POST /deals/:id/move":                 "manage_crm",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3557,6 +3580,208 @@ const handleRequest = async (
         return;
       }
       json(res, 405, { ok: false, error: "Method not allowed" }); return;
+    }
+
+    // ── CRM: Pipelines ──────────────────────────────────────────────────────
+    // GET /pipelines — list the tenant's pipelines (lazily seeding the standard
+    // default one on first use so the board always has stages).
+    if (parseUrl(req.url).pathname === "/pipelines" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /pipelines");
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Tenant not found" }); return; }
+      const { ensureDefaultPipeline, serializePipeline } = await import("./core/crm/pipeline");
+      await ensureDefaultPipeline(tenantId);
+      const pipelines = await prisma.pipeline.findMany({
+        where: { tenantId, archived: false },
+        orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+        include: { stages: { orderBy: { order: "asc" } } },
+      });
+      json(res, 200, { ok: true, items: pipelines.map(serializePipeline) });
+      return;
+    }
+
+    // ── CRM: Forecast ───────────────────────────────────────────────────────
+    // GET /deals/forecast — must be matched before /deals/:id.
+    if (parseUrl(req.url).pathname === "/deals/forecast" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /deals/forecast");
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Tenant not found" }); return; }
+      const { computeForecast } = await import("./core/crm/forecast");
+      const pipelineId = parseUrl(req.url).searchParams.get("pipelineId") || undefined;
+      const forecast = await computeForecast(tenantId, pipelineId ? { pipelineId } : {});
+      json(res, 200, { ok: true, forecast });
+      return;
+    }
+
+    // ── CRM: Deals — create + list ──────────────────────────────────────────
+    if (parseUrl(req.url).pathname === "/deals" && (req.method === "POST" || req.method === "GET")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const tenantId = auth.context.tenantId;
+      if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Tenant not found" }); return; }
+      const { validateDealCreate, serializeDeal } = await import("./core/crm/deals");
+      const { ensureDefaultPipeline } = await import("./core/crm/pipeline");
+
+      if (req.method === "POST") {
+        if (!canAccess(auth.context.permissions, "POST /deals")) {
+          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+        }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const validated = validateDealCreate(body);
+        if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return; }
+        const v = validated.value;
+
+        // Resolve the pipeline (explicit, scoped to tenant) or the default.
+        const pipeline = v.pipelineId
+          ? await prisma.pipeline.findFirst({ where: { id: v.pipelineId, tenantId }, include: { stages: { orderBy: { order: "asc" } } } })
+          : await ensureDefaultPipeline(tenantId);
+        if (!pipeline) { json(res, 404, { ok: false, error: "Pipeline not found" }); return; }
+        const stage = v.stageId ? pipeline.stages.find((s) => s.id === v.stageId) : pipeline.stages[0];
+        if (!stage) { json(res, 400, { ok: false, error: "Invalid stage for this pipeline" }); return; }
+
+        // Validate optional links belong to the same tenant.
+        if (v.contactId && !(await prisma.contact.findFirst({ where: { id: v.contactId, tenantId } }))) {
+          json(res, 400, { ok: false, error: "Contact not found" }); return;
+        }
+        if (v.ownerId && !(await prisma.user.findFirst({ where: { id: v.ownerId, tenantId } }))) {
+          json(res, 400, { ok: false, error: "Owner not found" }); return;
+        }
+
+        const status = stage.isWon ? "won" : stage.isLost ? "lost" : "open";
+        const created = await prisma.deal.create({
+          data: {
+            tenantId, title: v.title, value: v.value, currency: v.currency,
+            pipelineId: pipeline.id, stageId: stage.id,
+            contactId: v.contactId, ownerId: v.ownerId,
+            expectedCloseAt: v.expectedCloseAt, source: v.source,
+            status, closedAt: status === "open" ? null : new Date(),
+            transitions: { create: { tenantId, toStageId: stage.id, changedById: auth.context.userId } },
+          },
+          include: { stage: true, contact: true, owner: true },
+        });
+        json(res, 201, { ok: true, deal: serializeDeal(created) });
+        return;
+      }
+
+      // GET /deals — list with filters
+      if (!canAccess(auth.context.permissions, "GET /deals")) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+      }
+      const qs = parseUrl(req.url).searchParams;
+      const limit = asSafeLimit(qs.get("limit"), 100, 500);
+      const offset = asSafeOffset(qs.get("offset"));
+      const where: Record<string, unknown> = { tenantId };
+      const pipelineId = qs.get("pipelineId"); if (pipelineId) where.pipelineId = pipelineId;
+      const stageId = qs.get("stageId"); if (stageId) where.stageId = stageId;
+      const status = qs.get("status"); if (status) where.status = status;
+      const ownerId = qs.get("ownerId"); if (ownerId) where.ownerId = ownerId;
+      const [rows, total] = await Promise.all([
+        prisma.deal.findMany({ where, orderBy: { updatedAt: "desc" }, take: limit, skip: offset, include: { stage: true, contact: true, owner: true } }),
+        prisma.deal.count({ where }),
+      ]);
+      json(res, 200, { ok: true, items: rows.map(serializeDeal), page: { limit, offset, total, hasMore: offset + rows.length < total } });
+      return;
+    }
+
+    // ── CRM: Deals — single / update / delete / move ────────────────────────
+    if (parseUrl(req.url).pathname.startsWith("/deals/")) {
+      const parsed = parseDealPath(req.url);
+      if (parsed) {
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
+        const tenantId = auth.context.tenantId;
+        const { id, action } = parsed;
+        const { buildDealUpdate, serializeDeal } = await import("./core/crm/deals");
+        const deal = await prisma.deal.findFirst({ where: { id, tenantId } });
+
+        // GET /deals/:id
+        if (action === null && req.method === "GET") {
+          if (!canAccess(auth.context.permissions, "GET /deals/:id")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
+          const full = await prisma.deal.findFirst({
+            where: { id, tenantId },
+            include: { stage: true, contact: true, owner: true, transitions: { orderBy: { createdAt: "desc" } } },
+          });
+          json(res, 200, {
+            ok: true,
+            deal: serializeDeal(full!),
+            transitions: (full!.transitions).map((t) => ({
+              id: t.id, fromStageId: t.fromStageId, toStageId: t.toStageId,
+              changedById: t.changedById, note: t.note, createdAt: t.createdAt.toISOString(),
+            })),
+          });
+          return;
+        }
+
+        // PATCH /deals/:id
+        if (action === null && req.method === "PATCH") {
+          if (!canAccess(auth.context.permissions, "PATCH /deals/:id")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const update = buildDealUpdate(body);
+          if (!update.ok) { json(res, 400, { ok: false, error: update.error }); return; }
+          if (update.value.contactId && !(await prisma.contact.findFirst({ where: { id: update.value.contactId, tenantId } }))) {
+            json(res, 400, { ok: false, error: "Contact not found" }); return;
+          }
+          if (update.value.ownerId && !(await prisma.user.findFirst({ where: { id: update.value.ownerId, tenantId } }))) {
+            json(res, 400, { ok: false, error: "Owner not found" }); return;
+          }
+          const updated = await prisma.deal.update({
+            where: { id }, data: update.value, include: { stage: true, contact: true, owner: true },
+          });
+          json(res, 200, { ok: true, deal: serializeDeal(updated) });
+          return;
+        }
+
+        // DELETE /deals/:id
+        if (action === null && req.method === "DELETE") {
+          if (!canAccess(auth.context.permissions, "DELETE /deals/:id")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
+          await prisma.deal.delete({ where: { id } });
+          json(res, 200, { ok: true });
+          return;
+        }
+
+        // POST /deals/:id/move — change stage (logs a transition, auto-sets won/lost)
+        if (action === "move" && req.method === "POST") {
+          if (!canAccess(auth.context.permissions, "POST /deals/:id/move")) {
+            json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
+          }
+          if (!deal) { json(res, 404, { ok: false, error: "Deal not found" }); return; }
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const toStageId = typeof body.stageId === "string" ? body.stageId : null;
+          if (!toStageId) { json(res, 400, { ok: false, error: "stageId is required" }); return; }
+          // Target stage must belong to THIS deal's pipeline and tenant.
+          const toStage = await prisma.stage.findFirst({ where: { id: toStageId, tenantId, pipelineId: deal.pipelineId } });
+          if (!toStage) { json(res, 400, { ok: false, error: "Target stage is not in this deal's pipeline" }); return; }
+          if (toStage.id === deal.stageId) {
+            const same = await prisma.deal.findFirst({ where: { id, tenantId }, include: { stage: true, contact: true, owner: true } });
+            json(res, 200, { ok: true, deal: serializeDeal(same!) });
+            return;
+          }
+          const status = toStage.isWon ? "won" : toStage.isLost ? "lost" : "open";
+          const lostReason = status === "lost" && typeof body.lostReason === "string" ? body.lostReason : deal.lostReason;
+          const updated = await prisma.deal.update({
+            where: { id },
+            data: {
+              stageId: toStage.id, status, lostReason,
+              closedAt: status === "open" ? null : (deal.closedAt ?? new Date()),
+              transitions: { create: { tenantId, fromStageId: deal.stageId, toStageId: toStage.id, changedById: auth.context.userId } },
+            },
+            include: { stage: true, contact: true, owner: true },
+          });
+          json(res, 200, { ok: true, deal: serializeDeal(updated) });
+          return;
+        }
+      }
     }
 
     // ── Voice Campaigns: create + list ──────────────────────────────────────

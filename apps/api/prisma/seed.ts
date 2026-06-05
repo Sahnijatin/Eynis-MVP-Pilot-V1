@@ -10,15 +10,17 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: [
     "invite_users","manage_users","manage_roles","create_custom_roles","manage_billing",
     "manage_settings","view_reports","manage_requests","view_requests","manage_automations",
-    "view_guests","manage_guests","night_audit","manage_connectors","manage_campaigns"
+    "view_guests","manage_guests","night_audit","manage_connectors","manage_campaigns",
+    "manage_inventory","view_crm","manage_crm"
   ],
   manager: [
     "invite_users","view_reports","manage_requests","view_requests","manage_automations",
-    "view_guests","manage_guests","night_audit","manage_connectors","manage_campaigns","manage_settings"
+    "view_guests","manage_guests","night_audit","manage_connectors","manage_campaigns","manage_settings",
+    "manage_inventory","view_crm","manage_crm"
   ],
-  supervisor: ["view_reports","manage_requests","view_requests","view_guests","manage_guests","manage_campaigns"],
-  agent:  ["view_requests","manage_requests","view_guests"],
-  viewer: ["view_reports","view_requests","view_guests"],
+  supervisor: ["view_reports","manage_requests","view_requests","view_guests","manage_guests","manage_campaigns","view_crm","manage_crm"],
+  agent:  ["view_requests","manage_requests","view_guests","view_crm","manage_crm"],
+  viewer: ["view_reports","view_requests","view_guests","view_crm"],
 };
 
 // Old UserRole → new Role.key (for mapping staff users)
@@ -500,6 +502,66 @@ async function main() {
         replyMessage: ev.replyMessage ?? undefined,
         createdAt: new Date(Date.now() - Math.floor(Math.random() * 120) * 60000)
       }
+    });
+  }
+
+  // ── CRM: default pipeline + demo deals (Increment A) ─────────────────────────
+  await prisma.dealTransition.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.deal.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.stage.deleteMany({ where: { tenantId: HOTEL_ID } });
+  await prisma.pipeline.deleteMany({ where: { tenantId: HOTEL_ID } });
+
+  const DEFAULT_STAGES = [
+    { name: "Lead In", order: 0, probability: 10, isWon: false, isLost: false },
+    { name: "Qualified", order: 1, probability: 30, isWon: false, isLost: false },
+    { name: "Proposal", order: 2, probability: 60, isWon: false, isLost: false },
+    { name: "Negotiation", order: 3, probability: 80, isWon: false, isLost: false },
+    { name: "Won", order: 4, probability: 100, isWon: true, isLost: false },
+    { name: "Lost", order: 5, probability: 0, isWon: false, isLost: true },
+  ];
+
+  const pipeline = await prisma.pipeline.create({
+    data: {
+      tenantId: hotel.id, name: "Sales Pipeline", isDefault: true,
+      stages: { create: DEFAULT_STAGES.map((s) => ({ tenantId: hotel.id, ...s })) },
+    },
+    include: { stages: { orderBy: { order: "asc" } } },
+  });
+  const stageByName: Record<string, string> = {};
+  for (const s of pipeline.stages) stageByName[s.name] = s.id;
+
+  const dealOwners = [userMap["vikram@theriviera.com"], userMap["sarah@theriviera.com"], userMap["marcus@theriviera.com"]].filter(Boolean);
+  const dealGuestIds = Object.values(guestMap);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dealDefs = [
+    { title: "Corporate retreat — 30 rooms", value: 850000, stage: "Lead In", closeInDays: 25, guest: 0 },
+    { title: "Wedding package — Grand Ballroom", value: 1200000, stage: "Qualified", closeInDays: 18, guest: 1 },
+    { title: "Q3 conference block booking", value: 640000, stage: "Qualified", closeInDays: 40, guest: 2 },
+    { title: "Annual loyalty suite upgrade", value: 220000, stage: "Proposal", closeInDays: 10, guest: 3 },
+    { title: "Spa & dining membership — VIP", value: 180000, stage: "Proposal", closeInDays: 12, guest: 4 },
+    { title: "Film crew long-stay (3 weeks)", value: 980000, stage: "Negotiation", closeInDays: 6, guest: 5 },
+    { title: "New Year gala — full property", value: 1500000, stage: "Negotiation", closeInDays: 8, guest: 6 },
+    { title: "Diwali corporate gifting + stay", value: 410000, stage: "Won", closeInDays: -3, guest: 7 },
+    { title: "Off-site team workshop", value: 150000, stage: "Lost", closeInDays: -8, guest: 8 },
+  ];
+  for (let i = 0; i < dealDefs.length; i++) {
+    const d = dealDefs[i];
+    const stageId = stageByName[d.stage];
+    const isWon = d.stage === "Won";
+    const isLost = d.stage === "Lost";
+    const status = isWon ? "won" : isLost ? "lost" : "open";
+    await prisma.deal.create({
+      data: {
+        tenantId: hotel.id, title: d.title, value: d.value, currency: "INR",
+        pipelineId: pipeline.id, stageId,
+        contactId: dealGuestIds[d.guest] ?? null,
+        ownerId: dealOwners[i % dealOwners.length] ?? null,
+        status,
+        expectedCloseAt: new Date(now.getTime() + d.closeInDays * dayMs),
+        closedAt: status === "open" ? null : new Date(now.getTime() + d.closeInDays * dayMs),
+        source: "manual",
+        transitions: { create: { tenantId: hotel.id, toStageId: stageId, changedById: dealOwners[0] ?? null } },
+      },
     });
   }
 
