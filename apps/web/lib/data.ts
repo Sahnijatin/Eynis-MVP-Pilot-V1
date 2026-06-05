@@ -745,3 +745,58 @@ export async function fetchForecast(pipelineId?: string): Promise<{ ok: boolean;
   const res = await authedFetch(path);
   return (await res.json()) as { ok: boolean; forecast?: ForecastSummary };
 }
+
+// ── CRM: Contacts & Companies (Increment B) ─────────────────────────────────
+export interface ContactRow {
+  id: string;
+  fullName: string;
+  phoneE164: string;
+  email: string | null;
+  visitCount: number;
+  companyId: string | null;
+  companyName: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  lifecycleStage: string;
+  leadStatus: string | null;
+  leadScore: number | null;
+  source: string | null;
+  tags: string[];
+  notes: string | null;
+  dealCount?: number;
+  lastActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyRow {
+  id: string;
+  name: string;
+  domain: string | null;
+  industry: string | null;
+  size: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  tags: string[];
+  notes: string | null;
+  contactCount?: number;
+  dealCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchContacts(params: { search?: string; lifecycleStage?: string; companyId?: string } = {}): Promise<{ ok: boolean; items: ContactRow[]; page?: { total: number; hasMore: boolean } }> {
+  const q = new URLSearchParams({ limit: "200" });
+  if (params.search) q.set("search", params.search);
+  if (params.lifecycleStage) q.set("lifecycleStage", params.lifecycleStage);
+  if (params.companyId) q.set("companyId", params.companyId);
+  const res = await authedFetch("/contacts?" + q.toString());
+  return (await res.json()) as { ok: boolean; items: ContactRow[]; page?: { total: number; hasMore: boolean } };
+}
+
+export async function fetchCompanies(params: { search?: string } = {}): Promise<{ ok: boolean; items: CompanyRow[] }> {
+  const q = new URLSearchParams({ limit: "200" });
+  if (params.search) q.set("search", params.search);
+  const res = await authedFetch("/companies?" + q.toString());
+  return (await res.json()) as { ok: boolean; items: CompanyRow[] };
+}

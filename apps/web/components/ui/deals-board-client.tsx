@@ -30,12 +30,14 @@ export function DealsBoardClient({
   initialForecast,
   owners,
   contacts,
+  companies,
 }: {
   initialPipelines: PipelineRow[];
   initialDeals: DealRow[];
   initialForecast: ForecastSummary | null;
   owners: Array<{ id: string; fullName: string }>;
   contacts: Array<{ id: string; fullName: string }>;
+  companies: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -194,6 +196,7 @@ export function DealsBoardClient({
           stages={stages}
           owners={owners}
           contacts={contacts}
+          companies={companies}
           onClose={() => setCreating(false)}
           onCreated={() => { setCreating(false); router.refresh(); }}
         />
@@ -263,11 +266,12 @@ function DealCard({
 
 // ── Create deal modal ───────────────────────────────────────────────────────
 function CreateDealModal({
-  stages, owners, contacts, onClose, onCreated,
+  stages, owners, contacts, companies, onClose, onCreated,
 }: {
   stages: PipelineStage[];
   owners: Array<{ id: string; fullName: string }>;
   contacts: Array<{ id: string; fullName: string }>;
+  companies: Array<{ id: string; name: string }>;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -277,6 +281,7 @@ function CreateDealModal({
   const [stageId, setStageId] = useState(stages[0]?.id ?? "");
   const [ownerId, setOwnerId] = useState("");
   const [contactId, setContactId] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const [expectedCloseAt, setExpectedCloseAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,6 +300,7 @@ function CreateDealModal({
           stageId: stageId || undefined,
           ownerId: ownerId || undefined,
           contactId: contactId || undefined,
+          companyId: companyId || undefined,
           expectedCloseAt: expectedCloseAt || undefined,
         }),
       });
@@ -350,6 +356,14 @@ function CreateDealModal({
             <Select value={contactId} onChange={(e) => setContactId(e.target.value)}>
               <option value="">None</option>
               {contacts.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+            </Select>
+          </Field>
+        )}
+        {companies.length > 0 && (
+          <Field label="Company" hint="Optional">
+            <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              <option value="">None</option>
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
         )}

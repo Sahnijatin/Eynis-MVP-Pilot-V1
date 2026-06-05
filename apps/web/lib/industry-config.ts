@@ -62,6 +62,8 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
       { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/contacts", label: "Contacts", icon: Users },
+      { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/sentiment-trends", label: "Sentiment Trends", icon: LineChart },
       { href: "/night-audit", label: "Night Audit", icon: FileText },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -94,6 +96,8 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
       { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/contacts", label: "Contacts", icon: Users },
+      { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
     ],
@@ -125,6 +129,8 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
       { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/contacts", label: "Contacts", icon: Users },
+      { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/analytics", label: "Revenue Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -155,6 +161,8 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
       { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/contacts", label: "Contacts", icon: Users },
+      { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/analytics", label: "Revenue Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -185,6 +193,8 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/automations", label: "Automations", icon: Zap },
       { href: "/campaigns", label: "Campaigns", icon: Mic },
       { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/contacts", label: "Contacts", icon: Users },
+      { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
