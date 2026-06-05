@@ -119,19 +119,19 @@ INCREMENT B — Contacts Hub + Companies         ✅ Done
   B7 Wire deals to contacts     ✅
   B8 Tests & ship               ✅  (268/268 API tests pass, lint clean)
 
-INCREMENT C — Activities Timeline + AI         ⬜ Not started
-  C1 Activity model         ⬜
-  C2 Auto-capture           ⬜
-  C3 Notes & tasks          ⬜
-  C4 Timeline UI            ⬜
-  C5 Tasks view            ⬜
-  C6 AI scoring            ⬜
-  C7 AI next-best-action   ⬜
-  C8 Reporting             ⬜
-  C9 Tests & ship          ⬜
+INCREMENT C — Activities Timeline + AI         ✅ Done (safe mode)
+  C1 Activity model         ✅
+  C2 Auto-capture           ✅  (read-time timeline projection)
+  C3 Notes & tasks          ✅
+  C4 Timeline UI            ✅
+  C5 Tasks view             ✅
+  C6 AI scoring             ✅
+  C7 AI next-best-action    ✅  (SAFE MODE: AI suggests → human confirms)
+  C8 Reporting              ◻️  (win rate shipped in A; velocity/source = follow-up)
+  C9 Tests & ship           ✅  (275/275 API tests pass, lint clean)
 ```
 
-**Where we are today:** Increments A (Pipeline + Deals + Forecasting) and B (Contacts hub +
-Companies) are **built, tested, and shipped**. **Next step = Increment C (Activities timeline +
-AI), starting at C1** — including the AI that moves deals automatically based on call/WhatsApp/email
-conversations.
+**Where we are today:** Increments A (Pipeline + Deals + Forecasting), B (Contacts hub + Companies),
+and C (Activities timeline + AI, **safe mode**) are **built, tested, and shipped**. The AI proposes
+deal-stage moves from call/WhatsApp/email/note conversations; a human accepts or dismisses — nothing
+moves automatically. A future toggle can enable full auto-move for high-confidence suggestions.
