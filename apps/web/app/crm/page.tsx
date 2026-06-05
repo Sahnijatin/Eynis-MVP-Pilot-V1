@@ -1,13 +1,8 @@
-import { notFound } from "next/navigation";
-import { getUserWorkspace } from "../../lib/workspace";
-import { getModule } from "../../lib/industry-config";
-import { ModuleLanding } from "../../components/ui/module-landing";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function CrmLandingPage() {
-  const { config } = await getUserWorkspace();
-  const mod = getModule(config, "crm");
-  if (!mod) return notFound();
-  return <ModuleLanding module={mod} accentColor={config.accentColor} />;
+// CRM is a single module with sub-tabs (E-4). The module entry point opens the
+// default tab; the four surfaces (Contacts, Companies, Deals, Tasks) share the
+// CrmTabs header and keep their own deep-link routes.
+export default function CrmIndexPage() {
+  redirect("/contacts");
 }

@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, PageHeader, Field, Input, Select, Textarea, Badge, EmptyState, Modal, Spinner, useToast, tokens as t } from "../ds";
+import { Button, PageHeader, Field, Input, Select, Textarea, Badge, Modal, Spinner, useToast, tokens as t } from "../ds";
+import { DataGrid, type GridColumn } from "./data-grid";
+import { CrmTabs } from "./crm-tabs";
+import { CsvImportModal } from "./csv-import-modal";
 import type { CompanyRow, ContactRow } from "../../lib/data";
 
 const SIZES = ["1-10", "11-50", "51-200", "200+"];
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 function fmtINR(n: number): string {
   try { return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n); }
   catch { return "₹" + Math.round(n).toLocaleString("en-IN"); }
@@ -15,45 +19,96 @@ type DealLite = { id: string; title: string; value: number | null; stageName: st
 
 export function CompaniesClient({ initialCompanies, owners }: { initialCompanies: CompanyRow[]; owners: Array<{ id: string; fullName: string }> }) {
   const router = useRouter();
+  const toast = useToast();
   const [companies, setCompanies] = useState<CompanyRow[]>(initialCompanies);
-  const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => setCompanies(initialCompanies), [initialCompanies]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return companies.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.domain ?? "").toLowerCase().includes(q));
-  }, [companies, search]);
+  const ownerOptions = owners.map((o) => ({ value: o.id, label: o.fullName }));
+
+  // Maps a grid column key to the PATCH payload field.
+  async function editCell(row: CompanyRow, key: string, value: string) {
+    const field = key === "owner" ? "ownerId" : key;
+    const res = await fetch(`/api/companies/${row.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ [field]: value || null }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Update failed");
+    toast.push("Company updated", "success");
+    router.refresh();
+  }
+
+  async function deleteRows(rows: CompanyRow[]) {
+    for (const r of rows) {
+      const res = await fetch(`/api/companies/${r.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+    }
+    toast.push(`Deleted ${rows.length} company(ies)`, "success");
+    router.refresh();
+  }
+
+  async function importRows(records: Record<string, string>[]) {
+    let created = 0, failed = 0; const errors: string[] = [];
+    for (const rec of records) {
+      if (!rec.name?.trim()) { failed++; continue; }
+      try {
+        const res = await fetch("/api/companies", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: rec.name.trim(), domain: rec.domain || undefined, industry: rec.industry || undefined, size: rec.size || undefined }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) { failed++; if (data.error) errors.push(data.error); } else created++;
+      } catch { failed++; }
+    }
+    router.refresh();
+    return { created, failed, errors };
+  }
+
+  const columns: GridColumn<CompanyRow>[] = [
+    { key: "name", header: "Name", accessor: (c) => c.name, render: (c) => (
+        <button onClick={() => setOpenId(c.id)} style={{ background: "none", border: "none", padding: 0, color: t.color.accent, fontWeight: 600, cursor: "pointer", fontSize: t.font.sm }}>{c.name}</button>
+      ), width: 200 },
+    { key: "domain", header: "Domain", accessor: (c) => c.domain ?? "", editable: true },
+    { key: "industry", header: "Industry", accessor: (c) => c.industry ?? "", editable: true },
+    { key: "size", header: "Size", type: "select", accessor: (c) => c.size ?? "", editable: true, options: SIZES.map((s) => ({ value: s, label: s })) },
+    { key: "owner", header: "Owner", type: "select", accessor: (c) => c.ownerName ?? "", editAccessor: (c) => c.ownerId ?? "", editable: true, options: ownerOptions },
+    { key: "contacts", header: "Contacts", type: "number", accessor: (c) => c.contactCount ?? 0, align: "right", editable: false, filterable: false },
+    { key: "deals", header: "Deals", type: "number", accessor: (c) => c.dealCount ?? 0, align: "right", editable: false, filterable: false },
+    { key: "tags", header: "Tags", accessor: (c) => (c.tags ?? []).join(", "), editable: false },
+    { key: "createdAt", header: "Created", type: "date", accessor: (c) => c.createdAt, render: (c) => fmtDate(c.createdAt), editable: false, defaultHidden: true },
+  ];
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="Companies" subtitle="Accounts your contacts and deals roll up to" actions={<Button onClick={() => setCreating(true)}>+ New company</Button>} />
+      <CrmTabs />
+      <PageHeader title="Companies" subtitle="Accounts your contacts and deals roll up to"
+        actions={<>
+          <Button variant="secondary" onClick={() => setImporting(true)}>Import CSV</Button>
+          <Button onClick={() => setCreating(true)}>+ New company</Button>
+        </>} />
 
-      <Card style={{ padding: 12, marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
-        <Input placeholder="Search name or domain…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 280 }} />
-        <span style={{ marginLeft: "auto", fontSize: t.font.sm, color: t.color.textMuted }}>{filtered.length} of {companies.length}</span>
-      </Card>
-
-      {filtered.length === 0 ? (
-        <EmptyState title="No companies yet" description="Create a company to group contacts and deals into accounts." icon="🏢" action={<Button onClick={() => setCreating(true)}>+ New company</Button>} />
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
-          {filtered.map((c) => (
-            <Card key={c.id} onClick={() => setOpenId(c.id)} style={{ padding: 14, cursor: "pointer" }}>
-              <div style={{ fontWeight: 600, fontSize: t.font.lg, color: t.color.text }}>{c.name}</div>
-              <div style={{ fontSize: t.font.xs, color: t.color.textFaint, marginBottom: 8 }}>{c.domain || "—"}{c.industry ? ` · ${c.industry}` : ""}</div>
-              <div style={{ display: "flex", gap: 8, fontSize: t.font.sm, color: t.color.textMuted }}>
-                <span>{c.contactCount ?? 0} contacts</span><span>·</span><span>{c.dealCount ?? 0} deals</span>
-              </div>
-              {c.ownerName && <div style={{ fontSize: t.font.xs, color: t.color.textFaint, marginTop: 6 }}>Owner: {c.ownerName}</div>}
-            </Card>
-          ))}
-        </div>
-      )}
+      <DataGrid<CompanyRow>
+        rows={companies}
+        columns={columns}
+        getId={(c) => c.id}
+        storageKey="companies"
+        exportFilename="companies"
+        onEditCell={editCell}
+        onDeleteRows={deleteRows}
+        onRowOpen={(c) => setOpenId(c.id)}
+        searchPlaceholder="Search companies…"
+        emptyTitle="No companies yet"
+        emptyDescription="Create a company, or import a CSV, to group contacts and deals into accounts."
+      />
 
       {creating && <CreateCompanyModal owners={owners} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); router.refresh(); }} />}
+      {importing && <CsvImportModal title="Import companies" onClose={() => setImporting(false)} onImport={importRows}
+        fields={[{ key: "name", label: "Name", required: true }, { key: "domain", label: "Domain" }, { key: "industry", label: "Industry" }, { key: "size", label: "Size" }]} />}
       {openId && <CompanyDetailModal id={openId} owners={owners} onClose={() => setOpenId(null)} onChanged={() => { setOpenId(null); router.refresh(); }} />}
     </div>
   );

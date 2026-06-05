@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, PageHeader, Field, Input, Select, Textarea, Badge, EmptyState, Modal, Spinner, useToast, tokens as t } from "../ds";
+import { Button, PageHeader, Field, Input, Select, Textarea, Badge, Modal, Spinner, useToast, tokens as t } from "../ds";
+import { DataGrid, type GridColumn } from "./data-grid";
+import { CrmTabs } from "./crm-tabs";
+import { CsvImportModal } from "./csv-import-modal";
 import type { ContactRow, CompanyRow, TimelineItem } from "../../lib/data";
+
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 const KIND_ICON: Record<string, string> = {
   note: "📝", task: "✅", meeting: "📅", call: "📞", whatsapp: "💬", email: "✉️",
@@ -36,80 +41,108 @@ export function ContactsClient({
   const router = useRouter();
   const toast = useToast();
   const [contacts, setContacts] = useState<ContactRow[]>(initialContacts);
-  const [search, setSearch] = useState("");
-  const [lifecycleFilter, setLifecycleFilter] = useState("");
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => setContacts(initialContacts), [initialContacts]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return contacts.filter((c) => {
-      if (lifecycleFilter && c.lifecycleStage !== lifecycleFilter) return false;
-      if (!q) return true;
-      return c.fullName.toLowerCase().includes(q) || (c.email ?? "").toLowerCase().includes(q) || c.phoneE164.includes(q);
+  const companyOptions = companies.map((c) => ({ value: c.id, label: c.name }));
+  const ownerOptions = owners.map((o) => ({ value: o.id, label: o.fullName }));
+
+  // Inline edits map grid column keys to the contact PATCH payload fields.
+  async function editCell(row: ContactRow, key: string, value: string) {
+    const field = key === "company" ? "companyId" : key === "owner" ? "ownerId" : key === "lifecycle" ? "lifecycleStage" : key;
+    const res = await fetch(`/api/contacts/${row.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ [field]: value || null }),
     });
-  }, [contacts, search, lifecycleFilter]);
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Update failed");
+    toast.push("Contact updated", "success");
+    router.refresh();
+  }
+
+  async function deleteRows(rows: ContactRow[]) {
+    for (const r of rows) {
+      const res = await fetch(`/api/contacts/${r.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+    }
+    toast.push(`Deleted ${rows.length} contact(s)`, "success");
+    router.refresh();
+  }
+
+  async function importRows(records: Record<string, string>[]) {
+    let created = 0, failed = 0; const errors: string[] = [];
+    for (const rec of records) {
+      if (!rec.fullName?.trim()) { failed++; continue; }
+      try {
+        const res = await fetch("/api/contacts", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ fullName: rec.fullName.trim(), email: rec.email || undefined, phoneE164: rec.phoneE164 || undefined, lifecycleStage: rec.lifecycleStage || undefined }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) { failed++; if (data.error) errors.push(data.error); } else created++;
+      } catch { failed++; }
+    }
+    router.refresh();
+    return { created, failed, errors };
+  }
+
+  const columns: GridColumn<ContactRow>[] = [
+    { key: "name", header: "Name", accessor: (c) => c.fullName, width: 180, render: (c) => (
+        <button onClick={() => setOpenId(c.id)} style={{ background: "none", border: "none", padding: 0, color: t.color.accent, fontWeight: 600, cursor: "pointer", fontSize: t.font.sm }}>{c.fullName}</button>
+      ) },
+    { key: "email", header: "Email", accessor: (c) => c.email ?? "" },
+    { key: "phone", header: "Phone", accessor: (c) => c.phoneE164 ?? "", defaultHidden: true },
+    { key: "company", header: "Company", type: "select", accessor: (c) => c.companyName ?? "", editAccessor: (c) => c.companyId ?? "", editable: true, options: companyOptions },
+    { key: "lifecycle", header: "Lifecycle", type: "select", accessor: (c) => c.lifecycleStage, editable: true, options: LIFECYCLE.map((s) => ({ value: s, label: s })), render: (c) => <Badge tone={lifecycleTone(c.lifecycleStage)}>{c.lifecycleStage}</Badge> },
+    { key: "leadStatus", header: "Lead status", type: "select", accessor: (c) => c.leadStatus ?? "", editable: true, options: LEAD_STATUS.map((s) => ({ value: s, label: s })) },
+    { key: "owner", header: "Owner", type: "select", accessor: (c) => c.ownerName ?? "", editAccessor: (c) => c.ownerId ?? "", editable: true, options: ownerOptions },
+    { key: "leadScore", header: "Score", type: "number", accessor: (c) => c.leadScore ?? "", align: "right", filterable: false, defaultHidden: true },
+    { key: "deals", header: "Deals", type: "number", accessor: (c) => c.dealCount ?? 0, align: "right", filterable: false },
+    { key: "tags", header: "Tags", accessor: (c) => (c.tags ?? []).join(", ") },
+    { key: "createdAt", header: "Created", type: "date", accessor: (c) => c.createdAt, render: (c) => fmtDate(c.createdAt), defaultHidden: true },
+  ];
 
   return (
     <div style={{ padding: 24 }}>
+      <CrmTabs />
       <PageHeader
         title="Contacts"
         subtitle="Your single customer view — every person, their company, and their deals"
-        actions={<Button onClick={() => setCreating(true)}>+ New contact</Button>}
+        actions={<>
+          <Button variant="secondary" onClick={() => setImporting(true)}>Import CSV</Button>
+          <Button onClick={() => setCreating(true)}>+ New contact</Button>
+        </>}
       />
 
-      <Card style={{ padding: 12, marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <Input placeholder="Search name, email or phone…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 280 }} />
-        <Select value={lifecycleFilter} onChange={(e) => setLifecycleFilter(e.target.value)} style={{ maxWidth: 180 }}>
-          <option value="">All lifecycle stages</option>
-          {LIFECYCLE.map((s) => <option key={s} value={s}>{s}</option>)}
-        </Select>
-        <span style={{ marginLeft: "auto", fontSize: t.font.sm, color: t.color.textMuted }}>{filtered.length} of {contacts.length}</span>
-      </Card>
-
-      {filtered.length === 0 ? (
-        <EmptyState title="No contacts yet" description="Add a contact, or import leads via Campaigns — they roll up here automatically." icon="👥" action={<Button onClick={() => setCreating(true)}>+ New contact</Button>} />
-      ) : (
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: t.font.sm }}>
-            <thead>
-              <tr style={{ background: t.color.surfaceMuted, textAlign: "left", color: t.color.textMuted }}>
-                <th style={th}>Name</th><th style={th}>Company</th><th style={th}>Lifecycle</th><th style={th}>Owner</th><th style={th}>Deals</th><th style={th}>Tags</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => (
-                <tr key={c.id} onClick={() => setOpenId(c.id)} style={{ cursor: "pointer", borderTop: `1px solid ${t.color.border}` }}>
-                  <td style={td}>
-                    <div style={{ fontWeight: 600, color: t.color.text }}>{c.fullName}</div>
-                    <div style={{ fontSize: t.font.xs, color: t.color.textFaint }}>{c.email || c.phoneE164 || "—"}</div>
-                  </td>
-                  <td style={td}>{c.companyName || <span style={{ color: t.color.textFaint }}>—</span>}</td>
-                  <td style={td}><Badge tone={lifecycleTone(c.lifecycleStage)}>{c.lifecycleStage}</Badge></td>
-                  <td style={td}>{c.ownerName || <span style={{ color: t.color.textFaint }}>Unassigned</span>}</td>
-                  <td style={td}>{c.dealCount ?? 0}</td>
-                  <td style={td}>{c.tags.slice(0, 3).map((tg) => <Badge key={tg} tone="neutral" style={{ marginRight: 4 }}>{tg}</Badge>)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <DataGrid<ContactRow>
+        rows={contacts}
+        columns={columns}
+        getId={(c) => c.id}
+        storageKey="contacts"
+        exportFilename="contacts"
+        onEditCell={editCell}
+        onDeleteRows={deleteRows}
+        onRowOpen={(c) => setOpenId(c.id)}
+        searchPlaceholder="Search name, email or phone…"
+        emptyTitle="No contacts yet"
+        emptyDescription="Add a contact, import a CSV, or capture leads via Campaigns — they roll up here automatically."
+      />
 
       {creating && (
         <CreateContactModal companies={companies} owners={owners} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); router.refresh(); }} />
       )}
+      {importing && <CsvImportModal title="Import contacts" onClose={() => setImporting(false)} onImport={importRows}
+        fields={[{ key: "fullName", label: "Full name", required: true }, { key: "email", label: "Email" }, { key: "phoneE164", label: "Phone" }, { key: "lifecycleStage", label: "Lifecycle stage" }]} />}
       {openId && (
         <ContactDetailModal id={openId} companies={companies} owners={owners} onClose={() => setOpenId(null)} onChanged={() => { setOpenId(null); router.refresh(); }} fmtINR={fmtINR} />
       )}
     </div>
   );
 }
-
-const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 600, fontSize: 12 };
-const td: React.CSSProperties = { padding: "10px 14px", verticalAlign: "top" };
 
 function CreateContactModal({ companies, owners, onClose, onCreated }: { companies: CompanyRow[]; owners: Array<{ id: string; fullName: string }>; onClose: () => void; onCreated: () => void }) {
   const toast = useToast();
