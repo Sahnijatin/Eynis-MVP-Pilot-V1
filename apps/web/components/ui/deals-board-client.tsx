@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Button, Card, PageHeader, Field, Input, Select, Badge, EmptyState, Modal, Spinner, useToast, tokens as t,
 } from "../ds";
-import type { DealRow, PipelineRow, PipelineStage, ForecastSummary } from "../../lib/data";
+import type { DealRow, PipelineRow, PipelineStage, ForecastSummary, DealSuggestionRow } from "../../lib/data";
 
 // ── Money formatting ──────────────────────────────────────────────────────────
 function fmtMoney(amount: number, currency = "INR"): string {
@@ -31,6 +31,7 @@ export function DealsBoardClient({
   owners,
   contacts,
   companies,
+  initialSuggestions,
 }: {
   initialPipelines: PipelineRow[];
   initialDeals: DealRow[];
@@ -38,9 +39,13 @@ export function DealsBoardClient({
   owners: Array<{ id: string; fullName: string }>;
   contacts: Array<{ id: string; fullName: string }>;
   companies: Array<{ id: string; name: string }>;
+  initialSuggestions: DealSuggestionRow[];
 }) {
   const router = useRouter();
   const toast = useToast();
+  const [suggestions, setSuggestions] = useState<DealSuggestionRow[]>(initialSuggestions);
+  const [scanning, setScanning] = useState(false);
+  useEffect(() => setSuggestions(initialSuggestions), [initialSuggestions]);
 
   const [pipelineId, setPipelineId] = useState<string>(
     initialPipelines.find((p) => p.isDefault)?.id ?? initialPipelines[0]?.id ?? "",
@@ -100,6 +105,37 @@ export function DealsBoardClient({
     }
   }
 
+  // Safe-mode AI: ask the AI to propose stage moves for the open deals. It only
+  // creates pending *suggestions* — nothing moves until a human accepts.
+  async function scanForSuggestions() {
+    const openDeals = deals.filter((d) => d.status === "open" && (!pipeline || d.pipelineId === pipeline.id));
+    if (openDeals.length === 0) { toast.push("No open deals to review", "info"); return; }
+    setScanning(true);
+    try {
+      await Promise.all(openDeals.map((d) => fetch(`/api/deals/${d.id}/suggest`, { method: "POST" }).catch(() => null)));
+      const res = await fetch("/api/deals/suggestions?status=pending");
+      const data = await res.json();
+      const items: DealSuggestionRow[] = data.ok ? data.items : [];
+      setSuggestions(items);
+      toast.push(items.length ? `${items.length} suggestion(s) ready to review` : "No moves suggested right now", items.length ? "success" : "info");
+    } catch { toast.push("Could not get suggestions", "error"); }
+    finally { setScanning(false); }
+  }
+
+  async function resolveSuggestion(s: DealSuggestionRow, action: "accept" | "dismiss") {
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id)); // optimistic
+    try {
+      const res = await fetch(`/api/deals/suggestions/${s.id}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
+      toast.push(action === "accept" ? `Moved "${s.dealTitle}" → ${s.suggestedStageName}` : "Suggestion dismissed", "success");
+      if (action === "accept") router.refresh();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : "Failed", "error");
+      setSuggestions((prev) => [s, ...prev]); // roll back
+    }
+  }
+
   if (!pipeline) {
     return (
       <div style={{ padding: 24 }}>
@@ -129,10 +165,37 @@ export function DealsBoardClient({
                 ))}
               </Select>
             )}
+            <Button variant="secondary" onClick={scanForSuggestions} disabled={scanning}>{scanning ? <Spinner size={14} /> : "✨ Get AI suggestions"}</Button>
             <Button onClick={() => setCreating(true)}>+ New deal</Button>
           </div>
         }
       />
+
+      {/* Safe-mode AI suggestions — the AI proposes, you decide */}
+      {suggestions.length > 0 && (
+        <Card style={{ padding: 14, marginBottom: 14, borderLeft: `3px solid ${t.color.accent}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+            <span style={{ fontWeight: 600, color: t.color.text }}>🤖 AI suggestions</span>
+            <Badge tone="accent">{suggestions.length}</Badge>
+            <span style={{ fontSize: t.font.xs, color: t.color.textFaint }}>Review and approve — nothing moves until you accept.</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {suggestions.map((s) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid ${t.color.border}`, borderRadius: t.radius.md, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontWeight: 600, fontSize: t.font.sm }}>
+                    {s.dealTitle}: <span style={{ color: t.color.textMuted }}>{s.fromStageName}</span> → <span style={{ color: t.color.accent }}>{s.suggestedStageName}</span>
+                    {s.confidence != null && <Badge tone="neutral" style={{ marginLeft: 6 }}>{s.confidence}%</Badge>}
+                  </div>
+                  <div style={{ fontSize: t.font.xs, color: t.color.textMuted }}>{s.reason}</div>
+                </div>
+                <Button onClick={() => resolveSuggestion(s, "accept")}>Accept</Button>
+                <Button variant="secondary" onClick={() => resolveSuggestion(s, "dismiss")}>Dismiss</Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Forecast strip */}
       <ForecastStrip forecast={forecast} currency={currency} />

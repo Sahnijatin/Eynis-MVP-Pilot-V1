@@ -800,3 +800,57 @@ export async function fetchCompanies(params: { search?: string } = {}): Promise<
   const res = await authedFetch("/companies?" + q.toString());
   return (await res.json()) as { ok: boolean; items: CompanyRow[] };
 }
+
+// ── CRM: Activities, Tasks & AI Suggestions (Increment C) ───────────────────
+export interface TimelineItem {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  direction: string | null;
+  sentiment: string | null;
+  status: string | null;
+  at: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface TaskRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  status: string;
+  dueAt: string | null;
+  completedAt: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  userName: string | null;
+  createdAt: string;
+}
+
+export interface DealSuggestionRow {
+  id: string;
+  dealId: string;
+  dealTitle: string;
+  fromStageName: string | null;
+  suggestedStageId: string;
+  suggestedStageName: string | null;
+  reason: string;
+  confidence: number | null;
+  source: string;
+  status: string;
+  createdAt: string;
+}
+
+export async function fetchTasks(params: { status?: string; mine?: boolean } = {}): Promise<{ ok: boolean; items: TaskRow[] }> {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.mine) q.set("mine", "true");
+  const res = await authedFetch("/tasks" + (q.toString() ? "?" + q.toString() : ""));
+  return (await res.json()) as { ok: boolean; items: TaskRow[] };
+}
+
+export async function fetchDealSuggestions(status = "pending"): Promise<{ ok: boolean; items: DealSuggestionRow[] }> {
+  const res = await authedFetch("/deals/suggestions?status=" + encodeURIComponent(status));
+  return (await res.json()) as { ok: boolean; items: DealSuggestionRow[] };
+}

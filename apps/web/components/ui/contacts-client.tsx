@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, PageHeader, Field, Input, Select, Textarea, Badge, EmptyState, Modal, Spinner, useToast, tokens as t } from "../ds";
-import type { ContactRow, CompanyRow } from "../../lib/data";
+import type { ContactRow, CompanyRow, TimelineItem } from "../../lib/data";
+
+const KIND_ICON: Record<string, string> = {
+  note: "📝", task: "✅", meeting: "📅", call: "📞", whatsapp: "💬", email: "✉️",
+  message: "✉️", service_request: "🛎️", stage_change: "↗️", ai_score: "✨", ai_suggestion: "🤖", system: "⚙️",
+};
 
 const LIFECYCLE = ["subscriber", "lead", "mql", "sql", "opportunity", "customer"];
 const LEAD_STATUS = ["new", "attempting", "connected", "qualified", "disqualified"];
@@ -161,14 +166,27 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
   const [ownerId, setOwnerId] = useState("");
   const [tags, setTags] = useState("");
   const [notes, setNotes] = useState("");
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [score, setScore] = useState<{ score: number; tier: string; reasons: string[]; source: string } | null>(null);
+  const [scoring, setScoring] = useState(false);
+  const [actType, setActType] = useState<"note" | "task">("note");
+  const [actTitle, setActTitle] = useState("");
+  const [actDue, setActDue] = useState("");
+
+  async function loadTimeline() {
+    const res = await fetch(`/api/contacts/${id}/timeline`);
+    const d = await res.json();
+    if (d.ok) setTimeline(d.items as TimelineItem[]);
+  }
 
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/contacts/${id}`);
+        const [res, tlRes] = await Promise.all([fetch(`/api/contacts/${id}`), fetch(`/api/contacts/${id}/timeline`)]);
         const data = await res.json();
+        const tl = await tlRes.json();
         if (!active) return;
         if (data.ok) {
           const c: ContactRow = data.contact;
@@ -180,11 +198,36 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
           setOwnerId(c.ownerId ?? "");
           setTags(c.tags.join(", "));
           setNotes(c.notes ?? "");
+          if (c.leadScore != null) setScore({ score: c.leadScore, tier: "", reasons: [], source: "" });
         }
+        if (tl.ok) setTimeline(tl.items as TimelineItem[]);
       } finally { if (active) setLoading(false); }
     })();
     return () => { active = false; };
   }, [id]);
+
+  async function runScore() {
+    setScoring(true);
+    try {
+      const res = await fetch(`/api/contacts/${id}/score`, { method: "POST" });
+      const d = await res.json();
+      if (d.ok) { setScore(d.score); toast.push(`AI score: ${d.score.score} (${d.score.tier})`, "success"); loadTimeline(); }
+      else throw new Error(d.error || "Scoring failed");
+    } catch (e) { toast.push(e instanceof Error ? e.message : "Scoring failed", "error"); }
+    finally { setScoring(false); }
+  }
+
+  async function addActivity() {
+    if (!actTitle.trim()) return;
+    try {
+      const res = await fetch(`/api/contacts/${id}/activities`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: actType, title: actTitle.trim(), dueAt: actDue || undefined }) });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || "Could not log");
+      setActTitle(""); setActDue("");
+      toast.push(actType === "task" ? "Task added" : "Note logged", "success");
+      loadTimeline();
+    } catch (e) { toast.push(e instanceof Error ? e.message : "Could not log", "error"); }
+  }
 
   async function save() {
     setBusy(true);
@@ -219,7 +262,19 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
       footer={<><Button variant="secondary" onClick={remove} disabled={busy} style={{ marginRight: "auto", color: t.color.danger }}>Delete</Button><Button variant="secondary" onClick={onClose} disabled={busy}>Close</Button><Button onClick={save} disabled={busy}>{busy ? <Spinner size={14} /> : "Save"}</Button></>}>
       {loading ? <div style={{ textAlign: "center", padding: 24 }}><Spinner /></div> : !contact ? <div>Not found.</div> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: t.font.sm, color: t.color.textMuted }}>{contact.email || "—"} · {contact.phoneE164 || "no phone"} · source: {contact.source || "—"}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: t.font.sm, color: t.color.textMuted }}>{contact.email || "—"} · {contact.phoneE164 || "no phone"} · source: {contact.source || "—"}</div>
+            <Button variant="secondary" onClick={runScore} disabled={scoring}>{scoring ? <Spinner size={14} /> : "✨ AI score"}</Button>
+          </div>
+          {score && (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 12px", background: t.color.accentSoft, borderRadius: t.radius.md }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: t.color.accent }}>{score.score}</div>
+              <div>
+                {score.tier && <Badge tone={score.score >= 80 ? "success" : score.score >= 55 ? "accent" : "neutral"}>{score.tier}</Badge>}
+                {score.reasons.length > 0 && <div style={{ fontSize: t.font.xs, color: t.color.textMuted, marginTop: 3 }}>{score.reasons.slice(0, 3).join(" · ")}</div>}
+              </div>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <Field label="Lifecycle stage"><Select value={lifecycleStage} onChange={(e) => setLifecycle(e.target.value)}>{LIFECYCLE.map((s) => <option key={s} value={s}>{s}</option>)}</Select></Field>
             <Field label="Lead status"><Select value={leadStatus} onChange={(e) => setLeadStatus(e.target.value)}><option value="">—</option>{LEAD_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</Select></Field>
@@ -236,6 +291,44 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
                   <div key={d.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", border: `1px solid ${t.color.border}`, borderRadius: t.radius.md }}>
                     <span>{d.title} <Badge tone="neutral">{d.stageName}</Badge></span>
                     <span style={{ fontWeight: 600 }}>{d.value != null ? fmtINR(d.value) : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add note / task */}
+          <div>
+            <div style={{ fontSize: t.font.xs, fontWeight: 600, textTransform: "uppercase", color: t.color.textMuted, marginBottom: 6 }}>Log activity</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <Select value={actType} onChange={(e) => setActType(e.target.value as "note" | "task")} style={{ width: 100 }}>
+                <option value="note">Note</option>
+                <option value="task">Task</option>
+              </Select>
+              <Input value={actTitle} onChange={(e) => setActTitle(e.target.value)} placeholder={actType === "task" ? "Follow up about…" : "What happened…"} style={{ flex: 1 }} />
+              {actType === "task" && <Input type="date" value={actDue} onChange={(e) => setActDue(e.target.value)} style={{ width: 140 }} />}
+              <Button onClick={addActivity} disabled={!actTitle.trim()}>Add</Button>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div>
+            <div style={{ fontSize: t.font.xs, fontWeight: 600, textTransform: "uppercase", color: t.color.textMuted, marginBottom: 6 }}>Timeline ({timeline.length})</div>
+            {timeline.length === 0 ? <div style={{ fontSize: t.font.sm, color: t.color.textFaint }}>No activity yet.</div> : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+                {timeline.map((i) => (
+                  <div key={i.kind + i.id} style={{ display: "flex", gap: 8, fontSize: t.font.sm }}>
+                    <span style={{ fontSize: 15 }}>{KIND_ICON[i.kind] ?? "•"}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: t.color.text }}>
+                        {i.title}
+                        {i.sentiment && <Badge tone={i.sentiment === "positive" ? "success" : i.sentiment === "negative" ? "danger" : "neutral"} style={{ marginLeft: 6 }}>{i.sentiment}</Badge>}
+                        {i.status === "open" && <Badge tone="warning" style={{ marginLeft: 6 }}>open</Badge>}
+                        {i.status === "done" && <Badge tone="success" style={{ marginLeft: 6 }}>done</Badge>}
+                      </div>
+                      {i.body && <div style={{ color: t.color.textMuted, fontSize: t.font.xs }}>{i.body.length > 160 ? i.body.slice(0, 160) + "…" : i.body}</div>}
+                      <div style={{ color: t.color.textFaint, fontSize: 11 }}>{new Date(i.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -64,6 +64,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/contacts", label: "Contacts", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
+      { href: "/tasks", label: "Tasks", icon: ClipboardList },
       { href: "/sentiment-trends", label: "Sentiment Trends", icon: LineChart },
       { href: "/night-audit", label: "Night Audit", icon: FileText },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -98,6 +99,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/contacts", label: "Contacts", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
+      { href: "/tasks", label: "Tasks", icon: ClipboardList },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
     ],
@@ -131,6 +133,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/contacts", label: "Contacts", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
+      { href: "/tasks", label: "Tasks", icon: ClipboardList },
       { href: "/analytics", label: "Revenue Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -163,6 +166,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/contacts", label: "Contacts", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
+      { href: "/tasks", label: "Tasks", icon: ClipboardList },
       { href: "/analytics", label: "Revenue Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
@@ -195,6 +199,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       { href: "/deals", label: "Deals", icon: Handshake },
       { href: "/contacts", label: "Contacts", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
+      { href: "/tasks", label: "Tasks", icon: ClipboardList },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/ai-brain", label: "AI Brain", icon: Brain },
       { href: "/settings", label: "Settings", icon: Settings }
