@@ -1675,8 +1675,6 @@ const handleRequest = async (
       const auth = await authorize(req, res, "GET /analytics/revenue-intelligence");
       if (!auth.ok) return;
       const context = auth.context;
-      const licRevenue = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
-      if (!licRevenue.ok) { json(res, 403, { ok: false, error: licRevenue.error }); return; }
 
       const [offerEvents, openRequests] = await Promise.all([
         prisma.offerEvent.findMany({
@@ -1751,8 +1749,6 @@ const handleRequest = async (
       const auth = await authorize(req, res, "GET /analytics/staff-performance");
       if (!auth.ok) return;
       const context = auth.context;
-      const licStaff = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
-      if (!licStaff.ok) { json(res, 403, { ok: false, error: licStaff.error }); return; }
 
       const [users, requests, staffSentiment] = await Promise.all([
         prisma.user.findMany({
@@ -2420,8 +2416,6 @@ const handleRequest = async (
       const auth = await authorize(req, res, "GET /analytics/sentiment");
       if (!auth.ok) return;
       const context = auth.context;
-      const licSentiment = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
-      if (!licSentiment.ok) { json(res, 403, { ok: false, error: licSentiment.error }); return; }
       json(res, 200, await computeSentimentAnalytics(context.tenantId));
       return;
     }
@@ -2431,8 +2425,6 @@ const handleRequest = async (
       const auth = await authorize(req, res, "GET /analytics/upsell-campaigns");
       if (!auth.ok) return;
       const context = auth.context;
-      const licUpsell = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
-      if (!licUpsell.ok) { json(res, 403, { ok: false, error: licUpsell.error }); return; }
       json(res, 200, await computeUpsellAnalytics(context.tenantId));
       return;
     }
