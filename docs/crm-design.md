@@ -338,8 +338,195 @@ Gate visibility with the new `view_crm` permission via the existing `getAllowedN
 
 ## 11. Recommendation
 
-Build the CRM as the **spine that connects what we already have**, in the phase order above, starting
-with **Phase 0 (unify Contact)** because it's invisible-but-foundational and unblocks everything else.
-Lead with a HubSpot-shaped object graph, deliver a Pipedrive-clean pipeline, and make AI scoring +
-next-best-action the default. Keep every label, stage, and field per-tenant configurable so it stays
-industry-agnostic and white-label — consistent with Eynis's core principles.
+Build the CRM as the **spine that connects what we already have**. Lead with a HubSpot-shaped object
+graph, deliver a Pipedrive-clean pipeline, and make AI scoring + next-best-action the default. Keep
+every label, stage, and field per-tenant configurable so it stays industry-agnostic and white-label —
+consistent with Eynis's core principles.
+
+> **Decision (finalized, June 2026):** a pilot customer is asking for **pipeline + forecasting now**,
+> so the open question in §10.4 is resolved in favor of a **deals/pipeline-first** sequence. The
+> default ops-first ordering in §8 is therefore superseded by the **finalized build plan in §12**.
+> Deals attach to the *existing* `Contact` (Guest) record optionally and can stand alone, so we ship
+> pipeline/forecasting first and do the full Contact/Company unification in the next increment.
+
+---
+
+## 12. Finalized build plan (pipeline-first)
+
+Goal: ship **Deals + Pipeline + Forecasting** to the requesting pilot fast, on a foundation that the
+rest of the CRM (contacts hub, activities, AI) cleanly extends — no throwaway work, no refactor debt.
+
+### 12.1 Sequencing (three increments, each a separate PR)
+
+| Inc | Title | Ships | Depends on |
+|---|---|---|---|
+| **A** | **Pipeline + Deals + Forecasting** (the pilot ask) | Pipeline/Stage/Deal models, default-pipeline seed, CRUD + stage-move APIs, drag-drop board, forecast summary | — |
+| **B** | **Contacts hub + Companies** | Extend `Contact`, add `Company`, link `Deal`/`CampaignLead` → Contact, backfill, contact detail + deal roll-up | Inc A |
+| **C** | **Activities timeline + AI** | `Activity` projection, lead/deal scoring, next-best-action, velocity/win-rate reporting | Inc B |
+
+Increment A is the deliverable for the pilot. B and C follow without reworking A.
+
+### 12.2 Data model — Increment A (final)
+
+New tables (these are *new*, so use a real `tenantId` column — the `@map("hotelId")` shim is only for
+legacy tables). All carry `tenantId` and are scoped on every query.
+
+```prisma
+model Pipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  isDefault Boolean  @default(false)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stages    Stage[]
+  deals     Deal[]
+  @@index([tenantId])
+}
+
+model Stage {
+  id          String  @id @default(cuid())
+  tenantId    String
+  pipelineId  String
+  name        String
+  order       Int
+  probability Int     @default(0)   // 0–100, drives weighted forecast
+  isWon       Boolean @default(false)
+  isLost      Boolean @default(false)
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals       Deal[]
+  @@index([tenantId]) @@index([pipelineId])
+}
+
+model Deal {
+  id              String    @id @default(cuid())
+  tenantId        String
+  title           String
+  value           Decimal?  @db.Decimal(14, 2)
+  currency        String    @default("USD")    // tenant default; white-label configurable later
+  pipelineId      String
+  stageId         String
+  contactId       String?                       // optional link to existing Contact (Guest table)
+  ownerId         String?                       // assigned User
+  status          String    @default("open")    // open | won | lost
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  lostReason      String?
+  source          String?                       // manual | campaign | connector | import
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline        Pipeline  @relation(fields: [pipelineId], references: [id])
+  stage           Stage     @relation(fields: [stageId], references: [id])
+  contact         Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner           User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  transitions     DealTransition[]
+  @@index([tenantId]) @@index([pipelineId]) @@index([stageId]) @@index([contactId])
+}
+
+// Stage history — powers forecast accuracy + velocity reporting in Inc C. Cheap to add now.
+model DealTransition {
+  id          String   @id @default(cuid())
+  tenantId    String
+  dealId      String
+  fromStageId String?
+  toStageId   String
+  changedById String?
+  createdAt   DateTime @default(now())
+  deal        Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  @@index([tenantId]) @@index([dealId])
+}
+```
+
+Add the back-relations to `Tenant`, `Contact`, and `User` (`deals Deal[]`, etc.).
+
+### 12.3 Migrations & seeding
+
+1. `npm run db:migrate -w @eynis/api` — new tables only, fully additive (no change to existing data).
+2. **Default-pipeline seed** — every tenant needs one default pipeline or the board is broken:
+   - In the seed (`db:seed`) and in tenant-creation, create a default pipeline with stages:
+     **Lead In (10%) → Qualified (30%) → Proposal (60%) → Negotiation (80%) → Won (100%, isWon) →
+     Lost (0%, isLost)**. These are *defaults* — tenants rename/reorder/reprobability later (white-label).
+   - Idempotent backfill for existing tenants (the Riviera demo): create the default pipeline if none exists.
+3. **Demo deals** — seed a handful of open deals on the demo tenant across stages so the board and
+   forecast are non-empty in sales demos.
+
+### 12.4 API routes (Increment A)
+
+Follow the `server.ts` convention: parse path → `authorize(req, res, <perm>)` → validate → prisma
+(scoped to `tenantId`) → `json(res, status, { ok, ... })`. Register each in `policyMap`. Mirror the
+structure of `core/campaigns/service.ts` + `analytics.ts` in a new `core/crm/`.
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /pipelines` | `view_crm` | list pipelines + stages |
+| `POST /pipelines`, `PATCH /pipelines/:id`, `POST /pipelines/:id/stages` … | `manage_crm` | configure funnel (Inc A: minimal; can defer custom stages to a settings screen) |
+| `GET /deals` | `view_crm` | paginated, filter by `pipelineId`/`stageId`/`ownerId`/`status` |
+| `GET /deals/:id` | `view_crm` | detail incl. transitions |
+| `POST /deals` | `manage_crm` | create; optional `contactId` |
+| `PATCH /deals/:id` | `manage_crm` | edit value/title/owner/close date |
+| `POST /deals/:id/move` | `manage_crm` | change stage → writes `DealTransition`, auto-sets `status`/`closedAt` if stage `isWon`/`isLost` |
+| `DELETE /deals/:id` | `manage_crm` | guard per team policy |
+| `GET /deals/forecast` | `view_crm` | the forecast payload (see §12.5) |
+
+**Permissions:** add `view_crm` and `manage_crm` to the permission catalog and to `Role` seed sets
+(admin/manager/supervisor → `manage_crm`; agent → `manage_crm` or `view_crm` per team; viewer →
+`view_crm`). Add the routes to `policyMap`.
+
+### 12.5 Forecasting logic (`core/crm/forecast.ts`)
+
+All computed over **open** deals scoped to `tenantId` (optionally filtered by pipeline/owner/period):
+
+- **Open pipeline value** = Σ `deal.value` for open deals.
+- **Weighted forecast** = Σ `deal.value × (stage.probability / 100)` — the headline number.
+- **Forecast by period** = weighted value bucketed by `expectedCloseAt` (this month / this quarter).
+- **Value by stage** = Σ value grouped by stage (the board column totals).
+- **Win rate** = `won / (won + lost)` over a date range.
+- **Committed vs best-case** = Σ value of deals in `isWon`-adjacent high-probability stages vs all open.
+
+Return one JSON blob the board header + a small forecast card render from. Keep it a pure function over
+prisma reads, like `core/campaigns/analytics.ts`.
+
+### 12.6 Web UI (Increment A)
+
+- **Nav:** add `Deals` (icon `TrendingUp`/`BarChart3`) to each industry's `navItems` in
+  `apps/web/lib/industry-config.ts`; gate with `view_crm` via `getAllowedNavItems()`/`canAccessRoute()`.
+- **`/deals` page** (server component, `force-dynamic`): a **kanban board** — one column per stage,
+  deal cards (title, value, owner, close date) draggable between columns. A drag calls `POST
+  /deals/:id/move`. Add a **forecast strip** (open value, weighted forecast, this-month/quarter) above
+  the board. Provide a list/table view toggle for long pipelines.
+- **Components** (`apps/web/components/ui/`): `deals-board-client.tsx` (DnD + optimistic move),
+  `deal-card.tsx`, `deal-detail-panel.tsx` (create/edit, pick existing Contact via search),
+  `forecast-summary.tsx`. Mirror patterns from `campaigns-client.tsx`/`segments-client.tsx`.
+- **Data:** fetch via `apps/web/lib/data.ts` using the `lib/api.ts` token — no direct DB access.
+
+### 12.7 Cross-cutting checklist (every PR)
+
+- **Tenant isolation:** every query filtered by JWT `tenantId`; verify a deal/pipeline can't be read
+  or moved cross-tenant. Add an API test asserting 404/403 on foreign-tenant IDs (tests hit real Postgres).
+- **White-label:** no hard-coded currency symbol, stage names, or "Eynis" copy; stage labels and
+  probabilities come from the tenant's pipeline.
+- **Industry-agnostic:** neutral terms only — *Deal/Pipeline/Stage/Forecast*, never *booking/folio/guest*.
+- **Failure handling:** `POST /deals/:id/move` validates the target stage belongs to the deal's pipeline
+  and the tenant; reject otherwise.
+- **Tests:** add `*.test.ts` under `apps/api/src` for CRUD, stage-move side-effects (won/lost →
+  status/closedAt), and forecast math.
+
+### 12.8 Acceptance criteria — Increment A (pilot-ready)
+
+1. A user with `manage_crm` can create a deal, assign value/owner/close date, optionally link an
+   existing contact, and drag it across stages on the board.
+2. Moving a deal into a `isWon`/`isLost` stage sets `status` + `closedAt` and records a `DealTransition`.
+3. The forecast strip shows open pipeline value, **weighted forecast**, and this-month/this-quarter
+   numbers that recompute as deals move.
+4. Every tenant has a working default pipeline out of the box; the demo tenant shows seeded deals.
+5. All deal/pipeline access is tenant-scoped (verified by tests); `viewer` role is read-only.
+6. `npm run build`, `npm run lint`, and `npm run test` pass.
+
+### 12.9 Rough sizing
+
+- **Inc A:** schema + migration + seed (S) · CRM core + APIs (M) · forecast (S) · board UI (M) ·
+  tests (S) → the bulk of the effort, ~1 focused build cycle.
+- **Inc B / C:** smaller, additive, on the foundation A establishes.
