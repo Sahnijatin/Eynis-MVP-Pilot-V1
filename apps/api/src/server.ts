@@ -837,8 +837,8 @@ const handleRequest = async (
 
     // ── GET /sse/live-feed — real-time event stream ───────────────────────────
     if (req.url?.startsWith("/sse/live-feed") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
 
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -860,11 +860,8 @@ const handleRequest = async (
     }
 
     if (req.url === "/context" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
 
       const hasAccess = await ensureTenantAccess(auth.context.tenantId);
       if (!hasAccess) {
@@ -882,8 +879,8 @@ const handleRequest = async (
 
     // ── Tenant branding (white-label) ───────────────────────────────────────────
     if (req.url === "/tenant/branding" && (req.method === "GET" || req.method === "PUT")) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const { tenantId, permissions } = auth.context;
       if (!(await ensureTenantAccess(tenantId))) {
         json(res, 403, { ok: false, error: "Hotel not found or access denied" });
@@ -916,8 +913,8 @@ const handleRequest = async (
 
     // ── Tenant white-label routing identity (slug + custom domain) ──────────────
     if (req.url === "/tenant/domains" && (req.method === "GET" || req.method === "PUT")) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const { tenantId, permissions } = auth.context;
       if (!(await ensureTenantAccess(tenantId))) {
         json(res, 403, { ok: false, error: "Tenant not found or access denied" });
@@ -1254,11 +1251,8 @@ const handleRequest = async (
     }
 
     if (req.url === "/service-requests" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const context = auth.context;
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
@@ -1377,11 +1371,8 @@ const handleRequest = async (
     // like /service-requests/:id/transitions — otherwise this broad list handler
     // shadows the specific routes declared below it (F-7).
     if ((req.url === "/service-requests" || req.url?.startsWith("/service-requests?")) && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const context = auth.context;
       const hasAccess = await ensureTenantAccess(context.tenantId);
       if (!hasAccess) {
@@ -2108,11 +2099,8 @@ const handleRequest = async (
     }
 
     if (req.url?.startsWith("/service-requests/") && req.url.endsWith("/transitions") && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) {
-        json(res, auth.status, { ok: false, error: auth.error });
-        return;
-      }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const context = auth.context;
       // Viewing a request's transition history requires the same permission as
       // viewing requests (F-7: this check was missing while the route was dead).
@@ -2927,8 +2915,8 @@ const handleRequest = async (
 
     // ── GET /team/users — list team members with role + seat usage ────────────
     if (req.url === "/team/users" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_users")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -2958,8 +2946,8 @@ const handleRequest = async (
 
     // ── POST /team/invitations — generate invite link ─────────────────────────
     if (req.url === "/team/invitations" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "invite_users")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3102,8 +3090,8 @@ const handleRequest = async (
 
     // ── PUT /team/users/:id — change role or active status ───────────────────
     if (parseTeamUserId(req.url) && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_users")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3167,8 +3155,8 @@ const handleRequest = async (
 
     // ── GET /team/license — plan info + seat usage ────────────────────────────
     if (req.url === "/team/license" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_billing")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3185,8 +3173,8 @@ const handleRequest = async (
 
     // ── GET /team/roles — list roles with user counts ─────────────────────────
     if (req.url === "/team/roles" && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3209,8 +3197,8 @@ const handleRequest = async (
 
     // ── PUT /team/roles/:id — rename a role's displayName ────────────────────
     if (parseTeamRoleId(req.url) && req.method === "PUT") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "manage_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3233,8 +3221,8 @@ const handleRequest = async (
 
     // ── POST /team/roles — create a custom role ───────────────────────────────
     if (req.url === "/team/roles" && req.method === "POST") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       if (!hasPermission(auth.context.permissions, "create_custom_roles")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
       }
@@ -3275,8 +3263,8 @@ const handleRequest = async (
     // ── Message Templates: reusable library + approval status ───────────────
     const tplPath = parseTemplatePath(req.url);
     if (tplPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
@@ -3353,8 +3341,8 @@ const handleRequest = async (
     // ── Drip Sequences: multi-step automation ───────────────────────────────
     const seqPath = parseSequencePath(req.url);
     if (seqPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
@@ -3491,8 +3479,8 @@ const handleRequest = async (
     // ── Lead Segments: saved tenant-wide audience filters ───────────────────
     const segPath = parseSegmentPath(req.url);
     if (segPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!hasPermission(auth.context.permissions, "manage_campaigns")) {
         json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
@@ -3573,8 +3561,8 @@ const handleRequest = async (
 
     // ── Voice Campaigns: create + list ──────────────────────────────────────
     if (parseUrl(req.url).pathname === "/campaigns" && (req.method === "POST" || req.method === "GET")) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
 
@@ -3638,8 +3626,8 @@ const handleRequest = async (
     if (parseUrl(req.url).pathname.startsWith("/campaigns/")) {
       const parsed = parseCampaignPath(req.url);
       if (parsed) {
-        const auth = await getAuthenticatedContext(req);
-        if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+        const auth = await authorize(req, res, null);
+        if (!auth.ok) return;
         const tenantId = auth.context.tenantId;
         const { id, action } = parsed;
 
@@ -3798,8 +3786,8 @@ const handleRequest = async (
     // ── Voice Campaign leads: import / list / delete ────────────────────────
     const leadsPath = parseCampaignLeadsPath(req.url);
     if (leadsPath) {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       const { campaignId, leadId, isImport } = leadsPath;
       const campaign = await prisma.voiceCampaign.findFirst({
@@ -4026,8 +4014,8 @@ const handleRequest = async (
     // ── Voice Campaign: calls list / detail (+ CSV export) ──────────────────
     const callsPath = parseCampaignCallsPath(req.url);
     if (callsPath && req.method === "GET") {
-      const auth = await getAuthenticatedContext(req);
-      if (!auth.ok) { json(res, auth.status, { ok: false, error: auth.error }); return; }
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: callsPath.campaignId, tenantId }, select: { id: true } });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
