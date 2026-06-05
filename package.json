@@ -11,5 +11,8 @@
     "dev": "npm run dev -w @eynis/api",
     "lint": "npm run lint -w @eynis/api && npm run lint -w @eynis/web",
     "test": "npm run test -w @eynis/shared && npm run test -w @eynis/api && npm run test -w @eynis/web"
+  },
+  "devDependencies": {
+    "shadcn": "^4.10.0"
   }
 }
