@@ -80,15 +80,33 @@ export interface StaffPerformanceResponse {
   alerts: string[];
 }
 
+export interface ConnectorField {
+  key: string;
+  label: string;
+  secret?: boolean;
+  placeholder?: string;
+}
+
+export interface ConnectorRegistryItem {
+  key: string;
+  category: string;
+  categoryLabel: string;
+  name: string;
+  description: string;
+  icon: string;
+  brandColor: string;
+  requiredFields: ConnectorField[];
+  planned: boolean;
+  enabled: boolean;
+  status: "connected" | "disabled" | "planned";
+  source: "hotel_config" | "env";
+  ingestModes: string[];
+  config: Record<string, string>;
+}
+
 export interface ConnectorRegistryResponse {
   ok: boolean;
-  items: Array<{
-    key: string;
-    category: string;
-    enabled: boolean;
-    status: "ready" | "disabled" | "planned";
-    ingestModes: string[];
-  }>;
+  items: ConnectorRegistryItem[];
 }
 
 export interface LiveFeedResponse {

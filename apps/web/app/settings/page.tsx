@@ -1,6 +1,4 @@
-import { fetchConnectorRegistry } from "../../lib/data";
 import { Save, Camera, Clock, Phone } from "lucide-react";
-import { ConnectorConfigPanel } from "../../components/ui/connector-config-panel";
 import { ChangeIndustry } from "../../components/ui/change-industry";
 import { BrandingPanel } from "../../components/ui/branding-panel";
 import { DomainsPanel } from "../../components/ui/domains-panel";
@@ -18,23 +16,7 @@ function buildTabs(propertyLabel: string, teamLabel: string) {
   ];
 }
 
-const connectorCategoryLabel: Record<string, string> = {
-  communication: "Communication",
-  pms: "Property Management",
-  pos: "Point of Sale",
-  payments: "Payments",
-  email: "Email"
-};
-
 export default async function SettingsPage() {
-  let connectors: Awaited<ReturnType<typeof fetchConnectorRegistry>> | null = null;
-  let error = "";
-  try {
-    connectors = await fetchConnectorRegistry();
-  } catch (err) {
-    error = err instanceof Error ? err.message : "Failed to load connectors";
-  }
-
   const { industry, config } = await getUserWorkspace();
   const accent = config.accentColor;
   const tabs = buildTabs(config.terminology.property, config.terminology.team);
@@ -46,8 +28,6 @@ export default async function SettingsPage() {
     const ctx = await resolveUserContext();
     isAdmin = ctx.orgRole === "org_admin";
   } catch {}
-
-  const connectorItems = connectors?.items ?? [];
 
   return (
     <div>
@@ -63,7 +43,6 @@ export default async function SettingsPage() {
         </div>
       </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 mb-6">
@@ -201,42 +180,12 @@ export default async function SettingsPage() {
             </a>
           </div>
 
-          {/* Integrations */}
-          <div className="card">
+          {/* Integrations moved to their own module (E-5) */}
+          <a href="/integrations" className="card block hover:bg-slate-50 transition-colors">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Integrations</h3>
-            <p className="text-sm text-slate-400 mb-4">Manage connected systems and API keys.</p>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Connector</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Modes</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {connectorItems.map((c) => (
-                    <tr key={c.key}>
-                      <td className="font-medium text-slate-800 text-sm">{c.key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</td>
-                      <td className="text-slate-500 text-sm">{connectorCategoryLabel[c.category] ?? c.category}</td>
-                      <td>
-                        <span className={`badge ${c.enabled ? "badge-green" : c.status === "planned" ? "badge-slate" : "badge-amber"}`}>
-                          {c.enabled ? "Connected" : c.status === "planned" ? "Planned" : "Disabled"}
-                        </span>
-                      </td>
-                      <td className="text-xs text-slate-400">{c.ingestModes.join(", ")}</td>
-                      <td><ConnectorConfigPanel connectorKey={c.key} enabled={c.enabled} /></td>
-                    </tr>
-                  ))}
-                  {connectorItems.length === 0 && (
-                    <tr><td colSpan={5} className="text-center py-8 text-slate-400">No connectors available</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            <p className="text-sm text-slate-400">WhatsApp, PMS/POS, payments, voice and email connectors now live in their own Integrations module.</p>
+            <span className="text-xs text-teal-700 font-medium mt-2 block">Open Integrations →</span>
+          </a>
         </div>
 
         {/* Right sidebar */}

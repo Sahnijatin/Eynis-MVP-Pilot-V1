@@ -569,71 +569,143 @@ const canAccess = (permissions: string[], key: string): boolean => {
   return req === null || hasPermission(permissions, req);
 };
 
+// Connector registry. Each entry carries the display metadata the Integrations
+// module renders (name, description, what it needs, icon/brand) plus the env flag
+// and ingest modes used by the runtime. `planned` marks connectors that aren't
+// wired for real use yet — the UI shows a "Planned" badge and disables Connect.
+type ConnectorField = { key: string; label: string; secret?: boolean; placeholder?: string };
+
+const CONNECTOR_CATEGORY_LABELS: Record<string, string> = {
+  communication: "Communication",
+  pms: "PMS",
+  pos: "POS",
+  payments: "Payments",
+  voice: "Voice",
+  email: "Email",
+};
+
 const connectorRegistry = [
   {
     key: "whatsapp_interakt",
     category: "communication",
     envFlag: "CONNECTOR_WHATSAPP_INTERAKT_ENABLED",
-    ingestModes: ["webhook", "outbound_api"]
+    ingestModes: ["webhook", "outbound_api"],
+    name: "WhatsApp · Interakt",
+    description: "Receive and reply to customer messages on WhatsApp via Interakt.",
+    icon: "💬", brandColor: "#25D366", planned: false,
+    requiredFields: [{ key: "apiKey", label: "Interakt API Key", secret: true, placeholder: "your_interakt_api_key" }] as ConnectorField[],
   },
   {
     key: "whatsapp_twilio",
     category: "communication",
     envFlag: "CONNECTOR_WHATSAPP_TWILIO_ENABLED",
-    ingestModes: ["webhook", "outbound_api"]
+    ingestModes: ["webhook", "outbound_api"],
+    name: "WhatsApp · Twilio",
+    description: "Two-way WhatsApp messaging through your Twilio account.",
+    icon: "💬", brandColor: "#F22F46", planned: false,
+    requiredFields: [
+      { key: "accountSid", label: "Account SID", placeholder: "ACxxxxxxxx" },
+      { key: "authToken", label: "Auth Token", secret: true, placeholder: "your_auth_token" },
+      { key: "fromNumber", label: "WhatsApp From Number", placeholder: "whatsapp:+14155238886" },
+    ] as ConnectorField[],
   },
   {
     key: "pms_hotelogix",
     category: "pms",
     envFlag: "CONNECTOR_PMS_HOTELOGIX_ENABLED",
-    ingestModes: ["api", "webhook"]
+    ingestModes: ["api", "webhook"],
+    name: "Hotelogix PMS",
+    description: "Sync reservations and guest profiles from Hotelogix.",
+    icon: "🏨", brandColor: "#2563eb", planned: true,
+    requiredFields: [
+      { key: "apiKey", label: "API Key", secret: true },
+      { key: "propertyId", label: "Property ID" },
+    ] as ConnectorField[],
   },
   {
     key: "pms_ezee",
     category: "pms",
     envFlag: "CONNECTOR_PMS_EZEE_ENABLED",
-    ingestModes: ["api"]
+    ingestModes: ["api"],
+    name: "eZee PMS",
+    description: "Sync reservations and guest profiles from eZee.",
+    icon: "🏨", brandColor: "#2563eb", planned: true,
+    requiredFields: [
+      { key: "apiKey", label: "API Key", secret: true },
+      { key: "hotelCode", label: "Hotel Code" },
+    ] as ConnectorField[],
   },
   {
     key: "pos_petpooja",
     category: "pos",
     envFlag: "CONNECTOR_POS_PETPOOJA_ENABLED",
-    ingestModes: ["api"]
+    ingestModes: ["api"],
+    name: "Petpooja POS",
+    description: "Pull orders and menu data from Petpooja.",
+    icon: "🍽️", brandColor: "#ea580c", planned: true,
+    requiredFields: [
+      { key: "apiKey", label: "API Key", secret: true },
+      { key: "restaurantId", label: "Restaurant ID" },
+    ] as ConnectorField[],
   },
   {
     key: "payments_razorpay",
     category: "payments",
     envFlag: "CONNECTOR_PAYMENTS_RAZORPAY_ENABLED",
-    ingestModes: ["api", "payment_link"]
+    ingestModes: ["api", "payment_link"],
+    name: "Razorpay",
+    description: "Collect payments and send payment links via Razorpay.",
+    icon: "💳", brandColor: "#0f766e", planned: true,
+    requiredFields: [
+      { key: "keyId", label: "Key ID" },
+      { key: "keySecret", label: "Key Secret", secret: true },
+    ] as ConnectorField[],
   },
   {
     key: "voice_vapi",
     category: "voice",
     envFlag: "CONNECTOR_VOICE_VAPI_ENABLED",
-    ingestModes: ["api", "webhook"]
+    ingestModes: ["api", "webhook"],
+    name: "Voice Agent · Vapi",
+    description: "AI voice calls for outreach and reminders via Vapi.",
+    icon: "📞", brandColor: "#7c3aed", planned: false,
+    requiredFields: [
+      { key: "apiKey", label: "Vapi API Key", secret: true },
+      { key: "assistantId", label: "Assistant ID" },
+    ] as ConnectorField[],
   },
   {
     key: "email_resend",
     category: "email",
     envFlag: "CONNECTOR_EMAIL_RESEND_ENABLED",
-    ingestModes: ["outbound_api"]
-  }
+    ingestModes: ["outbound_api"],
+    name: "Email · Resend",
+    description: "Send transactional and campaign email from your own domain via Resend.",
+    icon: "✉️", brandColor: "#0891b2", planned: false,
+    requiredFields: [
+      { key: "apiKey", label: "Resend API Key", secret: true, placeholder: "re_xxxxxxxx" },
+      { key: "fromAddress", label: "From Address", placeholder: "campaigns@yourdomain.com" },
+      { key: "fromName", label: "From Name", placeholder: "Your Brand" },
+    ] as ConnectorField[],
+  },
 ] as const;
 
 const envFlagByConnectorKey = new Map<string, string>(
   connectorRegistry.map((item) => [item.key, item.envFlag])
 );
 
+// Detects secret-like field keys (so they're masked in responses and preserved on
+// re-save when the client echoes the mask instead of a real value).
+const isSecretKey = (key: string): boolean => {
+  const k = key.toLowerCase();
+  return k.includes("secret") || k.includes("token") || k.includes("password") || k.endsWith("key");
+};
+const SECRET_MASK = "***";
+
 const maskConnectorConfig = (config: Record<string, unknown>) => {
   const masked: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(config)) {
-    const lowered = key.toLowerCase();
-    const isSecretKey =
-      lowered.includes("secret") ||
-      lowered.includes("token") ||
-      lowered.includes("password") ||
-      lowered.endsWith("key");
-    masked[key] = isSecretKey && typeof value === "string" && value.length > 0 ? "***" : value;
+    masked[key] = isSecretKey(key) && typeof value === "string" && value.length > 0 ? SECRET_MASK : value;
   }
   return masked;
 };
@@ -1927,20 +1999,33 @@ const handleRequest = async (
 
       const configs = await prisma.connectorConfig.findMany({
         where: { tenantId: context.tenantId },
-        select: { connectorKey: true, enabled: true }
+        select: { connectorKey: true, enabled: true, configJson: true }
       });
-      const configMap = new Map(configs.map((c) => [c.connectorKey, c.enabled]));
+      const configMap = new Map(configs.map((c) => [c.connectorKey, c]));
       const items = connectorRegistry.map((item) => {
         const persisted = configMap.get(item.key);
         const envEnabled = String(process.env[item.envFlag] ?? "").toLowerCase() === "true";
-        const enabled = typeof persisted === "boolean" ? persisted : envEnabled;
+        const enabled = persisted ? persisted.enabled : envEnabled;
+        let savedConfig: Record<string, unknown> = {};
+        if (persisted) {
+          try { const m = JSON.parse(persisted.configJson) as Record<string, unknown>; if (m && typeof m === "object") savedConfig = m; } catch { /* ignore */ }
+        }
+        const status = item.planned ? "planned" : enabled ? "connected" : "disabled";
         return {
           key: item.key,
           category: item.category,
+          categoryLabel: CONNECTOR_CATEGORY_LABELS[item.category] ?? item.category,
+          name: item.name,
+          description: item.description,
+          icon: item.icon,
+          brandColor: item.brandColor,
+          requiredFields: item.requiredFields,
+          planned: item.planned,
           enabled,
-          status: enabled ? ("ready" as const) : ("disabled" as const),
-          source: typeof persisted === "boolean" ? ("hotel_config" as const) : ("env" as const),
-          ingestModes: item.ingestModes
+          status,
+          source: persisted ? ("hotel_config" as const) : ("env" as const),
+          ingestModes: item.ingestModes,
+          config: maskConnectorConfig(savedConfig)
         };
       });
       json(res, 200, { ok: true, items });
@@ -1990,8 +2075,25 @@ const handleRequest = async (
 
       const body = (await parseBody(req)) as { enabled?: unknown; config?: unknown };
       const enabled = typeof body.enabled === "boolean" ? body.enabled : false;
-      const config = body.config && typeof body.config === "object" ? body.config : {};
-      const configJson = JSON.stringify(config);
+      const incoming = body.config && typeof body.config === "object" ? (body.config as Record<string, unknown>) : {};
+
+      // Merge over the existing config so a re-save doesn't clobber secrets the
+      // client never saw: GET masks secret fields as "***", so an unchanged secret
+      // comes back empty or as the mask — in that case keep the stored value.
+      const existingRow = await prisma.connectorConfig.findUnique({
+        where: { tenantId_connectorKey: { tenantId: context.tenantId, connectorKey: connectorConfigKey } },
+        select: { configJson: true }
+      });
+      let existing: Record<string, unknown> = {};
+      if (existingRow) {
+        try { const m = JSON.parse(existingRow.configJson) as Record<string, unknown>; if (m && typeof m === "object") existing = m; } catch { /* ignore */ }
+      }
+      const merged: Record<string, unknown> = { ...existing };
+      for (const [k, v] of Object.entries(incoming)) {
+        if (isSecretKey(k) && (v === "" || v === SECRET_MASK || v == null)) continue; // keep stored secret
+        merged[k] = v;
+      }
+      const configJson = JSON.stringify(merged);
       const saved = await prisma.connectorConfig.upsert({
         where: { tenantId_connectorKey: { tenantId: context.tenantId, connectorKey: connectorConfigKey } },
         create: {
