@@ -1800,14 +1800,22 @@ const handleRequest = async (
       const licStaff = await enforceLicenseFeature(context.tenantId, "advanced_analytics");
       if (!licStaff.ok) { json(res, 403, { ok: false, error: licStaff.error }); return; }
 
-      const users = await prisma.user.findMany({
-        where: { tenantId: context.tenantId, isActive: true },
-        select: { id: true, fullName: true, role: true }
-      });
-      const requests = await prisma.serviceRequest.findMany({
-        where: { tenantId: context.tenantId },
-        select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
-      });
+      const [users, requests, staffSentiment] = await Promise.all([
+        prisma.user.findMany({
+          where: { tenantId: context.tenantId, isActive: true },
+          select: { id: true, fullName: true, role: true }
+        }),
+        prisma.serviceRequest.findMany({
+          where: { tenantId: context.tenantId },
+          select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
+        }),
+        computeSentimentAnalytics(context.tenantId)
+      ]);
+      // Real guest rating derived from sentiment feedback (0..100 net score → 0..5),
+      // or null when there's no feedback — never a hardcoded 0 (F-17).
+      const avgGuestRating = staffSentiment.totalFeedback > 0
+        ? Math.round((staffSentiment.netScore / 20) * 10) / 10
+        : null;
 
       const byUser = new Map<string, { completed: number; minutesTotal: number; open: number }>();
       for (const u of users) byUser.set(u.id, { completed: 0, minutesTotal: 0, open: 0 });
@@ -1887,7 +1895,7 @@ const handleRequest = async (
         summary: {
           avgResolutionMinutes,
           completionRate,
-          avgGuestRating: 0,
+          avgGuestRating,
           utilizationRate
         },
         leaderboard,
@@ -2637,11 +2645,14 @@ const handleRequest = async (
       if (!AI_AVAILABLE) { json(res, 503, { ok: false, error: "No AI provider configured" }); return; }
 
       const { tenantId } = auth.context;
+      const todayStartBrief = new Date(); todayStartBrief.setHours(0, 0, 0, 0);
+      const todayEndBrief = new Date(); todayEndBrief.setHours(23, 59, 59, 999);
       const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-      const [openReqs, escalatedReqs, guestCount] = await Promise.all([
+      const [openReqs, escalatedReqs, arrivalsToday, sentiment] = await Promise.all([
         prisma.serviceRequest.count({ where: { tenantId, status: "open" } }),
         prisma.serviceRequest.count({ where: { tenantId, status: "escalated" } }),
-        prisma.contact.count({ where: { tenantId } })
+        prisma.stay.count({ where: { tenantId, checkInAt: { gte: todayStartBrief, lte: todayEndBrief } } }),
+        computeSentimentAnalytics(tenantId)
       ]);
       const topCategories = await prisma.serviceRequest.groupBy({
         by: ["category"],
@@ -2650,11 +2661,9 @@ const handleRequest = async (
         orderBy: { _count: { category: "desc" } },
         take: 3
       });
-      const offerAggregate = await prisma.offerEvent.aggregate({
-        where: { tenantId },
-        _avg: { revenueInr: true }
-      });
-      const avgSentimentScore = Math.min(100, Math.max(40, Math.round((offerAggregate._avg.revenueInr ?? 0) / 100 + 68)));
+      // Real sentiment from voice + inbound feedback; null when there is none, so
+      // the prompt says "no feedback yet" rather than inventing a score (F-17).
+      const avgSentimentScore = sentiment.totalFeedback > 0 ? sentiment.netScore : null;
 
       try {
         const briefing = await generateMorningBriefing({
@@ -2662,9 +2671,11 @@ const handleRequest = async (
           date: new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
           openRequests: openReqs,
           escalatedRequests: escalatedReqs,
-          occupancyPct: 72,
-          todayRevenue: 284000,
-          arrivingGuests: guestCount,
+          // Occupancy + room revenue require a PMS source we don't have yet — pass
+          // null (rendered "not available") instead of fabricated constants (F-17).
+          occupancyPct: null,
+          todayRevenue: null,
+          arrivingGuests: arrivalsToday,
           avgSentimentScore,
           topPendingCategories: topCategories.map((c) => c.category)
         }, provider);
@@ -2784,17 +2795,14 @@ const handleRequest = async (
       const { tenantId } = auth.context;
       const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
 
-      const [totalUsers, offerStats] = await Promise.all([
-        prisma.user.count({ where: { tenantId, isActive: true } }),
-        prisma.offerEvent.groupBy({
-          by: ["offerType"],
-          where: { tenantId },
-          _count: { offerType: true },
-          _sum: { revenueInr: true },
-          orderBy: { _sum: { revenueInr: "desc" } },
-          take: 5
-        })
-      ]);
+      const offerStats = await prisma.offerEvent.groupBy({
+        by: ["offerType"],
+        where: { tenantId },
+        _count: { offerType: true },
+        _sum: { revenueInr: true },
+        orderBy: { _sum: { revenueInr: "desc" } },
+        take: 5
+      });
 
       const accepted = await prisma.offerEvent.count({ where: { tenantId, status: "accepted" } });
       const total = await prisma.offerEvent.count({ where: { tenantId } });
@@ -2802,16 +2810,19 @@ const handleRequest = async (
       try {
         const insights = await generateRevenueInsights({
           hotelName: hotel?.name ?? tenantId,
-          occupancyPct: 72,
-          adrInr: 8500,
-          revParInr: 6120,
+          // Occupancy / ADR / RevPAR / room availability need a PMS source we don't
+          // have — pass null (rendered "not available") rather than fabricated
+          // constants. The model bases recommendations on the real upsell data (F-17).
+          occupancyPct: null,
+          adrInr: null,
+          revParInr: null,
           upsellConversionPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
           topCategories: offerStats.map((o) => ({
             name: o.offerType,
             revenueInr: o._sum.revenueInr ?? 0
           })),
           weekTrend: "up",
-          availableRooms: Math.max(0, totalUsers - Math.floor(totalUsers * 0.72))
+          availableRooms: null
         }, provider);
         json(res, 200, { ok: true, provider, insights });
       } catch (e) {
@@ -2883,7 +2894,9 @@ const handleRequest = async (
       const auditData: NightAuditData = {
         hotelName: hotel?.name ?? tenantId,
         reportDate,
-        occupancyPct: inHouseCount > 0 ? Math.min(100, Math.round((inHouseCount / 45) * 100)) : 72,
+        // No room-capacity source → report in-house guests (real) and leave
+        // occupancy % null rather than dividing by a magic room count (F-17).
+        occupancyPct: null,
         checkIns: checkInsToday,
         checkOuts: checkOutsToday,
         inHouseGuests: inHouseCount,

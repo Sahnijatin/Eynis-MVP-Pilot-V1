@@ -96,17 +96,26 @@ function claudeTextContent(response: Anthropic.Message): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Metrics that depend on a property-management / revenue source are nullable:
+// when no PMS is connected we pass null and the prompt says "not available" rather
+// than feeding the model fabricated constants (F-17).
 interface HotelBriefingData {
   hotelName: string;
   date: string;
   openRequests: number;
   escalatedRequests: number;
-  occupancyPct: number;
-  todayRevenue: number;
+  occupancyPct: number | null;
+  todayRevenue: number | null;
   arrivingGuests: number;
-  avgSentimentScore: number;
+  avgSentimentScore: number | null;
   topPendingCategories: string[];
 }
+
+// Renders a value the model should not invent when its source is absent.
+const fmtPct = (v: number | null): string => (v == null ? "not available (no property-management data connected)" : `${v}%`);
+const fmtInr = (v: number | null): string => (v == null ? "not available (no property-management/revenue data connected)" : `₹${v.toLocaleString("en-IN")}`);
+const fmtScore = (v: number | null): string => (v == null ? "no feedback yet" : `${v}/100`);
+const fmtNum = (v: number | null): string => (v == null ? "not available" : String(v));
 
 export interface MorningBriefing {
   headline: string;
@@ -147,13 +156,13 @@ export interface EventClassification {
 
 interface RevenueData {
   hotelName: string;
-  occupancyPct: number;
-  adrInr: number;
-  revParInr: number;
+  occupancyPct: number | null;
+  adrInr: number | null;
+  revParInr: number | null;
   upsellConversionPct: number;
   topCategories: Array<{ name: string; revenueInr: number }>;
   weekTrend: "up" | "flat" | "down";
-  availableRooms: number;
+  availableRooms: number | null;
 }
 
 export interface RevenueInsight {
@@ -168,12 +177,12 @@ export interface RevenueInsight {
 function briefingPrompt(data: HotelBriefingData): string {
   return `Generate a morning operations briefing for ${data.hotelName} on ${data.date}.
 
-Hotel data:
-- Occupancy: ${data.occupancyPct}%
+Operational data (do not invent figures marked "not available"):
+- Occupancy: ${fmtPct(data.occupancyPct)}
 - Open service requests: ${data.openRequests} (${data.escalatedRequests} escalated)
-- Today's revenue so far: ₹${data.todayRevenue.toLocaleString("en-IN")}
-- Guests arriving today: ${data.arrivingGuests}
-- Guest sentiment score: ${data.avgSentimentScore}/100
+- Today's revenue so far: ${fmtInr(data.todayRevenue)}
+- Arrivals today: ${data.arrivingGuests}
+- Sentiment score: ${fmtScore(data.avgSentimentScore)}
 - Pending request categories: ${data.topPendingCategories.join(", ")}
 
 Return a JSON object with exactly these keys:
@@ -229,14 +238,14 @@ Return a JSON object with exactly these keys:
 function revenuePrompt(data: RevenueData): string {
   return `Analyze revenue performance and provide specific, actionable recommendations for ${data.hotelName}.
 
-Revenue data:
-- Occupancy: ${data.occupancyPct}%
-- ADR: ₹${data.adrInr.toLocaleString("en-IN")}
-- RevPAR: ₹${data.revParInr.toLocaleString("en-IN")}
+Revenue data (do not invent figures marked "not available"; base recommendations on what is present, especially upsell performance):
+- Occupancy: ${fmtPct(data.occupancyPct)}
+- ADR: ${fmtInr(data.adrInr)}
+- RevPAR: ${fmtInr(data.revParInr)}
 - Upsell conversion rate: ${data.upsellConversionPct}%
 - Weekly trend: ${data.weekTrend}
-- Available rooms right now: ${data.availableRooms}
-- Top revenue categories: ${data.topCategories.map((c) => `${c.name} (₹${c.revenueInr.toLocaleString("en-IN")})`).join(", ")}
+- Available rooms right now: ${fmtNum(data.availableRooms)}
+- Top revenue categories: ${data.topCategories.map((c) => `${c.name} (₹${c.revenueInr.toLocaleString("en-IN")})`).join(", ") || "none yet"}
 
 Return a JSON object with exactly these keys:
 {
@@ -321,7 +330,7 @@ async function openaiRevenueInsights(data: RevenueData): Promise<RevenueInsight>
 export interface NightAuditData {
   hotelName: string;
   reportDate: string;
-  occupancyPct: number;
+  occupancyPct: number | null;
   checkIns: number;
   checkOuts: number;
   inHouseGuests: number;
@@ -349,8 +358,8 @@ export interface NightAuditResult {
 function nightAuditPrompt(data: NightAuditData): string {
   return `Generate a night audit report for ${data.hotelName} for ${data.reportDate}.
 
-Day summary:
-- Occupancy: ${data.occupancyPct}%
+Day summary (do not invent figures marked "not available"):
+- Occupancy: ${fmtPct(data.occupancyPct)}
 - Check-ins today: ${data.checkIns}, Check-outs: ${data.checkOuts}, In-house: ${data.inHouseGuests}
 - Service requests: ${data.resolvedRequests} resolved, ${data.escalatedRequests} escalated, ${data.openRequests} still open
 - Average resolution time: ${data.avgResolutionMins} minutes
