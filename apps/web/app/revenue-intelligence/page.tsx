@@ -78,9 +78,6 @@ export default function RevenueIntelligencePage() {
           <div>
             <h1 className="page-title">Revenue Intelligence</h1>
             <p className="page-subtitle">Track every rupee captured by Eynis automations</p>
-            <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-xs font-semibold" style={{ background: "#fef3c7", color: "#92400e" }}>
-              Sample data — live revenue requires a connected PMS
-            </span>
           </div>
           <div className="flex items-center gap-2">
             <RangeBtn active={range === "30d"} onClick={() => setRange("30d")}>Last 30 Days</RangeBtn>

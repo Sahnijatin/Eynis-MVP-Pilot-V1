@@ -93,9 +93,6 @@ export default function StaffPerformancePage() {
           <div>
             <h1 className="page-title">Staff Performance</h1>
             <p className="page-subtitle">Track team efficiency and guest satisfaction metrics in real-time.</p>
-            <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-xs font-semibold" style={{ background: "#fef3c7", color: "#92400e" }}>
-              Sample data — guest-rating metrics require a connected ratings source
-            </span>
           </div>
           <div className="flex items-center gap-2">
             <RangeBtn active={range === "24h"} onClick={() => setRange("24h")}>Last 24h</RangeBtn>
