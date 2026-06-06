@@ -2,6 +2,16 @@ import { currentUser } from "@clerk/nextjs/server";
 import type { OrgRole } from "./rbac";
 import type { TenantBranding } from "./theme";
 import { getActiveImpersonation } from "./impersonation";
+import { readActiveWorkspace } from "./active-workspace";
+
+// One membership of the signed-in identity (multi-workspace). Summary used to
+// populate the workspace switcher.
+export interface WorkspaceSummary {
+  tenantId: string;
+  propertyName: string | null;
+  industry: string | null;
+  roleKey: string | null;
+}
 
 export interface UserContext {
   tenantId: string | null;
@@ -14,6 +24,9 @@ export interface UserContext {
   fullName: string | null;
   email: string | null;
   exists: boolean;            // true if user has a DB record
+  // All workspaces this identity belongs to (multi-workspace). Drives the
+  // switcher; empty when the user has no membership yet.
+  workspaces: WorkspaceSummary[];
   // Impersonation (E-6): non-null while an admin is viewing the app as another
   // user. The identity fields above reflect the *target*; this carries who is
   // really behind the session so the UI can show a banner.
@@ -23,6 +36,16 @@ export interface UserContext {
     targetEmail: string;
     targetName: string | null;
   } | null;
+}
+
+interface Membership {
+  tenantId: string;
+  role: string | null;
+  roleKey: string | null;
+  industry: string | null;
+  propertyName: string | null;
+  branding: TenantBranding | null;
+  fullName: string | null;
 }
 
 // New Role.key → mapped UI org role (target identity during impersonation).
@@ -55,27 +78,30 @@ function toOrgRole(roleKey: string | null, legacyRole: string | null): OrgRole {
   return "org_viewer";
 }
 
-async function identifyByEmail(email: string) {
+async function identifyByEmail(email: string): Promise<Membership[]> {
   // Hard 3-second timeout. If the API is down or slow we MUST NOT hang the
   // server render — that's what produced the blank-screen-on-login bug.
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 3000);
   try {
     const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal });
-    if (!res.ok) return null;
-    const data = await res.json() as { ok: boolean; exists?: boolean; tenantId?: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; fullName?: string };
-    if (!data.ok || !data.exists) return null;
-    return {
-      tenantId: data.tenantId ?? null,
-      role: data.role ?? null,
-      roleKey: data.roleKey ?? null,
-      industry: data.industry ?? null,
-      propertyName: data.propertyName ?? null,
-      branding: data.branding ?? null,
-      fullName: data.fullName ?? null,
+    if (!res.ok) return [];
+    const data = await res.json() as {
+      ok: boolean; exists?: boolean;
+      workspaces?: Array<{ tenantId: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; fullName?: string }>;
     };
+    if (!data.ok || !data.exists || !data.workspaces?.length) return [];
+    return data.workspaces.map(w => ({
+      tenantId: w.tenantId,
+      role: w.role ?? null,
+      roleKey: w.roleKey ?? null,
+      industry: w.industry ?? null,
+      propertyName: w.propertyName ?? null,
+      branding: w.branding ?? null,
+      fullName: w.fullName ?? null,
+    }));
   } catch {
-    return null;
+    return [];
   } finally {
     clearTimeout(timer);
   }
@@ -90,27 +116,37 @@ export async function resolveUserContext(opts: { ignoreImpersonation?: boolean }
   }
 
   if (!clerkUser) {
-    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false, impersonating: null };
+    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false, workspaces: [], impersonating: null };
   }
 
   const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
 
-  // DB is the single source of truth. If no DB record exists, the user is "new"
+  // DB is the single source of truth. If no membership exists, the user is "new"
   // regardless of what Clerk metadata says (which could be stale from a wiped hotel).
-  const dbUser = email ? await identifyByEmail(email) : null;
+  const memberships = email ? await identifyByEmail(email) : [];
 
-  if (dbUser && dbUser.tenantId) {
+  if (memberships.length > 0) {
+    // Pick the active workspace: the cookie selection if it matches a real
+    // membership, otherwise the first (oldest) one. The cookie never grants
+    // access on its own — it must resolve to a genuine membership here.
+    const wanted = await readActiveWorkspace();
+    const active = (wanted && memberships.find(m => m.tenantId === wanted)) || memberships[0];
+    const workspaces: WorkspaceSummary[] = memberships.map(m => ({
+      tenantId: m.tenantId, propertyName: m.propertyName, industry: m.industry, roleKey: m.roleKey,
+    }));
+
     const base: UserContext = {
-      tenantId: dbUser.tenantId,
-      role: dbUser.role,
-      roleKey: dbUser.roleKey,
-      orgRole: toOrgRole(dbUser.roleKey, dbUser.role),
-      industry: dbUser.industry ?? "hospitality",
-      propertyName: dbUser.propertyName ?? null,
-      branding: dbUser.branding ?? null,
-      fullName: dbUser.fullName ?? null,
+      tenantId: active.tenantId,
+      role: active.role,
+      roleKey: active.roleKey,
+      orgRole: toOrgRole(active.roleKey, active.role),
+      industry: active.industry ?? "hospitality",
+      propertyName: active.propertyName ?? null,
+      branding: active.branding ?? null,
+      fullName: active.fullName ?? null,
       email,
       exists: true,
+      workspaces,
       impersonating: null,
     };
 
@@ -139,6 +175,6 @@ export async function resolveUserContext(opts: { ignoreImpersonation?: boolean }
     return base;
   }
 
-  // No DB record — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
-  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false, impersonating: null };
+  // No membership — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
+  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false, workspaces: [], impersonating: null };
 }

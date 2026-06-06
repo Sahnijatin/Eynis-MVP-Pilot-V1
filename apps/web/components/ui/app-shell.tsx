@@ -15,6 +15,8 @@ import {
   getAllowedModules,
 } from "../../lib/rbac";
 import { ImpersonationModal } from "./impersonation-modal";
+import { WorkspaceSwitcher } from "./workspace-switcher";
+import type { WorkspaceSummary } from "../../lib/user-context";
 
 // Shape of who's behind the session while impersonating (E-6).
 interface Impersonating {
@@ -200,6 +202,8 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [impersonating, setImpersonating] = useState<Impersonating | null>(null);
   const [impModalOpen, setImpModalOpen] = useState(false);
   const [stoppingImp, setStoppingImp] = useState(false);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
 
   // ── Fetch fresh context from server when user is loaded ──────────────────
   // The root layout may have rendered before sign-in (returning defaults),
@@ -209,13 +213,15 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     if (!isLoaded || !user) return;
     fetch("/api/me", { cache: "no-store" })
       .then(r => r.json())
-      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null; impersonating?: Impersonating | null }) => {
+      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null; impersonating?: Impersonating | null; workspaces?: WorkspaceSummary[]; tenantId?: string | null }) => {
         if (data.ok && data.exists) {
           setBranding(data.branding ?? null);
           if (data.orgRole) setOrgRoleState(data.orgRole);
           if (data.industry) setIndustryState(data.industry);
           if (data.propertyName) setPropertyNameState(data.propertyName);
           setImpersonating(data.impersonating ?? null);
+          setWorkspaces(data.workspaces ?? []);
+          setActiveTenantId(data.tenantId ?? null);
         }
       })
       .catch(() => { /* fail silently — keep initial defaults */ });
@@ -327,6 +333,12 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
           <OverviewIcon className="w-3.5 h-3.5" style={{ color: theme.primaryColor }} />
           <span style={{ color: theme.primaryColor }}>{config.name}</span>
         </div>
+
+        {/* Workspace switcher (multi-workspace membership). Hidden while
+            impersonating — switching identities and workspaces at once is confusing. */}
+        {!impersonating && workspaces.length > 0 && (
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} accentColor={config.accentColor} />
+        )}
 
         {/* Current role chip */}
         <div className="px-3 mb-1">

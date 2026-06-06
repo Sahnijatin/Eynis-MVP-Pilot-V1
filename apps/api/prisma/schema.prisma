@@ -125,7 +125,9 @@ model User {
   id                 String                     @id @default(cuid())
   tenantId           String                     @map("hotelId")
   fullName           String
-  email              String                     @unique
+  // An email is unique *within* a tenant, not globally — one identity (email /
+  // Clerk account) can be a member of many workspaces, each with its own role.
+  email              String
   role               String
   roleId             String?
   isActive           Boolean                    @default(true)
@@ -140,6 +142,8 @@ model User {
   ownedContacts      Contact[]                  @relation("contact_owner")
   ownedCompanies     Company[]                  @relation("company_owner")
   activities         Activity[]                 @relation("activity_actor")
+
+  @@unique([tenantId, email])
 }
 
 // The end-customer a tenant engages. Named `Contact` (industry-neutral) but

@@ -29,10 +29,20 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName }
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ fullName: fullName.trim() || undefined }),
       });
-      const data = (await res.json()) as { ok: boolean; error?: string };
+      const data = (await res.json()) as { ok: boolean; error?: string; tenantId?: string };
       if (!data.ok) {
         setError(data.error ?? "Something went wrong");
         return;
+      }
+      // If this browser is already signed in as the invited email, make the newly
+      // joined workspace active so "Go to your workspace" lands there directly.
+      const sameSession = isSignedIn && user?.primaryEmailAddress?.emailAddress?.toLowerCase() === email.toLowerCase();
+      if (sameSession && data.tenantId) {
+        await fetch("/api/workspace", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tenantId: data.tenantId }),
+        }).catch(() => { /* best-effort; switcher still works */ });
       }
       setSuccess(true);
     } catch {

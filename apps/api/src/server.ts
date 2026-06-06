@@ -798,18 +798,23 @@ const handleRequest = async (
         return;
       }
 
-      const user = await prisma.user.findFirst({
+      // A single email can now be a member of multiple workspaces (one User row
+      // per tenant). Return every active membership so the web can pick the
+      // active one and offer a workspace switcher.
+      const memberships = await prisma.user.findMany({
         where: { email, isActive: true },
         select: {
           tenantId: true,
           role: true,
           fullName: true,
+          createdAt: true,
           systemRole: { select: { key: true } },
           tenant: { select: { industry: true, name: true, branding: { select: BRANDING_SELECT } } }
-        }
+        },
+        orderBy: { createdAt: "asc" }
       });
 
-      if (!user) {
+      if (memberships.length === 0) {
         // No active user record. Report whether a pending invitation exists so the web
         // can route the visitor to the invite-acceptance page — without creating
         // anything or revealing tenant details.
@@ -820,16 +825,29 @@ const handleRequest = async (
         json(res, 200, { ok: true, exists: false, hasPendingInvite: !!pendingInvite });
         return;
       }
+
+      const workspaces = memberships.map(m => ({
+        tenantId: m.tenantId,
+        role: m.role,
+        roleKey: m.systemRole?.key ?? null,
+        industry: m.tenant.industry,
+        propertyName: m.tenant.name,
+        branding: m.tenant.branding ?? null,
+        fullName: m.fullName
+      }));
+      // Top-level fields mirror the first workspace for backward compatibility
+      // with any older caller; `workspaces` is the canonical list.
       json(res, 200, {
         ok: true,
         exists: true,
-        tenantId: user.tenantId,
-        role: user.role,
-        roleKey: user.systemRole?.key ?? null,
-        industry: user.tenant.industry,
-        propertyName: user.tenant.name,
-        branding: user.tenant.branding ?? null,
-        fullName: user.fullName
+        workspaces,
+        tenantId: workspaces[0].tenantId,
+        role: workspaces[0].role,
+        roleKey: workspaces[0].roleKey,
+        industry: workspaces[0].industry,
+        propertyName: workspaces[0].propertyName,
+        branding: workspaces[0].branding,
+        fullName: workspaces[0].fullName
       });
       return;
     }
@@ -897,12 +915,17 @@ const handleRequest = async (
         return;
       }
 
-      const existingUser = await prisma.user.findFirst({
-        where: { email: ownerEmail },
+      // Multi-workspace: an identity may own/belong to several workspaces, so we
+      // no longer reject an email that already exists elsewhere. The new tenant
+      // gets its own User row (unique per tenant+email). We only guard against a
+      // duplicate workspace for the *same* owner with the same property name, to
+      // avoid accidental double-submits creating identical workspaces.
+      const dupName = await prisma.user.findFirst({
+        where: { email: ownerEmail, tenant: { name: propertyName } },
         select: { id: true }
       });
-      if (existingUser) {
-        json(res, 409, { ok: false, error: "An account with this email already exists" });
+      if (dupName) {
+        json(res, 409, { ok: false, error: "You already have a workspace with this name" });
         return;
       }
 
@@ -3210,15 +3233,14 @@ const handleRequest = async (
       const body = (await parseBody(req)) as { fullName?: unknown };
       const fullName = asTrimmedString(body.fullName) ?? inv.email.split("@")[0] ?? "New User";
       const legacyRole = legacyRoleFor(inv.role.key);
-      const existing = await prisma.user.findUnique({ where: { email: inv.email } });
-      // Email is globally unique, so an existing user belongs to exactly one hotel.
-      // Accepting an invite to a *different* hotel must never silently re-point that
-      // user's role at another tenant (the user keeps their original tenantId, so they
-      // would inherit cross-tenant permissions). Reject instead.
-      if (existing && existing.tenantId !== inv.tenantId) {
-        json(res, 409, { ok: false, error: "This email is already registered to a different workspace" });
-        return;
-      }
+      // Look for an existing membership *in this workspace* only. The same email
+      // may legitimately belong to other workspaces (multi-workspace membership) —
+      // accepting this invite adds/updates the membership for THIS tenant, never
+      // touching the user's rows in other tenants.
+      const existing = await prisma.user.findFirst({
+        where: { tenantId: inv.tenantId, email: inv.email },
+        select: { id: true, isActive: true }
+      });
       // Seat enforcement at accept time: only block when this acceptance would add a
       // new active seat (a brand-new user, or reactivating a deactivated one).
       const willConsumeSeat = !existing || !existing.isActive;
