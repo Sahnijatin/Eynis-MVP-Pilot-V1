@@ -197,7 +197,7 @@ async function vapiPost<T>(
   }
 }
 
-// Provisions a Vapi assistant; returns its id (stored as vapiAssistantIdA/B).
+// Provisions a Vapi assistant; returns its id (stored as CampaignVariant.vapiAssistantId).
 export async function createAssistant(
   creds: VapiCredentials,
   params: AssistantParams,

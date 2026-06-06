@@ -560,11 +560,6 @@ export interface CampaignVariant {
 export interface CampaignDetail extends CampaignSummary {
   scriptTemplate: string | null;
   variants: CampaignVariant[];
-  // @deprecated legacy A/B columns — superseded by `variants`.
-  voiceA: string | null;
-  voiceB: string | null;
-  personaA: string | null;
-  personaB: string | null;
   agentName: string | null;
   calendlyLink: string | null;
   outcomeTypes: string[];

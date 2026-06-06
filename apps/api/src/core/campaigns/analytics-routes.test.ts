@@ -31,7 +31,13 @@ const auth = async (base: string, tenantId: string, email: string, role: string)
 // Build a campaign with some calls split across A/B.
 async function seedCampaign(tenantId: string) {
   const campaign = await prisma.voiceCampaign.create({
-    data: { tenantId, name: "C", status: "active", channels: JSON.stringify(["voice"]), scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S", vapiAssistantIdA: "a", vapiAssistantIdB: "b" },
+    data: {
+      tenantId, name: "C", status: "active", channels: JSON.stringify(["voice"]), scriptTemplate: "Hi",
+      variants: { create: [
+        { tenantId, key: "A", label: "E", voice: "Rachel", persona: "E", vapiAssistantId: "a", sortOrder: 0 },
+        { tenantId, key: "B", label: "S", voice: "Aria", persona: "S", vapiAssistantId: "b", sortOrder: 1 },
+      ] },
+    },
   });
   const mk = async (variant: string, outcome: string | null, sentiment: string | null) => {
     const lead = await prisma.campaignLead.create({ data: { campaignId: campaign.id, tenantId, firstName: "L", phone: phone(), consent: true, consentSource: "csv_import" } });
