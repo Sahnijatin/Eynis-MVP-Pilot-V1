@@ -11,10 +11,14 @@ export const dynamic = "force-dynamic";
 // skip the industry picker entirely and go straight to /dashboard. This is the
 // "invited users skip industry selection" requirement, enforced at the server
 // before the picker ever renders.
-export default async function OnboardingPage() {
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
+  // `?new` lets an existing member add another workspace (multi-workspace) —
+  // without it, an existing user is sent straight to their dashboard.
+  const sp = await searchParams.catch(() => ({} as { new?: string }));
+  const allowAdditional = sp?.new !== undefined;
   try {
     const ctx = await resolveUserContext();
-    if (ctx.exists) redirect("/dashboard");
+    if (ctx.exists && !allowAdditional) redirect("/dashboard");
   } catch {
     // If resolution fails (API down), fall through and show the picker —
     // a fresh owner will still complete onboarding; an invitee will retry
@@ -33,7 +37,7 @@ export default async function OnboardingPage() {
         <span className="ml-auto text-xs text-slate-400 mr-3">Step 1 of 1 — Choose your industry</span>
         <SignOutButton />
       </div>
-      <IndustryOnboarding />
+      <IndustryOnboarding allowAdditional={allowAdditional} />
     </div>
   );
 }

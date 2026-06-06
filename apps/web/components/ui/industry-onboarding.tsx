@@ -7,7 +7,7 @@ import { CheckCircle, ArrowRight, Loader2, Check } from "lucide-react";
 
 const INDUSTRIES = Object.values(INDUSTRY_CONFIGS);
 
-export function IndustryOnboarding() {
+export function IndustryOnboarding({ allowAdditional = false }: { allowAdditional?: boolean }) {
   const { user, isLoaded } = useUser();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -25,6 +25,9 @@ export function IndustryOnboarding() {
   // Clerk metadata alone is not trusted — it can be stale from a deleted hotel.
   useEffect(() => {
     if (!isLoaded || !user) return;
+    // Adding an additional workspace: skip the "already onboarded → dashboard"
+    // shortcut and show the picker.
+    if (allowAdditional) { setIsIdentifying(false); return; }
     const email = user.primaryEmailAddress?.emailAddress;
     if (!email) {
       setIsIdentifying(false);
@@ -100,6 +103,15 @@ export function IndustryOnboarding() {
           roleKey: "admin",
         },
       }).catch(() => { /* Clerk update failed — DB has the record, proceed */ });
+      // Make the freshly created workspace the active one so the user lands in it
+      // (important when adding an additional workspace alongside existing ones).
+      if (regData.tenantId) {
+        await fetch("/api/workspace", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tenantId: regData.tenantId }),
+        }).catch(() => { /* cookie set is best-effort; switcher still works */ });
+      }
       window.location.href = "/dashboard";
     } catch {
       setRegisterError("Network error — please try again.");
