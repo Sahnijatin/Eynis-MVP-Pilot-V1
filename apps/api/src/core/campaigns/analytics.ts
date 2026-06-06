@@ -77,6 +77,48 @@ export function decideLeader(a: VariantStats, b: VariantStats, minAnswered = WIN
   return { leadingVariant, sufficientSample, confident, pValue, sampleNote };
 }
 
+// N-arm generalisation of decideLeader. The leader is the arm with the highest
+// interest rate; significance is the two-proportion z-test of the leader vs the
+// runner-up, gated on every arm clearing the per-arm sample threshold. A single
+// arm means "no test". Variant keys are arbitrary strings (A, B, C, …).
+export interface LeaderDecisionN {
+  leadingVariant: string | null;
+  sufficientSample: boolean;
+  confident: boolean;
+  pValue: number;
+  sampleNote: string;
+}
+
+export function decideLeaderN(
+  arms: Array<{ key: string; stats: VariantStats }>,
+  minAnswered = WINNER_MIN_ANSWERED,
+): LeaderDecisionN {
+  if (arms.length === 0) {
+    return { leadingVariant: null, sufficientSample: false, confident: false, pValue: 1, sampleNote: "no data yet" };
+  }
+  if (arms.length === 1) {
+    const only = arms[0]!;
+    return {
+      leadingVariant: only.stats.answered > 0 ? only.key : null,
+      sufficientSample: only.stats.answered >= minAnswered,
+      confident: false,
+      pValue: 1,
+      sampleNote: "single variant — no A/B test",
+    };
+  }
+  const sorted = [...arms].sort((a, b) => b.stats.interestRate - a.stats.interestRate);
+  const top = sorted[0]!, runner = sorted[1]!;
+  const sufficientSample = arms.every((a) => a.stats.answered >= minAnswered);
+  const { pValue } = twoProportionZ(top.stats.interested, top.stats.answered, runner.stats.interested, runner.stats.answered);
+  const leadingVariant = top.stats.interestRate === runner.stats.interestRate ? null : top.key;
+  const confident = sufficientSample && pValue < 0.05 && leadingVariant !== null;
+  const weakest = arms.reduce((m, a) => Math.min(m, a.stats.answered), Infinity);
+  const sampleNote = sufficientSample
+    ? `all ${arms.length} arms ≥ ${minAnswered} answered`
+    : `insufficient sample — need ${minAnswered} answered per arm (weakest arm has ${weakest})`;
+  return { leadingVariant, sufficientSample, confident, pValue, sampleNote };
+}
+
 // Maps a sentiment label to a numeric score for averaging.
 export function sentimentScore(label: string | null): number {
   return label === "positive" ? 1 : label === "negative" ? -1 : 0;

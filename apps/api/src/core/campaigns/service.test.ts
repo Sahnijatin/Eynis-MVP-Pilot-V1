@@ -9,7 +9,8 @@ import {
   outcomeBreakdown,
   serializeCampaign,
   assistantParamsForVariant,
-  provisionCampaignAssistants,
+  provisionVariantAssistants,
+  type ProvisionVariant,
 } from "./service";
 import type { VapiCredentials, VapiResult, AssistantParams } from "./vapi";
 
@@ -164,30 +165,39 @@ test("outcomeBreakdown maps rows and labels nulls as unknown", () => {
 
 // ── Provisioning orchestrator (dependency-injected fake) ─────────────────────
 
-const provisionable = {
-  name: "C", scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria",
-  personaA: "Enthusiastic", personaB: "Sophisticated", outcomeTypes: ["interested"],
-};
+const provisionable = { name: "C", scriptTemplate: "Hi", outcomeTypes: ["interested"] };
+const variants: ProvisionVariant[] = [
+  { key: "A", label: "Enthusiastic", voice: "Rachel", persona: "Enthusiastic", scriptOverride: null },
+  { key: "B", label: "Sophisticated", voice: "Aria", persona: "Sophisticated", scriptOverride: null },
+];
 const creds: VapiCredentials = { apiKey: "k", phoneNumberId: "p", webhookSecret: "s" };
 
 test("assistantParamsForVariant maps the correct voice + persona per variant", () => {
-  const a = assistantParamsForVariant(provisionable, "A", { apiDomain: "api.x", agentName: "Maya", webhookSecret: "s" });
-  const b = assistantParamsForVariant(provisionable, "B", { apiDomain: "api.x", agentName: "Maya", webhookSecret: "s" });
+  const a = assistantParamsForVariant(provisionable, variants[0], { apiDomain: "api.x", agentName: "Maya", webhookSecret: "s" });
+  const b = assistantParamsForVariant(provisionable, variants[1], { apiDomain: "api.x", agentName: "Maya", webhookSecret: "s" });
   assert.equal(a.elevenLabsVoiceId, "Rachel");
   assert.equal(a.personaLabel, "Enthusiastic");
   assert.equal(b.elevenLabsVoiceId, "Aria");
   assert.equal(b.personaLabel, "Sophisticated");
 });
 
-test("provisionCampaignAssistants returns both ids on success", async () => {
-  let n = 0;
-  const fake = async (): Promise<VapiResult<{ id: string }>> => ({ ok: true, data: { id: `asst_${++n}` } });
-  const r = await provisionCampaignAssistants({ campaign: provisionable, creds, apiDomain: "api.x", agentName: "Maya", createAssistant: fake });
-  assert.ok(r.ok);
-  if (r.ok) { assert.equal(r.vapiAssistantIdA, "asst_1"); assert.equal(r.vapiAssistantIdB, "asst_2"); }
+test("assistantParamsForVariant uses the per-variant script override when set", () => {
+  const v: ProvisionVariant = { key: "C", label: "Custom", voice: "Bill", persona: "Direct", scriptOverride: "Override prompt" };
+  const p = assistantParamsForVariant(provisionable, v, { apiDomain: "api.x", agentName: "Maya", webhookSecret: "s" });
+  assert.equal(p.scriptTemplate, "Override prompt");
+  assert.equal(p.variant, "C");
 });
 
-test("provisionCampaignAssistants surfaces a variant failure and cleans up the orphan", async () => {
+test("provisionVariantAssistants returns a key→id map on success (N arms)", async () => {
+  let n = 0;
+  const fake = async (): Promise<VapiResult<{ id: string }>> => ({ ok: true, data: { id: `asst_${++n}` } });
+  const threeArms: ProvisionVariant[] = [...variants, { key: "C", label: "Direct", voice: "Bill", persona: "Direct", scriptOverride: null }];
+  const r = await provisionVariantAssistants({ campaign: provisionable, variants: threeArms, creds, apiDomain: "api.x", agentName: "Maya", createAssistant: fake });
+  assert.ok(r.ok);
+  if (r.ok) assert.deepEqual(r.assistants, { A: "asst_1", B: "asst_2", C: "asst_3" });
+});
+
+test("provisionVariantAssistants surfaces a variant failure and cleans up orphans", async () => {
   const fake = async (_c: VapiCredentials, p: AssistantParams): Promise<VapiResult<{ id: string }>> =>
     p.variant === "B" ? { ok: false, error: "boom" } : { ok: true, data: { id: "asst_a" } };
   const deleted: string[] = [];
@@ -195,8 +205,8 @@ test("provisionCampaignAssistants surfaces a variant failure and cleans up the o
     deleted.push(id);
     return { ok: true, data: { id } };
   };
-  const r = await provisionCampaignAssistants({
-    campaign: provisionable, creds, apiDomain: "api.x", agentName: "Maya",
+  const r = await provisionVariantAssistants({
+    campaign: provisionable, variants, creds, apiDomain: "api.x", agentName: "Maya",
     createAssistant: fake, deleteAssistant: fakeDelete,
   });
   assert.equal(r.ok, false);

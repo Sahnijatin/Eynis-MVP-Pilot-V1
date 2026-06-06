@@ -23,6 +23,24 @@ import {
 } from "./vapi";
 import { singleFlight } from "../single-flight";
 import { safeArray, isServerError } from "./json-utils";
+import { legacyVariants } from "./service";
+
+// One dial-able variant arm: its key, provisioned assistant, and distribution weight.
+interface DialVariant { key: string; vapiAssistantId: string | null; weight: number }
+
+// Weighted round-robin: pick the arm that is most under-served relative to its
+// weight (smallest assigned/weight ratio). Deterministic; ties go to the earlier
+// (higher-priority) arm. Distributes leads across N arms by weight.
+export function pickWeightedVariant(variants: DialVariant[], counts: Map<string, number>): string {
+  let bestKey = variants[0]!.key;
+  let bestRatio = Number.POSITIVE_INFINITY;
+  for (const v of variants) {
+    const w = v.weight > 0 ? v.weight : 1;
+    const ratio = (counts.get(v.key) ?? 0) / w;
+    if (ratio < bestRatio - 1e-9) { bestRatio = ratio; bestKey = v.key; }
+  }
+  return bestKey;
+}
 
 const TICK_MS = Number(process.env.CAMPAIGN_DIALER_INTERVAL_MS ?? 30_000);
 const DEFAULT_MAX_CONCURRENT = 5;
@@ -57,10 +75,21 @@ export async function processVoiceCampaign(
   const initiateCall = deps.initiateCall ?? realInitiateCall;
   let dialed = 0, skipped = 0, failed = 0;
 
-  const campaign = await prisma.voiceCampaign.findUnique({ where: { id: campaignId } });
+  const campaign = await prisma.voiceCampaign.findUnique({
+    where: { id: campaignId },
+    include: { variants: { orderBy: { sortOrder: "asc" } } },
+  });
   if (!campaign || campaign.status !== "active") return { dialed, skipped, failed };
   if (!safeArray(campaign.channels).includes("voice")) return { dialed, skipped, failed };
-  if (!campaign.vapiAssistantIdA || !campaign.vapiAssistantIdB) return { dialed, skipped, failed };
+
+  // Effective variants: the variant table, or the legacy A/B columns for
+  // campaigns created before the variant table existed. All arms must be
+  // provisioned before any dialling happens.
+  const variants: DialVariant[] = (campaign.variants.length > 0
+    ? campaign.variants.map((v) => ({ key: v.key, vapiAssistantId: v.vapiAssistantId, weight: v.weight }))
+    : legacyVariants(campaign).map((v) => ({ key: v.key, vapiAssistantId: v.vapiAssistantId, weight: v.weight })));
+  if (variants.length === 0 || variants.some((v) => !v.vapiAssistantId)) return { dialed, skipped, failed };
+  const assistantByKey = new Map(variants.map((v) => [v.key, v.vapiAssistantId!]));
   // Respect scheduled start / send window / quiet-hours.
   if (!(await campaignMaySendNow(campaign))) return { dialed, skipped, failed };
 
@@ -122,11 +151,14 @@ export async function processVoiceCampaign(
     : [];
   const suppressed = new Set(suppressedRows.map((s) => s.phone));
 
-  const [aCount, bCount] = await Promise.all([
-    prisma.campaignLead.count({ where: { campaignId, abVariant: "A" } }),
-    prisma.campaignLead.count({ where: { campaignId, abVariant: "B" } }),
-  ]);
-  let a = aCount, b = bCount;
+  // Seed per-variant assignment counts so we can keep arms balanced by weight.
+  const grouped = await prisma.campaignLead.groupBy({
+    by: ["abVariant"], where: { campaignId }, _count: { _all: true },
+  });
+  const counts = new Map<string, number>(variants.map((v) => [v.key, 0]));
+  for (const g of grouped) {
+    if (g.abVariant && counts.has(g.abVariant)) counts.set(g.abVariant, g._count._all);
+  }
 
   const hotel = await prisma.tenant.findUnique({ where: { id: campaign.tenantId }, select: { name: true } });
 
@@ -145,8 +177,11 @@ export async function processVoiceCampaign(
       continue;
     }
 
-    // Choose variant: reuse on retry, else assign to the lighter arm.
-    const variant = lead.abVariant ?? (a <= b ? "A" : "B");
+    // Choose variant: reuse a still-valid assignment on retry, else distribute
+    // across the configured arms by weight.
+    const variant = (lead.abVariant && assistantByKey.has(lead.abVariant))
+      ? lead.abVariant
+      : pickWeightedVariant(variants, counts);
 
     // Atomic lock: only the updater that flips pending→calling owns the dial.
     const lock = await prisma.campaignLead.updateMany({
@@ -154,7 +189,7 @@ export async function processVoiceCampaign(
       data: { status: "calling", abVariant: variant, callAttempts: { increment: 1 } },
     });
     if (lock.count !== 1) continue; // lost the race
-    if (!lead.abVariant) { variant === "A" ? a++ : b++; }
+    if (lead.abVariant !== variant) counts.set(variant, (counts.get(variant) ?? 0) + 1);
 
     const call = await prisma.callRecord.create({
       data: { tenantId: campaign.tenantId, campaignId, leadId: lead.id, abVariant: variant, status: "initiated" },
@@ -168,7 +203,7 @@ export async function processVoiceCampaign(
     });
 
     const result = await initiateCall(creds, {
-      vapiAssistantId: variant === "A" ? campaign.vapiAssistantIdA : campaign.vapiAssistantIdB,
+      vapiAssistantId: assistantByKey.get(variant)!,
       phoneNumberId: creds.phoneNumberId,
       leadPhone: lead.phone ?? "",
       leadName: `${lead.firstName} ${lead.lastName ?? ""}`.trim(),

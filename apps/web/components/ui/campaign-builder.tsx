@@ -66,12 +66,12 @@ export function CampaignBuilder() {
   const toast = useToast();
   const [name, setName] = useState("");
   const [channels, setChannels] = useState<Set<string>>(new Set(["whatsapp"]));
-  // voice
+  // voice — 1..N test variants (one = no test)
   const [scriptTemplate, setScript] = useState("");
-  const [voiceA, setVoiceA] = useState("Rachel");
-  const [voiceB, setVoiceB] = useState("Aria");
-  const [personaA, setPersonaA] = useState("Enthusiastic");
-  const [personaB, setPersonaB] = useState("Sophisticated");
+  const [variants, setVariants] = useState<Array<{ label: string; voice: string; persona: string; weight: number }>>([
+    { label: "Enthusiastic", voice: "Rachel", persona: "Enthusiastic", weight: 1 },
+    { label: "Sophisticated", voice: "Aria", persona: "Sophisticated", weight: 1 },
+  ]);
   const [agentName, setAgentName] = useState("");
   const [outcomeTypes, setOutcomeTypes] = useState("interested, not_now, not_interested");
   // whatsapp
@@ -113,6 +113,19 @@ export function CampaignBuilder() {
     });
   }
 
+  const MAX_VARIANTS = 26;
+  const VARIANT_KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  function addVariant() {
+    setVariants((prev) => prev.length >= MAX_VARIANTS ? prev
+      : [...prev, { label: "", voice: ELEVENLABS_VOICES[prev.length % ELEVENLABS_VOICES.length], persona: "", weight: 1 }]);
+  }
+  function removeVariant(i: number) {
+    setVariants((prev) => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i));
+  }
+  function updateVariant(i: number, patch: Partial<{ label: string; voice: string; persona: string; weight: number }>) {
+    setVariants((prev) => prev.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
+  }
+
   async function submit() {
     setError(null);
     if (!name.trim()) { setError("Campaign name is required"); return; }
@@ -126,8 +139,15 @@ export function CampaignBuilder() {
       defaultCountryCode: defaultCountryCode.trim() || "+91",
     };
     if (channels.has("voice")) {
+      if (variants.some((v) => !v.persona.trim())) { setError("Each voice variant needs a persona"); return; }
       Object.assign(payload, {
-        scriptTemplate, voiceA, voiceB, personaA, personaB,
+        scriptTemplate,
+        variants: variants.map((v) => ({
+          label: v.label.trim() || v.persona.trim(),
+          voice: v.voice,
+          persona: v.persona.trim(),
+          weight: Number(v.weight) > 0 ? Number(v.weight) : 1,
+        })),
         agentName: agentName.trim() || null,
         outcomeTypes: outcomeTypes.split(",").map((s) => s.trim()).filter(Boolean),
       });
@@ -187,14 +207,31 @@ export function CampaignBuilder() {
 
       {channels.has("voice") && (
         <Card style={{ marginBottom: 16 }}>
-          <CardTitle>Voice script & A/B voices</CardTitle>
+          <CardTitle>Voice script & test variants</CardTitle>
           <TemplateField label="System prompt / script" value={scriptTemplate} onChange={setScript} rows={5}
             placeholder="You are calling {lead.firstName} from {tenant.name}…" />
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 8 }}>
+            <Label>Test variants {variants.length > 1 ? `(${variants.length}-arm A/B test)` : "(single — no test)"}</Label>
+            <button type="button" onClick={addVariant} disabled={variants.length >= MAX_VARIANTS}
+              style={{ ...addBtn, opacity: variants.length >= MAX_VARIANTS ? 0.5 : 1 }}>+ Add variant</button>
+          </div>
+          <div style={{ fontSize: t.font.xs, color: t.color.textMuted, marginBottom: 10 }}>
+            Leads are split across variants in proportion to their weight. One variant means no A/B test.
+          </div>
+
+          {variants.map((v, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "28px 1fr 1fr 80px 32px", gap: 10, alignItems: "end", marginBottom: 10 }}>
+              <div style={{ ...variantKeyBadge }}>{VARIANT_KEYS[i] ?? `V${i + 1}`}</div>
+              <Field label="Persona label"><Input value={v.persona} onChange={(e) => updateVariant(i, { persona: e.target.value, label: e.target.value })} placeholder="e.g. Enthusiastic" /></Field>
+              <Field label="Voice"><Select value={v.voice} onChange={(e) => updateVariant(i, { voice: e.target.value })}>{ELEVENLABS_VOICES.map((vo) => <option key={vo}>{vo}</option>)}</Select></Field>
+              <Field label="Weight"><Input type="number" value={String(v.weight)} onChange={(e) => updateVariant(i, { weight: Math.max(1, Number(e.target.value) || 1) })} /></Field>
+              <button type="button" onClick={() => removeVariant(i)} disabled={variants.length <= 1}
+                title="Remove variant" style={{ ...removeBtn, opacity: variants.length <= 1 ? 0.3 : 1 }}>✕</button>
+            </div>
+          ))}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-            <Field label="Variant A voice"><Select value={voiceA} onChange={(e) => setVoiceA(e.target.value)}>{ELEVENLABS_VOICES.map((v) => <option key={v}>{v}</option>)}</Select></Field>
-            <Field label="Variant B voice"><Select value={voiceB} onChange={(e) => setVoiceB(e.target.value)}>{ELEVENLABS_VOICES.map((v) => <option key={v}>{v}</option>)}</Select></Field>
-            <Field label="Persona A label"><Input value={personaA} onChange={(e) => setPersonaA(e.target.value)} /></Field>
-            <Field label="Persona B label"><Input value={personaB} onChange={(e) => setPersonaB(e.target.value)} /></Field>
             <Field label="Agent name (intro)"><Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="defaults to hotel name" /></Field>
             <Field label="Outcome types (comma-separated)"><Input value={outcomeTypes} onChange={(e) => setOutcomeTypes(e.target.value)} /></Field>
           </div>
@@ -273,3 +310,6 @@ export function CampaignBuilder() {
 
 const chip: React.CSSProperties = { display: "block", width: "100%", textAlign: "left", background: t.color.surface, border: `1px solid ${t.color.border}`, borderRadius: 5, padding: "3px 6px", margin: "2px 0", fontSize: 11, cursor: "pointer", color: t.color.accent };
 const channelCard: React.CSSProperties = { flex: "1 1 220px", textAlign: "left", border: `2px solid ${t.color.border}`, borderRadius: t.radius.md, padding: 14, cursor: "pointer", background: t.color.surface };
+const addBtn: React.CSSProperties = { background: t.color.accentSoft, color: t.color.accent, border: `1px solid ${t.color.accent}`, borderRadius: t.radius.md, padding: "5px 12px", fontSize: t.font.sm, fontWeight: 600, cursor: "pointer" };
+const removeBtn: React.CSSProperties = { background: "transparent", color: t.color.textMuted, border: `1px solid ${t.color.border}`, borderRadius: t.radius.md, height: 38, cursor: "pointer", fontSize: 13 };
+const variantKeyBadge: React.CSSProperties = { width: 28, height: 38, display: "flex", alignItems: "center", justifyContent: "center", background: t.color.accentSoft, color: t.color.accent, borderRadius: t.radius.md, fontWeight: 700, fontSize: t.font.sm };

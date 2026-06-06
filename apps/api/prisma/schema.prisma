@@ -497,12 +497,17 @@ model VoiceCampaign {
   followUpRules         String                 @default("{}") // JSON map of outcome -> [channels]
   calendlyLink          String?
   agentName             String? // name the AI introduces itself with; falls back to the hotel name
-  voiceA                String? // ElevenLabs voice name for variant A
-  voiceB                String? // ElevenLabs voice name for variant B
-  personaA              String? // label, e.g. "Enthusiastic"
-  personaB              String? // label, e.g. "Sophisticated"
-  vapiAssistantIdA      String? // provisioned on activation
-  vapiAssistantIdB      String?
+  // ── Voice A/B/N variants ──
+  // Variants now live in the CampaignVariant child table (1..N arms, each with
+  // its own voice/persona/script/weight). These legacy A/B columns are retained
+  // only as the backfill source for pre-existing campaigns and are no longer
+  // read by the engine. @deprecated — use `variants`.
+  voiceA                String? // @deprecated ElevenLabs voice name for variant A
+  voiceB                String? // @deprecated ElevenLabs voice name for variant B
+  personaA              String? // @deprecated label, e.g. "Enthusiastic"
+  personaB              String? // @deprecated label, e.g. "Sophisticated"
+  vapiAssistantIdA      String? // @deprecated provisioned on activation
+  vapiAssistantIdB      String? // @deprecated
   // ── WhatsApp channel (pre-approved template) ──
   whatsappContentSid    String? // legacy raw provider template id (Twilio Content SID / Meta template)
   whatsappTemplateId    String? // preferred: an approved MessageTemplate from the library
@@ -537,8 +542,33 @@ model VoiceCampaign {
   calls                 CallRecord[]
   deliveries            MessageDelivery[]
   whatsappConversations WhatsappConversation[]
+  variants              CampaignVariant[]
 
   @@index([tenantId, status])
+}
+
+// One A/B/N test arm of a voice campaign. A campaign has 1..N variants (one = no
+// test). Leads/calls reference a variant by its `key` (stored in abVariant), and
+// leads are distributed across variants by `weight`. Replaces the fixed A/B
+// columns on VoiceCampaign.
+model CampaignVariant {
+  id              String        @id @default(cuid())
+  campaignId      String
+  tenantId        String        @map("hotelId") // scalar for scoping; cascade flows via campaign
+  key             String // stable per-campaign key: A, B, C, … (matches CampaignLead/CallRecord.abVariant)
+  label           String // human label, e.g. "Enthusiastic"
+  voice           String? // ElevenLabs voice name
+  persona         String? // persona label fed to the assistant
+  scriptOverride  String? // optional per-variant system prompt; falls back to campaign.scriptTemplate
+  vapiAssistantId String? // provisioned on activation
+  weight          Int           @default(1) // relative share for lead distribution
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  campaign        VoiceCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, key])
+  @@index([campaignId])
 }
 
 // ── Drip automation: multi-step sequences ──────────────────────────────────

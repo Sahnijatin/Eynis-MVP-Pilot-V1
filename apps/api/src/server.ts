@@ -4355,7 +4355,6 @@ const handleRequest = async (
           data: {
             tenantId, name: v.name, channels: JSON.stringify(v.channels),
             scriptTemplate: v.scriptTemplate,
-            voiceA: v.voiceA, voiceB: v.voiceB, personaA: v.personaA, personaB: v.personaB,
             outcomeTypes: JSON.stringify(v.outcomeTypes), followUpRules: JSON.stringify(v.followUpRules),
             calendlyLink: v.calendlyLink, agentName: v.agentName,
             whatsappContentSid: v.whatsappContentSid, whatsappTemplateId: v.whatsappTemplateId, whatsappTemplateBody: v.whatsappTemplateBody,
@@ -4367,7 +4366,15 @@ const handleRequest = async (
             segmentId: v.segmentId,
             scheduledStartAt: v.scheduledStartAt, sendWindowStartMin: v.sendWindowStartMin,
             sendWindowEndMin: v.sendWindowEndMin, sendDays: JSON.stringify(v.sendDays), sendTimeZone: v.sendTimeZone,
+            // Persist the 1..N test arms as child rows.
+            variants: v.variants.length > 0 ? {
+              create: v.variants.map((vr, i) => ({
+                tenantId, key: vr.key, label: vr.label, voice: vr.voice,
+                persona: vr.persona, scriptOverride: vr.scriptOverride, weight: vr.weight, sortOrder: i,
+              })),
+            } : undefined,
           },
+          include: { variants: { orderBy: { sortOrder: "asc" } } },
         });
         json(res, 201, { ok: true, campaign: serializeCampaign(created) });
         return;
@@ -4406,11 +4413,14 @@ const handleRequest = async (
         const tenantId = auth.context.tenantId;
         const { id, action } = parsed;
 
-        const { buildCampaignUpdate, serializeCampaign, outcomeBreakdown, provisionCampaignAssistants } =
+        const { buildCampaignUpdate, serializeCampaign, outcomeBreakdown, provisionVariantAssistants, legacyVariants } =
           await import("./core/campaigns/service");
 
-        // Resolve the campaign scoped to this tenant.
-        const campaign = await prisma.voiceCampaign.findFirst({ where: { id, tenantId } });
+        // Resolve the campaign scoped to this tenant (with its A/B/N variants).
+        const campaign = await prisma.voiceCampaign.findFirst({
+          where: { id, tenantId },
+          include: { variants: { orderBy: { sortOrder: "asc" } } },
+        });
 
         // GET /campaigns/:id
         if (action === null && req.method === "GET") {
@@ -4444,10 +4454,28 @@ const handleRequest = async (
           }
           if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
           const body = (await parseBody(req)) as Record<string, unknown>;
+          const editsVariants = body.variants !== undefined;
           const update = buildCampaignUpdate(body);
-          if (!update.ok) { json(res, 400, { ok: false, error: update.error }); return; }
-          const updated = await prisma.voiceCampaign.update({ where: { id }, data: update.value });
-          json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
+          // Tolerate a variants-only PATCH (buildCampaignUpdate has no other fields to apply).
+          if (!update.ok && !editsVariants) { json(res, 400, { ok: false, error: update.error }); return; }
+          // Variant edits are only allowed before the campaign goes live, since
+          // assistants are provisioned (and leads assigned) on activation.
+          if (editsVariants) {
+            if (campaign.status !== "draft") {
+              json(res, 409, { ok: false, error: "Variants can only be changed while the campaign is a draft" }); return;
+            }
+            const { validateVariants } = await import("./core/campaigns/service");
+            const voice = (serializeCampaign(campaign).channels as string[]).includes("voice");
+            const v = validateVariants(body.variants, { requireVoice: voice });
+            if (!v.ok) { json(res, 400, { ok: false, error: v.error }); return; }
+            await prisma.campaignVariant.deleteMany({ where: { campaignId: id } });
+            await prisma.$transaction(v.value.map((vr, i) => prisma.campaignVariant.create({
+              data: { campaignId: id, tenantId, key: vr.key, label: vr.label, voice: vr.voice, persona: vr.persona, scriptOverride: vr.scriptOverride, weight: vr.weight, sortOrder: i },
+            })));
+          }
+          if (update.ok) await prisma.voiceCampaign.update({ where: { id }, data: update.value });
+          const refreshed = await prisma.voiceCampaign.findFirst({ where: { id }, include: { variants: { orderBy: { sortOrder: "asc" } } } });
+          json(res, 200, { ok: true, campaign: serializeCampaign(refreshed!) });
           return;
         }
 
@@ -4509,10 +4537,12 @@ const handleRequest = async (
               return;
             }
           }
-          let vapiAssistantIdA = campaign.vapiAssistantIdA;
-          let vapiAssistantIdB = campaign.vapiAssistantIdB;
-          // Voice channel: provision Vapi assistants. Non-voice channels (WhatsApp/
-          // email) need no provisioning and activate directly.
+          // Effective variants: the variant table, or the legacy A/B columns for
+          // campaigns that predate it. Persist synthesised variants so the rest of
+          // the engine has a single source of truth.
+          let variantRows = campaign.variants;
+          // Voice channel: provision a Vapi assistant per variant. Non-voice
+          // channels (WhatsApp/email) need no provisioning and activate directly.
           if (channels.includes("voice")) {
             const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
             const creds = await resolveVapiCredentials(tenantId);
@@ -4520,8 +4550,17 @@ const handleRequest = async (
               json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
               return;
             }
-            // Re-provision only if not already provisioned (resume keeps existing assistants).
-            if (!vapiAssistantIdA || !vapiAssistantIdB) {
+            // Backfill variant rows from the legacy columns if this campaign has none.
+            if (variantRows.length === 0) {
+              const synth = legacyVariants(campaign);
+              await prisma.$transaction(synth.map((vr, i) => prisma.campaignVariant.create({
+                data: { campaignId: id, tenantId, key: vr.key, label: vr.label, voice: vr.voice, persona: vr.persona, scriptOverride: null, vapiAssistantId: vr.vapiAssistantId, weight: vr.weight, sortOrder: i },
+              })));
+              variantRows = await prisma.campaignVariant.findMany({ where: { campaignId: id }, orderBy: { sortOrder: "asc" } });
+            }
+            // Provision only the arms not already provisioned (resume keeps existing).
+            const unprovisioned = variantRows.filter((v) => !v.vapiAssistantId);
+            if (unprovisioned.length > 0) {
               // Webhook callback host MUST come from trusted server config, never the
               // request Host header (which a caller can spoof to exfiltrate call reports).
               const apiDomain = webhookHostFromPublicUrl(process.env.API_PUBLIC_URL);
@@ -4533,24 +4572,26 @@ const handleRequest = async (
               // else the hotel name (never the persona label).
               const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
               const agentName = asTrimmedString(campaign.agentName) ?? hotel?.name ?? "your assistant";
-              const provisioned = await provisionCampaignAssistants({
+              const provisioned = await provisionVariantAssistants({
                 campaign: {
                   name: campaign.name, scriptTemplate: campaign.scriptTemplate ?? "",
-                  voiceA: campaign.voiceA ?? "", voiceB: campaign.voiceB ?? "",
-                  personaA: campaign.personaA ?? "", personaB: campaign.personaB ?? "",
                   outcomeTypes: serializeCampaign(campaign).outcomeTypes,
                 },
+                variants: unprovisioned.map((v) => ({ key: v.key, label: v.label, voice: v.voice, persona: v.persona, scriptOverride: v.scriptOverride })),
                 creds, apiDomain, agentName,
                 createAssistant, deleteAssistant,
               });
               if (!provisioned.ok) { json(res, 502, { ok: false, error: provisioned.error }); return; }
-              vapiAssistantIdA = provisioned.vapiAssistantIdA;
-              vapiAssistantIdB = provisioned.vapiAssistantIdB;
+              await prisma.$transaction(
+                Object.entries(provisioned.assistants).map(([key, assistantId]) =>
+                  prisma.campaignVariant.update({ where: { campaignId_key: { campaignId: id, key } }, data: { vapiAssistantId: assistantId } })),
+              );
             }
           }
           const updated = await prisma.voiceCampaign.update({
             where: { id },
-            data: { status: "active", vapiAssistantIdA, vapiAssistantIdB },
+            data: { status: "active" },
+            include: { variants: { orderBy: { sortOrder: "asc" } } },
           });
           json(res, 200, { ok: true, campaign: serializeCampaign(updated) });
           return;
@@ -4715,17 +4756,27 @@ const handleRequest = async (
     if (analyticsId && req.method === "GET") {
       const auth = await authorize(req, res, "GET /campaigns/:id/analytics");
       if (!auth.ok) return;
-      const campaign = await prisma.voiceCampaign.findFirst({ where: { id: analyticsId, tenantId: auth.context.tenantId }, select: { id: true } });
+      const campaign = await prisma.voiceCampaign.findFirst({
+        where: { id: analyticsId, tenantId: auth.context.tenantId },
+        select: { id: true, voiceA: true, voiceB: true, personaA: true, personaB: true, vapiAssistantIdA: true, vapiAssistantIdB: true, variants: { orderBy: { sortOrder: "asc" }, select: { key: true, label: true } } },
+      });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
       const rows = await prisma.callRecord.findMany({
         where: { campaignId: analyticsId },
         select: { abVariant: true, status: true, outcome: true, durationSeconds: true, sentiment: true, meetingBooked: true },
       });
-      const { summarizeVariant, decideLeader, sentimentScore } = await import("./core/campaigns/analytics");
+      const { summarizeVariant, decideLeaderN, sentimentScore } = await import("./core/campaigns/analytics");
+      const { legacyVariants } = await import("./core/campaigns/service");
+      // The arms to report: the variant table, or the legacy A/B fallback for
+      // campaigns that predate it.
+      const armDefs = campaign.variants.length > 0
+        ? campaign.variants.map((v) => ({ key: v.key, label: v.label }))
+        : legacyVariants(campaign).map((v) => ({ key: v.key, label: v.label }));
       const NO_ANSWER = new Set(["no_answer"]);
       const blank = () => ({ dials: 0, answered: 0, interested: 0, meetingsBooked: 0, durationSum: 0, durationCount: 0, sentimentScoreSum: 0, sentimentRatedCount: 0 });
-      const acc: Record<string, ReturnType<typeof blank>> = { A: blank(), B: blank() };
+      const acc: Record<string, ReturnType<typeof blank>> = {};
+      for (const arm of armDefs) acc[arm.key] = blank();
       for (const r of rows) {
         const v = acc[r.abVariant];
         if (!v) continue;
@@ -4741,17 +4792,19 @@ const handleRequest = async (
         avgDurationSeconds: v.durationCount > 0 ? Math.round(v.durationSum / v.durationCount) : null,
         sentimentScoreSum: v.sentimentScoreSum, sentimentRatedCount: v.sentimentRatedCount,
       });
-      const variantA = summarizeVariant(toRaw(acc.A));
-      const variantB = summarizeVariant(toRaw(acc.B));
-      const decision = decideLeader(variantA, variantB);
+      const variants = armDefs.map((arm) => ({ key: arm.key, label: arm.label, ...summarizeVariant(toRaw(acc[arm.key]!)) }));
+      const decision = decideLeaderN(variants.map((v) => ({ key: v.key, stats: v })));
       const overall = {
         totalLeads: await prisma.campaignLead.count({ where: { campaignId: analyticsId } }),
-        dials: variantA.dials + variantB.dials,
-        answered: variantA.answered + variantB.answered,
-        interested: variantA.interested + variantB.interested,
-        meetingsBooked: variantA.meetingsBooked + variantB.meetingsBooked,
+        dials: variants.reduce((s, v) => s + v.dials, 0),
+        answered: variants.reduce((s, v) => s + v.answered, 0),
+        interested: variants.reduce((s, v) => s + v.interested, 0),
+        meetingsBooked: variants.reduce((s, v) => s + v.meetingsBooked, 0),
       };
-      json(res, 200, { ok: true, overall, variantA, variantB, ...decision });
+      // Back-compat: expose the first two arms as variantA/variantB for older clients.
+      const variantA = variants.find((v) => v.key === "A") ?? variants[0] ?? null;
+      const variantB = variants.find((v) => v.key === "B") ?? variants[1] ?? null;
+      json(res, 200, { ok: true, overall, variants, variantA, variantB, ...decision });
       return;
     }
 
