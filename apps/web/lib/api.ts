@@ -1,4 +1,5 @@
 import { resolveUserContext } from "./user-context";
+import { getActiveImpersonation } from "./impersonation";
 
 const getDemoEnv = () => ({
   apiBaseUrl: process.env.EYNIS_API_BASE_URL ?? "http://localhost:4000",
@@ -35,14 +36,27 @@ async function fetchToken(apiBaseUrl: string, tenantId: string, email: string, r
 const demoFallbackAllowed = () =>
   String(process.env.EYNIS_ALLOW_DEMO_FALLBACK ?? "").toLowerCase() === "true";
 
-export async function getApiToken() {
+// `real: true` bypasses any active impersonation and resolves a token for the
+// genuinely signed-in user. Used when starting/stopping impersonation so the
+// admin authenticates as themselves, not as whoever they're currently viewing.
+export async function getApiToken(opts: { real?: boolean } = {}) {
   const staticToken = String(process.env.EYNIS_API_TOKEN ?? "").trim();
   if (staticToken) return staticToken;
 
+  // Impersonation (E-6): when an admin is impersonating, every server-side API
+  // call must use the API-issued impersonation token so the backend enforces the
+  // target user's permissions.
+  if (!opts.real) {
+    const imp = await getActiveImpersonation();
+    if (imp?.token) return imp.token;
+  }
+
   const apiBaseUrl = getApiBaseUrl();
 
-  // Resolve from Clerk metadata or DB lookup
-  const ctx = await resolveUserContext();
+  // Resolve from Clerk metadata or DB lookup. Ignore impersonation here: this
+  // branch only runs for the genuinely signed-in user (the impersonation token,
+  // when active, was already returned above).
+  const ctx = await resolveUserContext({ ignoreImpersonation: true });
   if (ctx.exists && ctx.tenantId && ctx.email && ctx.role) {
     const token = await fetchToken(apiBaseUrl, ctx.tenantId, ctx.email, ctx.role);
     if (token) return token;

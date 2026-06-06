@@ -11,6 +11,14 @@ export interface AuthTokenClaims {
   /** Canonical generic role key (admin/manager/supervisor/agent/viewer). */
   roleKey?: SystemRoleKey | null;
   permissions: string[];
+  /**
+   * Impersonation (E-6). When present, this token authenticates as the *target*
+   * user (sub/email/roleKey/permissions are the target's) but records the
+   * original admin who started the session. The backend is therefore the source
+   * of truth for impersonation — it is never inferred from client state.
+   */
+  impersonatorUserId?: string | null;
+  impersonatorEmail?: string | null;
 }
 
 const encoder = new TextEncoder();
@@ -36,7 +44,9 @@ export const createAuthToken = async (claims: AuthTokenClaims) =>
     // the legacy hospitality role is included only for backward compatibility.
     ...(claims.role ? { role: claims.role } : {}),
     ...(claims.roleKey ? { roleKey: claims.roleKey } : {}),
-    permissions: claims.permissions
+    permissions: claims.permissions,
+    ...(claims.impersonatorUserId ? { impersonatorUserId: claims.impersonatorUserId } : {}),
+    ...(claims.impersonatorEmail ? { impersonatorEmail: claims.impersonatorEmail } : {})
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(claims.sub)
@@ -78,13 +88,17 @@ export const verifyAuthToken = async (token: string): Promise<AuthTokenClaims | 
     const permissions = Array.isArray(payload.permissions)
       ? (payload.permissions as unknown[]).filter((p): p is string => typeof p === "string")
       : [];
+    const impersonatorUserId = typeof payload.impersonatorUserId === "string" ? payload.impersonatorUserId : null;
+    const impersonatorEmail = typeof payload.impersonatorEmail === "string" ? payload.impersonatorEmail : null;
     return {
       sub: payload.sub,
       tenantId,
       email: payload.email,
       role,
       roleKey,
-      permissions
+      permissions,
+      impersonatorUserId,
+      impersonatorEmail
     };
   } catch {
     return null;

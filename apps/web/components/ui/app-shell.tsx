@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { Bell, Building2, CalendarDays, X, ShieldCheck, ShieldAlert, Lock, ChevronDown } from "lucide-react";
+import { Bell, Building2, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
@@ -14,6 +14,15 @@ import {
   canAccessRoute,
   getAllowedModules,
 } from "../../lib/rbac";
+import { ImpersonationModal } from "./impersonation-modal";
+
+// Shape of who's behind the session while impersonating (E-6).
+interface Impersonating {
+  impersonatorEmail: string;
+  impersonatorName: string | null;
+  targetEmail: string;
+  targetName: string | null;
+}
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
@@ -68,112 +77,6 @@ function TopbarClock() {
   }, []);
   if (!display) return null;
   return <span className="topbar-date">{display}</span>;
-}
-
-// ── Role Switcher (org_admin only) ────────────────────────────────────────────
-
-interface RoleSwitcherProps {
-  role: OrgRole;
-  accentColor: string;
-  onSwitch: (r: OrgRole) => void;
-}
-
-function RoleSwitcher({ role, accentColor, onSwitch }: RoleSwitcherProps) {
-  const [unlockOpen, setUnlockOpen] = useState(false);
-  const def = SYSTEM_ROLES.find(r => r.key === role)!;
-
-  if (role === "org_admin") {
-    return (
-      <div className="px-3 mb-3">
-        <div className="flex items-center gap-1.5 mb-2">
-          <ShieldCheck className="w-3 h-3" style={{ color: "#5a7a9a" }} />
-          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#5a7a9a" }}>
-            Preview As Role
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          {SYSTEM_ROLES.map(r => (
-            <button
-              key={r.key}
-              title={r.description}
-              onClick={() => onSwitch(r.key)}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all text-left"
-              style={role === r.key
-                ? { background: accentColor, color: "#fff" }
-                : { background: "rgba(255,255,255,0.07)", color: "#9ab0c8" }
-              }
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ background: role === r.key ? "#fff" : r.iconColor }}
-              />
-              {r.defaultDisplayName}
-              {r.key === "org_admin" && (
-                <span className="ml-auto text-[9px] px-1 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.15)" }}>
-                  YOU
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        <p className="text-[9px] mt-2 text-center" style={{ color: "#3d5a78" }}>
-          Admins can preview any role
-        </p>
-      </div>
-    );
-  }
-
-  // Non-admin: locked, with exit-preview option
-  return (
-    <div className="px-3 mb-3">
-      <div
-        className="flex items-center gap-2 px-2.5 py-2 rounded-lg"
-        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-      >
-        <div
-          className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold shrink-0"
-          style={{ background: def.iconBg, color: def.iconColor }}
-        >
-          {def.defaultDisplayName.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-semibold text-slate-200">{def.defaultDisplayName}</div>
-          <div className="text-[9px]" style={{ color: "#5a7a9a" }}>Assigned role</div>
-        </div>
-        <Lock className="w-3 h-3 shrink-0" style={{ color: "#4a6a8a" }} />
-      </div>
-
-      {unlockOpen ? (
-        <div className="mt-2 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-          <p className="text-[10px] text-slate-300 mb-2">Switch back to Admin view?</p>
-          <div className="flex gap-1">
-            <button
-              onClick={() => { onSwitch("org_admin"); setUnlockOpen(false); }}
-              className="flex-1 py-1 rounded text-[10px] font-semibold text-white"
-              style={{ background: accentColor }}
-            >
-              Yes, switch
-            </button>
-            <button
-              onClick={() => setUnlockOpen(false)}
-              className="flex-1 py-1 rounded text-[10px] font-semibold"
-              style={{ background: "rgba(255,255,255,0.07)", color: "#7a9bbf" }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setUnlockOpen(true)}
-          className="w-full mt-1.5 text-[9px] text-center hover:underline"
-          style={{ color: "#4a6a8a" }}
-        >
-          Exit preview → switch to Admin
-        </button>
-      )}
-    </div>
-  );
 }
 
 // Vertical pages that still render demonstration data and don't persist through
@@ -287,64 +190,43 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [notifOpen, setNotifOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [accessDenied, setAccessDenied] = useState(false);
-  // `orgRole` is the *currently viewed* role (may be a preview); `realOrgRole`
-  // is the user's actual assigned role. Only a real admin may preview/switch.
+  // `orgRole` is the effective role the app renders for — the signed-in user's
+  // role, or (while impersonating, E-6) the target user's role. It is resolved
+  // server-side from the impersonation cookie; the client never decides it.
   const [orgRole, setOrgRoleState] = useState<OrgRole>(initialOrgRole);
-  const [realOrgRole, setRealOrgRole] = useState<OrgRole>(initialOrgRole);
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
   const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
   const [branding, setBranding] = useState<TenantBranding | null>(null);
+  const [impersonating, setImpersonating] = useState<Impersonating | null>(null);
+  const [impModalOpen, setImpModalOpen] = useState(false);
+  const [stoppingImp, setStoppingImp] = useState(false);
 
   // ── Fetch fresh context from server when user is loaded ──────────────────
   // The root layout may have rendered before sign-in (returning defaults),
-  // so we re-fetch here once Clerk confirms the user is authenticated.
+  // so we re-fetch here once Clerk confirms the user is authenticated. This
+  // also surfaces any active impersonation (resolved server-side from the cookie).
   useEffect(() => {
     if (!isLoaded || !user) return;
     fetch("/api/me", { cache: "no-store" })
       .then(r => r.json())
-      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null }) => {
+      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null; impersonating?: Impersonating | null }) => {
         if (data.ok && data.exists) {
           setBranding(data.branding ?? null);
-          if (data.orgRole) {
-            setRealOrgRole(data.orgRole);
-            if (data.orgRole === "org_admin") {
-              // Admins may resume a persisted preview; otherwise show admin.
-              const saved = localStorage.getItem("eynis_org_role") as OrgRole | null;
-              setOrgRoleState(saved && SYSTEM_ROLES.some(r => r.key === saved) ? saved : data.orgRole);
-            } else {
-              // Real non-admins are always locked to their assigned role —
-              // never honour a stale preview left in localStorage.
-              localStorage.removeItem("eynis_org_role");
-              setOrgRoleState(data.orgRole);
-            }
-          }
+          if (data.orgRole) setOrgRoleState(data.orgRole);
           if (data.industry) setIndustryState(data.industry);
           if (data.propertyName) setPropertyNameState(data.propertyName);
+          setImpersonating(data.impersonating ?? null);
         }
       })
       .catch(() => { /* fail silently — keep initial defaults */ });
   }, [isLoaded, user]);
 
-  // ── Load persisted preview-role (admin-only) ─────────────────────────────
-  // Non-admins stay locked to their assigned role; localStorage is ignored.
-  useEffect(() => {
-    if (realOrgRole !== "org_admin") return;
-    const saved = localStorage.getItem("eynis_org_role") as OrgRole | null;
-    if (saved && SYSTEM_ROLES.some(r => r.key === saved)) {
-      setOrgRoleState(saved);
-    }
-  }, [realOrgRole]);
-
-  function setOrgRole(r: OrgRole) {
-    // Only real admins can switch role (preview-as feature). We gate on the
-    // *real* role, not the currently-viewed one — otherwise an admin who has
-    // previewed a lower role would be unable to exit the preview.
-    if (realOrgRole !== "org_admin") return;
-    setOrgRoleState(r);
-    localStorage.setItem("eynis_org_role", r);
-    if (!canAccessRoute(r, pathname)) {
-      router.replace("/dashboard");
-    }
+  async function stopImpersonation() {
+    setStoppingImp(true);
+    try {
+      await fetch("/api/impersonate", { method: "DELETE" });
+    } catch { /* cookie clear is best-effort; reload re-resolves identity */ }
+    window.location.assign("/dashboard");
   }
 
   // ── Industry / config ────────────────────────────────────────────────────
@@ -468,8 +350,6 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
         <SidebarNav modules={visibleModules} pathname={pathname} accentColor={config.accentColor} />
 
         <div className="sidebar-footer">
-          <RoleSwitcher role={orgRole} accentColor={config.accentColor} onSwitch={setOrgRole} />
-
           <div className="multi-property-badge">
             <Building2 className="w-3.5 h-3.5" />
             <span>Multi-{config.terminology.property}</span>
@@ -551,10 +431,47 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
             </div>
 
             <div className="topbar-user">
-              <UserButton />
+              <UserButton>
+                {impersonating ? (
+                  <UserButton.MenuItems>
+                    <UserButton.Action
+                      label="Stop impersonating"
+                      labelIcon={<ShieldOff className="w-4 h-4" />}
+                      onClick={stopImpersonation}
+                    />
+                  </UserButton.MenuItems>
+                ) : orgRole === "org_admin" ? (
+                  <UserButton.MenuItems>
+                    <UserButton.Action
+                      label="Impersonate a user"
+                      labelIcon={<UserCog className="w-4 h-4" />}
+                      onClick={() => setImpModalOpen(true)}
+                    />
+                  </UserButton.MenuItems>
+                ) : null}
+              </UserButton>
             </div>
           </div>
         </header>
+
+        {/* Impersonation banner (E-6) — persistent while viewing as another user */}
+        {impersonating && (
+          <div className="flex items-center gap-3 px-5 py-2.5 text-sm text-white" style={{ background: "#b45309" }}>
+            <UserCog className="w-4 h-4 shrink-0" />
+            <span>
+              Viewing as <strong>{impersonating.targetName || impersonating.targetEmail}</strong>
+              <span className="opacity-80"> ({ORG_ROLE_LABELS[orgRole]}) — actions are recorded under your account</span>
+            </span>
+            <button
+              onClick={stopImpersonation}
+              disabled={stoppingImp}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-white/20 hover:bg-white/30 disabled:opacity-60"
+            >
+              <ShieldOff className="w-3.5 h-3.5" />
+              {stoppingImp ? "Stopping…" : "Stop impersonating"}
+            </button>
+          </div>
+        )}
 
         {/* Access denied banner */}
         {accessDenied && (
@@ -583,6 +500,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
 
         <main className="content-shell">{children}</main>
       </div>
+
+      {impModalOpen && (
+        <ImpersonationModal accentColor={config.accentColor} onClose={() => setImpModalOpen(false)} />
+      )}
     </div>
   );
 }
