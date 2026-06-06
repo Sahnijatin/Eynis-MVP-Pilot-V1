@@ -31,7 +31,7 @@ export interface VapiCredentials {
 export interface AssistantParams {
   campaignName: string;
   personaLabel: string; // e.g. "Enthusiastic"
-  variant: "A" | "B";
+  variant: string; // variant key: A, B, C, … (1..N arms)
   scriptTemplate: string; // system prompt with {variable} placeholders
   elevenLabsVoiceId: string;
   agentName: string;

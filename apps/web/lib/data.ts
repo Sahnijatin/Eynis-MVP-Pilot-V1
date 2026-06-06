@@ -547,8 +547,20 @@ export interface CampaignSummary {
   stats?: { totalLeads: number; totalCalls: number };
 }
 
+export interface CampaignVariant {
+  key: string;
+  label: string;
+  voice: string | null;
+  persona: string | null;
+  scriptOverride: string | null;
+  weight: number;
+  vapiAssistantId: string | null;
+}
+
 export interface CampaignDetail extends CampaignSummary {
   scriptTemplate: string | null;
+  variants: CampaignVariant[];
+  // @deprecated legacy A/B columns — superseded by `variants`.
   voiceA: string | null;
   voiceB: string | null;
   personaA: string | null;
