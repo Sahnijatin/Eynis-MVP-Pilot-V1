@@ -265,7 +265,11 @@ const getAuthenticatedContext = async (req: IncomingMessage) => {
       userId: user.id,
       fullName: user.fullName,
       sub: user.id,
-      permissions
+      permissions,
+      // Impersonation (E-6): null on a normal session. When set, the request is
+      // acting as `user` but was initiated by this admin — used for audit + the UI banner.
+      impersonatorUserId: claims.impersonatorUserId ?? null,
+      impersonatorEmail: claims.impersonatorEmail ?? null
     }
   };
 };
@@ -468,6 +472,9 @@ const parseCampaignLeadsPath = (
 
 const permissionMap: Record<string, Permission | null> = {
   "GET /context":                          null,
+  "POST /auth/impersonate":                "impersonate_users",
+  "POST /auth/impersonate/stop":           null,
+  "GET /auth/impersonations/recent":       "impersonate_users",
   "GET /tenant/branding":                  "manage_settings",
   "PUT /tenant/branding":                  "manage_settings",
   "GET /tenant/domains":                   "manage_settings",
@@ -638,6 +645,135 @@ const handleRequest = async (
         permissions
       });
       json(res, 200, { ok: true, token });
+      return;
+    }
+
+    // ── POST /auth/impersonate — start impersonating a real user (E-6) ──────────
+    // Server-authoritative: issues a token that authenticates as the TARGET user
+    // (their real role + permissions, loaded live from the DB) while recording the
+    // original admin. Gated by `impersonate_users`, tenant-scoped, audit-logged.
+    if (req.url === "/auth/impersonate" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /auth/impersonate");
+      if (!auth.ok) return;
+      // No nested impersonation: an impersonated session never carries the
+      // permission (we strip it below), but guard explicitly for clarity.
+      if (auth.context.impersonatorUserId) {
+        json(res, 409, { ok: false, error: "Already impersonating — stop the current session first" });
+        return;
+      }
+      const body = (await parseBody(req)) as { targetUserId?: unknown };
+      const targetUserId = asTrimmedString(body.targetUserId);
+      if (!targetUserId) {
+        json(res, 400, { ok: false, error: "targetUserId is required" });
+        return;
+      }
+      if (targetUserId === auth.context.userId) {
+        json(res, 400, { ok: false, error: "You cannot impersonate yourself" });
+        return;
+      }
+      // Tenant-scoped lookup: cross-tenant impersonation is impossible by construction.
+      const target = await prisma.user.findFirst({
+        where: { id: targetUserId, tenantId: auth.context.tenantId, isActive: true },
+        select: {
+          id: true, tenantId: true, email: true, role: true, fullName: true,
+          systemRole: { select: { permissions: true, key: true, tenantId: true } }
+        }
+      });
+      if (!target) {
+        json(res, 404, { ok: false, error: "User not found in this tenant" });
+        return;
+      }
+      const roleBelongsToHotel = target.systemRole?.tenantId === target.tenantId;
+      const targetPermissions = target.systemRole && roleBelongsToHotel
+        ? parsePermissions(target.systemRole.permissions)
+        : getPermissionsForLegacyRole(target.role);
+      // Never escalate beyond the target — and never let an impersonated session
+      // start another impersonation, even if the target happens to be an admin.
+      const sessionPermissions = targetPermissions.filter(p => p !== "impersonate_users");
+      const token = await createAuthToken({
+        sub: target.id,
+        tenantId: target.tenantId,
+        email: target.email,
+        role: target.role as UserRole,
+        roleKey: (target.systemRole?.key as SystemRoleKey | undefined) ?? null,
+        permissions: sessionPermissions,
+        impersonatorUserId: auth.context.userId,
+        impersonatorEmail: auth.context.email
+      });
+      await prisma.auditLog.create({
+        data: {
+          tenantId: auth.context.tenantId,
+          actorRole: auth.context.role,
+          action: "impersonation.start",
+          entityType: "user",
+          entityId: target.id,
+          metadata: JSON.stringify({
+            impersonatorUserId: auth.context.userId,
+            impersonatorEmail: auth.context.email,
+            targetEmail: target.email,
+            targetRoleKey: target.systemRole?.key ?? null
+          })
+        }
+      });
+      json(res, 200, {
+        ok: true,
+        token,
+        target: { id: target.id, email: target.email, fullName: target.fullName, roleKey: target.systemRole?.key ?? null },
+        impersonator: { id: auth.context.userId, email: auth.context.email, fullName: auth.context.fullName }
+      });
+      return;
+    }
+
+    // ── POST /auth/impersonate/stop — end an impersonation session (E-6) ────────
+    // Any authenticated session may call this; it only logs when the caller is
+    // actually impersonating. The web also clears its cookie regardless.
+    if (req.url === "/auth/impersonate/stop" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /auth/impersonate/stop");
+      if (!auth.ok) return;
+      if (auth.context.impersonatorUserId) {
+        await prisma.auditLog.create({
+          data: {
+            tenantId: auth.context.tenantId,
+            actorRole: auth.context.role,
+            action: "impersonation.stop",
+            entityType: "user",
+            entityId: auth.context.userId,
+            metadata: JSON.stringify({
+              impersonatorUserId: auth.context.impersonatorUserId,
+              impersonatorEmail: auth.context.impersonatorEmail,
+              targetEmail: auth.context.email
+            })
+          }
+        });
+      }
+      json(res, 200, { ok: true });
+      return;
+    }
+
+    // ── GET /auth/impersonations/recent — recent targets for the modal (E-6) ────
+    // Derived from the audit log so we don't need a separate table; deduped by
+    // target and scoped to the requesting admin.
+    if (req.url?.startsWith("/auth/impersonations/recent") && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /auth/impersonations/recent");
+      if (!auth.ok) return;
+      const logs = await prisma.auditLog.findMany({
+        where: { tenantId: auth.context.tenantId, action: "impersonation.start" },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: { entityId: true, metadata: true, createdAt: true }
+      });
+      const seen = new Set<string>();
+      const recent: Array<{ userId: string; email: string | null; roleKey: string | null; at: Date }> = [];
+      for (const log of logs) {
+        let meta: { impersonatorUserId?: string; targetEmail?: string; targetRoleKey?: string } = {};
+        try { meta = JSON.parse(log.metadata); } catch { /* skip malformed */ }
+        if (meta.impersonatorUserId !== auth.context.userId) continue;
+        if (!log.entityId || seen.has(log.entityId)) continue;
+        seen.add(log.entityId);
+        recent.push({ userId: log.entityId, email: meta.targetEmail ?? null, roleKey: meta.targetRoleKey ?? null, at: log.createdAt });
+        if (recent.length >= 5) break;
+      }
+      json(res, 200, { ok: true, recent });
       return;
     }
 

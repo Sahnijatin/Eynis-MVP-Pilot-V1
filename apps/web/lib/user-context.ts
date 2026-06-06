@@ -1,6 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import type { OrgRole } from "./rbac";
 import type { TenantBranding } from "./theme";
+import { getActiveImpersonation } from "./impersonation";
 
 export interface UserContext {
   tenantId: string | null;
@@ -13,7 +14,21 @@ export interface UserContext {
   fullName: string | null;
   email: string | null;
   exists: boolean;            // true if user has a DB record
+  // Impersonation (E-6): non-null while an admin is viewing the app as another
+  // user. The identity fields above reflect the *target*; this carries who is
+  // really behind the session so the UI can show a banner.
+  impersonating: {
+    impersonatorEmail: string;
+    impersonatorName: string | null;
+    targetEmail: string;
+    targetName: string | null;
+  } | null;
 }
+
+// New Role.key → mapped UI org role (target identity during impersonation).
+const SYSTEM_KEY_TO_ORG: Record<string, OrgRole> = {
+  admin: "org_admin", manager: "org_manager", supervisor: "org_supervisor", agent: "org_agent", viewer: "org_viewer",
+};
 
 const apiBase = () => process.env.EYNIS_API_BASE_URL ?? "http://localhost:4000";
 
@@ -66,7 +81,7 @@ async function identifyByEmail(email: string) {
   }
 }
 
-export async function resolveUserContext(): Promise<UserContext> {
+export async function resolveUserContext(opts: { ignoreImpersonation?: boolean } = {}): Promise<UserContext> {
   let clerkUser: Awaited<ReturnType<typeof currentUser>> = null;
   try {
     clerkUser = await currentUser();
@@ -75,7 +90,7 @@ export async function resolveUserContext(): Promise<UserContext> {
   }
 
   if (!clerkUser) {
-    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false };
+    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false, impersonating: null };
   }
 
   const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
@@ -85,7 +100,7 @@ export async function resolveUserContext(): Promise<UserContext> {
   const dbUser = email ? await identifyByEmail(email) : null;
 
   if (dbUser && dbUser.tenantId) {
-    return {
+    const base: UserContext = {
       tenantId: dbUser.tenantId,
       role: dbUser.role,
       roleKey: dbUser.roleKey,
@@ -96,9 +111,34 @@ export async function resolveUserContext(): Promise<UserContext> {
       fullName: dbUser.fullName ?? null,
       email,
       exists: true,
+      impersonating: null,
     };
+
+    // Impersonation override (E-6): reflect the *target* user's identity and role
+    // so nav, the route guard, and the role chip match what the API enforces.
+    // Tenant/industry/branding stay the same (impersonation is tenant-scoped).
+    if (!opts.ignoreImpersonation) {
+      const imp = await getActiveImpersonation();
+      if (imp) {
+        return {
+          ...base,
+          role: null,
+          roleKey: imp.target.roleKey,
+          orgRole: (imp.target.roleKey && SYSTEM_KEY_TO_ORG[imp.target.roleKey]) || "org_viewer",
+          fullName: imp.target.fullName,
+          email: imp.target.email,
+          impersonating: {
+            impersonatorEmail: imp.impersonator.email,
+            impersonatorName: imp.impersonator.fullName,
+            targetEmail: imp.target.email,
+            targetName: imp.target.fullName,
+          },
+        };
+      }
+    }
+    return base;
   }
 
   // No DB record — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
-  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false };
+  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false, impersonating: null };
 }

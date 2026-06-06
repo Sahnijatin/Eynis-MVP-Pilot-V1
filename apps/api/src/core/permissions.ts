@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   MANAGE_INVENTORY:    "manage_inventory",
   VIEW_CRM:            "view_crm",
   MANAGE_CRM:          "manage_crm",
+  IMPERSONATE_USERS:   "impersonate_users",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
