@@ -497,17 +497,7 @@ model VoiceCampaign {
   followUpRules         String                 @default("{}") // JSON map of outcome -> [channels]
   calendlyLink          String?
   agentName             String? // name the AI introduces itself with; falls back to the hotel name
-  // ── Voice A/B/N variants ──
-  // Variants now live in the CampaignVariant child table (1..N arms, each with
-  // its own voice/persona/script/weight). These legacy A/B columns are retained
-  // only as the backfill source for pre-existing campaigns and are no longer
-  // read by the engine. @deprecated — use `variants`.
-  voiceA                String? // @deprecated ElevenLabs voice name for variant A
-  voiceB                String? // @deprecated ElevenLabs voice name for variant B
-  personaA              String? // @deprecated label, e.g. "Enthusiastic"
-  personaB              String? // @deprecated label, e.g. "Sophisticated"
-  vapiAssistantIdA      String? // @deprecated provisioned on activation
-  vapiAssistantIdB      String? // @deprecated
+  // Voice A/B/N test arms live in the CampaignVariant child table (see `variants`).
   // ── WhatsApp channel (pre-approved template) ──
   whatsappContentSid    String? // legacy raw provider template id (Twilio Content SID / Meta template)
   whatsappTemplateId    String? // preferred: an approved MessageTemplate from the library

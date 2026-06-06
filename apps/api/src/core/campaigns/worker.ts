@@ -23,7 +23,6 @@ import {
 } from "./vapi";
 import { singleFlight } from "../single-flight";
 import { safeArray, isServerError } from "./json-utils";
-import { legacyVariants } from "./service";
 
 // One dial-able variant arm: its key, provisioned assistant, and distribution weight.
 interface DialVariant { key: string; vapiAssistantId: string | null; weight: number }
@@ -82,12 +81,8 @@ export async function processVoiceCampaign(
   if (!campaign || campaign.status !== "active") return { dialed, skipped, failed };
   if (!safeArray(campaign.channels).includes("voice")) return { dialed, skipped, failed };
 
-  // Effective variants: the variant table, or the legacy A/B columns for
-  // campaigns created before the variant table existed. All arms must be
-  // provisioned before any dialling happens.
-  const variants: DialVariant[] = (campaign.variants.length > 0
-    ? campaign.variants.map((v) => ({ key: v.key, vapiAssistantId: v.vapiAssistantId, weight: v.weight }))
-    : legacyVariants(campaign).map((v) => ({ key: v.key, vapiAssistantId: v.vapiAssistantId, weight: v.weight })));
+  // Every configured arm must be provisioned before any dialling happens.
+  const variants: DialVariant[] = campaign.variants.map((v) => ({ key: v.key, vapiAssistantId: v.vapiAssistantId, weight: v.weight }));
   if (variants.length === 0 || variants.some((v) => !v.vapiAssistantId)) return { dialed, skipped, failed };
   const assistantByKey = new Map(variants.map((v) => [v.key, v.vapiAssistantId!]));
   // Respect scheduled start / send window / quiet-hours.

@@ -4413,7 +4413,7 @@ const handleRequest = async (
         const tenantId = auth.context.tenantId;
         const { id, action } = parsed;
 
-        const { buildCampaignUpdate, serializeCampaign, outcomeBreakdown, provisionVariantAssistants, legacyVariants } =
+        const { buildCampaignUpdate, serializeCampaign, outcomeBreakdown, provisionVariantAssistants } =
           await import("./core/campaigns/service");
 
         // Resolve the campaign scoped to this tenant (with its A/B/N variants).
@@ -4537,26 +4537,19 @@ const handleRequest = async (
               return;
             }
           }
-          // Effective variants: the variant table, or the legacy A/B columns for
-          // campaigns that predate it. Persist synthesised variants so the rest of
-          // the engine has a single source of truth.
-          let variantRows = campaign.variants;
+          const variantRows = campaign.variants;
           // Voice channel: provision a Vapi assistant per variant. Non-voice
           // channels (WhatsApp/email) need no provisioning and activate directly.
           if (channels.includes("voice")) {
+            if (variantRows.length === 0) {
+              json(res, 400, { ok: false, error: "Add at least one voice variant before activating" });
+              return;
+            }
             const { resolveVapiCredentials, isVapiConfigured, createAssistant, deleteAssistant, webhookHostFromPublicUrl } = await import("./core/campaigns/vapi");
             const creds = await resolveVapiCredentials(tenantId);
             if (!isVapiConfigured(creds)) {
               json(res, 400, { ok: false, error: "voice_vapi connector not configured — set VAPI_API_KEY or enable the connector" });
               return;
-            }
-            // Backfill variant rows from the legacy columns if this campaign has none.
-            if (variantRows.length === 0) {
-              const synth = legacyVariants(campaign);
-              await prisma.$transaction(synth.map((vr, i) => prisma.campaignVariant.create({
-                data: { campaignId: id, tenantId, key: vr.key, label: vr.label, voice: vr.voice, persona: vr.persona, scriptOverride: null, vapiAssistantId: vr.vapiAssistantId, weight: vr.weight, sortOrder: i },
-              })));
-              variantRows = await prisma.campaignVariant.findMany({ where: { campaignId: id }, orderBy: { sortOrder: "asc" } });
             }
             // Provision only the arms not already provisioned (resume keeps existing).
             const unprovisioned = variantRows.filter((v) => !v.vapiAssistantId);
@@ -4758,7 +4751,7 @@ const handleRequest = async (
       if (!auth.ok) return;
       const campaign = await prisma.voiceCampaign.findFirst({
         where: { id: analyticsId, tenantId: auth.context.tenantId },
-        select: { id: true, voiceA: true, voiceB: true, personaA: true, personaB: true, vapiAssistantIdA: true, vapiAssistantIdB: true, variants: { orderBy: { sortOrder: "asc" }, select: { key: true, label: true } } },
+        select: { id: true, variants: { orderBy: { sortOrder: "asc" }, select: { key: true, label: true } } },
       });
       if (!campaign) { json(res, 404, { ok: false, error: "Campaign not found" }); return; }
 
@@ -4767,12 +4760,7 @@ const handleRequest = async (
         select: { abVariant: true, status: true, outcome: true, durationSeconds: true, sentiment: true, meetingBooked: true },
       });
       const { summarizeVariant, decideLeaderN, sentimentScore } = await import("./core/campaigns/analytics");
-      const { legacyVariants } = await import("./core/campaigns/service");
-      // The arms to report: the variant table, or the legacy A/B fallback for
-      // campaigns that predate it.
-      const armDefs = campaign.variants.length > 0
-        ? campaign.variants.map((v) => ({ key: v.key, label: v.label }))
-        : legacyVariants(campaign).map((v) => ({ key: v.key, label: v.label }));
+      const armDefs = campaign.variants.map((v) => ({ key: v.key, label: v.label }));
       const NO_ANSWER = new Set(["no_answer"]);
       const blank = () => ({ dials: 0, answered: 0, interested: 0, meetingsBooked: 0, durationSum: 0, durationCount: 0, sentimentScoreSum: 0, sentimentRatedCount: 0 });
       const acc: Record<string, ReturnType<typeof blank>> = {};

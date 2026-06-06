@@ -13,9 +13,12 @@ async function setup(opts: { followUpRules?: Record<string, string[]>; maxRetrie
   const campaign = await prisma.voiceCampaign.create({
     data: {
       tenantId, name: "C", status: "active", channels: JSON.stringify(["voice"]),
-      scriptTemplate: "Hi", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S",
-      vapiAssistantIdA: "a", vapiAssistantIdB: "b", maxRetries: opts.maxRetries ?? 2,
+      scriptTemplate: "Hi", maxRetries: opts.maxRetries ?? 2,
       followUpRules: JSON.stringify(opts.followUpRules ?? {}),
+      variants: { create: [
+        { tenantId, key: "A", label: "E", voice: "Rachel", persona: "E", vapiAssistantId: "a", sortOrder: 0 },
+        { tenantId, key: "B", label: "S", voice: "Aria", persona: "S", vapiAssistantId: "b", sortOrder: 1 },
+      ] },
     },
   });
   const lead = await prisma.campaignLead.create({

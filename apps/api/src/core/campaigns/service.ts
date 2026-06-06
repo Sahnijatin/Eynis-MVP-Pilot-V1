@@ -169,17 +169,15 @@ export function validateVariants(
   return { ok: true, value: out };
 }
 
-// Synthesises the two A/B arms from the legacy voiceA/voiceB columns — used for
-// backward-compatible create payloads and as the engine fallback for campaigns
-// created before the variant table existed.
+// Synthesises the two A/B arms from a legacy voiceA/voiceB create payload, so the
+// API still accepts pre-variant request bodies (the columns themselves are gone).
 export function legacyVariants(c: {
   voiceA: string | null; voiceB: string | null;
   personaA: string | null; personaB: string | null;
-  vapiAssistantIdA?: string | null; vapiAssistantIdB?: string | null;
-}): Array<VariantValue & { vapiAssistantId: string | null }> {
+}): VariantValue[] {
   return [
-    { key: "A", label: c.personaA ?? "Variant A", voice: c.voiceA, persona: c.personaA, scriptOverride: null, weight: 1, vapiAssistantId: c.vapiAssistantIdA ?? null },
-    { key: "B", label: c.personaB ?? "Variant B", voice: c.voiceB, persona: c.personaB, scriptOverride: null, weight: 1, vapiAssistantId: c.vapiAssistantIdB ?? null },
+    { key: "A", label: c.personaA ?? "Variant A", voice: c.voiceA, persona: c.personaA, scriptOverride: null, weight: 1 },
+    { key: "B", label: c.personaB ?? "Variant B", voice: c.voiceB, persona: c.personaB, scriptOverride: null, weight: 1 },
   ];
 }
 
@@ -303,7 +301,7 @@ export function buildCampaignUpdate(body: Record<string, unknown>): Validated<Re
 
   // Nullable string fields (per-channel templates etc. — null clears them).
   const nullableStrings = [
-    "scriptTemplate", "voiceA", "voiceB", "personaA", "personaB", "calendlyLink", "agentName",
+    "scriptTemplate", "calendlyLink", "agentName",
     "whatsappContentSid", "whatsappTemplateId", "whatsappTemplateBody", "whatsappAgentPrompt", "emailSubjectTemplate", "emailBodyTemplate",
   ] as const;
   for (const f of nullableStrings) {

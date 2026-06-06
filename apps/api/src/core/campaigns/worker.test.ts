@@ -18,9 +18,12 @@ async function makeVoiceCampaign(opts: { maxConcurrent?: number; spendCapCalls?:
   const campaign = await prisma.voiceCampaign.create({
     data: {
       tenantId, name: "Calls", status: "active", channels: JSON.stringify(["voice"]),
-      scriptTemplate: "Hi {lead.firstName}", voiceA: "Rachel", voiceB: "Aria", personaA: "E", personaB: "S",
-      vapiAssistantIdA: "asstA", vapiAssistantIdB: "asstB",
+      scriptTemplate: "Hi {lead.firstName}",
       maxConcurrent: opts.maxConcurrent ?? 5, spendCapCalls: opts.spendCapCalls ?? null,
+      variants: { create: [
+        { tenantId, key: "A", label: "E", voice: "Rachel", persona: "E", vapiAssistantId: "asstA", sortOrder: 0 },
+        { tenantId, key: "B", label: "S", voice: "Aria", persona: "S", vapiAssistantId: "asstB", sortOrder: 1 },
+      ] },
     },
   });
   return { tenantId, campaignId: campaign.id };
