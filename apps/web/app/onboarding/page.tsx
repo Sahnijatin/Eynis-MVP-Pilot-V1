@@ -42,7 +42,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           </div>
           <span className="auth-logo-name" style={{ fontSize: 18 }}>{theme.brandName}</span>
         </div>
-        <span className="ml-auto text-xs text-slate-400 mr-3">Step 1 of 1 — Choose your industry</span>
+        <span className="ml-auto text-xs text-slate-500 mr-3">Step 1 of 1 — Choose your industry</span>
         <SignOutButton />
       </div>
       <IndustryOnboarding allowAdditional={allowAdditional} />

@@ -44,7 +44,7 @@ export function TravelDashboard() {
                 <Plane className="w-4 h-4 text-purple-400 shrink-0" />
                 <div className="flex-1">
                   <div className="font-medium text-sm text-slate-800">{b.client}</div>
-                  <div className="text-xs text-slate-400">{b.dest}</div>
+                  <div className="text-xs text-slate-500">{b.dest}</div>
                 </div>
                 <span className="text-xs font-medium text-slate-500">{b.date}</span>
                 <span className="badge text-xs" style={{ background: b.bg, color: b.color }}>{b.status}</span>

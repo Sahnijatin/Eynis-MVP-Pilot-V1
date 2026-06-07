@@ -164,7 +164,7 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
           <div className="py-10 text-center">
             <div className="text-2xl mb-2">📦</div>
             <div className="font-semibold text-slate-700">No items yet</div>
-            <p className="text-sm text-slate-400 mt-1 mb-4">Use “Log Stock” or “Import CSV” to add inventory.</p>
+            <p className="text-sm text-slate-500 mt-1 mb-4">Use “Log Stock” or “Import CSV” to add inventory.</p>
             <Button variant="primary" onClick={() => setShowModal(true)}>Log Stock</Button>
           </div>
         ) : (
@@ -172,7 +172,7 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
             <thead>
               <tr className="border-b border-slate-100">
                 {["Item", "Category", "In Stock", "Reorder At", "Unit Cost", "Status", ""].map((h) => (
-                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase">{h}</th>
+                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -190,7 +190,7 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
                     {item.status === "ok" && <span className="badge" style={{ background: "#d1fae5", color: "#059669" }}>OK</span>}
                   </td>
                   <td className="py-2.5 px-2">
-                    <button onClick={() => handleDelete(item)} disabled={busy} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50">
+                    <button onClick={() => handleDelete(item)} disabled={busy} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 disabled:opacity-50">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
@@ -212,7 +212,7 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
             </>
           }
         >
-          <p className="text-xs text-slate-400 mb-3">Update an existing item or add a new one.</p>
+          <p className="text-xs text-slate-500 mb-3">Update an existing item or add a new one.</p>
           <form id="inventory-form" onSubmit={handleSubmit} className="space-y-3">
             <Field label="Item name">
               <Input placeholder="e.g. Truffle Oil (250ml)" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />

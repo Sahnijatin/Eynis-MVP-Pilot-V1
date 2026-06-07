@@ -49,7 +49,7 @@ export default async function RevenueIntelligencePage({
         </div>
         <div className="card">
           <div className="kpi-label">Offers Accepted</div>
-          <div className="kpi-value mt-1.5">{totals.acceptedOffers}<span className="text-lg text-slate-400 font-normal"> / {totals.sentOffers}</span></div>
+          <div className="kpi-value mt-1.5">{totals.acceptedOffers}<span className="text-lg text-slate-500 font-normal"> / {totals.sentOffers}</span></div>
           <div className="kpi-label mt-1">offers sent</div>
         </div>
         <div className="card">
@@ -70,7 +70,7 @@ export default async function RevenueIntelligencePage({
         <div className="card lg:col-span-2">
           <h3 className="card-title">Revenue by Automation Type</h3>
           {byAutomationType.length === 0 ? (
-            <p className="text-sm text-slate-400">No revenue recorded in this window.</p>
+            <p className="text-sm text-slate-500">No revenue recorded in this window.</p>
           ) : (
             <div className="space-y-3 mt-2">
               {byAutomationType.map((a) => (
@@ -92,7 +92,7 @@ export default async function RevenueIntelligencePage({
         <div className="card">
           <h3 className="card-title">Top Converting Offers</h3>
           {topConvertingOffers.length === 0 ? (
-            <p className="text-sm text-slate-400">No offers yet.</p>
+            <p className="text-sm text-slate-500">No offers yet.</p>
           ) : (
             <div className="space-y-3 mt-2">
               {topConvertingOffers.map((o) => (

@@ -409,7 +409,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
             <span className="topbar-dot" style={{ background: config.accentColor }} />
             <span className="topbar-name">{config.name} Dashboard</span>
             <span className="text-slate-300 text-sm">|</span>
-            <CalendarDays className="w-4 h-4 text-slate-400" />
+            <CalendarDays className="w-4 h-4 text-slate-500" />
             <TopbarClock />
           </div>
           <div className="topbar-right">
@@ -431,10 +431,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="text-xs text-slate-400 hover:text-slate-600" onClick={() => setReadIds(new Set(notifs.map(n => n.id)))}>
+                      <button className="text-xs text-slate-500 hover:text-slate-600" onClick={() => setReadIds(new Set(notifs.map(n => n.id)))}>
                         Mark all read
                       </button>
-                      <button onClick={() => setNotifOpen(false)} className="text-slate-400 hover:text-slate-600">
+                      <button onClick={() => setNotifOpen(false)} className="text-slate-500 hover:text-slate-600">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -454,7 +454,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-semibold text-slate-800">{n.title}</div>
                               <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{n.body}</div>
-                              <div className="text-xs text-slate-400 mt-1">{n.time}</div>
+                              <div className="text-xs text-slate-500 mt-1">{n.time}</div>
                             </div>
                             {unread && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-2" />}
                           </div>

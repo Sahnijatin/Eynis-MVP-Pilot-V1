@@ -45,7 +45,7 @@ export function HealthcareDashboard() {
                 <span className="font-mono text-xs font-semibold text-slate-500 w-14">{s.time}</span>
                 <div className="flex-1">
                   <div className="font-medium text-sm text-slate-800">{s.patient}</div>
-                  <div className="text-xs text-slate-400">{s.type}</div>
+                  <div className="text-xs text-slate-500">{s.type}</div>
                 </div>
                 <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.status}</span>
               </div>

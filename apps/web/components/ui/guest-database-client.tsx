@@ -271,7 +271,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
       <div className="card mb-4">
         <div className="flex items-center gap-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <form method="GET">
               <input
                 name="search"
@@ -322,7 +322,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                           {g.fullName}
                           {g.segment === "VIP" && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
                         </div>
-                        <div className="text-xs text-slate-400">{g.phoneE164}</div>
+                        <div className="text-xs text-slate-500">{g.phoneE164}</div>
                       </div>
                     </div>
                   </td>
@@ -343,7 +343,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                     >
                       View Profile
                     </button>
-                    <Link href={`/guest-database/${g.id}`} className="ml-3 text-xs text-slate-400 hover:underline" onClick={(e) => e.stopPropagation()}>
+                    <Link href={`/guest-database/${g.id}`} className="ml-3 text-xs text-slate-500 hover:underline" onClick={(e) => e.stopPropagation()}>
                       Full page →
                     </Link>
                   </td>
@@ -364,7 +364,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                 <button key={p} className={`w-8 h-8 rounded-lg text-sm font-medium ${p === 1 ? "text-white" : "text-slate-600 hover:bg-slate-100"}`}
                   style={p === 1 ? { background: "var(--color-primary, #0f766e)" } : {}}>{p}</button>
               ))}
-              <span className="text-slate-400 px-1">...</span>
+              <span className="text-slate-500 px-1">...</span>
               <button className="w-8 h-8 rounded-lg text-sm text-slate-600 hover:bg-slate-100">{Math.ceil(total / 20)}</button>
             </div>
           </div>
@@ -380,7 +380,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                 <h2 className="text-base font-bold text-slate-800">Add New Guest</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Create a new guest profile in the database</p>
               </div>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600">
+              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>

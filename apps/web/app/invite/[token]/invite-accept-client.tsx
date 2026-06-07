@@ -77,7 +77,7 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
         <p className="text-slate-800 font-medium text-sm mb-1">
           {hotelName}
         </p>
-        <p className="text-xs text-slate-400 mb-6">
+        <p className="text-xs text-slate-500 mb-6">
           Role: <span className="font-medium text-slate-600">{roleName}</span>
         </p>
         <a
@@ -88,7 +88,7 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
           {nextLabel}
         </a>
         {!sameSession && (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-slate-500">
             Use <span className="font-medium text-slate-600">{email}</span> when signing up — it&apos;s already linked to your role.
           </p>
         )}
@@ -127,7 +127,7 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
             placeholder="e.g. Rahul Sharma"
             className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
           />
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-500">
             Leave blank to use your email username
           </p>
         </div>

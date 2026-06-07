@@ -54,12 +54,12 @@ export default async function StaffPerformancePage({
         <div className="card">
           <div className="kpi-label">Avg. Customer Rating</div>
           <div className="kpi-value mt-1.5">{summary.avgGuestRating === null ? "—" : `${summary.avgGuestRating.toFixed(1)}/5`}</div>
-          <div className="text-xs text-slate-400 mt-1">{summary.avgGuestRating === null ? "No feedback yet" : "from sentiment feedback"}</div>
+          <div className="text-xs text-slate-500 mt-1">{summary.avgGuestRating === null ? "No feedback yet" : "from sentiment feedback"}</div>
         </div>
         <div className="card">
           <div className="kpi-label">Staff Utilization</div>
           <div className="kpi-value mt-1.5">{Math.round(summary.utilizationRate)}%</div>
-          <div className="text-xs text-slate-400 mt-1">Active vs available staff</div>
+          <div className="text-xs text-slate-500 mt-1">Active vs available staff</div>
         </div>
       </div>
 
@@ -67,7 +67,7 @@ export default async function StaffPerformancePage({
       <div className="card mb-4">
         <h3 className="card-title">Performance Leaderboard</h3>
         {leaderboard.length === 0 ? (
-          <p className="text-sm text-slate-400">No resolved tasks in this window.</p>
+          <p className="text-sm text-slate-500">No resolved tasks in this window.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -100,7 +100,7 @@ export default async function StaffPerformancePage({
         <div className="card lg:col-span-2">
           <h3 className="card-title">Workload by Role</h3>
           {workloadByRole.length === 0 ? (
-            <p className="text-sm text-slate-400">No workload data.</p>
+            <p className="text-sm text-slate-500">No workload data.</p>
           ) : (
             <div className="space-y-3 mt-2">
               {workloadByRole.map((w) => {
@@ -132,7 +132,7 @@ export default async function StaffPerformancePage({
         <div className="card">
           <h3 className="card-title">Staffing Alerts</h3>
           {alerts.length === 0 ? (
-            <p className="text-sm text-slate-400">No alerts — workload looks balanced.</p>
+            <p className="text-sm text-slate-500">No alerts — workload looks balanced.</p>
           ) : (
             <div className="space-y-2 mt-2">
               {alerts.map((a, i) => (

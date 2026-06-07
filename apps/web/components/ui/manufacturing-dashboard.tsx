@@ -67,13 +67,13 @@ export function ManufacturingDashboard() {
             ))}
           </div>
           <div>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Urgent Orders</div>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Urgent Orders</div>
             {TOP_ORDERS.map((o) => (
               <div key={o.id} className={`flex items-center gap-3 py-2 border-b border-slate-50 last:border-0`}>
                 <span className="font-mono text-xs text-blue-600 font-semibold w-20">{o.id}</span>
                 <span className="flex-1 text-sm text-slate-700">{o.client}</span>
                 <span className="text-sm font-semibold text-slate-700">{o.value}</span>
-                <span className={`text-xs font-medium ${o.urgent ? "text-red-600" : "text-slate-400"}`}>Due {o.due}</span>
+                <span className={`text-xs font-medium ${o.urgent ? "text-red-600" : "text-slate-500"}`}>Due {o.due}</span>
               </div>
             ))}
           </div>
@@ -133,7 +133,7 @@ export function ManufacturingDashboard() {
             <div key={w.week} className="flex-1 flex flex-col items-center gap-1">
               <span className="text-xs font-semibold text-slate-600">{w.val}</span>
               <div className="w-full rounded-t-sm" style={{ height: `${(w.pct / 100) * 55}px`, background: w.week.includes("live") ? "#1d4ed8" : "#bfdbfe", minHeight: 6 }} />
-              <span className="text-xs text-slate-400">{w.week}</span>
+              <span className="text-xs text-slate-500">{w.week}</span>
             </div>
           ))}
         </div>
@@ -141,7 +141,7 @@ export function ManufacturingDashboard() {
           <div className="flex-1 bg-slate-100 rounded-full h-2">
             <div className="h-2 rounded-full" style={{ width: "78%", background: "#1d4ed8" }} />
           </div>
-          <span className="text-sm font-semibold text-slate-700">₹78L / ₹1 Cr target <span className="text-slate-400">(78%)</span></span>
+          <span className="text-sm font-semibold text-slate-700">₹78L / ₹1 Cr target <span className="text-slate-500">(78%)</span></span>
         </div>
       </div>
     </div>

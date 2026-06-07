@@ -90,14 +90,14 @@ export function ReportView({ reportId }: { reportId: string }) {
       <div className="card">
         <div className="flex items-center justify-between mb-3">
           <h3 className="card-title">Results</h3>
-          {result && <span className="text-xs text-slate-400">{result.grouped ? `${result.total} groups` : `${result.total} rows`}</span>}
+          {result && <span className="text-xs text-slate-500">{result.grouped ? `${result.total} groups` : `${result.total} rows`}</span>}
         </div>
         {loading ? (
-          <p className="text-sm text-slate-400 py-8 text-center">Running report…</p>
+          <p className="text-sm text-slate-500 py-8 text-center">Running report…</p>
         ) : result ? (
           <ReportResultView result={result} />
         ) : (
-          <p className="text-sm text-slate-400 py-8 text-center">No results.</p>
+          <p className="text-sm text-slate-500 py-8 text-center">No results.</p>
         )}
       </div>
     </div>

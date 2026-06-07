@@ -56,7 +56,7 @@ export function RoutingDomainPanel({
           <div className="flex items-center gap-1.5">
             <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="tempus"
               className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            <span className="text-xs text-slate-400 whitespace-nowrap">.{PLATFORM}</span>
+            <span className="text-xs text-slate-500 whitespace-nowrap">.{PLATFORM}</span>
           </div>
         </label>
         <label className="block">

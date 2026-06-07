@@ -61,7 +61,7 @@ export default function AIBrainPage() {
           </div>
           <div>
             <div className="font-semibold text-slate-800">Eynis AI Brain</div>
-            <div className="text-xs text-slate-400">Answers sourced from your own data — orders, clients, materials, reports</div>
+            <div className="text-xs text-slate-500">Answers sourced from your own data — orders, clients, materials, reports</div>
           </div>
           <span className="ml-auto badge" style={{ background: "#fef3c7", color: "#b45309" }}>Preview</span>
         </div>
@@ -71,7 +71,7 @@ export default function AIBrainPage() {
           {messages.length === 0 && (
             <div className="text-center py-12">
               <Brain className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-              <div className="text-slate-400 text-sm">Ask anything about your business</div>
+              <div className="text-slate-500 text-sm">Ask anything about your business</div>
               <div className="text-slate-300 text-xs mt-1">Orders · Clients · Materials · Quotes · Reports</div>
             </div>
           )}
@@ -151,7 +151,7 @@ export default function AIBrainPage() {
                   </div>
                   <div>
                     <div className="text-sm font-medium text-slate-700">{s.label}</div>
-                    <div className="text-xs text-slate-400">{s.count}</div>
+                    <div className="text-xs text-slate-500">{s.count}</div>
                   </div>
                   <span className="ml-auto w-2 h-2 rounded-full bg-emerald-500" />
                 </div>

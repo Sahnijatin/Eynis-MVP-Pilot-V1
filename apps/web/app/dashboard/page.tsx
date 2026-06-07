@@ -136,7 +136,7 @@ export default async function DashboardPage() {
               <div className="mt-2 flex items-center gap-1.5">
                 <span className="badge badge-teal text-xs">+₹4,200 UPSELLS</span>
               </div>
-              <div className="text-xs text-slate-400 mt-1">3 upgrades, 2 late C/O</div>
+              <div className="text-xs text-slate-500 mt-1">3 upgrades, 2 late C/O</div>
             </div>
             <div className="kpi-icon bg-emerald-50">
               <DollarSign className="w-4.5 h-4.5 text-emerald-600" />
@@ -233,11 +233,11 @@ export default async function DashboardPage() {
         <div className="flex items-center justify-between mb-1">
           <div>
             <h3 className="card-title mb-0">Occupancy Trend</h3>
-            <p className="text-xs text-slate-400 mt-0.5">14-day rolling average vs target</p>
+            <p className="text-xs text-slate-500 mt-0.5">14-day rolling average vs target</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-700 inline-block" />ACTUAL</span>
-            <span className="flex items-center gap-1.5 text-slate-400"><span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />TARGET (70%)</span>
+            <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />TARGET (70%)</span>
           </div>
         </div>
         <OccupancyChart data={chartData} />

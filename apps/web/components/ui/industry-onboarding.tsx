@@ -61,7 +61,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
   if (!isLoaded || isIdentifying) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-3 text-slate-400">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
           <Loader2 className="w-7 h-7 animate-spin" />
           <span className="text-sm">Setting up your workspace...</span>
         </div>

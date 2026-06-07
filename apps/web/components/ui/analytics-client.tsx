@@ -124,7 +124,7 @@ export default function AnalyticsClient({ terminology }: Props) {
                 className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
               />
             </div>
-            <span className="text-xs text-slate-400 italic">Showing 6-month sample data</span>
+            <span className="text-xs text-slate-500 italic">Showing 6-month sample data</span>
           </div>
         )}
 
@@ -140,7 +140,7 @@ export default function AnalyticsClient({ terminology }: Props) {
                   minHeight: 8
                 }}
               />
-              <span className="text-xs text-slate-400">{d.label}</span>
+              <span className="text-xs text-slate-500">{d.label}</span>
             </div>
           ))}
         </div>
@@ -159,7 +159,7 @@ export default function AnalyticsClient({ terminology }: Props) {
               <div key={c.label}>
                 <div className="flex justify-between mb-1 text-sm">
                   <span className="text-slate-600">{c.label}</span>
-                  <span className="font-semibold text-slate-700">{c.value} <span className="text-slate-400">({c.pct}%)</span></span>
+                  <span className="font-semibold text-slate-700">{c.value} <span className="text-slate-500">({c.pct}%)</span></span>
                 </div>
                 <div className="progress-track">
                   <div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: "#ea580c" }} />

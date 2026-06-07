@@ -32,7 +32,7 @@ export function ReportResultView({ result }: { result: RunResult }) {
     return (
       <div className="py-10 text-center">
         <div className="text-5xl font-black" style={{ color: "var(--color-primary, #0f766e)" }}>{total.toLocaleString("en-IN")}</div>
-        <div className="text-sm text-slate-400 mt-2">total records</div>
+        <div className="text-sm text-slate-500 mt-2">total records</div>
       </div>
     );
   }

@@ -93,10 +93,10 @@ export default async function SettingsPage() {
               self-service setting. Customers see it, but can't change it. */}
           <div className="card">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Industry Workspace</h3>
-            <p className="text-sm text-slate-400 mb-3">Your nav, modules, and terminology are tailored to your industry.</p>
+            <p className="text-sm text-slate-500 mb-3">Your nav, modules, and terminology are tailored to your industry.</p>
             <div className="flex items-center gap-3">
               <Badge tone="accent">{config.name}</Badge>
-              <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                 <Lock className="w-3 h-3" /> Managed for you — contact support to change your industry.
               </span>
             </div>
@@ -111,7 +111,7 @@ export default async function SettingsPage() {
           {/* Account Information */}
           <div className="card">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Account Information</h3>
-            <p className="text-sm text-slate-400 mb-4">Update your photo and personal details.</p>
+            <p className="text-sm text-slate-500 mb-4">Update your photo and personal details.</p>
 
             <div className="flex items-center gap-4 mb-5">
               <div className="relative">
@@ -135,19 +135,19 @@ export default async function SettingsPage() {
               <h3 className="text-base font-semibold text-slate-800">{propertyName} Details</h3>
               <Badge tone="warning">Global master</Badge>
             </div>
-            <p className="text-sm text-slate-400 mb-4">{propertyLabel} configuration for all staff and integrations.</p>
+            <p className="text-sm text-slate-500 mb-4">{propertyLabel} configuration for all staff and integrations.</p>
 
             <Field label="Address"><Input defaultValue="" placeholder="Street, city, country" /></Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label={`${propertyLabel} Phone`}>
                 <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                  <Phone className="w-4 h-4 text-slate-500 shrink-0" />
                   <Input defaultValue="" placeholder="Contact number" />
                 </div>
               </Field>
               <Field label="Timezone">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                  <Clock className="w-4 h-4 text-slate-500 shrink-0" />
                   <Input defaultValue="" placeholder="e.g. Asia/Kolkata" />
                 </div>
               </Field>
@@ -158,17 +158,17 @@ export default async function SettingsPage() {
           <div className="grid grid-cols-3 gap-3">
             <a href="/settings/team" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
               <div className="text-sm font-semibold text-slate-800 mb-1">Team Members</div>
-              <p className="text-xs text-slate-400">Invite staff, assign roles, manage access.</p>
+              <p className="text-xs text-slate-500">Invite staff, assign roles, manage access.</p>
               <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Manage team →</span>
             </a>
             <a href="/settings/roles" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
               <div className="text-sm font-semibold text-slate-800 mb-1">Roles & Permissions</div>
-              <p className="text-xs text-slate-400">Rename roles, view permissions, create custom roles.</p>
+              <p className="text-xs text-slate-500">Rename roles, view permissions, create custom roles.</p>
               <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Manage roles →</span>
             </a>
             <a href="/settings/billing" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
               <div className="text-sm font-semibold text-slate-800 mb-1">License & Billing</div>
-              <p className="text-xs text-slate-400">Seat usage, plan details, and Razorpay billing.</p>
+              <p className="text-xs text-slate-500">Seat usage, plan details, and Razorpay billing.</p>
               <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Manage billing →</span>
             </a>
           </div>
@@ -176,7 +176,7 @@ export default async function SettingsPage() {
           {/* Integrations moved to their own module (E-5) */}
           <a href="/integrations" className="card block hover:bg-slate-50 transition-colors">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Integrations</h3>
-            <p className="text-sm text-slate-400">WhatsApp, PMS/POS, payments, voice and email connectors now live in their own Integrations module.</p>
+            <p className="text-sm text-slate-500">WhatsApp, PMS/POS, payments, voice and email connectors now live in their own Integrations module.</p>
             <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Open Integrations →</span>
           </a>
         </div>

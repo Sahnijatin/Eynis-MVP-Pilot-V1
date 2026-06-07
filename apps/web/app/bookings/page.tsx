@@ -169,13 +169,13 @@ export default function BookingsPage() {
         <div className="flex items-center gap-2 mb-4">
           <Plane className="w-4 h-4" style={{ color: ACCENT }} />
           <h3 className="card-title mb-0">All Bookings</h3>
-          <span className="text-xs text-slate-400 font-normal ml-1">— click a booking for itinerary, payments and notes</span>
+          <span className="text-xs text-slate-500 font-normal ml-1">— click a booking for itinerary, payments and notes</span>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
               {["Booking ID", "Client", "Destination", "Value", "Departure", "Pax", "Paid", "Status"].map(h => (
-                <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase">{h}</th>
+                <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">{h}</th>
               ))}
             </tr>
           </thead>
@@ -224,7 +224,7 @@ export default function BookingsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
               <h2 className="text-base font-semibold text-slate-800">New Booking</h2>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="px-6 py-5 space-y-3">
               {([

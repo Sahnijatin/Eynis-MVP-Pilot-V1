@@ -53,7 +53,7 @@ export function UpsellCampaignsClient({ data }: { data: UpsellCampaignsResponse 
                 <tr key={item.id}>
                   <td>
                     <div className="text-sm font-semibold text-slate-800">{item.name}</div>
-                    <div className="text-xs text-slate-400">Trigger: {item.trigger}</div>
+                    <div className="text-xs text-slate-500">Trigger: {item.trigger}</div>
                   </td>
                   <td>
                     <span className={`badge ${item.status === "Active" ? "badge-green" : "badge-amber"} flex items-center gap-1 w-fit`}>
@@ -71,7 +71,7 @@ export function UpsellCampaignsClient({ data }: { data: UpsellCampaignsResponse 
                 </tr>
               ))}
               {data.items.length === 0 && (
-                <tr><td colSpan={5} className="text-sm text-slate-400 py-6 text-center">No offers yet</td></tr>
+                <tr><td colSpan={5} className="text-sm text-slate-500 py-6 text-center">No offers yet</td></tr>
               )}
             </tbody>
           </table>

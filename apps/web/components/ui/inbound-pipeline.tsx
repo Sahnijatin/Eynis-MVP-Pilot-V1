@@ -5,7 +5,7 @@ import { fetchConnectorEvents } from "../../lib/data";
 const SENTIMENT_COLORS: Record<string, string> = {
   positive: "text-emerald-400",
   negative: "text-red-400",
-  neutral: "text-slate-400"
+  neutral: "text-slate-500"
 };
 
 const SENTIMENT_DOTS: Record<string, string> = {
@@ -17,7 +17,7 @@ const SENTIMENT_DOTS: Record<string, string> = {
 const PRIORITY_COLORS: Record<string, string> = {
   urgent: "text-red-500 font-bold",
   high: "text-amber-500 font-semibold",
-  normal: "text-slate-400"
+  normal: "text-slate-500"
 };
 
 const PRIORITY_BADGES: Record<string, string> = {
@@ -57,14 +57,14 @@ async function PipelineContent() {
     events = data.items ?? [];
     total = data.page?.total ?? 0;
   } catch {
-    return <div className="text-xs text-slate-400 py-4 text-center">Unable to load pipeline data</div>;
+    return <div className="text-xs text-slate-500 py-4 text-center">Unable to load pipeline data</div>;
   }
 
   if (events.length === 0) {
     return (
       <div className="text-center py-8">
         <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-        <p className="text-sm text-slate-400">No inbound events yet</p>
+        <p className="text-sm text-slate-500">No inbound events yet</p>
         <p className="text-xs text-slate-500 mt-1">Events appear here when guests message via WhatsApp</p>
       </div>
     );
@@ -89,7 +89,7 @@ async function PipelineContent() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-xs font-semibold text-slate-700 truncate">{ev.guestName ?? ev.guestPhone ?? "Unknown"}</span>
-                <span className="text-[9px] text-slate-400 shrink-0">{timeAgo(ev.createdAt)}</span>
+                <span className="text-[9px] text-slate-500 shrink-0">{timeAgo(ev.createdAt)}</span>
               </div>
 
               {ev.aiSummary && (
@@ -119,7 +119,7 @@ async function PipelineContent() {
 
                 {/* AI provider badge */}
                 {ev.aiProvider && ev.aiProvider !== "keyword" && (
-                  <span className="text-[9px] text-slate-400">via {ev.aiProvider === "openai" ? "GPT-4o" : "Claude"}</span>
+                  <span className="text-[9px] text-slate-500">via {ev.aiProvider === "openai" ? "GPT-4o" : "Claude"}</span>
                 )}
               </div>
             </div>
@@ -138,7 +138,7 @@ async function PipelineContent() {
                   <XCircle className="w-3 h-3" /> no reply
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[9px] text-slate-400">
+                <span className="flex items-center gap-1 text-[9px] text-slate-500">
                   <Clock className="w-3 h-3" /> pending
                 </span>
               )}
@@ -149,7 +149,7 @@ async function PipelineContent() {
 
       {total > 8 && (
         <div className="text-center pt-1">
-          <span className="text-xs text-slate-400">{total - 8} more events not shown</span>
+          <span className="text-xs text-slate-500">{total - 8} more events not shown</span>
         </div>
       )}
     </div>
