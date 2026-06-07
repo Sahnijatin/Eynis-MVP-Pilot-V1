@@ -66,7 +66,7 @@ export interface StaffPerformanceResponse {
   summary: {
     avgResolutionMinutes: number;
     completionRate: number;
-    avgGuestRating: number;
+    avgGuestRating: number | null; // null when there's no sentiment feedback yet
     utilizationRate: number;
   };
   leaderboard: Array<{
@@ -330,14 +330,47 @@ export async function fetchQueueData(filters: {
   };
 }
 
-export async function fetchRevenueAnalytics() {
-  const res = await authedFetch("/analytics/revenue-intelligence");
-  return (await res.json()) as RevenueAnalyticsResponse;
+// Optional `from`/`to` reporting window (E-15) → query string; empty when neither.
+function rangeQs(from?: string, to?: string): string {
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  const s = qs.toString();
+  return s ? `?${s}` : "";
 }
 
-export async function fetchStaffPerformance() {
-  const res = await authedFetch("/analytics/staff-performance");
-  return (await res.json()) as StaffPerformanceResponse;
+// Revenue + staff analytics now back real pages (#128). Both degrade to a safe,
+// zeroed shape on any error so the page renders an honest empty state instead of
+// throwing into the workspace error boundary.
+export async function fetchRevenueAnalytics(from?: string, to?: string): Promise<RevenueAnalyticsResponse> {
+  const empty: RevenueAnalyticsResponse = {
+    ok: false,
+    totals: { totalUpsellInr: 0, acceptedOffers: 0, sentOffers: 0, lateCheckoutInr: 0, leftOnTableInr: 0 },
+    byAutomationType: [], topConvertingOffers: [],
+    funnel: { triggered: 0, sent: 0, opened: 0, accepted: 0, revenueInr: 0 },
+  };
+  try {
+    const res = await authedFetch(`/analytics/revenue-intelligence${rangeQs(from, to)}`);
+    if (!res.ok) return empty;
+    return { ...empty, ...(await res.json()) as Partial<RevenueAnalyticsResponse> };
+  } catch {
+    return empty;
+  }
+}
+
+export async function fetchStaffPerformance(from?: string, to?: string): Promise<StaffPerformanceResponse> {
+  const empty: StaffPerformanceResponse = {
+    ok: false,
+    summary: { avgResolutionMinutes: 0, completionRate: 0, avgGuestRating: null, utilizationRate: 0 },
+    leaderboard: [], workloadByRole: [], alerts: [],
+  };
+  try {
+    const res = await authedFetch(`/analytics/staff-performance${rangeQs(from, to)}`);
+    if (!res.ok) return empty;
+    return { ...empty, ...(await res.json()) as Partial<StaffPerformanceResponse> };
+  } catch {
+    return empty;
+  }
 }
 
 export interface SavedReportItem {
