@@ -9,8 +9,20 @@ import {
   aiCompleteTiered,
   parseStructured,
   AI_AVAILABLE,
+  CLAUDE_AVAILABLE,
+  OPENAI_AVAILABLE,
   type AIProvider,
 } from "../ai/intelligence";
+
+// Pick the synthesis provider: an explicit RESEARCH_AI_PROVIDER wins (if its key is
+// set), otherwise prefer Claude when available, else OpenAI. This way a deployment
+// with ONLY OPENAI_API_KEY uses OpenAI instead of silently falling back.
+function defaultResearchProvider(): AIProvider {
+  const pref = process.env.RESEARCH_AI_PROVIDER?.trim().toLowerCase();
+  if (pref === "openai" && OPENAI_AVAILABLE) return "openai";
+  if (pref === "claude" && CLAUDE_AVAILABLE) return "claude";
+  return CLAUDE_AVAILABLE ? "claude" : "openai";
+}
 import type { ResearchTemplateDef, TemplateSection } from "./types";
 import type { GatherResult } from "./gather";
 
@@ -94,7 +106,7 @@ export async function synthesize(
   gathered: GatherResult,
   opts: { provider?: AIProvider; tier?: "cheap" | "premium" } = {},
 ): Promise<SynthResult> {
-  const provider = opts.provider ?? "claude";
+  const provider = opts.provider ?? defaultResearchProvider();
   // "fast" templates (the contextual lite button) always use the cheap tier.
   const tier = opts.tier ?? (def.fast ? "cheap" : "premium");
   const sections: SynthSection[] = [];
