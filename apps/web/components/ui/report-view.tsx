@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Printer, Pencil, Trash2, Loader2, ArrowLeft } from "lucide-react";
+import { Download, Printer, Pencil, Trash2, Loader2, ArrowLeft, Share2 } from "lucide-react";
 import { type RunResult } from "./report-result-table";
 import { ReportResultView } from "./report-result-view";
+import { ReportShareModal } from "./report-share-modal";
 
 // Saved-report view (E-16): runs the report and shows the result, with branded
 // CSV export and (for the creator) edit/delete.
@@ -17,6 +18,7 @@ export function ReportView({ reportId }: { reportId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -73,6 +75,9 @@ export function ReportView({ reportId }: { reportId: string }) {
             </a>
             {meta?.isOwner && (
               <>
+                <button onClick={() => setSharing(true)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5" /> Share
+                </button>
                 <a href={`/reports/${reportId}/edit`} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
                   <Pencil className="w-3.5 h-3.5" /> Edit
                 </a>
@@ -100,6 +105,10 @@ export function ReportView({ reportId }: { reportId: string }) {
           <p className="text-sm text-slate-500 py-8 text-center">No results.</p>
         )}
       </div>
+
+      {sharing && meta?.isOwner && (
+        <ReportShareModal reportId={reportId} onClose={() => setSharing(false)} />
+      )}
     </div>
   );
 }

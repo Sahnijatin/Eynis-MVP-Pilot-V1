@@ -1003,6 +1003,28 @@ model Report {
   updatedAt      DateTime @updatedAt
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy      User?    @relation("report_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  shares         ReportShare[]
 
   @@index([tenantId])
+}
+
+// Per-report sharing ACL (E-16 Phase B). Grants visibility beyond the
+// all-or-nothing tenant-wide `Report.shared` flag: a report can be shared with
+// specific users (principalId = User.id) or everyone holding a role
+// (principalId = Role.key). Only the report's creator manages these grants, and
+// a grant confers read/run/export only — never edit/delete. Tenant-scoped, and
+// cascaded away when the report (or its tenant) is deleted.
+model ReportShare {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("hotelId")
+  reportId      String
+  principalType String // "user" | "role"
+  principalId   String // User.id (when "user") or Role.key (when "role")
+  createdAt     DateTime @default(now())
+  report        Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, principalType, principalId])
+  @@index([reportId])
+  @@index([tenantId, principalType, principalId])
+  @@map("ReportShare")
 }
