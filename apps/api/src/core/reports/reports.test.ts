@@ -82,7 +82,7 @@ test("executor rejects unknown source / columns / fields", async () => {
   assert.equal((await runReportDefinition(tenantId, { source: "deals", columns: ["title"], groupBy: "evil" })).ok, false);
 });
 
-test("GET /reports/sources lists the Phase-A sources", async () => {
+test("GET /reports/sources lists every source", async () => {
   const tenantId = await seedTenant();
   await addUser(tenantId, `a+${tenantId}@t.local`, "admin", "owner");
   const server = buildServer();
@@ -93,8 +93,34 @@ test("GET /reports/sources lists the Phase-A sources", async () => {
     const data = await res.json() as { ok: boolean; sources: Array<{ key: string }> };
     assert.equal(res.status, 200);
     assert.equal(data.sources.length, REPORT_SOURCES.length);
-    assert.ok(data.sources.some((s) => s.key === "service_requests"));
+    for (const k of ["service_requests", "deals", "contacts", "companies", "campaign_calls", "sentiment_events", "offer_events"]) {
+      assert.ok(data.sources.some((s) => s.key === k), `missing source ${k}`);
+    }
   } finally { await close(server); }
+});
+
+test("executor sums a metric in grouped offer-events + coerces number filters (E-16 Phase B)", async () => {
+  const tenantId = await seedTenant();
+  await prisma.offerEvent.createMany({
+    data: [
+      { tenantId, offerType: "room_upgrade", status: "accepted", revenueInr: 1000, contextJson: "{}" },
+      { tenantId, offerType: "room_upgrade", status: "accepted", revenueInr: 500, contextJson: "{}" },
+      { tenantId, offerType: "fnb_offer", status: "pending", revenueInr: 0, contextJson: "{}" },
+    ],
+  });
+  const grouped = await runReportDefinition(tenantId, { source: "offer_events", columns: ["offerType", "revenueInr"], groupBy: "offerType" });
+  assert.ok(grouped.ok);
+  if (grouped.ok) {
+    const up = grouped.grouped!.find((g) => g.group === "room_upgrade");
+    assert.equal(up?.count, 2);
+    assert.equal(up?.sum, 1500); // metric (revenueInr) summed
+  }
+
+  // A numeric filter value arrives as a string from the client; the executor must
+  // coerce it so Prisma doesn't reject it.
+  const filtered = await runReportDefinition(tenantId, { source: "offer_events", columns: ["offerType", "revenueInr"], filters: [{ field: "revenueInr", op: "eq", value: "1000" }] });
+  assert.ok(filtered.ok);
+  if (filtered.ok) assert.equal(filtered.total, 1);
 });
 
 test("save → list → run a report; module gated by view_reports", async () => {
@@ -129,6 +155,33 @@ test("save → list → run a report; module gated by view_reports", async () =>
     const agent = await authHeader(base, tenantId, `agent+${tenantId}@t.local`, "agent");
     const denied = await fetch(base + "/reports", { headers: agent });
     assert.equal(denied.status, 403);
+  } finally { await close(server); }
+});
+
+test("export renders csv + a real PDF (₹ labels don't crash the renderer, E-16 Phase B)", async () => {
+  const tenantId = await seedTenant();
+  await addUser(tenantId, `e+${tenantId}@t.local`, "admin", "owner");
+  await prisma.offerEvent.create({ data: { tenantId, offerType: "room_upgrade", status: "accepted", revenueInr: 1000, contextJson: "{}" } });
+
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    const headers = await authHeader(base, tenantId, `e+${tenantId}@t.local`, "admin");
+    // offer_events has a "Revenue (₹)" column label → exercises the PDF sanitizer.
+    const save = await fetch(base + "/reports", { method: "POST", headers, body: JSON.stringify({
+      name: "Revenue by offer", definition: { source: "offer_events", columns: ["offerType", "revenueInr"], groupBy: "offerType", visualization: "bar" },
+    }) });
+    const { id } = await save.json() as { id: string };
+
+    const csv = await fetch(base + `/reports/${id}/export?format=csv`, { headers });
+    assert.equal(csv.status, 200);
+    assert.match(csv.headers.get("content-type") ?? "", /csv/);
+
+    const pdf = await fetch(base + `/reports/${id}/export?format=pdf`, { headers });
+    assert.equal(pdf.status, 200);
+    assert.equal(pdf.headers.get("content-type"), "application/pdf");
+    const bytes = new Uint8Array(await pdf.arrayBuffer());
+    assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), "%PDF-"); // a genuine PDF
   } finally { await close(server); }
 });
 

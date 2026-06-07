@@ -3225,9 +3225,24 @@ const handleRequest = async (
           header = result.columns.map((c) => c.label);
           rows = result.rows.map((row) => result.columns.map((c) => row[c.key] ?? ""));
         }
-        const csv = brandedCsv(brand, report.name, { header, rows });
         const safeName = report.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-|-$/g, "") || "report";
-        sendDoc(res, "text/csv; charset=utf-8", csv, `${safeName}.csv`);
+        const fmtRaw = parseUrl(req.url).searchParams.get("format");
+        const format = fmtRaw === "pdf" ? "pdf" : fmtRaw === "html" ? "html" : "csv";
+
+        if (format === "csv") {
+          sendDoc(res, "text/csv; charset=utf-8", brandedCsv(brand, report.name, { header, rows }), `${safeName}.csv`);
+          return;
+        }
+        // html / pdf render the result as a single branded table block (E-16 Phase B).
+        const tableRows: Array<Array<string | number>> = rows.map((r) => r.map((c) => (c === null || c === undefined ? "" : typeof c === "number" ? c : String(c))));
+        const blocks: ReportBlock[] = [{ kind: "table", header, rows: tableRows }];
+        const subtitle = report.description ?? undefined;
+        if (format === "html") {
+          sendDoc(res, "text/html; charset=utf-8", renderBrandedReportHtml(brand, { title: report.name, subtitle, blocks }));
+          return;
+        }
+        const pdf = await renderBrandedReportPdf(brand, { title: report.name, subtitle, blocks });
+        sendBinary(res, "application/pdf", pdf, `${safeName}.pdf`);
         return;
       }
 

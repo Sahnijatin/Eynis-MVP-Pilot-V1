@@ -78,6 +78,62 @@ export const REPORT_SOURCES: ReportSource[] = [
       { key: "lastActivityAt", label: "Last activity", type: "date" },
     ],
   },
+  {
+    key: "companies",
+    label: "Companies",
+    permission: "view_crm",
+    dateField: "createdAt",
+    columns: [
+      { key: "name", label: "Name", type: "text" },
+      { key: "domain", label: "Domain", type: "text" },
+      { key: "industry", label: "Industry", type: "text" },
+      { key: "size", label: "Size", type: "badge" },
+      { key: "createdAt", label: "Created", type: "date" },
+    ],
+  },
+  {
+    key: "campaign_calls",
+    label: "Campaign Calls",
+    permission: "manage_campaigns",
+    dateField: "createdAt",
+    metric: { key: "durationSeconds", label: "Total seconds" },
+    columns: [
+      { key: "status", label: "Status", type: "badge" },
+      { key: "outcome", label: "Outcome", type: "text" },
+      { key: "abVariant", label: "Variant", type: "badge" },
+      { key: "sentiment", label: "Sentiment", type: "badge" },
+      { key: "durationSeconds", label: "Duration (s)", type: "number" },
+      { key: "meetingBooked", label: "Meeting booked", type: "badge" },
+      { key: "createdAt", label: "Created", type: "date" },
+    ],
+  },
+  {
+    key: "sentiment_events",
+    label: "Sentiment Events",
+    permission: "view_reports",
+    dateField: "createdAt",
+    columns: [
+      { key: "speaker", label: "Speaker", type: "badge" },
+      { key: "sentiment", label: "Sentiment", type: "badge" },
+      { key: "score", label: "Score", type: "number" },
+      { key: "text", label: "Text", type: "text" },
+      { key: "createdAt", label: "Created", type: "date" },
+    ],
+  },
+  {
+    key: "offer_events",
+    label: "Offers & Revenue",
+    permission: "view_reports",
+    dateField: "createdAt",
+    metric: { key: "revenueInr", label: "Total revenue (₹)" },
+    columns: [
+      { key: "offerType", label: "Offer type", type: "text" },
+      { key: "channel", label: "Channel", type: "badge" },
+      { key: "status", label: "Status", type: "badge" },
+      { key: "revenueInr", label: "Revenue (₹)", type: "number" },
+      { key: "createdAt", label: "Created", type: "date" },
+    ],
+  },
 ];
 
 export const getReportSource = (key: string): ReportSource | undefined =>
@@ -122,6 +178,10 @@ function delegateFor(sourceKey: string): Delegate | null {
     case "service_requests": return prisma.serviceRequest as unknown as Delegate;
     case "deals": return prisma.deal as unknown as Delegate;
     case "contacts": return prisma.contact as unknown as Delegate;
+    case "companies": return prisma.company as unknown as Delegate;
+    case "campaign_calls": return prisma.callRecord as unknown as Delegate;
+    case "sentiment_events": return prisma.sentimentEvent as unknown as Delegate;
+    case "offer_events": return prisma.offerEvent as unknown as Delegate;
     default: return null;
   }
 }
@@ -176,10 +236,24 @@ export async function runReportDefinition(tenantId: string, def: ReportDefinitio
   if (!delegate) return { ok: false, error: `Unsupported source: ${source.key}` };
 
   // Build a tenant-scoped where clause from the allow-listed filters + date range.
+  // Coerce each value to its column's type so a number/boolean filter doesn't make
+  // Prisma throw (e.g. "Provided String, expected Int").
+  const colType = (key: string): ColumnType => source.columns.find((c) => c.key === key)?.type ?? "text";
   const where: Record<string, unknown> = { tenantId };
   for (const f of def.filters ?? []) {
     if (!f.value) continue;
-    where[f.field] = f.op === "contains" ? { contains: f.value, mode: "insensitive" } : f.value;
+    const type = colType(f.field);
+    if (type === "number") {
+      const n = Number(f.value);
+      if (!Number.isNaN(n)) where[f.field] = n;
+    } else if (f.field === "meetingBooked" || f.field === "whatsappSent" || f.field === "emailSent") {
+      where[f.field] = f.value.toLowerCase() === "true" || f.value === "1" || f.value.toLowerCase() === "yes";
+    } else if (type === "date") {
+      const d = parseBoundary(f.value, false);
+      if (d) where[f.field] = d;
+    } else {
+      where[f.field] = f.op === "contains" ? { contains: f.value, mode: "insensitive" } : f.value;
+    }
   }
   const from = parseBoundary(def.from, false);
   const to = parseBoundary(def.to, true);

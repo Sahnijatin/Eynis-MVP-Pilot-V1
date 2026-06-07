@@ -9,7 +9,8 @@ import type { ReportBrand } from "./brand";
 export type ReportBlock =
   | { kind: "headline"; text: string; score?: number }
   | { kind: "section"; heading: string; body: string }
-  | { kind: "list"; heading: string; items: string[] };
+  | { kind: "list"; heading: string; items: string[] }
+  | { kind: "table"; heading?: string; header: string[]; rows: Array<Array<string | number>> };
 
 const esc = (s: unknown): string =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -25,6 +26,14 @@ function renderBlock(b: ReportBlock): string {
       ? `<ul>${b.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
       : `<p class="muted">None.</p>`;
     return `<section><h2>${esc(b.heading)}</h2>${items}</section>`;
+  }
+  if (b.kind === "table") {
+    const head = `<tr>${b.header.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>`;
+    const body = b.rows.length
+      ? b.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${b.header.length}" class="muted">No rows.</td></tr>`;
+    const heading = b.heading ? `<h2>${esc(b.heading)}</h2>` : "";
+    return `<section>${heading}<table class="data"><thead>${head}</thead><tbody>${body}</tbody></table></section>`;
   }
   return `<section><h2>${esc(b.heading)}</h2><p>${esc(b.body)}</p></section>`;
 }
@@ -68,6 +77,10 @@ export function renderBrandedReportHtml(
   .score span { font-size: 32px; font-weight: 800; color: var(--brand); }
   .score small { display: block; color: #94a3b8; }
   ul { margin: 0; padding-left: 18px; } li { margin: 4px 0; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.data th { text-align: left; padding: 8px 10px; background: #f8fafc; color: #475569;
+    border-bottom: 1px solid #e2e8f0; text-transform: none; letter-spacing: 0; font-size: 11px; }
+  table.data td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; color: #0f172a; vertical-align: top; }
   p { line-height: 1.6; } .muted { color: #94a3b8; }
   .foot { padding: 16px 28px; color: #94a3b8; font-size: 12px; text-align: center; }
   .toolbar { max-width: 800px; margin: 16px auto -8px; text-align: right; }

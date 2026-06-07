@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Pencil, Trash2, Loader2, ArrowLeft } from "lucide-react";
-import { ReportResultTable, type RunResult } from "./report-result-table";
+import { Download, Printer, Pencil, Trash2, Loader2, ArrowLeft } from "lucide-react";
+import { type RunResult } from "./report-result-table";
+import { ReportResultView } from "./report-result-view";
 
 // Saved-report view (E-16): runs the report and shows the result, with branded
 // CSV export and (for the creator) edit/delete.
@@ -64,6 +65,9 @@ export function ReportView({ reportId }: { reportId: string }) {
             {meta?.description && <p className="page-subtitle">{meta.description}</p>}
           </div>
           <div className="flex items-center gap-2">
+            <a href={`/api/reports/${reportId}/export?format=pdf`} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
+              <Printer className="w-3.5 h-3.5" /> PDF
+            </a>
             <a href={`/api/reports/${reportId}/export?format=csv`} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
               <Download className="w-3.5 h-3.5" /> CSV
             </a>
@@ -91,7 +95,7 @@ export function ReportView({ reportId }: { reportId: string }) {
         {loading ? (
           <p className="text-sm text-slate-400 py-8 text-center">Running report…</p>
         ) : result ? (
-          <ReportResultTable result={result} />
+          <ReportResultView result={result} />
         ) : (
           <p className="text-sm text-slate-400 py-8 text-center">No results.</p>
         )}
