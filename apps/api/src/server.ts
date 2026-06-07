@@ -39,6 +39,9 @@ import { verifyPlatformAdmin, isPlatformAdminConfigured } from "./core/platform-
 import { isValidIndustry, industryOptions, VALID_INDUSTRIES } from "./core/industries";
 import { isValidTier, tierOptions, WHITELABEL_TIERS } from "./core/whitelabel";
 import { sanitizeCustomCss } from "./core/css-sanitize";
+import { loadReportBrand } from "./core/export/brand";
+import { brandedCsv } from "./core/export/csv";
+import { renderBrandedReportHtml, type ReportBlock } from "./core/export/report-html";
 
 const eventBus = new InMemoryEventBus();
 
@@ -50,6 +53,15 @@ eventBus.subscribe("service_request.created", (event) => {
 const json = (res: ServerResponse, status: number, payload: unknown) => {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(payload));
+};
+
+// Sends a generated document (E-9 exports). `download` sets Content-Disposition so
+// the browser saves the file (CSV); omit it for inline render (printable HTML).
+const sendDoc = (res: ServerResponse, contentType: string, body: string, download?: string) => {
+  const headers: Record<string, string> = { "content-type": contentType };
+  if (download) headers["content-disposition"] = `attachment; filename="${download.replace(/[^\w.\-]/g, "_")}"`;
+  res.writeHead(200, headers);
+  res.end(body);
 };
 
 // Turns an AI provider/parse failure into a clean 502 instead of letting it bubble
@@ -549,6 +561,8 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /ai/revenue-insights":             "view_reports",
   "POST /night-audit/generate":           "night_audit",
   "GET /night-audit/latest":              "view_reports",
+  "GET /night-audit/export":              "view_reports",
+  "GET /service-requests/export":         "view_requests",
   "POST /connectors/pms/webhook":         "manage_connectors",
   "POST /connectors/pms/simulate":        "manage_connectors",
   "GET /team/users":                      "manage_users",
@@ -899,6 +913,84 @@ const handleRequest = async (
         json(res, 200, { ok: true, tenant });
         return;
       }
+    }
+
+    // ── Branded exports (E-9) ───────────────────────────────────────────────────
+    // Declared early so they can't be shadowed by the broad /service-requests or
+    // /night-audit/latest list handlers below. Both render the tenant brand
+    // (logo/colors/support) and respect the `brandReports` flag + white-label tier.
+
+    // GET /night-audit/export?format=html|csv — latest night-audit report.
+    if (parseUrl(req.url).pathname === "/night-audit/export" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /night-audit/export");
+      if (!auth.ok) return;
+      const lic = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
+      if (!lic.ok) { json(res, 403, { ok: false, error: lic.error }); return; }
+      const { tenantId } = auth.context;
+      const report = await prisma.nightAuditReport.findFirst({ where: { tenantId }, orderBy: { generatedAt: "desc" } });
+      if (!report) { json(res, 404, { ok: false, error: "No night audit report found" }); return; }
+      let content: {
+        headline?: string; executiveSummary?: string; operationalScore?: number;
+        highlights?: string[]; concerns?: string[]; tomorrowRecommendations?: string[];
+      } = {};
+      try { content = JSON.parse(report.contentJson); } catch { content = {}; }
+      const brand = await loadReportBrand(tenantId);
+      const format = parseUrl(req.url).searchParams.get("format") === "csv" ? "csv" : "html";
+      const subtitle = `Report date: ${report.reportDate}`;
+
+      if (format === "csv") {
+        const rows: Array<Array<unknown>> = [
+          ["Headline", content.headline ?? ""],
+          ["Operational score", content.operationalScore ?? ""],
+          ["Executive summary", content.executiveSummary ?? ""],
+          ...(content.highlights ?? []).map((h, i) => [`Highlight ${i + 1}`, h]),
+          ...(content.concerns ?? []).map((c, i) => [`Concern ${i + 1}`, c]),
+          ...(content.tomorrowRecommendations ?? []).map((r, i) => [`Action ${i + 1}`, r])
+        ];
+        const csv = brandedCsv(brand, "Night Audit Report", { header: ["Field", "Value"], rows }, report.generatedAt);
+        sendDoc(res, "text/csv; charset=utf-8", csv, `night-audit-${report.reportDate}.csv`);
+        return;
+      }
+
+      const blocks: ReportBlock[] = [
+        { kind: "headline", text: content.headline ?? "—", score: content.operationalScore },
+        { kind: "section", heading: "Executive Summary", body: content.executiveSummary ?? "—" },
+        { kind: "list", heading: "Highlights", items: content.highlights ?? [] },
+        { kind: "list", heading: "Concerns", items: content.concerns ?? [] },
+        { kind: "list", heading: "Tomorrow's Action Plan", items: content.tomorrowRecommendations ?? [] }
+      ];
+      const html = renderBrandedReportHtml(brand, { title: "Night Audit Report", subtitle, generatedAt: report.generatedAt, blocks });
+      sendDoc(res, "text/html; charset=utf-8", html);
+      return;
+    }
+
+    // GET /service-requests/export?format=csv — tabular CSV of this tenant's SRs.
+    if (parseUrl(req.url).pathname === "/service-requests/export" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /service-requests/export");
+      if (!auth.ok) return;
+      const { tenantId } = auth.context;
+      const params = parseUrl(req.url).searchParams;
+      const statusFilter = asTrimmedString(params.get("status"));
+      const items = await prisma.serviceRequest.findMany({
+        where: { tenantId, ...(statusFilter ? { status: statusFilter } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+        select: {
+          id: true, category: true, status: true, priority: true, source: true,
+          summary: true, slaDueAt: true, slaBreachedAt: true, createdAt: true,
+          guest: { select: { fullName: true } }
+        }
+      });
+      const brand = await loadReportBrand(tenantId);
+      const rows: Array<Array<unknown>> = items.map((s) => [
+        s.id, s.guest?.fullName ?? "", s.category, s.status, s.priority ?? "", s.source,
+        s.summary ?? "", s.slaDueAt?.toISOString() ?? "", s.slaBreachedAt ? "yes" : "no",
+        s.createdAt.toISOString()
+      ]);
+      const header = ["ID", "Contact", "Category", "Status", "Priority", "Source", "Summary", "SLA due", "SLA breached", "Created"];
+      const csv = brandedCsv(brand, "Service Requests", { header, rows });
+      sendDoc(res, "text/csv; charset=utf-8", csv, `service-requests-${new Date().toISOString().slice(0, 10)}.csv`);
+      return;
     }
 
     // ── GET /auth/impersonations/recent — recent targets for the modal (E-6) ────

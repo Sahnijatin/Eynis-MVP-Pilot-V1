@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Clock, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, Clock, RefreshCw, Search, Download } from "lucide-react";
 import { QueueActionBanner } from "./queue-action-banner";
 import { PendingForm, PendingSubmitButton } from "./pending-form";
 
@@ -124,6 +124,13 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
             <p className="page-subtitle">Manage live guest needs and staff assignments</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Branded CSV export (E-9), honoring the active status filter. */}
+            <a
+              href={`/api/service-requests/export${filters.status ? `?status=${encodeURIComponent(filters.status)}` : ""}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50"
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </a>
             <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
               {(["Today", "Week", "Month"] as Period[]).map((t) => (
                 <button
