@@ -33,32 +33,72 @@ const authHeader = async (base: string, tenantId: string, email: string) => {
 
 after(async () => { await prisma.$disconnect(); });
 
-test("PUT /tenant/domains sets slug + customDomain; resolve maps both back", async () => {
+test("PUT /tenant/domains sets the self-serve subdomain; resolve maps it back", async () => {
   const { tenantId, email } = await seedAdmin();
   const server = buildServer();
   const base = await listen(server);
   try {
     const headers = await authHeader(base, tenantId, email);
     const slug = "tempus" + uid();
-    const customDomain = `app.${slug}.com`;
 
-    const put = await fetch(base + "/tenant/domains", { method: "PUT", headers, body: JSON.stringify({ slug, customDomain }) });
-    const pj = await put.json() as { ok: boolean; slug: string; customDomain: string };
+    const put = await fetch(base + "/tenant/domains", { method: "PUT", headers, body: JSON.stringify({ slug }) });
+    const pj = await put.json() as { ok: boolean; slug: string };
     assert.equal(put.status, 200);
     assert.equal(pj.slug, slug);
-    assert.equal(pj.customDomain, customDomain);
-
-    // Resolve by custom domain (host header form).
-    const byHost = await fetch(base + `/tenant/resolve?host=${customDomain}`);
-    const bh = await byHost.json() as { found: boolean; tenantId: string };
-    assert.equal(bh.found, true);
-    assert.equal(bh.tenantId, tenantId);
 
     // Resolve by <slug>.eynis.com subdomain.
     const bySub = await fetch(base + `/tenant/resolve?host=${slug}.eynis.com`);
     const bs = await bySub.json() as { found: boolean; tenantId: string };
     assert.equal(bs.found, true);
     assert.equal(bs.tenantId, tenantId);
+  } finally { await close(server); }
+});
+
+test("PUT /tenant/domains rejects a customer-set custom domain (provider-managed, E-10)", async () => {
+  const { tenantId, email } = await seedAdmin();
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    const headers = await authHeader(base, tenantId, email);
+    const put = await fetch(base + "/tenant/domains", { method: "PUT", headers, body: JSON.stringify({ customDomain: `app.${uid()}.com` }) });
+    assert.equal(put.status, 403);
+
+    // Nothing was persisted — custom domains are provisioned by staff, not here.
+    const fresh = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { customDomain: true } });
+    assert.equal(fresh?.customDomain, null);
+  } finally { await close(server); }
+});
+
+test("GET /tenant/resolve maps a provider-set custom domain back to its tenant", async () => {
+  const { tenantId } = await seedAdmin();
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    // Custom domain is set by staff (here, directly) — not via the customer endpoint.
+    const customDomain = `app.${uid()}.com`;
+    await prisma.tenant.update({ where: { id: tenantId }, data: { customDomain } });
+
+    const byHost = await fetch(base + `/tenant/resolve?host=${customDomain}`);
+    const bh = await byHost.json() as { found: boolean; tenantId: string };
+    assert.equal(bh.found, true);
+    assert.equal(bh.tenantId, tenantId);
+  } finally { await close(server); }
+});
+
+test("POST /tenant/domains/request files an audit entry for staff to action", async () => {
+  const { tenantId, email } = await seedAdmin();
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    const headers = await authHeader(base, tenantId, email);
+    const desiredDomain = `app.${uid()}.com`;
+    const r = await fetch(base + "/tenant/domains/request", { method: "POST", headers, body: JSON.stringify({ desiredDomain }) });
+    assert.equal(r.status, 200);
+
+    const log = await prisma.auditLog.findFirst({ where: { tenantId, action: "tenant.custom_domain_requested" }, orderBy: { createdAt: "desc" } });
+    assert.ok(log, "a request audit row should be written");
+    const meta = JSON.parse(log!.metadata) as { desiredDomain: string };
+    assert.equal(meta.desiredDomain, desiredDomain);
   } finally { await close(server); }
 });
 
@@ -75,7 +115,7 @@ test("GET /tenant/resolve returns found:false for platform hosts and unknown hos
   } finally { await close(server); }
 });
 
-test("PUT /tenant/domains rejects bad slug and eynis.com custom domains", async () => {
+test("PUT /tenant/domains rejects a bad slug", async () => {
   const { tenantId, email } = await seedAdmin();
   const server = buildServer();
   const base = await listen(server);
@@ -83,8 +123,6 @@ test("PUT /tenant/domains rejects bad slug and eynis.com custom domains", async 
     const headers = await authHeader(base, tenantId, email);
     const badSlug = await fetch(base + "/tenant/domains", { method: "PUT", headers, body: JSON.stringify({ slug: "Bad Slug!" }) });
     assert.equal(badSlug.status, 400);
-    const badDomain = await fetch(base + "/tenant/domains", { method: "PUT", headers, body: JSON.stringify({ customDomain: "foo.eynis.com" }) });
-    assert.equal(badDomain.status, 400);
   } finally { await close(server); }
 });
 

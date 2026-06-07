@@ -152,6 +152,69 @@ test("sending domain: POST verify refreshes status + audit-logs; 404 when unset"
   assert.ok(log, "a verify audit row should exist");
 });
 
+test("PATCH /internal/tenants/:id/domains sets slug + customDomain and audit-logs (E-10)", async () => {
+  const tenantId = await seedTenant();
+  const slug = "acme" + uid();
+  const customDomain = `app.${slug}.com`;
+
+  const noAuth = await fetch(base + `/internal/tenants/${tenantId}/domains`, {
+    method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug })
+  });
+  assert.equal(noAuth.status, 401);
+
+  const r = await fetch(base + `/internal/tenants/${tenantId}/domains`, {
+    method: "PATCH", headers: staff, body: JSON.stringify({ slug, customDomain, actor: "jatin@eynis" })
+  });
+  const body = await r.json() as { ok: boolean; tenant: { slug: string; customDomain: string } };
+  assert.equal(r.status, 200);
+  assert.equal(body.tenant.slug, slug);
+  assert.equal(body.tenant.customDomain, customDomain);
+
+  const fresh = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, customDomain: true } });
+  assert.equal(fresh?.slug, slug);
+  assert.equal(fresh?.customDomain, customDomain);
+
+  const log = await prisma.auditLog.findFirst({ where: { tenantId, action: "tenant.domains_changed" }, orderBy: { createdAt: "desc" } });
+  assert.ok(log, "a domains audit row should be written");
+  assert.equal(log!.actorRole, "platform_staff");
+  const meta = JSON.parse(log!.metadata) as { to: { slug: string; customDomain: string }; actor: string };
+  assert.equal(meta.to.customDomain, customDomain);
+  assert.equal(meta.actor, "jatin@eynis");
+});
+
+test("PATCH domains rejects a bad slug and an eynis.com custom domain", async () => {
+  const tenantId = await seedTenant();
+  const badSlug = await fetch(base + `/internal/tenants/${tenantId}/domains`, {
+    method: "PATCH", headers: staff, body: JSON.stringify({ slug: "Bad Slug!" })
+  });
+  assert.equal(badSlug.status, 400);
+  const badDomain = await fetch(base + `/internal/tenants/${tenantId}/domains`, {
+    method: "PATCH", headers: staff, body: JSON.stringify({ customDomain: "foo.eynis.com" })
+  });
+  assert.equal(badDomain.status, 400);
+
+  const fresh = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, customDomain: true } });
+  assert.equal(fresh?.slug, null);
+  assert.equal(fresh?.customDomain, null);
+});
+
+test("PATCH domains returns 404 for an unknown tenant", async () => {
+  const r = await fetch(base + "/internal/tenants/nope-nope/domains", {
+    method: "PATCH", headers: staff, body: JSON.stringify({ slug: "whatever" })
+  });
+  assert.equal(r.status, 404);
+});
+
+test("PATCH domains returns 409 when a slug is already taken", async () => {
+  const a = await seedTenant();
+  const b = await seedTenant();
+  const slug = "shared" + uid();
+  const first = await fetch(base + `/internal/tenants/${a}/domains`, { method: "PATCH", headers: staff, body: JSON.stringify({ slug }) });
+  assert.equal(first.status, 200);
+  const second = await fetch(base + `/internal/tenants/${b}/domains`, { method: "PATCH", headers: staff, body: JSON.stringify({ slug }) });
+  assert.equal(second.status, 409);
+});
+
 test("a tenant JWT cannot reach the internal routes", async () => {
   // A normal tenant bearer is not the platform secret → 401, never tenant-RBAC 403.
   const r = await fetch(base + "/internal/tenants", { headers: { authorization: "Bearer some.tenant.jwt" } });

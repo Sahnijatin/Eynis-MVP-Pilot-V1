@@ -3,16 +3,24 @@
 import { useEffect, useState } from "react";
 import { Button, Card, CardTitle, Field, Input, Badge, useToast, tokens as t } from "../ds";
 
-// Settings → Domains (A7): set the white-label subdomain (slug) and/or a fully
-// custom domain. Resolution + theming of the sign-in page happens off these.
+// Settings → Domains (A7 / E-10): customers self-serve their white-label
+// subdomain (slug), but the custom CNAME domain is provider-managed — we set up
+// DNS/SSL for it. So the custom domain here is read-only status + a request path;
+// staff fulfil the request from the internal provisioning console.
 const PLATFORM = "eynis.com";
 
 export function DomainsPanel() {
   const toast = useToast();
   const [slug, setSlug] = useState("");
-  const [customDomain, setCustomDomain] = useState("");
+  const [customDomain, setCustomDomain] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Custom-domain request flow.
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const [desiredDomain, setDesiredDomain] = useState("");
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -20,24 +28,39 @@ export function DomainsPanel() {
       try {
         const res = await fetch("/api/tenant/domains", { cache: "no-store" });
         const d = await res.json();
-        if (alive && d.ok) { setSlug(d.slug ?? ""); setCustomDomain(d.customDomain ?? ""); }
+        if (alive && d.ok) { setSlug(d.slug ?? ""); setCustomDomain(d.customDomain ?? null); }
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
   }, []);
 
-  async function save() {
+  async function saveSlug() {
     setSaving(true);
     try {
       const res = await fetch("/api/tenant/domains", {
         method: "PUT", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug: slug.trim() || null, customDomain: customDomain.trim() || null }),
+        body: JSON.stringify({ slug: slug.trim() || null }),
       });
       const d = await res.json();
       if (!res.ok || !d.ok) { toast.push(d.error ?? "Save failed", "error"); return; }
-      setSlug(d.slug ?? ""); setCustomDomain(d.customDomain ?? "");
-      toast.push("Domains saved", "success");
+      setSlug(d.slug ?? "");
+      toast.push("Subdomain saved", "success");
     } finally { setSaving(false); }
+  }
+
+  async function submitRequest() {
+    setSending(true);
+    try {
+      const res = await fetch("/api/tenant/domains/request", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ desiredDomain: desiredDomain.trim() || null }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok) { toast.push(d.error ?? "Request failed", "error"); return; }
+      setRequested(true);
+      setRequesting(false);
+      toast.push("Request received — our team will set this up", "success");
+    } finally { setSending(false); }
   }
 
   if (loading) return <Card style={{ maxWidth: 640 }}><span style={{ color: t.color.textMuted }}>Loading…</span></Card>;
@@ -46,7 +69,7 @@ export function DomainsPanel() {
     <Card style={{ maxWidth: 640 }}>
       <CardTitle>Custom domain</CardTitle>
       <p style={{ color: t.color.textMuted, fontSize: t.font.sm, marginTop: -6, marginBottom: 16 }}>
-        Run the app on your own URL. Your team signs in on a page branded as you — not Eynis.
+        Run the app on your own URL. Your team signs in on a page branded as you.
       </p>
 
       <Field label="Workspace subdomain" hint="No setup needed — works instantly.">
@@ -57,12 +80,43 @@ export function DomainsPanel() {
       </Field>
       {slug.trim() && <div style={{ marginBottom: 14 }}><Badge tone="accent">https://{slug.trim()}.{PLATFORM}</Badge></div>}
 
-      <Field label="Your own domain" hint={<>Point it at us with a DNS record: <code>{(customDomain.trim() || "app.tempus.com")} CNAME cname.{PLATFORM}</code>, then we provision HTTPS automatically.</>}>
-        <Input value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="app.tempus.com" />
-      </Field>
-      {customDomain.trim() && <div style={{ marginBottom: 14 }}><Badge tone="accent">https://{customDomain.trim()}</Badge></div>}
+      <div style={{ marginBottom: 14 }}>
+        <Button onClick={saveSlug} disabled={saving}>{saving ? "Saving…" : "Save subdomain"}</Button>
+      </div>
 
-      <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save domains"}</Button>
+      <hr style={{ border: "none", borderTop: `1px solid ${t.color.border}`, margin: "18px 0" }} />
+
+      {/* Custom CNAME domain — read-only status; provisioned by us (E-10). */}
+      <Field
+        label="Your own domain"
+        hint="Custom domains are set up by our team — we handle DNS and HTTPS for you."
+      >
+        {customDomain ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Badge tone="accent">https://{customDomain}</Badge>
+            <span style={{ color: t.color.textMuted, fontSize: t.font.sm }}>Active</span>
+          </div>
+        ) : requested ? (
+          <span style={{ color: t.color.textMuted, fontSize: t.font.sm }}>
+            Request received — our team will reach out to set this up.
+          </span>
+        ) : requesting ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            <Input
+              value={desiredDomain}
+              onChange={(e) => setDesiredDomain(e.target.value)}
+              placeholder="app.yourcompany.com"
+              style={{ maxWidth: 280 }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button onClick={submitRequest} disabled={sending}>{sending ? "Sending…" : "Send request"}</Button>
+              <Button variant="ghost" onClick={() => setRequesting(false)} disabled={sending}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <Button variant="ghost" onClick={() => setRequesting(true)}>Request a custom domain</Button>
+        )}
+      </Field>
     </Card>
   );
 }
