@@ -44,6 +44,7 @@ interface Props {
   initialRuns: ResearchRunItem[];
   catalog: ResearchSourceCatalog | null;
   licenseError: string | null;
+  initialRunId?: string | null;
 }
 
 type View = { mode: "home" } | { mode: "editor"; templateId?: string; clone?: boolean } | { mode: "run"; runId: string };
@@ -62,7 +63,7 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 export default function ResearchStudioClient(props: Props) {
   const { accent } = props;
   const toast = useToast();
-  const [view, setView] = useState<View>({ mode: "home" });
+  const [view, setView] = useState<View>(props.initialRunId ? { mode: "run", runId: props.initialRunId } : { mode: "home" });
   const [templates, setTemplates] = useState(props.initialTemplates);
   const [runs, setRuns] = useState(props.initialRuns);
   const [runModalFor, setRunModalFor] = useState<TemplateDetail | null>(null);

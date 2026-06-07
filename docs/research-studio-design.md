@@ -267,6 +267,22 @@ RS-1 is implemented in this branch. What landed, and a few deliberate calls made
 
 **New env vars:** `SEARXNG_URL` (web search; unset → search degrades gracefully), `PAGESPEED_API_KEY` (optional, free tier), and optional tuning: `RESEARCH_CLAUDE_CHEAP_MODEL`, `RESEARCH_OPENAI_CHEAP_MODEL`, `RESEARCH_WORKER_INTERVAL_MS`, `RESEARCH_WORKER_BATCH`, `RESEARCH_CACHE_TTL_MS`, `RESEARCH_USER_AGENT`.
 
+## 9b. Implementation status — RS-2 shipped
+
+The contextual lite Research button is implemented.
+
+- Reusable `apps/web/components/ui/research-button.tsx`: opens a modal that picks a
+  fast template for the subject type, **pre-fills inputs from the record**, runs a
+  `fast: true` (cheap-tier) pass inline with live progress, then shows a compact
+  preview. The result is auto-logged to the record's timeline (engine write-back).
+- Embedded on the **Contact** and **Company** detail modals. The Studio gained
+  **run deep-linking** (`/research?run=<id>`), so "Open full report" jumps straight
+  to the full branded run view.
+- **Deal-context note:** the deals board has no per-deal detail modal (deals are
+  edited on the kanban/grid), so a direct deal button isn't wired in v1. Deal
+  research is covered via the linked company/contact and, in **RS-3**, the
+  `research_on_stage` auto-run. A deal button can drop in once a deal detail view exists.
+
 ## 10. Non-goals (v1)
 
 - No Python scrape-worker sidecar (revisit only if TS scraping quality is insufficient).

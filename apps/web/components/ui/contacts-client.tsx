@@ -6,6 +6,7 @@ import { Button, PageHeader, Field, Input, Select, Textarea, Badge, Modal, Spinn
 import { DataGrid, type GridColumn } from "./data-grid";
 import { CrmTabs } from "./crm-tabs";
 import { CsvImportModal } from "./csv-import-modal";
+import ResearchButton from "./research-button";
 import type { ContactRow, CompanyRow, TimelineItem } from "../../lib/data";
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
@@ -297,7 +298,10 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <div style={{ fontSize: t.font.sm, color: t.color.textMuted }}>{contact.email || "—"} · {contact.phoneE164 || "no phone"} · source: {contact.source || "—"}</div>
-            <Button variant="secondary" onClick={runScore} disabled={scoring}>{scoring ? <Spinner size={14} /> : "✨ AI score"}</Button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <ResearchButton subjectType="contact" subjectId={id} subjectLabel={contact.fullName} prefill={{ name: contact.fullName, email: contact.email ?? "" }} />
+              <Button variant="secondary" onClick={runScore} disabled={scoring}>{scoring ? <Spinner size={14} /> : "✨ AI score"}</Button>
+            </div>
           </div>
           {score && (
             <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 12px", background: t.color.accentSoft, borderRadius: t.radius.md }}>
