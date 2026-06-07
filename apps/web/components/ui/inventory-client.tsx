@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Package, Upload, Download, X, Trash2 } from "lucide-react";
+import { Package, Upload, Download, Trash2 } from "lucide-react";
+import { Modal, Button, Field, Input, Select } from "../ds";
 import { escapeCSV, parseCSVLine } from "../../lib/csv";
 import type { InventoryItem } from "../../lib/data";
 
@@ -115,15 +116,13 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
-          <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
             <Upload className="w-4 h-4" /> Import CSV
-          </button>
-          <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">
+          </Button>
+          <Button variant="secondary" onClick={exportCSV}>
             <Download className="w-4 h-4" /> Export CSV
-          </button>
-          <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "#ea580c" }}>
-            + Log Stock
-          </button>
+          </Button>
+          <Button variant="primary" onClick={() => setShowModal(true)}>+ Log Stock</Button>
         </div>
       </div>
 
@@ -162,7 +161,12 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
           <h3 className="card-title mb-0">Stock Levels</h3>
         </div>
         {items.length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">No items yet. Use “Log Stock” or “Import CSV” to add inventory.</p>
+          <div className="py-10 text-center">
+            <div className="text-2xl mb-2">📦</div>
+            <div className="font-semibold text-slate-700">No items yet</div>
+            <p className="text-sm text-slate-400 mt-1 mb-4">Use “Log Stock” or “Import CSV” to add inventory.</p>
+            <Button variant="primary" onClick={() => setShowModal(true)}>Log Stock</Button>
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -198,56 +202,46 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">Log Stock Movement</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Update an existing item or add a new one</p>
+        <Modal
+          title="Log Stock Movement"
+          onClose={() => { setShowModal(false); setForm(EMPTY_FORM); }}
+          footer={
+            <>
+              <Button variant="ghost" type="button" onClick={() => { setShowModal(false); setForm(EMPTY_FORM); }}>Cancel</Button>
+              <Button variant="primary" type="submit" form="inventory-form" disabled={busy}>{busy ? "Saving…" : "Log Movement"}</Button>
+            </>
+          }
+        >
+          <p className="text-xs text-slate-400 mb-3">Update an existing item or add a new one.</p>
+          <form id="inventory-form" onSubmit={handleSubmit} className="space-y-3">
+            <Field label="Item name">
+              <Input placeholder="e.g. Truffle Oil (250ml)" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
+            </Field>
+            <Field label="Category">
+              <Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
+                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              </Select>
+            </Field>
+            <Field label="Transaction type">
+              <div className="flex gap-2">
+                {TX_TYPES.map((t) => (
+                  <button key={t} type="button" onClick={() => setForm((f) => ({ ...f, txType: t }))}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border capitalize transition-colors ${form.txType === t ? (t === "received" ? "bg-emerald-500 text-white border-emerald-500" : t === "used" ? "bg-blue-500 text-white border-blue-500" : "bg-red-400 text-white border-red-400") : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                    {t}
+                  </button>
+                ))}
               </div>
-              <button onClick={() => { setShowModal(false); setForm(EMPTY_FORM); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Quantity">
+                <Input type="number" min="0" step="0.1" placeholder="0" value={form.qty} onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))} required />
+              </Field>
+              <Field label="Unit">
+                <Input placeholder="bottles, kg, pcs…" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} />
+              </Field>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Item Name *</label>
-                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="e.g. Truffle Oil (250ml)" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Category</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Transaction Type</label>
-                <div className="flex gap-2">
-                  {TX_TYPES.map((t) => (
-                    <button key={t} type="button" onClick={() => setForm((f) => ({ ...f, txType: t }))}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border capitalize transition-colors ${form.txType === t ? (t === "received" ? "bg-emerald-500 text-white border-emerald-500" : t === "used" ? "bg-blue-500 text-white border-blue-500" : "bg-red-400 text-white border-red-400") : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Quantity *</label>
-                  <input type="number" min="0" step="0.1" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" value={form.qty} onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))} required />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Unit</label>
-                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="bottles, kg, pcs…" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button type="button" onClick={() => { setShowModal(false); setForm(EMPTY_FORM); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: "#ea580c" }}>
-                  {busy ? "Saving…" : "Log Movement"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
     </div>
   );
