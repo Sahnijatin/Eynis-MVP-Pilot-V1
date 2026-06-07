@@ -7,7 +7,7 @@ export default function Loading() {
       <div className="flex flex-col items-center gap-3 text-slate-400">
         <div
           className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin"
-          style={{ borderTopColor: "var(--color-industry, #0f766e)" }}
+          style={{ borderTopColor: "var(--color-primary, #0f766e)" }}
         />
         <span className="text-sm">Loading your workspace…</span>
       </div>
