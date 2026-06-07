@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MessageTemplateRow } from "../../lib/data";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, LinkButton, Card, CardTitle, Field, Label, Input, Select, useToast, tokens as t } from "../ds";
+import { Button, LinkButton, Card, CardTitle, Field, Label, Input, Select, Disclosure, useToast, tokens as t } from "../ds";
 
 // Reusable variable reference — shared across voice script, WhatsApp, and email.
 const VARIABLE_GROUPS: Array<{ group: string; vars: string[] }> = [
@@ -231,9 +231,13 @@ export function CampaignBuilder() {
             </div>
           ))}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-            <Field label="Agent name (intro)"><Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="defaults to hotel name" /></Field>
-            <Field label="Outcome types (comma-separated)"><Input value={outcomeTypes} onChange={(e) => setOutcomeTypes(e.target.value)} /></Field>
+          <div style={{ marginTop: 12 }}>
+            <Disclosure summary="Advanced voice settings">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Agent name (intro)"><Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="defaults to your business name" /></Field>
+                <Field label="Outcome types (comma-separated)"><Input value={outcomeTypes} onChange={(e) => setOutcomeTypes(e.target.value)} /></Field>
+              </div>
+            </Disclosure>
           </div>
         </Card>
       )}
@@ -249,10 +253,14 @@ export function CampaignBuilder() {
               {waTemplates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
             </Select>
           </Field>
-          <Field label="Legacy: raw Content SID (optional, advanced)"><Input value={whatsappContentSid} onChange={(e) => setWaSid(e.target.value)} placeholder="HX…" /></Field>
           <div style={{ marginBottom: 14 }}>
             <TemplateField label="Template body (for preview)" value={whatsappTemplateBody} onChange={setWaBody} rows={3}
               placeholder="Hi {lead.firstName}, …" />
+          </div>
+          <div style={{ marginBottom: 4 }}>
+            <Disclosure summary="Advanced (legacy raw Content SID)">
+              <Field label="Raw Content SID"><Input value={whatsappContentSid} onChange={(e) => setWaSid(e.target.value)} placeholder="HX…" /></Field>
+            </Disclosure>
           </div>
           <Field label={`Template variables — one per line, in order ({{1}}, {{2}}…)`}>
             <textarea value={whatsappVariables} onChange={(e) => setWaVars(e.target.value)} rows={3}
@@ -291,12 +299,14 @@ export function CampaignBuilder() {
 
       <Card style={{ marginBottom: 16 }}>
         <CardTitle>Delivery controls</CardTitle>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <Field label="Calendly link"><Input value={calendlyLink} onChange={(e) => setCalendly(e.target.value)} /></Field>
-          <Field label="Max concurrent"><Input value={maxConcurrent} onChange={(e) => setMaxConcurrent(e.target.value)} type="number" min={0} /></Field>
-          <Field label="Spend cap (sends/dials)"><Input value={spendCapCalls} onChange={(e) => setSpendCap(e.target.value)} type="number" min={1} placeholder="optional" /></Field>
-          <Field label="Default country code"><Input value={defaultCountryCode} onChange={(e) => setCountry(e.target.value)} /></Field>
-        </div>
+        <Field label="Calendly link"><Input value={calendlyLink} onChange={(e) => setCalendly(e.target.value)} placeholder="https://calendly.com/…" /></Field>
+        <Disclosure summary="Advanced delivery settings">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <Field label="Max concurrent"><Input value={maxConcurrent} onChange={(e) => setMaxConcurrent(e.target.value)} type="number" min={0} /></Field>
+            <Field label="Spend cap (sends/dials)"><Input value={spendCapCalls} onChange={(e) => setSpendCap(e.target.value)} type="number" min={1} placeholder="optional" /></Field>
+            <Field label="Default country code"><Input value={defaultCountryCode} onChange={(e) => setCountry(e.target.value)} /></Field>
+          </div>
+        </Disclosure>
       </Card>
 
       {error && <div style={{ color: t.color.danger, background: t.color.dangerSoft, padding: 10, borderRadius: t.radius.md, marginBottom: 12, fontSize: t.font.sm }}>{error}</div>}
