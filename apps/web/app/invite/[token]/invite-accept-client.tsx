@@ -9,9 +9,12 @@ interface Props {
   email: string;
   hotelName: string;
   roleName: string;
+  // Tenant primary color (resolved server-side from the host) so the accept
+  // flow matches the white-label brand instead of a hardcoded teal (E-9).
+  primaryColor: string;
 }
 
-export default function InviteAcceptClient({ token, email, hotelName, roleName }: Props) {
+export default function InviteAcceptClient({ token, email, hotelName, roleName, primaryColor }: Props) {
   const { isSignedIn, user } = useUser();
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,7 +83,7 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName }
         <a
           href={nextHref}
           className="block w-full text-center py-2.5 px-4 text-white rounded-lg text-sm font-medium transition-colors"
-          style={{ background: "#0f766e" }}
+          style={{ background: primaryColor }}
         >
           {nextLabel}
         </a>
@@ -139,7 +142,7 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName }
           type="submit"
           disabled={loading}
           className="w-full py-2.5 px-4 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          style={{ background: "#0f766e" }}
+          style={{ background: primaryColor }}
         >
           {loading ? "Setting up your account…" : "Accept Invitation"}
         </button>
