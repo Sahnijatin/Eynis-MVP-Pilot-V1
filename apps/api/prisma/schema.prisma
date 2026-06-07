@@ -64,6 +64,7 @@ model Tenant {
   companies             Company[]
   activities            Activity[]
   dealSuggestions       DealSuggestion[]
+  reports               Report[]
 
   @@map("Hotel")
 }
@@ -175,6 +176,7 @@ model User {
   ownedContacts      Contact[]                  @relation("contact_owner")
   ownedCompanies     Company[]                  @relation("company_owner")
   activities         Activity[]                 @relation("activity_actor")
+  reports            Report[]                   @relation("report_creator")
 
   @@unique([tenantId, email])
 }
@@ -982,4 +984,25 @@ model DealTransition {
 
   @@index([tenantId])
   @@index([dealId])
+}
+
+// User-built saved report (E-16). The query is stored as a definition JSON
+// (source, columns, filters, group-by, sort, visualization) and executed against
+// tenant-scoped data at run time. `shared=false` → visible only to the creator;
+// `shared=true` → visible to any tenant member with the reports permission.
+model Report {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("hotelId")
+  name           String
+  description    String?
+  source         String // data-source key: service_requests | deals | contacts
+  definitionJson String // JSON: { columns, filters, dateField, from, to, groupBy, sort, visualization }
+  shared         Boolean  @default(false)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy      User?    @relation("report_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
 }

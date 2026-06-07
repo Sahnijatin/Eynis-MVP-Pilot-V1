@@ -41,6 +41,7 @@ import { isValidTier, tierOptions, WHITELABEL_TIERS } from "./core/whitelabel";
 import { sanitizeCustomCss } from "./core/css-sanitize";
 import { loadReportBrand } from "./core/export/brand";
 import { brandedCsv } from "./core/export/csv";
+import { REPORT_SOURCES, getReportSource, runReportDefinition, validateDefinition, type ReportDefinition } from "./core/reports/reports";
 import { renderBrandedReportHtml, type ReportBlock } from "./core/export/report-html";
 import { renderBrandedReportPdf } from "./core/export/report-pdf";
 import { provisionSendingDomain, refreshSendingDomain, isValidSendingDomain, isValidLocalPart } from "./core/email/domains";
@@ -3103,6 +3104,191 @@ const handleRequest = async (
       const context = auth.context;
       json(res, 200, await computeUpsellAnalytics(context.tenantId));
       return;
+    }
+
+    // ── Reports: custom report builder (E-16) ────────────────────────────────
+    // Module gated by view_reports; every run/save ALSO checks the user holds the
+    // chosen source's own permission (per-source RBAC) so a report can't surface
+    // data the user otherwise can't see. All queries are tenant-scoped.
+    {
+      const rpath = parseUrl(req.url).pathname;
+      const parseDef = (s: string): ReportDefinition | null => {
+        try { const d = JSON.parse(s) as ReportDefinition; return d && typeof d === "object" ? d : null; } catch { return null; }
+      };
+
+      if (rpath === "/reports/sources" && req.method === "GET") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        if (!hasPermission(auth.context.permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        json(res, 200, { ok: true, sources: REPORT_SOURCES });
+        return;
+      }
+
+      // POST /reports/run — execute an ad-hoc definition (builder live preview).
+      if (rpath === "/reports/run" && req.method === "POST") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const body = (await parseBody(req)) as { definition?: ReportDefinition };
+        const def = body.definition;
+        if (!def || typeof def !== "object") { json(res, 400, { ok: false, error: "definition is required" }); return; }
+        const source = getReportSource(def.source);
+        if (!source) { json(res, 400, { ok: false, error: "Unknown data source" }); return; }
+        if (!hasPermission(permissions, source.permission)) { json(res, 403, { ok: false, error: `You don't have access to ${source.label}` }); return; }
+        const result = await runReportDefinition(tenantId, def);
+        json(res, result.ok ? 200 : 400, result);
+        return;
+      }
+
+      // GET /reports — list saved reports the user can see (own + shared).
+      if (rpath === "/reports" && req.method === "GET") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const rows = await prisma.report.findMany({
+          where: { tenantId, OR: [{ shared: true }, { createdById: userId }] },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true, name: true, description: true, source: true, shared: true, createdById: true, createdAt: true, updatedAt: true },
+        });
+        json(res, 200, { ok: true, items: rows.map((r) => ({ ...r, isOwner: r.createdById === userId })) });
+        return;
+      }
+
+      // POST /reports — save a new report.
+      if (rpath === "/reports" && req.method === "POST") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const body = (await parseBody(req)) as { name?: unknown; description?: unknown; shared?: unknown; definition?: ReportDefinition };
+        const name = asTrimmedString(body.name);
+        if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+        const def = body.definition;
+        if (!def || typeof def !== "object") { json(res, 400, { ok: false, error: "definition is required" }); return; }
+        const valid = validateDefinition(def);
+        if (!valid.ok) { json(res, 400, valid); return; }
+        if (!hasPermission(permissions, valid.source.permission)) { json(res, 403, { ok: false, error: `You don't have access to ${valid.source.label}` }); return; }
+        const created = await prisma.report.create({
+          data: {
+            tenantId, name, description: asTrimmedString(body.description),
+            source: valid.source.key, definitionJson: JSON.stringify(def),
+            shared: body.shared === true, createdById: userId,
+          },
+          select: { id: true },
+        });
+        json(res, 201, { ok: true, id: created.id });
+        return;
+      }
+
+      const runMatch = /^\/reports\/([^/]+)\/run$/.exec(rpath);
+      const exportMatch = /^\/reports\/([^/]+)\/export$/.exec(rpath);
+      const idMatch = /^\/reports\/([^/]+)$/.exec(rpath);
+
+      // GET /reports/:id/run — run a saved report.
+      if (runMatch && req.method === "GET") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(runMatch[1] as string);
+        const report = await prisma.report.findFirst({ where: { id, tenantId } });
+        if (!report || (!report.shared && report.createdById !== userId)) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        const def = parseDef(report.definitionJson);
+        const source = def && getReportSource(def.source);
+        if (!def || !source) { json(res, 400, { ok: false, error: "Invalid report definition" }); return; }
+        if (!hasPermission(permissions, source.permission)) { json(res, 403, { ok: false, error: `You don't have access to ${source.label}` }); return; }
+        const result = await runReportDefinition(tenantId, def);
+        if (!result.ok) { json(res, 400, result); return; }
+        json(res, 200, { ...result, name: report.name });
+        return;
+      }
+
+      // GET /reports/:id/export?format=csv — branded CSV of a saved report.
+      if (exportMatch && req.method === "GET") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(exportMatch[1] as string);
+        const report = await prisma.report.findFirst({ where: { id, tenantId } });
+        if (!report || (!report.shared && report.createdById !== userId)) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        const def = parseDef(report.definitionJson);
+        const source = def && getReportSource(def.source);
+        if (!def || !source) { json(res, 400, { ok: false, error: "Invalid report definition" }); return; }
+        if (!hasPermission(permissions, source.permission)) { json(res, 403, { ok: false, error: `You don't have access to ${source.label}` }); return; }
+        const result = await runReportDefinition(tenantId, def);
+        if (!result.ok) { json(res, 400, result); return; }
+        const brand = await loadReportBrand(tenantId);
+        const labelOf = (key: string) => source.columns.find((c) => c.key === key)?.label ?? key;
+        let header: string[];
+        let rows: Array<Array<unknown>>;
+        if (result.grouped) {
+          header = [labelOf(def.groupBy as string), "Count", ...(source.metric ? [source.metric.label] : [])];
+          rows = result.grouped.map((g) => [g.group, g.count, ...(source.metric ? [g.sum ?? 0] : [])]);
+        } else {
+          header = result.columns.map((c) => c.label);
+          rows = result.rows.map((row) => result.columns.map((c) => row[c.key] ?? ""));
+        }
+        const csv = brandedCsv(brand, report.name, { header, rows });
+        const safeName = report.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-|-$/g, "") || "report";
+        sendDoc(res, "text/csv; charset=utf-8", csv, `${safeName}.csv`);
+        return;
+      }
+
+      // GET /reports/:id — fetch a saved report's definition.
+      if (idMatch && req.method === "GET") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(idMatch[1] as string);
+        const report = await prisma.report.findFirst({ where: { id, tenantId } });
+        if (!report || (!report.shared && report.createdById !== userId)) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        json(res, 200, {
+          ok: true,
+          report: {
+            id: report.id, name: report.name, description: report.description, source: report.source,
+            shared: report.shared, isOwner: report.createdById === userId, definition: parseDef(report.definitionJson),
+          },
+        });
+        return;
+      }
+
+      // PUT /reports/:id — update (creator only).
+      if (idMatch && req.method === "PUT") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(idMatch[1] as string);
+        const existing = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
+        if (!existing) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (existing.createdById !== userId) { json(res, 403, { ok: false, error: "Only the report's creator can edit it" }); return; }
+        const body = (await parseBody(req)) as { name?: unknown; description?: unknown; shared?: unknown; definition?: ReportDefinition };
+        const data: Record<string, unknown> = {};
+        const name = asTrimmedString(body.name);
+        if (name) data.name = name;
+        if ("description" in body) data.description = asTrimmedString(body.description);
+        if (typeof body.shared === "boolean") data.shared = body.shared;
+        if (body.definition && typeof body.definition === "object") {
+          const valid = validateDefinition(body.definition);
+          if (!valid.ok) { json(res, 400, valid); return; }
+          if (!hasPermission(permissions, valid.source.permission)) { json(res, 403, { ok: false, error: `You don't have access to ${valid.source.label}` }); return; }
+          data.source = valid.source.key;
+          data.definitionJson = JSON.stringify(body.definition);
+        }
+        await prisma.report.update({ where: { id }, data });
+        json(res, 200, { ok: true });
+        return;
+      }
+
+      // DELETE /reports/:id — delete (creator only).
+      if (idMatch && req.method === "DELETE") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(idMatch[1] as string);
+        const existing = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
+        if (!existing) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (existing.createdById !== userId) { json(res, 403, { ok: false, error: "Only the report's creator can delete it" }); return; }
+        await prisma.report.delete({ where: { id } });
+        json(res, 200, { ok: true });
+        return;
+      }
     }
 
     // ── Inventory (vertical with real persistence) ───────────────────────────
