@@ -174,10 +174,11 @@ export function BrandingPanel() {
             </div>
           </Field>
           <Field label="Font family" hint="A CSS font stack, e.g. Poppins, system-ui, sans-serif. Letters/quotes/commas only.">
-            <Input value={form.fontFamily ?? ""} onChange={(e) => set({ fontFamily: e.target.value })} placeholder="Inter, system-ui, sans-serif" />
+            <Input disabled={!fullWl} value={form.fontFamily ?? ""} onChange={(e) => set({ fontFamily: e.target.value })} placeholder="Inter, system-ui, sans-serif" />
           </Field>
           <Field label="Custom CSS" hint="Advanced. Applied across your workspace. For safety we strip url(), @import, and HTML — so remote fonts/images aren't supported here (use the logo + font fields).">
             <textarea
+              disabled={!fullWl}
               value={form.customCss ?? ""}
               onChange={(e) => set({ customCss: e.target.value })}
               placeholder={".app-sidebar { letter-spacing: .02em; }\n.card { border-radius: 14px; }"}

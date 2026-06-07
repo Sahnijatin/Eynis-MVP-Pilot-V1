@@ -30,6 +30,10 @@ export function sanitizeCustomCss(input: unknown): string | null {
   css = css
     // Strip CSS comments first (they could hide keywords like @imp/**/ort).
     .replace(/\/\*[\s\S]*?\*\//g, "")
+    // Remove backslashes so CSS escape sequences can't reconstitute a stripped
+    // keyword (e.g. "\75 rl(" → url(, "@\69mport"). We don't support escapes in
+    // tenant theming, so dropping them is safe and closes the obfuscation bypass.
+    .replace(/\\/g, "")
     // No angle brackets at all → "</style>" can't terminate the <style> element.
     .replace(/[<>]/g, "")
     // Remove at-rules that fetch remote resources.

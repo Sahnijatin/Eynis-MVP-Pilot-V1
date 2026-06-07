@@ -4,8 +4,14 @@ import type { ReportBrand } from "./brand";
 
 // RFC-4180 quoting: wrap in quotes and double embedded quotes when the value
 // contains a quote, comma, or newline. Everything is stringified first.
+//
+// Also guards against CSV/formula injection: a cell beginning with = + - @ (or a
+// tab/CR) is interpreted as a formula by Excel/Sheets, and export data includes
+// attacker-controllable text (e.g. WhatsApp-sourced request summaries). We prefix
+// such cells with an apostrophe so they're treated as text. (OWASP CSV injection.)
 export function csvCell(value: unknown): string {
-  const s = value === null || value === undefined ? "" : String(value);
+  let s = value === null || value === undefined ? "" : String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

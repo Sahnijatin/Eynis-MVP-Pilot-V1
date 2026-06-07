@@ -957,25 +957,39 @@ const handleRequest = async (
           return;
         }
         const fromName = asTrimmedString(body.fromName);
-        const provision = await provisionSendingDomain(domain);
-        const data = {
-          domain,
-          fromLocalPart: localPartInput,
-          fromName,
-          resendDomainId: provision.resendDomainId,
-          status: provision.status,
-          dnsRecords: JSON.stringify(provision.dnsRecords),
-          lastCheckedAt: new Date()
-        };
+        // If the domain is unchanged and already registered with the provider, don't
+        // re-create it (the provider errors on a duplicate, which would wrongly flip
+        // the status to "failed") — just re-check its status. Only (re)provision when
+        // the domain is new or changed; editing the from-identity alone is fine.
+        const existingSd = await prisma.sendingDomain.findUnique({ where: { tenantId } });
+        const reuse = existingSd && existingSd.domain === domain && !!existingSd.resendDomainId;
+        let resendDomainId: string | null;
+        let status: string;
+        let dnsRecords: unknown[];
+        let live: boolean;
+        if (reuse) {
+          const refreshed = await refreshSendingDomain(existingSd!.resendDomainId, domain);
+          resendDomainId = existingSd!.resendDomainId;
+          status = refreshed.status;
+          dnsRecords = refreshed.dnsRecords ?? (existingSd!.dnsRecords ? JSON.parse(existingSd!.dnsRecords) : []);
+          live = refreshed.live;
+        } else {
+          const provision = await provisionSendingDomain(domain);
+          resendDomainId = provision.resendDomainId;
+          status = provision.status;
+          dnsRecords = provision.dnsRecords;
+          live = provision.live;
+        }
+        const data = { domain, fromLocalPart: localPartInput, fromName, resendDomainId, status, dnsRecords: JSON.stringify(dnsRecords), lastCheckedAt: new Date() };
         const sd = await prisma.sendingDomain.upsert({ where: { tenantId }, create: { tenantId, ...data }, update: data });
         await prisma.auditLog.create({
           data: {
             tenantId, actorRole: "platform_staff", action: "tenant.sending_domain_set",
             entityType: "sending_domain", entityId: sd.id,
-            metadata: JSON.stringify({ domain, status: provision.status, live: provision.live, actor: asTrimmedString(body.actor) ?? "platform_console" })
+            metadata: JSON.stringify({ domain, status, live, actor: asTrimmedString(body.actor) ?? "platform_console" })
           }
         });
-        json(res, 200, { ok: true, sendingDomain: { ...sd, dnsRecords: provision.dnsRecords }, live: provision.live });
+        json(res, 200, { ok: true, sendingDomain: { ...sd, dnsRecords }, live });
         return;
       }
 

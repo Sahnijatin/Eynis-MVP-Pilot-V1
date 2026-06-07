@@ -6,7 +6,7 @@ import { prisma } from "../../db/prisma";
 import { seedDefaultRolesForHotel } from "../rbac";
 import { csvCell, toCsvRows, brandedCsv } from "./csv";
 import { renderBrandedReportHtml } from "./report-html";
-import { renderBrandedReportPdf } from "./report-pdf";
+import { renderBrandedReportPdf, isSafeLogoUrl } from "./report-pdf";
 import { loadReportBrand, type ReportBrand } from "./brand";
 
 // E-9 — branded PDF/CSV exports.
@@ -32,6 +32,32 @@ test("csvCell quotes values with commas, quotes, or newlines", () => {
 
 test("toCsvRows joins with CRLF", () => {
   assert.equal(toCsvRows([["a", "b"], ["c", "d"]]), "a,b\r\nc,d");
+});
+
+test("csvCell defuses formula injection (leading = + - @) by prefixing an apostrophe", () => {
+  assert.equal(csvCell("=SUM(A1)"), "'=SUM(A1)");
+  assert.equal(csvCell("+1"), "'+1");
+  assert.equal(csvCell("-2"), "'-2");
+  assert.equal(csvCell("@cmd"), "'@cmd");
+  assert.equal(csvCell("safe"), "safe");      // normal text untouched
+  assert.equal(csvCell("a=b"), "a=b");         // = not leading → untouched
+  // Leading "=" AND a comma → defused then RFC-quoted.
+  assert.equal(csvCell("=a,b"), '"\'=a,b"');
+});
+
+test("isSafeLogoUrl blocks SSRF targets (non-https, private/loopback/metadata)", () => {
+  assert.equal(isSafeLogoUrl("https://cdn.acme.com/logo.png"), true);
+  for (const bad of [
+    "http://cdn.acme.com/logo.png",            // not https
+    "https://169.254.169.254/latest/meta-data",// cloud metadata
+    "https://localhost/l.png",
+    "https://10.0.0.5/l.png",
+    "https://192.168.1.10/l.png",
+    "https://172.16.4.4/l.png",
+    "https://127.0.0.1/l.png",
+    "https://db.internal/l.png",
+    "not a url",
+  ]) assert.equal(isSafeLogoUrl(bad), false, bad);
 });
 
 test("brandedCsv adds a brand preamble + drops 'powered by' for white_label", () => {

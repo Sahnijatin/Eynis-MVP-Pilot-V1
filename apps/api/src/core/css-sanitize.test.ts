@@ -56,6 +56,19 @@ test("obfuscation via comments inside keywords does not survive as a live keywor
   assert.doesNotMatch(out ?? "", /url\s*\(/i);
 });
 
+test("strips backslashes so CSS escapes can't reconstitute url()/@import", () => {
+  // "\75 rl(" is the escaped form of url( — after backslash removal it can no
+  // longer be parsed as the url() function, and no backslash survives.
+  const out = sanitizeCustomCss(String.raw`.a{background:\75 rl(https://evil/leak)} .b{color:blue}`);
+  assert.doesNotMatch(out ?? "", /\\/);
+  assert.doesNotMatch(out ?? "", /url\s*\(/i);
+  assert.match(out ?? "", /\.b\{color:blue\}/);
+
+  const imp = sanitizeCustomCss(String.raw`@\69 mport "https://evil/x.css"; .a{color:red}`);
+  assert.doesNotMatch(imp ?? "", /\\/);
+  assert.doesNotMatch(imp ?? "", /@import/i);
+});
+
 test("caps length to bound the payload", () => {
   const huge = ".a{color:red}".repeat(5000); // ~65k chars
   const out = sanitizeCustomCss(huge);
