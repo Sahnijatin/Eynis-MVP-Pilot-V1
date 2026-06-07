@@ -43,3 +43,24 @@ test("groups offers by type with real conversion rate + revenue (F-17)", async (
   // highest revenue first
   assert.equal(r.items[0].id, "room_upgrade");
 });
+
+test("filters offers to an explicit date range (E-15)", async () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const tenantId = await makeTenant();
+  const now = new Date();
+  await prisma.offerEvent.createMany({
+    data: [
+      { tenantId, offerType: "room_upgrade", status: "accepted", revenueInr: 2000, contextJson: "{}", createdAt: new Date(now.getTime() - 2 * DAY) },
+      { tenantId, offerType: "fnb_offer", status: "accepted", revenueInr: 500, contextJson: "{}", createdAt: new Date(now.getTime() - 50 * DAY) },
+    ],
+  });
+
+  // No range → all-time (prior behaviour): both offers counted.
+  const all = await computeUpsellAnalytics(tenantId);
+  assert.equal(all.total, 2);
+
+  // 7-day window → only the recent offer.
+  const wk = await computeUpsellAnalytics(tenantId, { from: new Date(now.getTime() - 7 * DAY), to: now });
+  assert.equal(wk.total, 1);
+  assert.equal(wk.items[0].id, "room_upgrade");
+});

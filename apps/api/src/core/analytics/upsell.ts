@@ -33,10 +33,13 @@ export interface UpsellAnalytics {
 
 const isConverted = (status: string) => status === "accepted" || status === "converted";
 
-export async function computeUpsellAnalytics(tenantId: string, now = new Date()): Promise<UpsellAnalytics> {
+export async function computeUpsellAnalytics(tenantId: string, range?: { from: Date; to: Date }): Promise<UpsellAnalytics> {
+  // When a window is given (E-15) filter offers to it; otherwise keep the prior
+  // all-time behaviour. The weekly chart is always the 7 days ending at `now`.
+  const now = range?.to ?? new Date();
   const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
   const offers = await prisma.offerEvent.findMany({
-    where: { tenantId },
+    where: { tenantId, ...(range ? { createdAt: { gte: range.from, lte: range.to } } : {}) },
     select: { offerType: true, status: true, revenueInr: true, createdAt: true },
   });
 

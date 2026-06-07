@@ -42,6 +42,28 @@ async function generateNightAudit(provider: "claude" | "openai" = "claude"): Pro
   }
 }
 
+interface NightAuditHistoryItem { reportDate: string; provider: string | null; generatedAt: string }
+
+// History browser (E-15): list past reports + load a specific one by date.
+async function fetchNightAuditHistory(): Promise<NightAuditHistoryItem[]> {
+  try {
+    const res = await fetch("/api/night-audit/history", { cache: "no-store" });
+    const data = (await res.json()) as { ok: boolean; items?: NightAuditHistoryItem[] };
+    return data.ok && data.items ? data.items : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchNightAuditByDate(date: string): Promise<NightAuditResponse> {
+  try {
+    const res = await fetch(`/api/night-audit/report?date=${encodeURIComponent(date)}`, { cache: "no-store" });
+    return (await res.json()) as NightAuditResponse;
+  } catch {
+    return { ok: false, error: "Unable to fetch night audit report" };
+  }
+}
+
 export default function NightAuditPage() {
   const [report, setReport] = useState<NightAuditReport | null>(null);
   const [reportDate, setReportDate] = useState<string | null>(null);
@@ -51,20 +73,26 @@ export default function NightAuditPage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<"claude" | "openai">("claude");
+  const [history, setHistory] = useState<NightAuditHistoryItem[]>([]);
+
+  function applyReport(res: NightAuditResponse) {
+    if (res.ok && res.report) {
+      setReport(res.report);
+      setReportDate(res.reportDate ?? null);
+      setProvider(res.provider ?? null);
+      setGeneratedAt(res.generatedAt ?? null);
+    } else {
+      setReport(null);
+    }
+  }
 
   const loadLatest = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchNightAuditLatest();
-      if (res.ok && res.report) {
-        setReport(res.report);
-        setReportDate(res.reportDate ?? null);
-        setProvider(res.provider ?? null);
-        setGeneratedAt(res.generatedAt ?? null);
-      } else {
-        setReport(null);
-      }
+      const [res, hist] = await Promise.all([fetchNightAuditLatest(), fetchNightAuditHistory()]);
+      applyReport(res);
+      setHistory(hist);
     } catch {
       setError("Failed to load report");
     } finally {
@@ -76,16 +104,28 @@ export default function NightAuditPage() {
     void loadLatest();
   }, [loadLatest]);
 
+  // Load a specific past report by date (E-15).
+  const handleSelectDate = async (date: string) => {
+    if (!date || date === reportDate) return;
+    setLoading(true);
+    setError(null);
+    try {
+      applyReport(await fetchNightAuditByDate(date));
+    } catch {
+      setError("Failed to load report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     setGenerating(true);
     setError(null);
     try {
       const res = await generateNightAudit(selectedProvider);
       if (res.ok && res.report) {
-        setReport(res.report);
-        setReportDate(res.reportDate ?? null);
-        setProvider(res.provider ?? null);
-        setGeneratedAt(res.generatedAt ?? null);
+        applyReport(res);
+        setHistory(await fetchNightAuditHistory());
       } else {
         setError((res as { error?: string }).error ?? "Generation failed");
       }
@@ -119,17 +159,31 @@ export default function NightAuditPage() {
           <p className="text-sm text-slate-500 mt-0.5">AI-generated daily operations summary</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* History browser (E-15): jump to any past report by date. */}
+          {history.length > 0 && (
+            <select
+              value={reportDate ?? ""}
+              onChange={(e) => void handleSelectDate(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
+              disabled={loading || generating}
+              aria-label="Select report date"
+            >
+              {history.map((h) => (
+                <option key={h.reportDate} value={h.reportDate}>{h.reportDate}</option>
+              ))}
+            </select>
+          )}
           {report && (
             <>
-              {/* Branded exports (E-9): real binary PDF + CSV. */}
+              {/* Branded exports (E-9): real binary PDF + CSV, for the viewed date (E-15). */}
               <a
-                href="/api/night-audit/export?format=pdf"
+                href={`/api/night-audit/export?format=pdf${reportDate ? `&date=${reportDate}` : ""}`}
                 className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
               >
                 <Printer className="w-3.5 h-3.5" /> PDF
               </a>
               <a
-                href="/api/night-audit/export?format=csv"
+                href={`/api/night-audit/export?format=csv${reportDate ? `&date=${reportDate}` : ""}`}
                 className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
               >
                 <Download className="w-3.5 h-3.5" /> CSV

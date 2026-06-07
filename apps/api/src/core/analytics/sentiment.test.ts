@@ -54,3 +54,30 @@ test("aggregates voice SentimentEvents and inbound ConnectorEvents (F-17)", asyn
   // negative outweighs? here equal → no alert
   assert.equal(r.alert, null);
 });
+
+test("respects an explicit date range and excludes events outside the window (E-15)", async () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const tenantId = await makeTenant();
+  const now = new Date();
+  await prisma.sentimentEvent.createMany({
+    data: [
+      { tenantId, speaker: "customer", text: "recent good", sentiment: "positive", score: 80, createdAt: new Date(now.getTime() - 2 * DAY) },
+      { tenantId, speaker: "customer", text: "old good", sentiment: "positive", score: 80, createdAt: new Date(now.getTime() - 45 * DAY) },
+    ],
+  });
+
+  // Default window (30d) excludes the 45-day-old event; series length stays 30.
+  const def = await computeSentimentAnalytics(tenantId);
+  assert.equal(def.totalFeedback, 1);
+  assert.equal(def.timeSeries.length, 30);
+
+  // A 7-day window still only sees the recent event, and the series tracks it.
+  const wk = await computeSentimentAnalytics(tenantId, { from: new Date(now.getTime() - 7 * DAY), to: now });
+  assert.equal(wk.totalFeedback, 1);
+  assert.equal(wk.timeSeries.length, 7);
+
+  // A 60-day window pulls in the older event too.
+  const wide = await computeSentimentAnalytics(tenantId, { from: new Date(now.getTime() - 60 * DAY), to: now });
+  assert.equal(wide.totalFeedback, 2);
+  assert.equal(wide.timeSeries.length, 60);
+});

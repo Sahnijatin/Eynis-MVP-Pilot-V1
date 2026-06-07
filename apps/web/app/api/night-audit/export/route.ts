@@ -8,11 +8,17 @@ export const dynamic = "force-dynamic";
 // upstream.text() (which would corrupt the PDF).
 const ALLOWED = new Set(["pdf", "csv", "html"]);
 
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export async function GET(request: Request) {
-  const raw = new URL(request.url).searchParams.get("format") ?? "pdf";
+  const params = new URL(request.url).searchParams;
+  const raw = params.get("format") ?? "pdf";
   const format = ALLOWED.has(raw) ? raw : "pdf";
+  // Optional date selects a specific past report (E-15); else the API uses latest.
+  const date = params.get("date");
+  const dateQs = date && DATE_ONLY_RE.test(date) ? `&date=${date}` : "";
   const token = await getApiToken();
-  const upstream = await fetch(`${getApiBaseUrl()}/night-audit/export?format=${format}`, {
+  const upstream = await fetch(`${getApiBaseUrl()}/night-audit/export?format=${format}${dateQs}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"
   });

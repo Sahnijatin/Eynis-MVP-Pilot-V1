@@ -3,7 +3,12 @@ import { SentimentTrendsClient } from "../../components/ui/sentiment-trends-clie
 
 export const dynamic = "force-dynamic";
 
-export default async function SentimentTrendsPage() {
-  const data = await fetchSentiment();
-  return <SentimentTrendsClient data={data} />;
+export default async function SentimentTrendsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ from?: string; to?: string }>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const data = await fetchSentiment(sp.from, sp.to);
+  return <SentimentTrendsClient data={data} from={sp.from} to={sp.to} />;
 }
