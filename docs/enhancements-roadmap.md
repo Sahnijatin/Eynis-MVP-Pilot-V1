@@ -209,13 +209,23 @@ Issue numbers: **E-N → #(87+N)** (E-1 → #88 … E-16 → #103). Epic: **#104
   rows; lead/call FK to `variantId`; weighted assignment; dynamic add/remove variants in builder; N-arm analytics.
 - **Acceptance:** add/remove 1..N variants; weighted distribution; N-arm analytics; existing A/B migrated.
 
-### E-8 · Industry via provisioning console (#95) — 🔴
+### E-8 · Industry via provisioning console (#95) — 🔴 ✅ implemented
 - **Ask:** industry selection is ours to set at onboarding, not the customer's (ServiceNow instance model).
 - **Reality:** customer-facing `change-industry.tsx` switcher (`settings/page.tsx:91-105`); `Tenant.industry`
   (`schema.prisma:17`).
 - **Proposal:** remove the customer switcher; internal super-admin console sets `Tenant.industry` (staff-only,
   cross-tenant, audit-logged); customer sees read-only industry. Shared console with E-9/E-10.
 - **Acceptance:** customers can't switch industry; internal console sets it; read-only "managed by us" note; staff-only + audited.
+- **Done:**
+  - Customer switcher removed; `change-industry.tsx` deleted. Settings shows industry **read-only** with a neutral
+    "managed for you — contact support" note (no hardcoded "Eynis", per the white-label principle).
+  - New **platform-staff identity** (`apps/api/src/core/platform-admin.ts`, gated by `PLATFORM_ADMIN_SECRET`),
+    completely separate from tenant JWT/RBAC. Internal routes `GET /internal/tenants` and
+    `PATCH /internal/tenants/:id/industry` (validated against `core/industries.ts`, **audit-logged** as
+    `actorRole: "platform_staff"`, action `tenant.industry_changed`).
+  - **Internal console** at `apps/web/app/admin/provisioning` (shared surface for E-9/E-10): secret-gated login →
+    httpOnly cookie; server-side proxies keep the API secret out of the browser; cross-tenant industry table.
+  - API tests: `apps/api/src/core/platform-provisioning.test.ts` (auth-gating, validation, update + audit, 404).
 
 ### E-9 · Wider white-label (#96) — 🔴
 - **Ask:** white-label should be wider; research; proper architecture.
