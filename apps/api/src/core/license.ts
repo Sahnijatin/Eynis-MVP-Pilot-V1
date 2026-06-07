@@ -31,6 +31,18 @@ const FEATURE_LABELS: Record<LicenseFeature, string> = {
   research_studio:     "Research Studio",
 };
 
+// Plans staff can provision (no payment flow — the ServiceNow "instance" model:
+// we set the plan per the deal). Mirrors the keys in PLAN_FEATURES above.
+export const VALID_PLANS = ["starter", "growth", "enterprise"] as const;
+export type PlanKey = (typeof VALID_PLANS)[number];
+export const isValidPlan = (plan: string): plan is PlanKey => (VALID_PLANS as readonly string[]).includes(plan);
+
+const PLAN_LABELS: Record<PlanKey, string> = { starter: "Starter", growth: "Growth", enterprise: "Enterprise" };
+export const planOptions = (): Array<{ key: string; label: string }> => VALID_PLANS.map((key) => ({ key, label: PLAN_LABELS[key] }));
+
+// Sensible default seat counts when a plan is provisioned without an explicit count.
+export const DEFAULT_SEATS_FOR_PLAN: Record<PlanKey, number> = { starter: 5, growth: 25, enterprise: 100 };
+
 export const isPlanAllowed = (plan: string, feature: LicenseFeature): boolean => {
   const features = PLAN_FEATURES[plan] ?? PLAN_FEATURES.starter;
   return features.has(feature);

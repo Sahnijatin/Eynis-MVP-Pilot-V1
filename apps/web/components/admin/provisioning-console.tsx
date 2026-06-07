@@ -10,6 +10,7 @@ export interface ConsoleTenant {
   name: string;
   industry: string;
   whitelabelTier: string;
+  plan: string;
   slug: string | null;
   customDomain: string | null;
   createdAt: string;
@@ -19,9 +20,9 @@ export interface IndustryOption {
   label: string;
 }
 
-// What a single editable cell tracks. `field` distinguishes the two columns so a
+// What a single editable cell tracks. `field` distinguishes the columns so a
 // save targets the right endpoint.
-type Field = "industry" | "tier";
+type Field = "industry" | "tier" | "plan";
 
 interface CellState {
   selected: string;
@@ -32,10 +33,11 @@ interface CellState {
 
 const ENDPOINT: Record<Field, (id: string) => string> = {
   industry: (id) => `/api/admin/tenants/${encodeURIComponent(id)}/industry`,
-  tier: (id) => `/api/admin/tenants/${encodeURIComponent(id)}/whitelabel-tier`
+  tier: (id) => `/api/admin/tenants/${encodeURIComponent(id)}/whitelabel-tier`,
+  plan: (id) => `/api/admin/tenants/${encodeURIComponent(id)}/plan`
 };
-const PAYLOAD_KEY: Record<Field, "industry" | "tier"> = { industry: "industry", tier: "tier" };
-const RESULT_KEY: Record<Field, "industry" | "whitelabelTier"> = { industry: "industry", tier: "whitelabelTier" };
+const PAYLOAD_KEY: Record<Field, string> = { industry: "industry", tier: "tier", plan: "plan" };
+const RESULT_KEY: Record<Field, string> = { industry: "industry", tier: "whitelabelTier", plan: "plan" };
 
 // The internal provisioning console (E-8/E-9): a cross-tenant table where Eynis
 // staff set each tenant's industry and white-label tier. Custom domain (E-10)
@@ -44,11 +46,13 @@ export function ProvisioningConsole({
   tenants,
   industries,
   tiers,
+  plans,
   error
 }: {
   tenants: ConsoleTenant[];
   industries: IndustryOption[];
   tiers: IndustryOption[];
+  plans: IndustryOption[];
   error: string | null;
 }) {
   const [query, setQuery] = useState("");
@@ -60,6 +64,7 @@ export function ProvisioningConsole({
     for (const t of tenants) {
       init[`${t.id}:industry`] = { selected: t.industry, saving: false, saved: false, error: null };
       init[`${t.id}:tier`] = { selected: t.whitelabelTier, saving: false, saved: false, error: null };
+      init[`${t.id}:plan`] = { selected: t.plan, saving: false, saved: false, error: null };
     }
     return init;
   });
@@ -68,6 +73,7 @@ export function ProvisioningConsole({
     for (const t of tenants) {
       init[`${t.id}:industry`] = t.industry;
       init[`${t.id}:tier`] = t.whitelabelTier;
+      init[`${t.id}:plan`] = t.plan;
     }
     return init;
   });
@@ -189,6 +195,7 @@ export function ProvisioningConsole({
                     <th className="px-4 py-3">Tenant</th>
                     <th className="px-4 py-3">Industry</th>
                     <th className="px-4 py-3">White-label tier</th>
+                    <th className="px-4 py-3">Plan</th>
                     <th className="px-4 py-3">Custom domain</th>
                     <th className="px-4 py-3">Email domain</th>
                   </tr>
@@ -196,7 +203,7 @@ export function ProvisioningConsole({
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-slate-500">No tenants match your search.</td>
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No tenants match your search.</td>
                     </tr>
                   )}
                   {filtered.map((t) => (
@@ -216,6 +223,7 @@ export function ProvisioningConsole({
                         </td>
                         <td className="px-4 py-3"><EditableCell tenantId={t.id} field="industry" options={industries} /></td>
                         <td className="px-4 py-3"><EditableCell tenantId={t.id} field="tier" options={tiers} /></td>
+                        <td className="px-4 py-3"><EditableCell tenantId={t.id} field="plan" options={plans} /></td>
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setExpanded(expanded === `${t.id}:routing` ? null : `${t.id}:routing`)}
@@ -237,14 +245,14 @@ export function ProvisioningConsole({
                       </tr>
                       {expanded === `${t.id}:routing` && (
                         <tr className="border-b border-slate-50">
-                          <td colSpan={5} className="px-4 pb-4 pt-0">
+                          <td colSpan={6} className="px-4 pb-4 pt-0">
                             <RoutingDomainPanel tenantId={t.id} initialSlug={t.slug} initialCustomDomain={t.customDomain} />
                           </td>
                         </tr>
                       )}
                       {expanded === `${t.id}:sending` && (
                         <tr className="border-b border-slate-50">
-                          <td colSpan={5} className="px-4 pb-4 pt-0"><SendingDomainPanel tenantId={t.id} /></td>
+                          <td colSpan={6} className="px-4 pb-4 pt-0"><SendingDomainPanel tenantId={t.id} /></td>
                         </tr>
                       )}
                     </Fragment>
