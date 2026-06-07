@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { Bell, Building2, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff } from "lucide-react";
+import { Bell, Building2, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Menu } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
@@ -194,6 +194,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const { user, isLoaded } = useUser();
   const notifRef = useRef<HTMLDivElement>(null);
 
+  const [navOpen, setNavOpen] = useState(false); // mobile sidebar drawer (E-13e)
   const [notifOpen, setNotifOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [accessDenied, setAccessDenied] = useState(false);
@@ -312,6 +313,9 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     return () => document.removeEventListener("mousedown", handle);
   }, [notifOpen]);
 
+  // Close the mobile nav drawer whenever the route changes (E-13e).
+  useEffect(() => { setNavOpen(false); }, [pathname]);
+
   if (isPublicRoute) {
     return <div className="public-shell">{children}</div>;
   }
@@ -327,8 +331,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
           (no <>/url()/@import/expression), and only present here for white_label
           tenants via resolveTheme — so the injection has no script/network reach. */}
       {theme.customCss && <style data-tenant-css="" dangerouslySetInnerHTML={{ __html: theme.customCss }} />}
+      {/* Backdrop behind the mobile nav drawer (E-13e). */}
+      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />}
       {/* Sidebar */}
-      <aside className="app-sidebar">
+      <aside className={`app-sidebar${navOpen ? " open" : ""}`}>
         <div className="brand-block">
           <div className="brand-logo">
             <div className="brand-logo-icon" style={{ background: theme.logoUrl ? "transparent" : theme.primaryColor, overflow: "hidden" }}>
@@ -397,6 +403,9 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
       <div className="app-main">
         <header className="topbar">
           <div className="topbar-property">
+            <button className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Open navigation">
+              <Menu className="w-5 h-5" />
+            </button>
             <span className="topbar-dot" style={{ background: config.accentColor }} />
             <span className="topbar-name">{config.name} Dashboard</span>
             <span className="text-slate-300 text-sm">|</span>
