@@ -42,6 +42,7 @@ import { sanitizeCustomCss } from "./core/css-sanitize";
 import { loadReportBrand } from "./core/export/brand";
 import { brandedCsv } from "./core/export/csv";
 import { renderBrandedReportHtml, type ReportBlock } from "./core/export/report-html";
+import { renderBrandedReportPdf } from "./core/export/report-pdf";
 
 const eventBus = new InMemoryEventBus();
 
@@ -62,6 +63,16 @@ const sendDoc = (res: ServerResponse, contentType: string, body: string, downloa
   if (download) headers["content-disposition"] = `attachment; filename="${download.replace(/[^\w.\-]/g, "_")}"`;
   res.writeHead(200, headers);
   res.end(body);
+};
+
+// Binary variant for real PDF bytes (E-9). Always an attachment download.
+const sendBinary = (res: ServerResponse, contentType: string, body: Uint8Array, download: string) => {
+  res.writeHead(200, {
+    "content-type": contentType,
+    "content-length": String(body.byteLength),
+    "content-disposition": `attachment; filename="${download.replace(/[^\w.\-]/g, "_")}"`
+  });
+  res.end(Buffer.from(body));
 };
 
 // Turns an AI provider/parse failure into a clean 502 instead of letting it bubble
@@ -935,7 +946,8 @@ const handleRequest = async (
       } = {};
       try { content = JSON.parse(report.contentJson); } catch { content = {}; }
       const brand = await loadReportBrand(tenantId);
-      const format = parseUrl(req.url).searchParams.get("format") === "csv" ? "csv" : "html";
+      const fmtRaw = parseUrl(req.url).searchParams.get("format");
+      const format = fmtRaw === "csv" ? "csv" : fmtRaw === "html" ? "html" : "pdf";
       const subtitle = `Report date: ${report.reportDate}`;
 
       if (format === "csv") {
@@ -959,8 +971,16 @@ const handleRequest = async (
         { kind: "list", heading: "Concerns", items: content.concerns ?? [] },
         { kind: "list", heading: "Tomorrow's Action Plan", items: content.tomorrowRecommendations ?? [] }
       ];
-      const html = renderBrandedReportHtml(brand, { title: "Night Audit Report", subtitle, generatedAt: report.generatedAt, blocks });
-      sendDoc(res, "text/html; charset=utf-8", html);
+
+      if (format === "html") {
+        // Print preview kept for convenience; the real download is the PDF below.
+        const html = renderBrandedReportHtml(brand, { title: "Night Audit Report", subtitle, generatedAt: report.generatedAt, blocks });
+        sendDoc(res, "text/html; charset=utf-8", html);
+        return;
+      }
+
+      const pdf = await renderBrandedReportPdf(brand, { title: "Night Audit Report", subtitle, generatedAt: report.generatedAt, blocks });
+      sendBinary(res, "application/pdf", pdf, `night-audit-${report.reportDate}.pdf`);
       return;
     }
 

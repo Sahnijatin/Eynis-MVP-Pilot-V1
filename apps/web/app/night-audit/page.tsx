@@ -121,14 +121,12 @@ export default function NightAuditPage() {
         <div className="flex items-center gap-2">
           {report && (
             <>
-              {/* Branded exports (E-9): printable HTML (Save as PDF) + CSV. */}
+              {/* Branded exports (E-9): real binary PDF + CSV. */}
               <a
-                href="/api/night-audit/export?format=html"
-                target="_blank"
-                rel="noreferrer"
+                href="/api/night-audit/export?format=pdf"
                 className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
               >
-                <Printer className="w-3.5 h-3.5" /> Save as PDF
+                <Printer className="w-3.5 h-3.5" /> PDF
               </a>
               <a
                 href="/api/night-audit/export?format=csv"

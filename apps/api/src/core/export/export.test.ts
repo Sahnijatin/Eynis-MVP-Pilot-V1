@@ -6,6 +6,7 @@ import { prisma } from "../../db/prisma";
 import { seedDefaultRolesForHotel } from "../rbac";
 import { csvCell, toCsvRows, brandedCsv } from "./csv";
 import { renderBrandedReportHtml } from "./report-html";
+import { renderBrandedReportPdf } from "./report-pdf";
 import { loadReportBrand, type ReportBrand } from "./brand";
 
 // E-9 — branded PDF/CSV exports.
@@ -63,6 +64,32 @@ test("renderBrandedReportHtml embeds brand, escapes content, and gates 'powered 
 
   const wl = renderBrandedReportHtml(brand({ showPoweredBy: false }), { title: "T", blocks: [] });
   assert.doesNotMatch(wl, /Powered by/);
+});
+
+// ── PDF report (binary) ──────────────────────────────────────────────────────────
+
+test("renderBrandedReportPdf produces a valid, non-trivial PDF and never throws on edge content", async () => {
+  const bytes = await renderBrandedReportPdf(brand({ supportEmail: "s@acme.com" }), {
+    title: "Night Audit", subtitle: "Report date: 2026-06-07", blocks: [
+      { kind: "headline", text: "All good ".repeat(40), score: 9 },   // long → wraps + paginates
+      { kind: "section", heading: "Executive Summary", body: "x".repeat(2000) },
+      { kind: "list", heading: "Highlights", items: ["one & two", "<not html>"] },
+      { kind: "list", heading: "Concerns", items: [] },               // empty list path
+    ],
+  });
+  assert.ok(bytes instanceof Uint8Array);
+  assert.ok(bytes.byteLength > 800, "PDF should have real content");
+  // PDF magic header "%PDF-" and EOF marker.
+  assert.equal(Buffer.from(bytes.slice(0, 5)).toString("latin1"), "%PDF-");
+  assert.match(Buffer.from(bytes).toString("latin1"), /%%EOF\s*$/);
+});
+
+test("renderBrandedReportPdf skips a broken logo URL without throwing", async () => {
+  const bytes = await renderBrandedReportPdf(
+    brand({ logoUrl: "https://127.0.0.1:1/nope.png" }),
+    { title: "T", blocks: [{ kind: "section", heading: "H", body: "b" }] }
+  );
+  assert.equal(Buffer.from(bytes.slice(0, 5)).toString("latin1"), "%PDF-");
 });
 
 // ── Brand loading (DB) ───────────────────────────────────────────────────────────
