@@ -77,7 +77,8 @@ export default async function InvitePage({
               </p>
               <a
                 href="/sign-in"
-                className="mt-6 inline-block w-full text-center py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                className="mt-6 inline-block w-full text-center py-2.5 px-4 text-white rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                style={{ background: theme.primaryColor }}
               >
                 Go to Sign In
               </a>
@@ -104,6 +105,7 @@ export default async function InvitePage({
               email={invite.email!}
               hotelName={invite.hotelName!}
               roleName={invite.roleName!}
+              primaryColor={theme.primaryColor}
             />
           )}
         </div>

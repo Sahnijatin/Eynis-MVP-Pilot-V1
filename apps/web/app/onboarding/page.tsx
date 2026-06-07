@@ -3,6 +3,7 @@ import { IndustryOnboarding } from "../../components/ui/industry-onboarding";
 import { SignOutButton } from "../../components/ui/sign-out-button";
 import { Building2 } from "lucide-react";
 import { resolveUserContext } from "../../lib/user-context";
+import { resolveHostTheme } from "../../lib/host-theme";
 
 export const dynamic = "force-dynamic";
 
@@ -25,14 +26,21 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     // via the client-side useEffect identify call inside IndustryOnboarding.
   }
 
+  // White-label: when onboarding is reached on a tenant's own host, brand as
+  // them rather than the hardcoded Eynis wordmark (E-9). Resolved after the
+  // redirect guard so it isn't wasted on members who skip the picker.
+  const theme = await resolveHostTheme();
+
   return (
     <div className="onboarding-page">
       <div className="onboarding-topbar">
         <div className="auth-logo">
-          <div className="auth-logo-icon" style={{ width: 32, height: 32 }}>
-            <Building2 className="w-5 h-5 text-white" />
+          <div className="auth-logo-icon" style={{ width: 32, height: 32, background: theme.primaryColor, overflow: "hidden" }}>
+            {theme.logoUrl
+              ? <img src={theme.logoUrl} alt="" className="w-full h-full object-contain" />
+              : <Building2 className="w-5 h-5 text-white" />}
           </div>
-          <span className="auth-logo-name" style={{ fontSize: 18 }}>Eynis</span>
+          <span className="auth-logo-name" style={{ fontSize: 18 }}>{theme.brandName}</span>
         </div>
         <span className="ml-auto text-xs text-slate-400 mr-3">Step 1 of 1 — Choose your industry</span>
         <SignOutButton />
