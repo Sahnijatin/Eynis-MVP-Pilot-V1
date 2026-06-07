@@ -909,3 +909,73 @@ test("connector configs are persisted per hotel and reflected in registry", asyn
     server.close((err) => (err ? reject(err) : resolve()))
   );
 });
+
+test("night audit history is browsable by date and a report fetched by date (E-15)", async () => {
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+na+" + tenantId + "@test.local");
+
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const base = "http://127.0.0.1:" + address.port;
+  const ownerHeaders = await getAuthHeaders(base, tenantId, "owner+na+" + tenantId + "@test.local", "owner");
+
+  // Seed two reports on different dates.
+  await prisma.nightAuditReport.createMany({
+    data: [
+      { tenantId, reportDate: "2026-06-01", provider: "claude", contentJson: JSON.stringify({ headline: "June 1" }) },
+      { tenantId, reportDate: "2026-06-03", provider: "claude", contentJson: JSON.stringify({ headline: "June 3" }) },
+    ],
+  });
+
+  // History lists both, newest first.
+  const histRes = await fetch(base + "/night-audit/history", { headers: ownerHeaders });
+  const hist = (await histRes.json()) as { ok: boolean; items: Array<{ reportDate: string }> };
+  assert.equal(histRes.status, 200);
+  assert.equal(hist.ok, true);
+  assert.equal(hist.items.length, 2);
+  assert.equal(hist.items[0].reportDate, "2026-06-03"); // desc
+
+  // Fetch a specific past report by date.
+  const byDateRes = await fetch(base + "/night-audit/report?date=2026-06-01", { headers: ownerHeaders });
+  const byDate = (await byDateRes.json()) as { ok: boolean; reportDate: string; report: { headline: string } };
+  assert.equal(byDateRes.status, 200);
+  assert.equal(byDate.reportDate, "2026-06-01");
+  assert.equal(byDate.report.headline, "June 1");
+
+  // A missing date → 404; a malformed date → 400.
+  const missing = await fetch(base + "/night-audit/report?date=2020-01-01", { headers: ownerHeaders });
+  assert.equal(missing.status, 404);
+  const bad = await fetch(base + "/night-audit/report?date=nope", { headers: ownerHeaders });
+  assert.equal(bad.status, 400);
+
+  await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+});
+
+test("analytics endpoints accept from/to date-range params (E-15)", async () => {
+  const tenantId = uniqueHotelId();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+dr+" + tenantId + "@test.local");
+
+  const server = buildServer();
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const base = "http://127.0.0.1:" + address.port;
+  const ownerHeaders = await getAuthHeaders(base, tenantId, "owner+dr+" + tenantId + "@test.local", "owner");
+
+  for (const path of [
+    "/analytics/sentiment?from=2026-05-01&to=2026-06-01",
+    "/analytics/revenue-intelligence?from=2026-05-01&to=2026-06-01",
+    "/analytics/staff-performance?from=2026-05-01&to=2026-06-01",
+  ]) {
+    const res = await fetch(base + path, { headers: ownerHeaders });
+    const body = (await res.json()) as { ok: boolean };
+    assert.equal(res.status, 200, path);
+    assert.equal(body.ok, true, path);
+  }
+
+  await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+});

@@ -378,7 +378,7 @@ export async function fetchGuestProfile(guestId: string): Promise<GuestProfileRe
   }
 }
 
-export async function fetchSentiment(): Promise<SentimentResponse> {
+export async function fetchSentiment(from?: string, to?: string): Promise<SentimentResponse> {
   // Degrade gracefully: a 403 (e.g. analytics not in the tenant's plan), a 5xx,
   // or a network error must render the page's empty state, never throw and trip
   // the workspace error boundary ("Couldn't load this page").
@@ -388,7 +388,11 @@ export async function fetchSentiment(): Promise<SentimentResponse> {
     bySource: [], drivers: [], timeSeries: [], alert: null,
   };
   try {
-    const res = await authedFetch("/analytics/sentiment");
+    const qs = new URLSearchParams();
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    const res = await authedFetch(`/analytics/sentiment${suffix}`);
     if (!res.ok) return empty;
     const data = (await res.json()) as Partial<SentimentResponse>;
     return { ...empty, ...data };

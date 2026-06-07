@@ -2,25 +2,27 @@
 
 import { AlertTriangle, Radio, CheckCircle } from "lucide-react";
 import { SentimentLineChart } from "./charts";
+import { DateRangeControl } from "./date-range-control";
 import type { SentimentResponse } from "../../lib/data";
 
 // Derives a simple weighted "word cloud" of feedback terms from the real drivers.
 const termSize = (weight: number) =>
   weight >= 0.8 ? "text-3xl" : weight >= 0.6 ? "text-2xl" : weight >= 0.4 ? "text-xl" : "text-base";
 
-export function SentimentTrendsClient({ data }: { data: SentimentResponse }) {
+export function SentimentTrendsClient({ data, from, to }: { data: SentimentResponse; from?: string; to?: string }) {
   const maxSource = Math.max(1, ...data.bySource.map((s) => s.count));
   const hasData = data.totalFeedback > 0;
+  const rangeLabel = from && to ? `${from} → ${to}` : "last 30 days";
 
   return (
     <div>
       <div className="page-header">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="page-title">Sentiment Trends</h1>
-            <p className="page-subtitle">Customer sentiment from voice calls and inbound messages — last 30 days</p>
+            <p className="page-subtitle">Customer sentiment from voice calls and inbound messages — {rangeLabel}</p>
           </div>
-          <span className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-500">Last 30 days</span>
+          <DateRangeControl defaultPreset="30d" />
         </div>
       </div>
 

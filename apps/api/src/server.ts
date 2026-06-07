@@ -145,6 +145,29 @@ const asSafeOffset = (value: string | null) => {
   return parsed;
 };
 
+// Parse a from/to reporting window from the query string (E-15). Returns null
+// when NEITHER param is present so each endpoint keeps its own default window
+// (preserving prior behaviour). Accepts YYYY-MM-DD (date-only — `to` is treated
+// as end-of-day, inclusive) or full ISO timestamps. If only one bound is given,
+// the other defaults (to=now, from=to−30d). Swaps if from > to.
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const parseDateRange = (req: IncomingMessage): { from: Date; to: Date } | null => {
+  const sp = parseUrl(req.url).searchParams;
+  const fromRaw = sp.get("from");
+  const toRaw = sp.get("to");
+  if (!fromRaw && !toRaw) return null;
+  const parse = (v: string | null, endOfDay: boolean): Date | null => {
+    if (!v) return null;
+    const iso = DATE_ONLY_RE.test(v) ? `${v}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z` : v;
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  let to = parse(toRaw, true) ?? new Date();
+  let from = parse(fromRaw, false) ?? new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (from.getTime() > to.getTime()) { const t = from; from = to; to = t; }
+  return { from, to };
+};
+
 const ensureTenantAccess = async (tenantId: string) => {
   const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
   return Boolean(hotel);
@@ -574,6 +597,8 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /ai/revenue-insights":             "view_reports",
   "POST /night-audit/generate":           "night_audit",
   "GET /night-audit/latest":              "view_reports",
+  "GET /night-audit/history":             "view_reports",
+  "GET /night-audit/report":              "view_reports",
   "GET /night-audit/export":              "view_reports",
   "GET /service-requests/export":         "view_requests",
   "POST /connectors/pms/webhook":         "manage_connectors",
@@ -1104,7 +1129,11 @@ const handleRequest = async (
       const lic = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
       if (!lic.ok) { json(res, 403, { ok: false, error: lic.error }); return; }
       const { tenantId } = auth.context;
-      const report = await prisma.nightAuditReport.findFirst({ where: { tenantId }, orderBy: { generatedAt: "desc" } });
+      // Export a specific date when ?date=YYYY-MM-DD is given (E-15), else latest.
+      const exportDate = asTrimmedString(parseUrl(req.url).searchParams.get("date"));
+      const report = exportDate && DATE_ONLY_RE.test(exportDate)
+        ? await prisma.nightAuditReport.findUnique({ where: { tenantId_reportDate: { tenantId, reportDate: exportDate } } })
+        : await prisma.nightAuditReport.findFirst({ where: { tenantId }, orderBy: { generatedAt: "desc" } });
       if (!report) { json(res, 404, { ok: false, error: "No night audit report found" }); return; }
       let content: {
         headline?: string; executiveSummary?: string; operationalScore?: number;
@@ -2317,18 +2346,21 @@ const handleRequest = async (
       return;
     }
 
-    if (req.url === "/analytics/revenue-intelligence" && req.method === "GET") {
+    if (parseUrl(req.url).pathname === "/analytics/revenue-intelligence" && req.method === "GET") {
       const auth = await authorize(req, res, "GET /analytics/revenue-intelligence");
       if (!auth.ok) return;
       const context = auth.context;
+      // Optional reporting window (E-15); null → all-time (prior behaviour).
+      const revRange = parseDateRange(req);
+      const revCreatedAt = revRange ? { createdAt: { gte: revRange.from, lte: revRange.to } } : {};
 
       const [offerEvents, openRequests] = await Promise.all([
         prisma.offerEvent.findMany({
-          where: { tenantId: context.tenantId },
+          where: { tenantId: context.tenantId, ...revCreatedAt },
           select: { offerType: true, status: true, revenueInr: true }
         }),
         prisma.serviceRequest.count({
-          where: { tenantId: context.tenantId, status: { not: "resolved" } }
+          where: { tenantId: context.tenantId, status: { not: "resolved" }, ...revCreatedAt }
         })
       ]);
 
@@ -2391,10 +2423,13 @@ const handleRequest = async (
       return;
     }
 
-    if (req.url === "/analytics/staff-performance" && req.method === "GET") {
+    if (parseUrl(req.url).pathname === "/analytics/staff-performance" && req.method === "GET") {
       const auth = await authorize(req, res, "GET /analytics/staff-performance");
       if (!auth.ok) return;
       const context = auth.context;
+      // Optional reporting window (E-15); null → all-time (prior behaviour).
+      const staffRange = parseDateRange(req);
+      const staffCreatedAt = staffRange ? { createdAt: { gte: staffRange.from, lte: staffRange.to } } : {};
 
       const [users, requests, staffSentiment] = await Promise.all([
         prisma.user.findMany({
@@ -2402,10 +2437,10 @@ const handleRequest = async (
           select: { id: true, fullName: true, role: true }
         }),
         prisma.serviceRequest.findMany({
-          where: { tenantId: context.tenantId },
+          where: { tenantId: context.tenantId, ...staffCreatedAt },
           select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
         }),
-        computeSentimentAnalytics(context.tenantId)
+        computeSentimentAnalytics(context.tenantId, staffRange ?? undefined)
       ]);
       // Real guest rating derived from sentiment feedback (0..100 net score → 0..5),
       // or null when there's no feedback — never a hardcoded 0 (F-17).
@@ -3092,7 +3127,7 @@ const handleRequest = async (
       const auth = await authorize(req, res, "GET /analytics/sentiment");
       if (!auth.ok) return;
       const context = auth.context;
-      json(res, 200, await computeSentimentAnalytics(context.tenantId));
+      json(res, 200, await computeSentimentAnalytics(context.tenantId, parseDateRange(req) ?? undefined));
       return;
     }
 
@@ -3101,7 +3136,7 @@ const handleRequest = async (
       const auth = await authorize(req, res, "GET /analytics/upsell-campaigns");
       if (!auth.ok) return;
       const context = auth.context;
-      json(res, 200, await computeUpsellAnalytics(context.tenantId));
+      json(res, 200, await computeUpsellAnalytics(context.tenantId, parseDateRange(req) ?? undefined));
       return;
     }
 
@@ -3481,6 +3516,46 @@ const handleRequest = async (
         orderBy: { generatedAt: "desc" }
       });
       if (!report) { json(res, 404, { ok: false, error: "No night audit report found" }); return; }
+      let content: unknown = null;
+      try { content = JSON.parse(report.contentJson); } catch { content = null; }
+      json(res, 200, { ok: true, reportDate: report.reportDate, provider: report.provider, generatedAt: report.generatedAt, report: content });
+      return;
+    }
+
+    // ── GET /night-audit/history — browsable list of past reports by date (E-15) ──
+    if (req.url?.startsWith("/night-audit/history") && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /night-audit/history");
+      if (!auth.ok) return;
+      const licNightHist = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
+      if (!licNightHist.ok) { json(res, 403, { ok: false, error: licNightHist.error }); return; }
+      const { tenantId } = auth.context;
+      const limit = asSafeLimit(parseUrl(req.url).searchParams.get("limit"), 90, 365);
+      const reports = await prisma.nightAuditReport.findMany({
+        where: { tenantId },
+        orderBy: { reportDate: "desc" },
+        take: limit,
+        select: { reportDate: true, provider: true, generatedAt: true }
+      });
+      json(res, 200, { ok: true, items: reports });
+      return;
+    }
+
+    // ── GET /night-audit/report?date=YYYY-MM-DD — a specific past report (E-15) ──
+    if (req.url?.startsWith("/night-audit/report") && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /night-audit/report");
+      if (!auth.ok) return;
+      const licNightByDate = await enforceLicenseFeature(auth.context.tenantId, "night_audit");
+      if (!licNightByDate.ok) { json(res, 403, { ok: false, error: licNightByDate.error }); return; }
+      const { tenantId } = auth.context;
+      const reportDate = asTrimmedString(parseUrl(req.url).searchParams.get("date"));
+      if (!reportDate || !DATE_ONLY_RE.test(reportDate)) {
+        json(res, 400, { ok: false, error: "date must be provided as YYYY-MM-DD" });
+        return;
+      }
+      const report = await prisma.nightAuditReport.findUnique({
+        where: { tenantId_reportDate: { tenantId, reportDate } }
+      });
+      if (!report) { json(res, 404, { ok: false, error: "No night audit report for that date" }); return; }
       let content: unknown = null;
       try { content = JSON.parse(report.contentJson); } catch { content = null; }
       json(res, 200, { ok: true, reportDate: report.reportDate, provider: report.provider, generatedAt: report.generatedAt, report: content });

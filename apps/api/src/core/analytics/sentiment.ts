@@ -9,6 +9,10 @@ import { prisma } from "../../db/prisma";
 const WINDOW_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Optional reporting window (E-15). When omitted, defaults to the last 30 days so
+// existing callers/behaviour are preserved.
+export interface DateRange { from: Date; to: Date }
+
 // Words ignored when extracting sentiment drivers from snippets.
 const STOPWORDS = new Set([
   "the", "and", "for", "was", "were", "are", "you", "your", "our", "but", "not",
@@ -45,17 +49,20 @@ function topTerms(snippets: string[], sentiment: "positive" | "negative", limit 
     .map(([term, n]) => ({ term, weight: Math.round((n / max) * 100) / 100, sentiment }));
 }
 
-export async function computeSentimentAnalytics(tenantId: string, now = new Date()): Promise<SentimentAnalytics> {
-  const since = new Date(now.getTime() - WINDOW_DAYS * DAY_MS);
+export async function computeSentimentAnalytics(tenantId: string, range?: DateRange): Promise<SentimentAnalytics> {
+  // Resolve the window: explicit range (E-15) or the default trailing 30 days.
+  const until = range?.to ?? new Date();
+  const since = range?.from ?? new Date(until.getTime() - WINDOW_DAYS * DAY_MS);
+  const windowDays = Math.max(1, Math.ceil((until.getTime() - since.getTime()) / DAY_MS));
 
   const [events, inbound] = await Promise.all([
     prisma.sentimentEvent.findMany({
-      where: { tenantId, speaker: "customer", createdAt: { gte: since } },
+      where: { tenantId, speaker: "customer", createdAt: { gte: since, lte: until } },
       select: { sentiment: true, score: true, createdAt: true, text: true },
     }),
     prisma.connectorEvent.groupBy({
       by: ["aiSentiment"],
-      where: { tenantId, aiSentiment: { not: null }, createdAt: { gte: since } },
+      where: { tenantId, aiSentiment: { not: null }, createdAt: { gte: since, lte: until } },
       _count: { aiSentiment: true },
     }),
   ]);
@@ -75,8 +82,9 @@ export async function computeSentimentAnalytics(tenantId: string, now = new Date
     { source: "Inbound messages", count: inboundTotal },
   ];
 
-  // 30-day daily average score (falls back to a sentiment-derived score when a
-  // numeric score wasn't recorded). Days with no data report null, not a guess.
+  // Daily average score over the window (falls back to a sentiment-derived score
+  // when a numeric score wasn't recorded). Days with no data report null, not a
+  // guess. The series length tracks the selected window (E-15).
   const byDay = new Map<number, { sum: number; n: number }>();
   for (const e of events) {
     const day = Math.floor((e.createdAt.getTime() - since.getTime()) / DAY_MS) + 1;
@@ -85,7 +93,7 @@ export async function computeSentimentAnalytics(tenantId: string, now = new Date
     cur.sum += s; cur.n += 1;
     byDay.set(day, cur);
   }
-  const timeSeries = Array.from({ length: WINDOW_DAYS }, (_, i) => {
+  const timeSeries = Array.from({ length: windowDays }, (_, i) => {
     const d = byDay.get(i + 1);
     return { day: i + 1, score: d ? Math.round(d.sum / d.n) : null };
   });
