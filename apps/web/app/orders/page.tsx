@@ -138,13 +138,13 @@ export default function OrdersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Order ID</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Client</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">SKU</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Value</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Due</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Stage</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Priority</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Order ID</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">SKU</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Due</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Stage</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Priority</th>
                 </tr>
               </thead>
               <tbody>
@@ -222,7 +222,7 @@ export default function OrdersPage() {
             <div key={d.month} className="flex-1 flex flex-col items-center gap-1">
               <span className="text-xs font-semibold text-slate-600">{d.pct}%</span>
               <div className="w-full rounded-t-sm" style={{ height: `${(d.pct - 70) * 4}px`, background: d.pct >= 85 ? "#10b981" : d.pct >= 80 ? "#f59e0b" : "#f43f5e", minHeight: 8 }} />
-              <span className="text-xs text-slate-400">{d.month}</span>
+              <span className="text-xs text-slate-500">{d.month}</span>
             </div>
           ))}
         </div>

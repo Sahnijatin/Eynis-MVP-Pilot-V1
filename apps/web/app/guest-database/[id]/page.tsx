@@ -24,7 +24,7 @@ const statusColor: Record<string, string> = {
 
 const sentimentColor: Record<string, string> = {
   positive: "text-emerald-500",
-  neutral: "text-slate-400",
+  neutral: "text-slate-500",
   negative: "text-red-500"
 };
 
@@ -67,7 +67,7 @@ export default async function GuestProfilePage({
 
   if (!guest) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-slate-400">
+      <div className="flex flex-col items-center justify-center py-24 text-slate-500">
         <AlertCircle className="w-10 h-10 mb-3" />
         <p className="text-lg font-semibold">Guest not found</p>
         <Link href="/guest-database" className="mt-4 text-sm font-medium" style={{ color: "var(--color-teal)" }}>← Back to Guest Database</Link>
@@ -137,7 +137,7 @@ export default async function GuestProfilePage({
               <div className="kpi-delta neutral mt-1">Check-in: {formatDate(guest.currentStay.checkInAt)}</div>
             </>
           ) : (
-            <div className="text-sm text-slate-400 mt-2">Not currently staying</div>
+            <div className="text-sm text-slate-500 mt-2">Not currently staying</div>
           )}
         </div>
       </div>
@@ -156,7 +156,7 @@ export default async function GuestProfilePage({
                 <p className="text-sm text-slate-700 leading-relaxed">{ai.intelligence.arrivalBrief}</p>
                 {ai.intelligence.keyPreferences.length > 0 && (
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Key Preferences</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Key Preferences</div>
                     <div className="flex flex-wrap gap-1.5">
                       {ai.intelligence.keyPreferences.map((p, i) => (
                         <span key={i} className="px-2 py-0.5 rounded-md text-xs bg-teal-50 text-teal-700 border border-teal-100">{p}</span>
@@ -166,7 +166,7 @@ export default async function GuestProfilePage({
                 )}
                 {ai.intelligence.upsellOpportunities.length > 0 && (
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Upsell Opportunities</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Upsell Opportunities</div>
                     <div className="space-y-1">
                       {ai.intelligence.upsellOpportunities.map((u, i) => (
                         <div key={i} className="text-xs text-slate-600 flex items-start gap-1.5"><ChevronRight className="w-3 h-3 text-teal-600 mt-0.5 shrink-0" />{u}</div>
@@ -186,7 +186,7 @@ export default async function GuestProfilePage({
                 )}
               </div>
             ) : (
-              <div className="text-sm text-slate-400 text-center py-6">AI brief unavailable — configure Claude API key</div>
+              <div className="text-sm text-slate-500 text-center py-6">AI brief unavailable — configure Claude API key</div>
             )}
           </div>
 
@@ -194,14 +194,14 @@ export default async function GuestProfilePage({
           <div className="card">
             <h3 className="card-title">Stay History</h3>
             {guest.stays.length === 0 ? (
-              <div className="text-sm text-slate-400">No stays recorded</div>
+              <div className="text-sm text-slate-500">No stays recorded</div>
             ) : (
               <div className="space-y-2">
                 {guest.stays.map((stay) => (
                   <div key={stay.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
                     <div>
                       <div className="text-sm font-medium text-slate-700">Room {stay.roomNumber}</div>
-                      <div className="text-xs text-slate-400">{formatDate(stay.checkInAt)} → {formatDate(stay.checkOutAt)}</div>
+                      <div className="text-xs text-slate-500">{formatDate(stay.checkInAt)} → {formatDate(stay.checkOutAt)}</div>
                     </div>
                     <span className="badge badge-slate text-[10px]">STAYED</span>
                   </div>
@@ -217,10 +217,10 @@ export default async function GuestProfilePage({
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="card-title mb-0">Service Requests</h3>
-              <span className="text-xs text-slate-400">{guest.serviceRequests.length} total</span>
+              <span className="text-xs text-slate-500">{guest.serviceRequests.length} total</span>
             </div>
             {guest.serviceRequests.length === 0 ? (
-              <div className="text-sm text-slate-400 text-center py-6">No requests from this guest</div>
+              <div className="text-sm text-slate-500 text-center py-6">No requests from this guest</div>
             ) : (
               <div className="space-y-2">
                 {guest.serviceRequests.map((sr) => (
@@ -239,8 +239,8 @@ export default async function GuestProfilePage({
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className={`badge text-[10px] ${categoryColor[sr.category] ?? "badge-slate"}`}>{sr.category.toUpperCase()}</span>
                         <span className={`badge text-[10px] ${statusColor[sr.status] ?? "badge-slate"}`}>{sr.status.toUpperCase()}</span>
-                        {sr.assignedTo && <span className="text-xs text-slate-400">→ {sr.assignedTo.fullName}</span>}
-                        <span className="text-xs text-slate-400">{timeAgo(sr.createdAt)}</span>
+                        {sr.assignedTo && <span className="text-xs text-slate-500">→ {sr.assignedTo.fullName}</span>}
+                        <span className="text-xs text-slate-500">{timeAgo(sr.createdAt)}</span>
                       </div>
                     </div>
                   </div>
@@ -253,10 +253,10 @@ export default async function GuestProfilePage({
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="card-title mb-0">Inbound Messages</h3>
-              <Phone className="w-4 h-4 text-slate-400" />
+              <Phone className="w-4 h-4 text-slate-500" />
             </div>
             {guest.connectorEvents.length === 0 ? (
-              <div className="text-sm text-slate-400 text-center py-6">No inbound messages from this guest</div>
+              <div className="text-sm text-slate-500 text-center py-6">No inbound messages from this guest</div>
             ) : (
               <div className="space-y-2">
                 {guest.connectorEvents.map((ev) => (
@@ -269,11 +269,11 @@ export default async function GuestProfilePage({
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         {ev.aiCategory && <span className={`badge text-[10px] ${categoryColor[ev.aiCategory] ?? "badge-slate"}`}>{ev.aiCategory.toUpperCase()}</span>}
                         {ev.aiSentiment && (
-                          <span className={`text-xs font-medium flex items-center gap-0.5 ${sentimentColor[ev.aiSentiment] ?? "text-slate-400"}`}>
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${sentimentColor[ev.aiSentiment] ?? "text-slate-500"}`}>
                             ● {ev.aiSentiment}
                           </span>
                         )}
-                        <span className="text-xs text-slate-400">{timeAgo(ev.createdAt)}</span>
+                        <span className="text-xs text-slate-500">{timeAgo(ev.createdAt)}</span>
                         {ev.replyStatus === "sent" && <span className="text-xs text-emerald-600">replied</span>}
                       </div>
                     </div>

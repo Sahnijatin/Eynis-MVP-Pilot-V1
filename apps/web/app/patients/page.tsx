@@ -253,13 +253,13 @@ export default function PatientsPage() {
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-4 h-4 text-cyan-600" />
           <h3 className="card-title mb-0">Patient Directory</h3>
-          <span className="text-xs text-slate-400 font-normal ml-1">— click a row to view full record</span>
+          <span className="text-xs text-slate-500 font-normal ml-1">— click a row to view full record</span>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
               {["Patient", "Age", "Condition", "Last Visit", "Next Appointment", "Visits", "Status"].map(h => (
-                <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase">{h}</th>
+                <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">{h}</th>
               ))}
             </tr>
           </thead>

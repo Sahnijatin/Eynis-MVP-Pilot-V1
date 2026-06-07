@@ -213,7 +213,7 @@ export default function MaterialsPage() {
               <thead>
                 <tr className="border-b border-slate-100">
                   {["Material", "Unit", "Stock In", "Used", "Offcut", "On Hand", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">{h}</th>
+                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -227,7 +227,7 @@ export default function MaterialsPage() {
                     <td className="py-2.5 px-2 text-amber-600 font-medium">{m.offcut.toLocaleString()}</td>
                     <td className="py-2.5 px-2">
                       <span className={`font-bold ${m.onHand <= m.reorderLevel ? "text-red-600" : "text-slate-700"}`}>{m.onHand.toLocaleString()}</span>
-                      <span className="text-xs text-slate-400 ml-1">(min {m.reorderLevel})</span>
+                      <span className="text-xs text-slate-500 ml-1">(min {m.reorderLevel})</span>
                     </td>
                     <td className="py-2.5 px-2"><StatusDot status={m.status} /></td>
                   </tr>
@@ -268,9 +268,9 @@ export default function MaterialsPage() {
                   <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${t.type === "received" ? "bg-emerald-500" : t.type === "offcut" ? "bg-amber-400" : "bg-blue-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-slate-700">{t.material}</div>
-                    <div className="text-xs text-slate-400">{t.qty} · {t.order} · {t.by}</div>
+                    <div className="text-xs text-slate-500">{t.qty} · {t.order} · {t.by}</div>
                   </div>
-                  <span className="text-xs text-slate-400 shrink-0">{t.time}</span>
+                  <span className="text-xs text-slate-500 shrink-0">{t.time}</span>
                 </div>
               ))}
             </div>
@@ -285,9 +285,9 @@ export default function MaterialsPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div>
                 <h2 className="font-bold text-slate-800 text-base">Log Transaction</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Record material movement in or out of inventory</p>
+                <p className="text-xs text-slate-500 mt-0.5">Record material movement in or out of inventory</p>
               </div>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
 
             {txSuccess ? (
@@ -296,7 +296,7 @@ export default function MaterialsPage() {
                   <CheckCircle className="w-6 h-6 text-emerald-600" />
                 </div>
                 <div className="font-semibold text-emerald-700 text-sm">Transaction logged successfully</div>
-                <div className="text-xs text-slate-400 mt-1">Inventory updated</div>
+                <div className="text-xs text-slate-500 mt-1">Inventory updated</div>
               </div>
             ) : (
               <div className="px-6 py-5 space-y-4">
@@ -315,7 +315,7 @@ export default function MaterialsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quantity <span className="font-normal text-slate-400">({selectedMaterial.unit})</span></label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quantity <span className="font-normal text-slate-500">({selectedMaterial.unit})</span></label>
                   <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={`Enter quantity in ${selectedMaterial.unit}`} value={txForm.qty} onChange={e => setTxForm(f => ({ ...f, qty: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">

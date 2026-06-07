@@ -78,7 +78,7 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
     finally { setVerifying(false); }
   }
 
-  if (loading) return <div className="text-sm text-slate-400 py-3">Loading sending domain…</div>;
+  if (loading) return <div className="text-sm text-slate-500 py-3">Loading sending domain…</div>;
 
   const status = current?.status ?? "none";
 
@@ -121,7 +121,7 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
           </span>
         )}
         {current && (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-500">
             Sends as {current.fromName ? `${current.fromName} ` : ""}&lt;{current.fromLocalPart}@{current.domain}&gt;
             {status !== "verified" ? " — used only once verified" : ""}
           </span>

@@ -75,7 +75,7 @@ export function IntegrationsClient({ items, statusLoaded = true }: { items: Conn
         const list = byCategory.get(cat)!;
         return (
           <div key={cat} className="mb-7">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">{list[0]?.categoryLabel ?? cat}</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">{list[0]?.categoryLabel ?? cat}</h2>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
               {list.map((c) => (
                 <ConnectorTile key={c.key} item={c} onConnect={() => setActive(c)} />
@@ -103,7 +103,7 @@ function ConnectorTile({ item, onConnect }: { item: ConnectorRegistryItem; onCon
       <div className="font-semibold text-slate-800 text-sm">{item.name}</div>
       <p className="text-xs text-slate-500 mt-1 leading-relaxed flex-1">{item.description}</p>
       <div className="mt-2 mb-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">What it needs</div>
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">What it needs</div>
         <div className="text-xs text-slate-600">{needs}</div>
       </div>
       <Button variant="primary" onClick={onConnect} disabled={item.planned} style={{ width: "100%" }}>
@@ -166,7 +166,7 @@ function ConnectModal({ item, onClose }: { item: ConnectorRegistryItem; onClose:
     >
       <div className="flex items-center gap-2.5 mb-3">
         <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: item.brandColor + "1a" }}>{item.icon}</div>
-        <div className="text-xs text-slate-400">{item.categoryLabel}</div>
+        <div className="text-xs text-slate-500">{item.categoryLabel}</div>
       </div>
       <p className="text-xs text-slate-500 mb-3">{item.description}</p>
 
@@ -188,7 +188,7 @@ function ConnectModal({ item, onClose }: { item: ConnectorRegistryItem; onClose:
                 {f.secret && (
                   <button type="button" onClick={() => setShowSecret((s) => ({ ...s, [f.key]: !s[f.key] }))}
                     aria-label={showSecret[f.key] ? "Hide value" : "Show value"}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600">
                     {showSecret[f.key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 )}

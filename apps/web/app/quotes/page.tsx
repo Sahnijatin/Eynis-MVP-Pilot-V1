@@ -267,7 +267,7 @@ export default function QuotesPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="card-title mb-0">
               {activeTab === "All" ? "All Quotes" : `${activeTab} Quotes`}
-              <span className="ml-2 text-xs font-normal text-slate-400">({filteredQuotes.length})</span>
+              <span className="ml-2 text-xs font-normal text-slate-500">({filteredQuotes.length})</span>
             </h3>
             <div className="flex gap-1.5">
               {(["All", "Active", "Won", "Lost"] as TabFilter[]).map(f => (
@@ -285,7 +285,7 @@ export default function QuotesPage() {
             <thead>
               <tr className="border-b border-slate-100">
                 {["Quote ID", "Client", "Project", "Value", "Margin", "Status", "Expiry"].map(h => (
-                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">{h}</th>
+                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -307,7 +307,7 @@ export default function QuotesPage() {
                 </tr>
               ))}
               {filteredQuotes.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-8 text-slate-400 text-sm">No {activeTab.toLowerCase()} quotes</td></tr>
+                <tr><td colSpan={7} className="text-center py-8 text-slate-500 text-sm">No {activeTab.toLowerCase()} quotes</td></tr>
               )}
             </tbody>
           </table>
@@ -366,11 +366,11 @@ export default function QuotesPage() {
                 <h2 className="font-bold text-slate-800 text-base">
                   {step === "template" ? "New Quote" : `New Quote${selectedTemplate ? ` — ${selectedTemplate.name}` : " — Blank"}`}
                 </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5">
                   {step === "template" ? "Choose a template to get started" : "Fill in the quote details"}
                 </p>
               </div>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 p-1">
+              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -384,7 +384,7 @@ export default function QuotesPage() {
                         <t.Icon className="w-5 h-5" style={{ color: t.color }} />
                       </div>
                       <div className="font-semibold text-slate-800 text-sm mb-1">{t.name}</div>
-                      <div className="text-xs text-slate-400 mb-2.5 leading-relaxed">{t.desc}</div>
+                      <div className="text-xs text-slate-500 mb-2.5 leading-relaxed">{t.desc}</div>
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: t.color + "14", color: t.color }}>Default margin: {t.defaultMargin}%</span>
                     </button>
                   ))}

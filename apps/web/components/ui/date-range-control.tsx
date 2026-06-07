@@ -101,7 +101,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
           >
             Apply
           </button>
-          <button onClick={() => setShowCustom(false)} className="text-slate-400 hover:text-slate-600">
+          <button onClick={() => setShowCustom(false)} className="text-slate-500 hover:text-slate-600">
             <X className="w-4 h-4" />
           </button>
         </div>

@@ -132,7 +132,7 @@ export function ImportExportButtons<T>({
         <div className={`absolute right-0 top-12 z-50 min-w-[260px] max-w-sm px-3 py-2 rounded-lg shadow-lg flex items-start gap-2 border ${toast.type === "success" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
           {toast.type === "success" ? <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />}
           <span className={`text-xs ${toast.type === "success" ? "text-emerald-700" : "text-red-600"} flex-1`}>{toast.message}</span>
-          <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600">
+          <button onClick={() => setToast(null)} className="text-slate-500 hover:text-slate-600">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>

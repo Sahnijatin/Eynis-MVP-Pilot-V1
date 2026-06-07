@@ -111,7 +111,7 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
           <h3 className="card-title mb-0">Live Request Feed</h3>
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
-            <span className="text-[10px] text-slate-400 uppercase tracking-wide">{connected ? "Live" : "Connecting..."}</span>
+            <span className="text-[10px] text-slate-500 uppercase tracking-wide">{connected ? "Live" : "Connecting..."}</span>
           </div>
           {newCount > 0 && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold text-white" style={{ background: "var(--color-primary, #0f766e)" }}>
@@ -138,7 +138,7 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
                   <span className={`badge text-[10px] ${categoryColor[item.category] ?? "badge-slate"}`}>
                     {categoryLabel[item.category] ?? item.category.toUpperCase()}
                   </span>
-                  <span className="text-xs text-slate-400">{timeAgo(item.createdAt)}</span>
+                  <span className="text-xs text-slate-500">{timeAgo(item.createdAt)}</span>
                 </div>
               </div>
               <span className={`badge ${statusColor[item.status] ?? "badge-slate"}`}>
@@ -148,7 +148,7 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
           );
         })}
         {items.length === 0 && (
-          <div className="text-center py-8 text-slate-400 text-sm flex flex-col items-center gap-2">
+          <div className="text-center py-8 text-slate-500 text-sm flex flex-col items-center gap-2">
             <Clock className="w-5 h-5" />
             No active requests right now
           </div>

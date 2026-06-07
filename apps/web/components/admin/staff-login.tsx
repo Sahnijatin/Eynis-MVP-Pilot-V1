@@ -41,7 +41,7 @@ export function StaffLogin() {
           <ShieldCheck className="w-5 h-5 text-teal-700" />
           <h1 className="text-lg font-semibold">Provisioning Console</h1>
         </div>
-        <p className="text-sm text-slate-400 mb-6">Internal staff only. Enter the platform admin secret to continue.</p>
+        <p className="text-sm text-slate-500 mb-6">Internal staff only. Enter the platform admin secret to continue.</p>
 
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Platform admin secret</label>
         <input

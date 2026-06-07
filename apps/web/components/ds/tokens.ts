@@ -11,7 +11,11 @@ export const tokens = {
     borderStrong: "#cbd5e1", // slate-300 (input borders)
     text: "#0f172a", // --color-text
     textMuted: "#64748b", // --color-muted
-    textFaint: "#94a3b8", // slate-400
+    // Bumped slate-400 (#94a3b8, ~2.6:1 on white — fails WCAG AA) → slate-500
+    // (#64748b, ~4.6:1 — passes AA for normal text). This collapses faint into
+    // muted on light surfaces: there is no slate step between 400 and 500 that
+    // clears 4.5:1, so accessibility wins over the muted/faint distinction here.
+    textFaint: "#64748b", // slate-500 (AA-compliant; was slate-400)
     // Accent reads the white-label CSS var set by the app shell (resolved theme),
     // falling back to the teal default for SSR / pre-hydration. accentHover/Soft
     // stay static for now — a follow-up can derive them from the live accent.

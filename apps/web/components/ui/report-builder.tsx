@@ -164,7 +164,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
     finally { setSaving(false); }
   }
 
-  if (loading) return <div className="card text-sm text-slate-400">Loading report builder…</div>;
+  if (loading) return <div className="card text-sm text-slate-500">Loading report builder…</div>;
 
   return (
     <div>
@@ -233,7 +233,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
                   <Plus className="w-3 h-3" /> Add
                 </button>
               </div>
-              {filters.length === 0 && <p className="text-xs text-slate-400">No filters.</p>}
+              {filters.length === 0 && <p className="text-xs text-slate-500">No filters.</p>}
               <div className="space-y-2">
                 {filters.map((f, i) => (
                   <div key={i} className="flex items-center gap-1.5">
@@ -245,7 +245,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
                       <option value="eq">equals</option>
                     </select>
                     <input value={f.value} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} placeholder="value" className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1 min-w-0" />
-                    <button onClick={() => setFilters((cur) => cur.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setFilters((cur) => cur.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
               </div>
@@ -258,7 +258,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Date range ({source.columns.find((c) => c.key === source.dateField)?.label ?? source.dateField})</label>
                 <div className="flex items-center gap-2">
                   <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1" />
-                  <span className="text-xs text-slate-400">to</span>
+                  <span className="text-xs text-slate-500">to</span>
                   <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1" />
                 </div>
               </div>
@@ -302,10 +302,10 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="card-title">Preview</h3>
-              {preview && <span className="text-xs text-slate-400">{preview.grouped ? `${preview.total} groups` : `${preview.total} rows`}</span>}
+              {preview && <span className="text-xs text-slate-500">{preview.grouped ? `${preview.total} groups` : `${preview.total} rows`}</span>}
             </div>
             {!preview ? (
-              <p className="text-sm text-slate-400 py-8 text-center">Run a preview to see results.</p>
+              <p className="text-sm text-slate-500 py-8 text-center">Run a preview to see results.</p>
             ) : (
               <ReportResultView result={preview} />
             )}

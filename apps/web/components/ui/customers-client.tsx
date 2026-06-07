@@ -499,21 +499,21 @@ export function CustomersClient({ terminology, industry }: Props) {
       <div className="card">
         <h3 className="card-title mb-4">
           {isFnb ? "Loyalty Members" : isTravel ? "Client Directory" : `${terminology.entityPlural} Directory`}
-          <span className="text-xs font-normal text-slate-400 ml-2">Click a row to view full profile</span>
+          <span className="text-xs font-normal text-slate-500 ml-2">Click a row to view full profile</span>
         </h3>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
               {isFnb
                 ? ["Customer", "Tier", "Total Spend", "Visits", "Last Visit", "Avg. Bill", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">{h}</th>
+                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))
                 : isTravel
                 ? ["Client", "Type", "Total Revenue", "Bookings", "Last Booking", "Segment", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">{h}</th>
+                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))
                 : [terminology.entity, "Type", "Lifetime Value", "Last Order", "Orders", "Segment", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">{h}</th>
+                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))
               }
             </tr>
@@ -579,7 +579,7 @@ export function CustomersClient({ terminology, industry }: Props) {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h2 className="font-bold text-slate-800 text-base">Add {terminology.entity}</h2>
-              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
             {formSuccess ? (
               <div className="px-6 py-12 text-center">
@@ -641,7 +641,7 @@ export function CustomersClient({ terminology, industry }: Props) {
                 <div key={i} onClick={() => setSelectedName(c.name)} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1">
                   <div>
                     <div className="text-sm font-semibold text-slate-700">{c.name}</div>
-                    <div className="text-xs text-slate-400">{c.orders} orders</div>
+                    <div className="text-xs text-slate-500">{c.orders} orders</div>
                   </div>
                   <div className="text-sm font-bold text-slate-800">{c.ltv}</div>
                 </div>

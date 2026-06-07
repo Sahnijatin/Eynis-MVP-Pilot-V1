@@ -50,7 +50,7 @@ export default async function ReportsPage() {
         <div className="card mb-8 text-center py-10">
           <Table2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <div className="text-slate-500 font-medium mb-1">No saved reports yet</div>
-          <p className="text-sm text-slate-400 mb-5 max-w-sm mx-auto">Build a report over Service Requests, Deals or Contacts — pick columns, filters and grouping, then save it.</p>
+          <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">Build a report over Service Requests, Deals or Contacts — pick columns, filters and grouping, then save it.</p>
           <Link href="/reports/new" className="px-4 py-2 text-sm font-semibold rounded-lg text-white inline-flex items-center gap-1.5" style={{ background: accent }}>
             <Plus className="w-4 h-4" /> Build your first report
           </Link>
@@ -69,7 +69,7 @@ export default async function ReportsPage() {
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors ml-auto shrink-0" />
                   </div>
                   <p className="text-xs text-slate-500 mt-1 truncate">{r.description || SOURCE_LABELS[r.source] || r.source}</p>
-                  <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-400">
+                  <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-500">
                     <span className="inline-flex items-center gap-1">{r.shared ? <><Users className="w-3 h-3" /> Shared</> : <><Lock className="w-3 h-3" /> Private</>}</span>
                     <span>·</span>
                     <span>{SOURCE_LABELS[r.source] ?? r.source}</span>

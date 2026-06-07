@@ -163,7 +163,7 @@ export function ProvisioningConsole({
             <LogOut className="w-4 h-4" /> Sign out
           </button>
         </div>
-        <p className="text-sm text-slate-400 mb-6">
+        <p className="text-sm text-slate-500 mb-6">
           Internal staff surface. Set each tenant&apos;s industry, white-label tier, and custom domain — these
           re-shape the tenant&apos;s experience or need DNS/SSL we own, so they are provisioned by us, not the customer.
         </p>
@@ -173,7 +173,7 @@ export function ProvisioningConsole({
         ) : (
           <>
             <div className="relative mb-4 max-w-sm">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -196,7 +196,7 @@ export function ProvisioningConsole({
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400">No tenants match your search.</td>
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-500">No tenants match your search.</td>
                     </tr>
                   )}
                   {filtered.map((t) => (
@@ -207,7 +207,7 @@ export function ProvisioningConsole({
                             <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
                             <div className="min-w-0">
                               <div className="font-medium text-slate-800 truncate">{t.name}</div>
-                              <div className="text-xs text-slate-400 truncate">
+                              <div className="text-xs text-slate-500 truncate">
                                 {t.id}
                                 {t.slug ? ` · ${t.slug}` : ""}
                               </div>

@@ -224,7 +224,7 @@ export default function NightAuditPage() {
       )}
 
       {loading ? (
-        <div className="card text-center py-16 text-slate-400">
+        <div className="card text-center py-16 text-slate-500">
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-teal-600" />
           <div className="text-sm">Loading report...</div>
         </div>
@@ -232,7 +232,7 @@ export default function NightAuditPage() {
         <div className="card text-center py-16">
           <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
           <div className="text-slate-500 font-medium mb-2">No report yet</div>
-          <p className="text-sm text-slate-400 mb-6 max-w-sm mx-auto">
+          <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
             Generate your first AI night audit report for today's operations summary.
           </p>
           <button
@@ -314,7 +314,7 @@ export default function NightAuditPage() {
                 Concerns
               </h3>
               {report.concerns.length === 0 ? (
-                <div className="text-sm text-slate-400">No concerns flagged for today.</div>
+                <div className="text-sm text-slate-500">No concerns flagged for today.</div>
               ) : (
                 <ul className="space-y-2">
                   {report.concerns.map((c, i) => (

@@ -157,7 +157,7 @@ export default function TeamClient({
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-800">Seat Usage</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 {usedSeats} of {maxSeats} seats used
               </p>
             </div>
@@ -181,7 +181,7 @@ export default function TeamClient({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-base font-semibold text-slate-800">{teamLabel} Members</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Invite {teamLabel.toLowerCase()} and manage their access levels.</p>
+              <p className="text-xs text-slate-500 mt-0.5">Invite {teamLabel.toLowerCase()} and manage their access levels.</p>
             </div>
             <button
               onClick={() => setShowInviteModal(true)}
@@ -212,7 +212,7 @@ export default function TeamClient({
                         </span>
                         <div>
                           <div className="text-sm font-medium text-slate-800">{u.fullName}</div>
-                          <div className="text-xs text-slate-400">{u.email}</div>
+                          <div className="text-xs text-slate-500">{u.email}</div>
                         </div>
                       </div>
                     </td>
@@ -229,7 +229,7 @@ export default function TeamClient({
                               <option key={r.id} value={r.id}>{r.displayName}</option>
                             ))}
                           </select>
-                          <button onClick={() => setChangingRoleFor(null)} className="text-slate-400 hover:text-slate-600">
+                          <button onClick={() => setChangingRoleFor(null)} className="text-slate-500 hover:text-slate-600">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -282,7 +282,7 @@ export default function TeamClient({
                 <Shield className="w-4 h-4" style={{ color: accentColor }} />
                 <h2 className="text-base font-semibold text-slate-800">Invite {teamLabel} Member</h2>
               </div>
-              <button onClick={closeInviteModal} className="text-slate-400 hover:text-slate-600">
+              <button onClick={closeInviteModal} className="text-slate-500 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -318,9 +318,9 @@ export default function TeamClient({
                           <option key={r.id} value={r.id}>{r.displayName}</option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-2.5 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <ChevronDown className="absolute right-2.5 top-3 w-4 h-4 text-slate-500 pointer-events-none" />
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       {roles.find(r => r.id === inviteRoleId)?.permissions.length ?? 0} permissions granted
                     </p>
                   </div>
@@ -361,7 +361,7 @@ export default function TeamClient({
                         {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1.5">Link expires in 48 hours. Share it with the invitee directly.</p>
+                    <p className="text-xs text-slate-500 mt-1.5">Link expires in 48 hours. Share it with the invitee directly.</p>
                   </div>
                   <button
                     onClick={closeInviteModal}

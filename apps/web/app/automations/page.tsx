@@ -93,18 +93,18 @@ export default async function AutomationsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Trigger</span>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Trigger</span>
                     <span className="text-sm font-semibold text-slate-800">{flow.trigger}</span>
                   </div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: config.accentColor }}>Eynis Does</span>
                     <span className="text-sm font-medium text-slate-700">{flow.action}</span>
                   </div>
-                  <p className="text-xs text-slate-400">{flow.detail}</p>
+                  <p className="text-xs text-slate-500">{flow.detail}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-lg font-bold text-slate-800">{flow.executions}</div>
-                  <div className="text-xs text-slate-400">executions</div>
+                  <div className="text-xs text-slate-500">executions</div>
                   <div className="text-sm font-semibold mt-1" style={{ color: config.accentColor }}>{flow.conversions} converted</div>
                 </div>
                 <span className="badge shrink-0" style={{ background: config.accentColor + "12", color: config.accentColor }}>● Active</span>
@@ -205,7 +205,7 @@ export default async function AutomationsPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="card-title mb-0">Workflow Performance</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Flow Executions vs Conversions (30D)</p>
+              <p className="text-xs text-slate-500 mt-0.5">Flow Executions vs Conversions (30D)</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-700 inline-block" />EXECUTIONS</span>
@@ -262,7 +262,7 @@ export default async function AutomationsPage() {
                     <td className="font-semibold text-slate-700">{item.executions.toLocaleString()}</td>
                     <td className={`font-semibold ${parseFloat(sr) >= 80 ? "text-emerald-600" : parseFloat(sr) >= 50 ? "text-amber-600" : "text-slate-500"}`}>{sr}%</td>
                     <td className="font-semibold text-slate-700">
-                      {item.revenueInr > 0 ? `₹${item.revenueInr.toLocaleString("en-IN")}` : <span className="text-slate-400">—</span>}
+                      {item.revenueInr > 0 ? `₹${item.revenueInr.toLocaleString("en-IN")}` : <span className="text-slate-500">—</span>}
                     </td>
                     <td className="text-slate-500 text-xs">
                       {item.lastFiredAt ? (
@@ -273,7 +273,7 @@ export default async function AutomationsPage() {
                 );
               })}
               {items.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-400">No automations configured yet</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-slate-500">No automations configured yet</td></tr>
               )}
             </tbody>
           </table>
@@ -285,10 +285,10 @@ export default async function AutomationsPage() {
         <div className="flex items-center gap-2 mb-4">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <h3 className="card-title mb-0">Engine Execution Log</h3>
-          <span className="text-xs text-slate-400 ml-auto">Live — 60s cycle</span>
+          <span className="text-xs text-slate-500 ml-auto">Live — 60s cycle</span>
         </div>
         {executions.length === 0 ? (
-          <div className="text-center py-10 text-slate-400 text-sm">No executions yet — engine will fire on next cycle</div>
+          <div className="text-center py-10 text-slate-500 text-sm">No executions yet — engine will fire on next cycle</div>
         ) : (
           <div className="space-y-2">
             {executions.map((ex) => (
@@ -318,9 +318,9 @@ export default async function AutomationsPage() {
                   {ex.resultDetail && (
                     <div className="text-xs text-slate-500 mt-0.5 truncate">{ex.resultDetail}</div>
                   )}
-                  <div className="text-[10px] text-slate-400 mt-0.5 font-mono">{ex.ruleCode}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{ex.ruleCode}</div>
                 </div>
-                <div className="text-xs text-slate-400 shrink-0 whitespace-nowrap">
+                <div className="text-xs text-slate-500 shrink-0 whitespace-nowrap">
                   {timeAgo(ex.executedAt)}
                 </div>
               </div>

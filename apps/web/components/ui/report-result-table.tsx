@@ -34,7 +34,7 @@ export function ReportResultTable({ result }: { result: RunResult }) {
   if (result.grouped) {
     const hasSum = result.grouped.some((g) => g.sum !== null);
     if (result.grouped.length === 0) {
-      return <p className="text-sm text-slate-400 p-4">No data in the selected window.</p>;
+      return <p className="text-sm text-slate-500 p-4">No data in the selected window.</p>;
     }
     return (
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
@@ -60,7 +60,7 @@ export function ReportResultTable({ result }: { result: RunResult }) {
 
   // Plain row view.
   if (result.rows.length === 0) {
-    return <p className="text-sm text-slate-400 p-4">No rows match this report.</p>;
+    return <p className="text-sm text-slate-500 p-4">No rows match this report.</p>;
   }
   return (
     <div className="overflow-x-auto border border-slate-200 rounded-lg">

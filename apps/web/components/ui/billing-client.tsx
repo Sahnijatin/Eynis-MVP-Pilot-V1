@@ -114,7 +114,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
                     Active
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5">
                   {renewsAt ? `Renews ${formatDate(renewsAt)}` : "No renewal date set"}
                 </p>
               </div>
@@ -125,7 +125,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
             <div className="bg-slate-50 rounded-lg p-3">
               <div className="text-xs text-slate-500 mb-1">Seat Usage</div>
               <div className="text-xl font-bold text-slate-800">
-                {usedSeats} <span className="text-sm font-normal text-slate-400">/ {maxSeats}</span>
+                {usedSeats} <span className="text-sm font-normal text-slate-500">/ {maxSeats}</span>
               </div>
               <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                 <div
@@ -133,14 +133,14 @@ export default function BillingClient({ license, industry = "hospitality", suppo
                   style={{ width: `${seatPct}%` }}
                 />
               </div>
-              <div className="text-xs text-slate-400 mt-1">{maxSeats - usedSeats} seats remaining</div>
+              <div className="text-xs text-slate-500 mt-1">{maxSeats - usedSeats} seats remaining</div>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
               <div className="text-xs text-slate-500 mb-1">Next Renewal</div>
               <div className="text-sm font-bold text-slate-800">
                 {renewsAt ? formatDate(renewsAt) : "—"}
               </div>
-              <div className="text-xs text-slate-400 mt-1 capitalize">Auto-renews via Razorpay</div>
+              <div className="text-xs text-slate-500 mt-1 capitalize">Auto-renews via Razorpay</div>
             </div>
           </div>
         </div>
@@ -176,7 +176,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
 
                   <div className="mb-4">
                     <span className="text-2xl font-bold text-slate-900">{p.price}</span>
-                    <span className="text-xs text-slate-400">{p.period}</span>
+                    <span className="text-xs text-slate-500">{p.period}</span>
                   </div>
 
                   <ul className="space-y-1.5 mb-5">
@@ -189,7 +189,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
                   </ul>
 
                   {isCurrent ? (
-                    <button disabled className="w-full py-2 text-xs font-medium rounded-lg bg-slate-100 text-slate-400 cursor-not-allowed">
+                    <button disabled className="w-full py-2 text-xs font-medium rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed">
                       Current Plan
                     </button>
                   ) : p.key === "enterprise" ? (
@@ -221,7 +221,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
             </div>
             <div>
               <h3 className="text-sm font-semibold text-slate-800">Razorpay Billing</h3>
-              <p className="text-xs text-slate-400">Subscriptions managed via Razorpay</p>
+              <p className="text-xs text-slate-500">Subscriptions managed via Razorpay</p>
             </div>
           </div>
           <p className="text-xs text-slate-500 leading-relaxed">

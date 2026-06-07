@@ -43,7 +43,7 @@ export function FnbDashboard() {
               <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-50">
                 <span className="font-bold text-orange-600 w-10">{o.table}</span>
                 <span className="flex-1 text-sm text-slate-700">{o.items}</span>
-                <span className="text-xs text-slate-400">{o.time}</span>
+                <span className="text-xs text-slate-500">{o.time}</span>
                 <span className={`badge text-xs ${o.status === "ready" ? "bg-green-100 text-green-700" : o.status === "new" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>{o.status}</span>
               </div>
             ))}

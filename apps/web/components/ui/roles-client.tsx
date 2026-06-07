@@ -184,7 +184,7 @@ export default function RolesClient({
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-base font-semibold text-slate-800">Roles & Permissions</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             System roles cannot be deleted. Display names are customisable per property. Custom roles require Growth plan.
           </p>
         </div>
@@ -220,7 +220,7 @@ export default function RolesClient({
                         autoFocus
                       />
                       <button onClick={() => void saveRename(role.key)} disabled={saveLoading} className="text-teal-700 hover:text-teal-800"><Check className="w-4 h-4" /></button>
-                      <button onClick={() => setEditingKey(null)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingKey(null)} className="text-slate-500 hover:text-slate-600"><X className="w-4 h-4" /></button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
@@ -237,13 +237,13 @@ export default function RolesClient({
                     </div>
                   )}
                   <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    <span className="text-[11px] font-mono text-slate-400">{role.key}</span>
-                    <span className="flex items-center gap-0.5 text-xs text-slate-400"><Users className="w-3 h-3" />{role.userCount} user{role.userCount !== 1 ? "s" : ""}</span>
-                    <span className="text-xs text-slate-400">{role.permissions.length}/{ALL_PERMISSIONS.length} permissions</span>
+                    <span className="text-[11px] font-mono text-slate-500">{role.key}</span>
+                    <span className="flex items-center gap-0.5 text-xs text-slate-500"><Users className="w-3 h-3" />{role.userCount} user{role.userCount !== 1 ? "s" : ""}</span>
+                    <span className="text-xs text-slate-500">{role.permissions.length}/{ALL_PERMISSIONS.length} permissions</span>
                   </div>
                 </div>
 
-                <div className="hidden md:block text-xs text-slate-400 max-w-xs text-right shrink-0">
+                <div className="hidden md:block text-xs text-slate-500 max-w-xs text-right shrink-0">
                   {role.description}
                 </div>
                 <span className="text-slate-300 text-xs shrink-0">{isExpanded ? "▲" : "▼"}</span>
@@ -271,7 +271,7 @@ export default function RolesClient({
                     })}
                   </div>
                   {role.isSystemRole && (
-                    <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-1">
+                    <p className="text-[11px] text-slate-500 mt-3 flex items-center gap-1">
                       <Lock className="w-3 h-3" />
                       System role — cannot be deleted. Only the display name can be customised.
                     </p>
@@ -296,7 +296,7 @@ export default function RolesClient({
             </>
           }
         >
-          <p className="text-xs text-slate-400 mb-3">Custom roles belong to your workspace and can be deleted.</p>
+          <p className="text-xs text-slate-500 mb-3">Custom roles belong to your workspace and can be deleted.</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Display name">
               <Input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Housekeeping" />
