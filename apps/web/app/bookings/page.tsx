@@ -228,7 +228,7 @@ export default function BookingsPage() {
       {modalOpen && (
         <Modal
           title="New Booking"
-          onClose={() => setModalOpen(false)}
+          onClose={() => { setModalOpen(false); setForm({ client: "", destination: "", value: "", departure: "", pax: "1" }); }}
           footer={
             <button
               onClick={handleCreate}

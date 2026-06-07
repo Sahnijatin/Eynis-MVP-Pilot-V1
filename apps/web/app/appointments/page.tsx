@@ -126,7 +126,7 @@ export default function AppointmentsPage() {
       </div>
 
       {modalOpen && (
-        <Modal title="Book Appointment" onClose={() => setModalOpen(false)}>
+        <Modal title="Book Appointment" onClose={() => { setModalOpen(false); setForm(EMPTY_FORM); }}>
           <form onSubmit={handleCreate} className="space-y-3">
             {([
               ["patient", "Patient name", "Rahul Sharma"],
