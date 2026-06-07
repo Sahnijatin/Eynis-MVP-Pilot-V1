@@ -1,8 +1,9 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Loader2, Search, LogOut, Check, Building2, Mail, ChevronDown } from "lucide-react";
+import { Loader2, Search, LogOut, Check, Building2, Mail, Globe, ChevronDown } from "lucide-react";
 import { SendingDomainPanel } from "./sending-domain-panel";
+import { RoutingDomainPanel } from "./routing-domain-panel";
 
 export interface ConsoleTenant {
   id: string;
@@ -51,7 +52,8 @@ export function ProvisioningConsole({
   error: string | null;
 }) {
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null); // tenantId whose domain panel is open
+  // Which per-row panel is open, keyed `${tenantId}:${"sending"|"routing"}`.
+  const [expanded, setExpanded] = useState<string | null>(null);
   // Keyed by `${tenantId}:${field}`.
   const [cells, setCells] = useState<Record<string, CellState>>(() => {
     const init: Record<string, CellState> = {};
@@ -162,8 +164,8 @@ export function ProvisioningConsole({
           </button>
         </div>
         <p className="text-sm text-slate-400 mb-6">
-          Internal staff surface. Set each tenant&apos;s industry and white-label tier — these re-shape the
-          tenant&apos;s experience, so they are provisioned by us, not the customer.
+          Internal staff surface. Set each tenant&apos;s industry, white-label tier, and custom domain — these
+          re-shape the tenant&apos;s experience or need DNS/SSL we own, so they are provisioned by us, not the customer.
         </p>
 
         {error ? (
@@ -187,13 +189,14 @@ export function ProvisioningConsole({
                     <th className="px-4 py-3">Tenant</th>
                     <th className="px-4 py-3">Industry</th>
                     <th className="px-4 py-3">White-label tier</th>
+                    <th className="px-4 py-3">Custom domain</th>
                     <th className="px-4 py-3">Email domain</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400">No tenants match your search.</td>
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400">No tenants match your search.</td>
                     </tr>
                   )}
                   {filtered.map((t) => (
@@ -215,17 +218,33 @@ export function ProvisioningConsole({
                         <td className="px-4 py-3"><EditableCell tenantId={t.id} field="tier" options={tiers} /></td>
                         <td className="px-4 py-3">
                           <button
-                            onClick={() => setExpanded(expanded === t.id ? null : t.id)}
+                            onClick={() => setExpanded(expanded === `${t.id}:routing` ? null : `${t.id}:routing`)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                          >
+                            <Globe className="w-3.5 h-3.5" /> {t.customDomain ?? "Set up"}
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded === `${t.id}:routing` ? "rotate-180" : ""}`} />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setExpanded(expanded === `${t.id}:sending` ? null : `${t.id}:sending`)}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                           >
                             <Mail className="w-3.5 h-3.5" /> Sending domain
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded === t.id ? "rotate-180" : ""}`} />
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded === `${t.id}:sending` ? "rotate-180" : ""}`} />
                           </button>
                         </td>
                       </tr>
-                      {expanded === t.id && (
+                      {expanded === `${t.id}:routing` && (
                         <tr className="border-b border-slate-50">
-                          <td colSpan={4} className="px-4 pb-4 pt-0"><SendingDomainPanel tenantId={t.id} /></td>
+                          <td colSpan={5} className="px-4 pb-4 pt-0">
+                            <RoutingDomainPanel tenantId={t.id} initialSlug={t.slug} initialCustomDomain={t.customDomain} />
+                          </td>
+                        </tr>
+                      )}
+                      {expanded === `${t.id}:sending` && (
+                        <tr className="border-b border-slate-50">
+                          <td colSpan={5} className="px-4 pb-4 pt-0"><SendingDomainPanel tenantId={t.id} /></td>
                         </tr>
                       )}
                     </Fragment>

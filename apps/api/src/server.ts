@@ -536,6 +536,7 @@ const permissionMap: Record<string, Permission | null> = {
   "PUT /tenant/branding":                  "manage_settings",
   "GET /tenant/domains":                   "manage_settings",
   "PUT /tenant/domains":                   "manage_settings",
+  "POST /tenant/domains/request":          "manage_settings",
   "POST /events/service-request-created":  "manage_requests",
   "POST /service-requests":               "manage_requests",
   "GET /service-requests":                "view_requests",
@@ -923,6 +924,76 @@ const handleRequest = async (
           }
         });
         json(res, 200, { ok: true, tenant });
+        return;
+      }
+
+      // PATCH /internal/tenants/:id/domains — set a tenant's routing identity
+      // (subdomain slug + custom domain). Provider-managed per E-10: customers
+      // self-serve their *.eynis.com subdomain, but the custom CNAME domain is set
+      // here by staff, who also own the DNS/SSL provisioning for it.
+      const domainsMatch = /^\/internal\/tenants\/([^/]+)\/domains$/.exec(internalPath);
+      if (domainsMatch && req.method === "PATCH") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(domainsMatch[1] as string);
+        const existing = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, slug: true, customDomain: true }
+        });
+        if (!existing) {
+          json(res, 404, { ok: false, error: "Tenant not found" });
+          return;
+        }
+        const body = (await parseBody(req)) as { slug?: unknown; customDomain?: unknown; actor?: unknown };
+        const data: { slug?: string | null; customDomain?: string | null } = {};
+        if ("slug" in body) {
+          const s = asTrimmedString(body.slug)?.toLowerCase() ?? null;
+          if (s !== null && !/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(s)) {
+            json(res, 400, { ok: false, error: "slug must be 2–32 chars: lowercase letters, numbers, hyphens" });
+            return;
+          }
+          data.slug = s;
+        }
+        if ("customDomain" in body) {
+          const d = asTrimmedString(body.customDomain)?.toLowerCase() ?? null;
+          const platform = (process.env.PLATFORM_APP_DOMAIN ?? "eynis.com").toLowerCase();
+          if (d !== null && (!/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d) || d.endsWith(`.${platform}`) || d === platform)) {
+            json(res, 400, { ok: false, error: "customDomain must be a valid hostname on the tenant's own domain (not an eynis.com host)" });
+            return;
+          }
+          data.customDomain = d;
+        }
+        if (Object.keys(data).length === 0) {
+          json(res, 400, { ok: false, error: "Provide slug and/or customDomain" });
+          return;
+        }
+        try {
+          const tenant = await prisma.tenant.update({
+            where: { id: tenantId },
+            data,
+            select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true }
+          });
+          await prisma.auditLog.create({
+            data: {
+              tenantId,
+              actorRole: "platform_staff",
+              action: "tenant.domains_changed",
+              entityType: "tenant",
+              entityId: tenantId,
+              metadata: JSON.stringify({
+                from: { slug: existing.slug, customDomain: existing.customDomain },
+                to: { slug: tenant.slug, customDomain: tenant.customDomain },
+                actor: asTrimmedString(body.actor) ?? "platform_console"
+              })
+            }
+          });
+          json(res, 200, { ok: true, tenant });
+        } catch (e) {
+          if ((e as { code?: string }).code === "P2002") {
+            json(res, 409, { ok: false, error: "That slug or domain is already in use" });
+            return;
+          }
+          throw e;
+        }
         return;
       }
 
@@ -1476,9 +1547,16 @@ const handleRequest = async (
         return;
       }
 
-      // PUT — set/clear slug and/or custom domain (blank string clears to null).
+      // PUT — customers self-serve only their *.eynis.com subdomain (slug). The
+      // custom CNAME domain is provider-managed (E-10): it needs DNS/SSL set up by
+      // us, so it's set via the internal provisioning console, not here. Reject any
+      // attempt to self-set a custom domain and point them at the request path.
       const body = (await parseBody(req)) as { slug?: unknown; customDomain?: unknown };
-      const data: { slug?: string | null; customDomain?: string | null } = {};
+      if ("customDomain" in body) {
+        json(res, 403, { ok: false, error: "Custom domains are provisioned by our team — use Request a custom domain to ask for one." });
+        return;
+      }
+      const data: { slug?: string | null } = {};
       if ("slug" in body) {
         const s = asTrimmedString(body.slug)?.toLowerCase() ?? null;
         if (s !== null && !/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(s)) {
@@ -1486,15 +1564,6 @@ const handleRequest = async (
           return;
         }
         data.slug = s;
-      }
-      if ("customDomain" in body) {
-        const d = asTrimmedString(body.customDomain)?.toLowerCase() ?? null;
-        const platform = (process.env.PLATFORM_APP_DOMAIN ?? "eynis.com").toLowerCase();
-        if (d !== null && (!/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d) || d.endsWith(`.${platform}`) || d === platform)) {
-          json(res, 400, { ok: false, error: "customDomain must be a valid hostname on your own domain (not an eynis.com host)" });
-          return;
-        }
-        data.customDomain = d;
       }
       try {
         const updated = await prisma.tenant.update({ where: { id: tenantId }, data, select: { slug: true, customDomain: true } });
@@ -1507,6 +1576,38 @@ const handleRequest = async (
         }
         throw e;
       }
+      return;
+    }
+
+    // ── Request a custom domain (E-10) — customer-initiated, provider-fulfilled ──
+    // Customers can't self-set a CNAME (provider-managed). They ask for one here;
+    // the request is written to the audit log so Eynis staff can action it from
+    // the provisioning console. Intentionally lightweight — no new model.
+    if (req.url === "/tenant/domains/request" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /tenant/domains/request");
+      if (!auth.ok) return;
+      const { tenantId } = auth.context;
+      if (!(await ensureTenantAccess(tenantId))) {
+        json(res, 403, { ok: false, error: "Tenant not found or access denied" });
+        return;
+      }
+      const body = (await parseBody(req)) as { desiredDomain?: unknown; note?: unknown };
+      const desiredDomain = asTrimmedString(body.desiredDomain)?.toLowerCase() ?? null;
+      await prisma.auditLog.create({
+        data: {
+          tenantId,
+          actorRole: "tenant_admin",
+          action: "tenant.custom_domain_requested",
+          entityType: "tenant",
+          entityId: tenantId,
+          metadata: JSON.stringify({
+            desiredDomain,
+            note: asTrimmedString(body.note) ?? null,
+            requestedBy: auth.context.email ?? null,
+          }),
+        },
+      });
+      json(res, 200, { ok: true });
       return;
     }
 
