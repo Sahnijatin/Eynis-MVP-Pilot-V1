@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Pencil, Check, X, Plus, Lock, Users, ShieldCheck } from "lucide-react";
+import { Modal, Button, Field, Input } from "../ds";
 import {
   SYSTEM_ROLES,
   PERMISSION_LABELS,
@@ -187,15 +188,15 @@ export default function RolesClient({
             System roles cannot be deleted. Display names are customisable per property. Custom roles require Growth plan.
           </p>
         </div>
-        <button
-          onClick={() => isGrowth ? setShowCustomModal(true) : undefined}
-          className={`px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${isGrowth ? "text-white" : "text-slate-400 border border-slate-200 cursor-not-allowed"}`}
-          style={isGrowth ? { background: accentColor } : {}}
+        <Button
+          variant={isGrowth ? "primary" : "secondary"}
+          onClick={() => { if (isGrowth) setShowCustomModal(true); }}
+          disabled={!isGrowth}
           title={isGrowth ? "Create custom role" : "Upgrade to Growth to create custom roles"}
         >
           {isGrowth ? <Plus className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
           {isGrowth ? "New Role" : "Custom Roles (Growth+)"}
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-3">
@@ -284,50 +285,38 @@ export default function RolesClient({
 
       {/* Custom Role Modal */}
       {showCustomModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-              <div>
-                <h2 className="text-base font-semibold text-slate-800">Create Custom Role</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Custom roles belong to your property and can be deleted.</p>
-              </div>
-              <button onClick={() => setShowCustomModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Display Name</label>
-                  <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Housekeeping" className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Key (auto)</label>
-                  <input value={customKey} onChange={e => setCustomKey(e.target.value)} placeholder={customName.toLowerCase().replace(/\s+/g, "_") || "housekeeping"} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Permissions</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {ALL_PERMISSIONS.map(perm => (
-                    <label key={perm} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-50">
-                      <input type="checkbox" checked={customPerms.includes(perm)} onChange={() => toggleCustomPerm(perm)} className="rounded text-teal-600 focus:ring-teal-500" />
-                      <span className="text-xs text-slate-700">{PERMISSION_LABELS[perm]}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {customError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{customError}</p>}
-
-              <div className="flex gap-3 pt-1">
-                <button onClick={() => setShowCustomModal(false)} className="flex-1 py-2.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button onClick={() => void createCustomRole()} disabled={customLoading} className="flex-1 py-2.5 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ background: "#0f766e" }}>
-                  {customLoading ? "Creating…" : "Create Role"}
-                </button>
-              </div>
-            </div>
+        <Modal
+          title="Create Custom Role"
+          width={520}
+          onClose={() => setShowCustomModal(false)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setShowCustomModal(false)} disabled={customLoading}>Cancel</Button>
+              <Button variant="primary" onClick={() => void createCustomRole()} disabled={customLoading}>{customLoading ? "Creating…" : "Create role"}</Button>
+            </>
+          }
+        >
+          <p className="text-xs text-slate-400 mb-3">Custom roles belong to your workspace and can be deleted.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Display name">
+              <Input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Housekeeping" />
+            </Field>
+            <Field label="Key (auto)">
+              <Input value={customKey} onChange={e => setCustomKey(e.target.value)} placeholder={customName.toLowerCase().replace(/\s+/g, "_") || "housekeeping"} style={{ fontFamily: "monospace" }} />
+            </Field>
           </div>
-        </div>
+          <Field label="Permissions">
+            <div className="grid grid-cols-2 gap-2">
+              {ALL_PERMISSIONS.map(perm => (
+                <label key={perm} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-50">
+                  <input type="checkbox" checked={customPerms.includes(perm)} onChange={() => toggleCustomPerm(perm)} className="rounded text-teal-600 focus:ring-teal-500" />
+                  <span className="text-xs text-slate-700">{PERMISSION_LABELS[perm]}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+          {customError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{customError}</p>}
+        </Modal>
       )}
     </div>
   );

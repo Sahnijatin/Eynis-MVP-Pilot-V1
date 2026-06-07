@@ -299,7 +299,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
             <div className="flex items-end gap-1 h-24">
               {volumeBars.map((b, i) => (
                 <div key={i} className="flex-1 rounded-sm transition-all duration-300"
-                  style={{ height: `${(b.v / maxVol) * 100}%`, background: i === Math.floor(volumeBars.length / 2) ? "#0f766e" : "#e2e8f0" }} />
+                  style={{ height: `${(b.v / maxVol) * 100}%`, background: i === Math.floor(volumeBars.length / 2) ? "var(--color-primary, #0f766e)" : "#e2e8f0" }} />
               ))}
             </div>
             <div className="flex justify-between text-[10px] text-slate-400 mt-1">

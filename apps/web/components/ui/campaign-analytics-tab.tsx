@@ -83,7 +83,7 @@ export function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
 
 function VariantCard({ name, label, v, leading, confident }: { name: string; label: string; v: VariantStats; leading: boolean; confident: boolean }) {
   return (
-    <div style={{ ...card, borderColor: leading ? "#0f766e" : "#e5e7eb", borderWidth: leading ? 2 : 1 }}>
+    <div style={{ ...card, borderColor: leading ? "var(--color-primary, #0f766e)" : "#e5e7eb", borderWidth: leading ? 2 : 1 }}>
       <div style={{ ...cardTitle, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <span>Variant {name}{label && label !== name ? ` · ${label}` : ""}</span>
         {leading && <Badge label={confident ? "Winner" : "Leading"} tone={confident ? "success" : "warning"} />}

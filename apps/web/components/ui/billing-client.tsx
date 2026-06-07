@@ -202,7 +202,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
                         alert(`Online upgrades are coming soon. Contact ${billingContact} to upgrade.`);
                       }}
                       className="w-full py-2 text-xs font-medium rounded-lg text-white transition-colors"
-                      style={{ background: "#0f766e" }}
+                      style={{ background: "var(--color-primary, #0f766e)" }}
                     >
                       Upgrade to {p.name}
                     </button>

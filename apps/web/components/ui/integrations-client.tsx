@@ -5,22 +5,28 @@
 // grouped by category. Connect opens a modal that captures exactly the fields a
 // connector needs and saves them to the per-tenant ConnectorConfig (secrets are
 // masked on read and preserved on re-save by the API).
+//
+// E-13b: built on the ds/ design primitives (Modal, Button, Badge, Input, Label)
+// and the white-label brand token, instead of a hand-rolled modal + hardcoded
+// teal. Per-connector brand colors (item.brandColor) are intentionally kept.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, CheckCircle2, Loader2, Eye, EyeOff, Plug } from "lucide-react";
+import { CheckCircle2, Loader2, Eye, EyeOff, Plug } from "lucide-react";
+import { Modal, Button, Badge, Input, Label, tokens as t } from "../ds";
 import type { ConnectorRegistryItem } from "../../lib/data";
 
 const CATEGORY_ORDER = ["communication", "email", "voice", "pms", "pos", "payments"];
 
+const STATUS_TONE: Record<ConnectorRegistryItem["status"], { tone: "success" | "neutral" | "warning"; label: string }> = {
+  connected: { tone: "success", label: "Connected" },
+  planned: { tone: "neutral", label: "Planned" },
+  disabled: { tone: "warning", label: "Disabled" },
+};
+
 function StatusBadge({ status }: { status: ConnectorRegistryItem["status"] }) {
-  const map = {
-    connected: { label: "Connected", cls: "badge-green" },
-    planned: { label: "Planned", cls: "badge-slate" },
-    disabled: { label: "Disabled", cls: "badge-amber" },
-  } as const;
-  const s = map[status] ?? map.disabled;
-  return <span className={`badge ${s.cls}`}>{s.label}</span>;
+  const s = STATUS_TONE[status] ?? STATUS_TONE.disabled;
+  return <Badge tone={s.tone}>{s.label}</Badge>;
 }
 
 export function IntegrationsClient({ items, statusLoaded = true }: { items: ConnectorRegistryItem[]; statusLoaded?: boolean }) {
@@ -42,8 +48,8 @@ export function IntegrationsClient({ items, statusLoaded = true }: { items: Conn
     <div>
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-1">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(15,118,110,0.12)" }}>
-            <Plug className="w-4.5 h-4.5 text-teal-700" />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: t.color.accentSoft }}>
+            <Plug className="w-4.5 h-4.5" style={{ color: t.color.accent }} />
           </div>
           <h1 className="text-xl font-semibold text-slate-800">Integrations</h1>
         </div>
@@ -100,14 +106,9 @@ function ConnectorTile({ item, onConnect }: { item: ConnectorRegistryItem; onCon
         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">What it needs</div>
         <div className="text-xs text-slate-600">{needs}</div>
       </div>
-      <button
-        onClick={onConnect}
-        disabled={item.planned}
-        className="w-full py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ background: item.planned ? "#94a3b8" : "#0f766e" }}
-      >
+      <Button variant="primary" onClick={onConnect} disabled={item.planned} style={{ width: "100%" }}>
         {item.planned ? "Coming soon" : item.status === "connected" ? "Manage" : "Connect"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -147,37 +148,46 @@ function ConnectModal({ item, onClose }: { item: ConnectorRegistryItem; onClose:
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-[1000] flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.45)" }}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: item.brandColor + "1a" }}>{item.icon}</div>
-            <div>
-              <div className="font-semibold text-slate-800 text-sm">{item.name}</div>
-              <div className="text-xs text-slate-400">{item.categoryLabel}</div>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
-        </div>
-
-        <div className="px-5 py-4 space-y-3">
-          <p className="text-xs text-slate-500">{item.description}</p>
-          {item.requiredFields.length === 0 && (
-            <p className="text-sm text-slate-500">This connector needs no credentials — just enable it.</p>
+    <Modal
+      title={item.name}
+      onClose={onClose}
+      footer={
+        <>
+          {item.status === "connected" && (
+            <Button variant="danger" onClick={() => void save(false)} disabled={saving}>Disconnect</Button>
           )}
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={() => void save(true)} disabled={saving}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            {item.status === "connected" ? "Save" : "Connect"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex items-center gap-2.5 mb-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: item.brandColor + "1a" }}>{item.icon}</div>
+        <div className="text-xs text-slate-400">{item.categoryLabel}</div>
+      </div>
+      <p className="text-xs text-slate-500 mb-3">{item.description}</p>
+
+      {item.requiredFields.length === 0 ? (
+        <p className="text-sm text-slate-500">This connector needs no credentials — just enable it.</p>
+      ) : (
+        <div className="space-y-3">
           {item.requiredFields.map((f) => (
             <div key={f.key}>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">{f.label}</label>
+              <Label>{f.label}</Label>
               <div className="relative">
-                <input
+                <Input
                   type={f.secret && !showSecret[f.key] ? "password" : "text"}
                   placeholder={f.secret && item.config?.[f.key] === "***" ? "•••••• (saved — leave blank to keep)" : (f.placeholder ?? "")}
                   value={values[f.key] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 pr-9"
+                  style={f.secret ? { paddingRight: 36 } : undefined}
                 />
                 {f.secret && (
                   <button type="button" onClick={() => setShowSecret((s) => ({ ...s, [f.key]: !s[f.key] }))}
+                    aria-label={showSecret[f.key] ? "Hide value" : "Show value"}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     {showSecret[f.key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
@@ -185,24 +195,10 @@ function ConnectModal({ item, onClose }: { item: ConnectorRegistryItem; onClose:
               </div>
             </div>
           ))}
-          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
         </div>
+      )}
 
-        <div className="flex items-center gap-2 px-5 py-4 border-t border-slate-100">
-          <button onClick={() => void save(true)} disabled={saving}
-            className="px-4 py-2 text-sm font-semibold text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50" style={{ background: "#0f766e" }}>
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-            {item.status === "connected" ? "Save" : "Connect"}
-          </button>
-          {item.status === "connected" && (
-            <button onClick={() => void save(false)} disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-red-500 rounded-lg border border-red-100 hover:bg-red-50 disabled:opacity-50">
-              Disconnect
-            </button>
-          )}
-          <button onClick={onClose} className="ml-auto px-4 py-2 text-sm font-medium text-slate-500 rounded-lg hover:bg-slate-100">Cancel</button>
-        </div>
-      </div>
-    </div>
+      {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mt-3">{error}</div>}
+    </Modal>
   );
 }

@@ -116,5 +116,5 @@ const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 1
 const th: React.CSSProperties = { padding: "10px 12px", fontWeight: 600 };
 const td: React.CSSProperties = { padding: "10px 12px" };
 const input: React.CSSProperties = { padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, fontFamily: "inherit" };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13, textDecoration: "none" };
+const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13, textDecoration: "none" };
 const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13 };

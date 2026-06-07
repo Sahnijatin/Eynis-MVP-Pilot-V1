@@ -39,7 +39,7 @@ export function RequestVoicePlayer({ text }: { text: string }) {
         disabled={loading}
         style={{
           border: "1px solid #0f766e",
-          background: "#0f766e",
+          background: "var(--color-primary, #0f766e)",
           color: "#fff",
           borderRadius: 6,
           padding: "6px 12px",

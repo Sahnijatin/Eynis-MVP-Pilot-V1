@@ -118,7 +118,7 @@ export function SentimentTrendsClient({ data, from, to }: { data: SentimentRespo
                     </span>
                   </div>
                   <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${driver.weight * 100}%`, background: driver.sentiment === "positive" ? "#0f766e" : "#ef4444" }} />
+                    <div className="h-full rounded-full" style={{ width: `${driver.weight * 100}%`, background: driver.sentiment === "positive" ? "var(--color-primary, #0f766e)" : "#ef4444" }} />
                   </div>
                 </div>
               ))}

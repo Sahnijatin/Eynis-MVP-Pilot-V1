@@ -114,7 +114,7 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
             <span className="text-[10px] text-slate-400 uppercase tracking-wide">{connected ? "Live" : "Connecting..."}</span>
           </div>
           {newCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold text-white" style={{ background: "#0f766e" }}>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold text-white" style={{ background: "var(--color-primary, #0f766e)" }}>
               +{newCount} new
             </span>
           )}

@@ -111,7 +111,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
             {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
-            When set, only leads matching the segment are contacted. Manage segments in <a href="/segments" style={{ color: "#0f766e" }}>Segments</a>.
+            When set, only leads matching the segment are contacted. Manage segments in <a href="/segments" style={{ color: "var(--color-primary, #0f766e)" }}>Segments</a>.
           </div>
         </Field>
       </div>
@@ -167,8 +167,8 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
             </select>
             <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>
               {waTemplates.length === 0
-                ? <>No approved WhatsApp templates yet. Create and get one approved in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a> — required before a WhatsApp campaign can be activated.</>
-                : <>Meta only allows sending pre-approved templates. Manage them in <a href="/templates" style={{ color: "#0f766e" }}>Templates</a>.</>}
+                ? <>No approved WhatsApp templates yet. Create and get one approved in <a href="/templates" style={{ color: "var(--color-primary, #0f766e)" }}>Templates</a> — required before a WhatsApp campaign can be activated.</>
+                : <>Meta only allows sending pre-approved templates. Manage them in <a href="/templates" style={{ color: "var(--color-primary, #0f766e)" }}>Templates</a>.</>}
             </div>
           </Field>
           <Field label="Template body (preview override)"><textarea style={{ ...input, minHeight: 70 }} value={whatsappTemplateBody} onChange={(e) => setWaBody(e.target.value)} placeholder="Hi {{1}}, …" /></Field>

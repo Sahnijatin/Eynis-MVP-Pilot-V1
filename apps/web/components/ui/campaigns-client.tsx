@@ -55,7 +55,7 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
             <tbody>
               {items.map((c) => (
                 <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={td}><Link href={`/campaigns/${c.id}`} style={{ fontWeight: 600, color: "#0f766e" }}>{c.name}</Link></td>
+                  <td style={td}><Link href={`/campaigns/${c.id}`} style={{ fontWeight: 600, color: "var(--color-primary, #0f766e)" }}>{c.name}</Link></td>
                   <td style={td}>
                     <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {(c.channels ?? []).map((ch) => <Badge key={ch} label={CHANNEL_LABEL[ch] ?? ch} tone="neutral" />)}
@@ -85,5 +85,5 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
 const cardBox: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", overflow: "hidden" };
 const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 600 };
 const td: React.CSSProperties = { padding: "12px 14px" };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };
+const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };
 const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "6px 12px", borderRadius: 6, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 13 };
