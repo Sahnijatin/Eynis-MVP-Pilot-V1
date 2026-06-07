@@ -321,6 +321,15 @@
     @apply bg-slate-50;
   }
 
+  /* Opt out of the generic row hover so the caller can drive the row
+     background itself — e.g. status-row coloring (critical/overdue/dormant)
+     or a per-vertical hover accent set on the <tr>. The td stays transparent
+     so the <tr> background shows through on hover instead of being painted
+     over by the default slate fill. */
+  .data-table.no-row-hover tbody tr:hover td {
+    background: transparent;
+  }
+
   /* Badges */
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold;

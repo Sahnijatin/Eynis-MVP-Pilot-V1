@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { AlertTriangle, Package, X, CheckCircle, Download, Upload, AlertCircle } from "lucide-react";
+import { AlertTriangle, Package, CheckCircle, Download, Upload, AlertCircle } from "lucide-react";
 import { escapeCSV, parseCSVLine } from "../../lib/csv";
+import { Modal, TableEmpty } from "../../components/ds";
 
 interface Material {
   name: string; unit: string; stockIn: number; used: number; offcut: number; onHand: number; reorderLevel: number; cost: number; status: string;
@@ -208,30 +209,33 @@ export default function MaterialsPage() {
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="card col-span-2">
           <h3 className="card-title mb-4">Inventory & Yield</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="table-wrap">
+            <table className="data-table no-row-hover">
               <thead>
-                <tr className="border-b border-slate-100">
+                <tr>
                   {["Material", "Unit", "Stock In", "Used", "Offcut", "On Hand", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    <th key={h}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {materials.map((m, i) => (
-                  <tr key={i} className={`border-b border-slate-50 ${m.status === "critical" ? "bg-red-50" : m.status === "warning" ? "bg-amber-50" : "hover:bg-slate-50"} transition-colors`}>
-                    <td className="py-2.5 px-2 font-medium text-slate-800">{m.name}</td>
-                    <td className="py-2.5 px-2 text-xs text-slate-500">{m.unit}</td>
-                    <td className="py-2.5 px-2 text-slate-600">{m.stockIn.toLocaleString()}</td>
-                    <td className="py-2.5 px-2 text-slate-600">{m.used.toLocaleString()}</td>
-                    <td className="py-2.5 px-2 text-amber-600 font-medium">{m.offcut.toLocaleString()}</td>
-                    <td className="py-2.5 px-2">
+                  <tr key={i} className={`${m.status === "critical" ? "bg-red-50" : m.status === "warning" ? "bg-amber-50" : "hover:bg-slate-50"} transition-colors`}>
+                    <td className="font-medium text-slate-800">{m.name}</td>
+                    <td className="text-xs text-slate-500">{m.unit}</td>
+                    <td className="text-slate-600">{m.stockIn.toLocaleString()}</td>
+                    <td className="text-slate-600">{m.used.toLocaleString()}</td>
+                    <td className="text-amber-600 font-medium">{m.offcut.toLocaleString()}</td>
+                    <td>
                       <span className={`font-bold ${m.onHand <= m.reorderLevel ? "text-red-600" : "text-slate-700"}`}>{m.onHand.toLocaleString()}</span>
                       <span className="text-xs text-slate-500 ml-1">(min {m.reorderLevel})</span>
                     </td>
-                    <td className="py-2.5 px-2"><StatusDot status={m.status} /></td>
+                    <td><StatusDot status={m.status} /></td>
                   </tr>
                 ))}
+                {materials.length === 0 && (
+                  <TableEmpty colSpan={7} icon="📦" title="No materials tracked" description="Add a material or import inventory to start tracking yield." />
+                )}
               </tbody>
             </table>
           </div>
@@ -280,73 +284,69 @@ export default function MaterialsPage() {
 
       {/* Log Transaction Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <h2 className="font-bold text-slate-800 text-base">Log Transaction</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Record material movement in or out of inventory</p>
+        <Modal
+          title="Log Transaction"
+          onClose={closeModal}
+          footer={txSuccess ? undefined : (
+            <>
+              <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+              <button onClick={submitTransaction} className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>Log Transaction</button>
+            </>
+          )}
+        >
+          {txSuccess ? (
+            <div className="py-8 text-center">
+              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <CheckCircle className="w-6 h-6 text-emerald-600" />
               </div>
-              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <div className="font-semibold text-emerald-700 text-sm">Transaction logged successfully</div>
+              <div className="text-xs text-slate-500 mt-1">Inventory updated</div>
             </div>
-
-            {txSuccess ? (
-              <div className="px-6 py-12 text-center">
-                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle className="w-6 h-6 text-emerald-600" />
-                </div>
-                <div className="font-semibold text-emerald-700 text-sm">Transaction logged successfully</div>
-                <div className="text-xs text-slate-500 mt-1">Inventory updated</div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 -mt-1">Record material movement in or out of inventory</p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Material</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 bg-white" value={txForm.material} onChange={e => setTxForm(f => ({ ...f, material: e.target.value }))}>
+                  {materials.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+                </select>
               </div>
-            ) : (
-              <div className="px-6 py-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Material</label>
-                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 bg-white" value={txForm.material} onChange={e => setTxForm(f => ({ ...f, material: e.target.value }))}>
-                    {materials.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Transaction Type</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["used", "received", "offcut"] as const).map(t => (
-                      <button key={t} onClick={() => setTxForm(f => ({ ...f, type: t }))} className={`py-2.5 rounded-lg border-2 text-sm font-semibold capitalize transition-all ${txForm.type === t ? t === "used" ? "border-blue-500 bg-blue-50 text-blue-700" : t === "received" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>{t}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quantity <span className="font-normal text-slate-500">({selectedMaterial.unit})</span></label>
-                  <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={`Enter quantity in ${selectedMaterial.unit}`} value={txForm.qty} onChange={e => setTxForm(f => ({ ...f, qty: e.target.value }))} />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">{txForm.type === "received" ? "PO Reference" : "Order Reference"}</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400" placeholder={txForm.type === "received" ? "PO-XXX" : "ORD-XXXX"} value={txForm.order} onChange={e => setTxForm(f => ({ ...f, order: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Production Unit</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400" placeholder="e.g. Unit 1, Receiving" value={txForm.by} onChange={e => setTxForm(f => ({ ...f, by: e.target.value }))} />
-                  </div>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">Current on-hand:</span>
-                    <span className={`font-semibold ${selectedMaterial.onHand <= selectedMaterial.reorderLevel ? "text-red-600" : "text-slate-700"}`}>{selectedMaterial.onHand.toLocaleString()} {selectedMaterial.unit}</span>
-                  </div>
-                  <div className="flex justify-between text-xs mt-1">
-                    <span className="text-slate-500">Reorder level:</span>
-                    <span className="text-slate-600">{selectedMaterial.reorderLevel.toLocaleString()} {selectedMaterial.unit}</span>
-                  </div>
-                </div>
-                {txError && <p className="text-xs text-red-600 font-medium">{txError}</p>}
-                <div className="flex gap-3 pt-1">
-                  <button onClick={closeModal} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
-                  <button onClick={submitTransaction} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>Log Transaction</button>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Transaction Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["used", "received", "offcut"] as const).map(t => (
+                    <button key={t} onClick={() => setTxForm(f => ({ ...f, type: t }))} className={`py-2.5 rounded-lg border-2 text-sm font-semibold capitalize transition-all ${txForm.type === t ? t === "used" ? "border-blue-500 bg-blue-50 text-blue-700" : t === "received" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>{t}</button>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quantity <span className="font-normal text-slate-500">({selectedMaterial.unit})</span></label>
+                <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={`Enter quantity in ${selectedMaterial.unit}`} value={txForm.qty} onChange={e => setTxForm(f => ({ ...f, qty: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">{txForm.type === "received" ? "PO Reference" : "Order Reference"}</label>
+                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400" placeholder={txForm.type === "received" ? "PO-XXX" : "ORD-XXXX"} value={txForm.order} onChange={e => setTxForm(f => ({ ...f, order: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Production Unit</label>
+                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400" placeholder="e.g. Unit 1, Receiving" value={txForm.by} onChange={e => setTxForm(f => ({ ...f, by: e.target.value }))} />
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500">Current on-hand:</span>
+                  <span className={`font-semibold ${selectedMaterial.onHand <= selectedMaterial.reorderLevel ? "text-red-600" : "text-slate-700"}`}>{selectedMaterial.onHand.toLocaleString()} {selectedMaterial.unit}</span>
+                </div>
+                <div className="flex justify-between text-xs mt-1">
+                  <span className="text-slate-500">Reorder level:</span>
+                  <span className="text-slate-600">{selectedMaterial.reorderLevel.toLocaleString()} {selectedMaterial.unit}</span>
+                </div>
+              </div>
+              {txError && <p className="text-xs text-red-600 font-medium">{txError}</p>}
+            </div>
+          )}
+        </Modal>
       )}
     </div>
   );

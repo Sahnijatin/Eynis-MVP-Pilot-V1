@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Truck, ChevronRight, TreePine, Wrench, Package } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
+import { TableEmpty } from "../../components/ds";
 
 const PIPELINE_STAGES = [
   { id: "new", label: "New Order", color: "#6366f1", count: 12, value: "₹18.4L" },
@@ -134,35 +135,38 @@ export default function OrdersPage() {
               View all 44 <ChevronRight className="w-3.5 h-3.5" />
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="table-wrap">
+            <table className="data-table no-row-hover">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Order ID</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">SKU</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Due</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Stage</th>
-                  <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">Priority</th>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Client</th>
+                  <th>SKU</th>
+                  <th>Value</th>
+                  <th>Due</th>
+                  <th>Stage</th>
+                  <th>Priority</th>
                 </tr>
               </thead>
               <tbody>
                 {LIVE_ORDERS.map((o) => (
-                  <tr key={o.id} onClick={() => setSelected(o)} className="border-b border-slate-50 hover:bg-blue-50 transition-colors cursor-pointer">
-                    <td className="py-2.5 px-2 font-mono text-xs text-blue-600 font-semibold">{o.id}</td>
-                    <td className="py-2.5 px-2 font-medium text-slate-800">{o.client}</td>
-                    <td className="py-2.5 px-2 text-slate-600 text-xs">{o.sku}</td>
-                    <td className="py-2.5 px-2 font-semibold text-slate-700">{o.value}</td>
-                    <td className="py-2.5 px-2">
+                  <tr key={o.id} onClick={() => setSelected(o)} className="hover:bg-blue-50 transition-colors cursor-pointer">
+                    <td className="font-mono text-xs text-blue-600 font-semibold">{o.id}</td>
+                    <td className="font-medium text-slate-800">{o.client}</td>
+                    <td className="text-slate-600 text-xs">{o.sku}</td>
+                    <td className="font-semibold text-slate-700">{o.value}</td>
+                    <td>
                       <span className={`text-xs font-medium ${o.daysLeft <= 3 ? "text-red-600" : o.daysLeft <= 7 ? "text-amber-600" : "text-slate-500"}`}>
                         {o.due} ({o.daysLeft}d)
                       </span>
                     </td>
-                    <td className="py-2.5 px-2"><StageBadge stage={o.stage} /></td>
-                    <td className="py-2.5 px-2"><PriorityBadge priority={o.priority} /></td>
+                    <td><StageBadge stage={o.stage} /></td>
+                    <td><PriorityBadge priority={o.priority} /></td>
                   </tr>
                 ))}
+                {LIVE_ORDERS.length === 0 && (
+                  <TableEmpty colSpan={7} icon="📦" title="No active orders" description="New production orders will appear here." />
+                )}
               </tbody>
             </table>
           </div>

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Plane, X } from "lucide-react";
+import { Plane } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
+import { Modal, TableEmpty } from "../../components/ds";
 
 interface Booking {
   id: string;
@@ -171,35 +172,40 @@ export default function BookingsPage() {
           <h3 className="card-title mb-0">All Bookings</h3>
           <span className="text-xs text-slate-500 font-normal ml-1">— click a booking for itinerary, payments and notes</span>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              {["Booking ID", "Client", "Destination", "Value", "Departure", "Pax", "Paid", "Status"].map(h => (
-                <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {bookings.map(b => (
-              <tr
-                key={b.id}
-                onClick={() => setSelected(b)}
-                className={`border-b border-slate-50 hover:bg-purple-50 transition-colors cursor-pointer ${b.stage === "urgent" ? "bg-red-50" : ""}`}
-              >
-                <td className="py-2.5 px-2 font-mono text-xs text-purple-600 font-semibold">{b.id}</td>
-                <td className="py-2.5 px-2 font-medium text-slate-800">{b.client}</td>
-                <td className="py-2.5 px-2 text-slate-600 text-xs">{b.destination}</td>
-                <td className="py-2.5 px-2 font-semibold">{b.value}</td>
-                <td className="py-2.5 px-2 text-sm text-slate-500">{b.departure}</td>
-                <td className="py-2.5 px-2 text-slate-600">{b.pax}</td>
-                <td className="py-2.5 px-2">
-                  <span className={`font-semibold ${b.paid === "100%" ? "text-emerald-600" : b.paid === "0%" ? "text-red-600" : "text-amber-600"}`}>{b.paid}</span>
-                </td>
-                <td className="py-2.5 px-2"><StageBadge stage={b.stage} /></td>
+        <div className="table-wrap">
+          <table className="data-table no-row-hover">
+            <thead>
+              <tr>
+                {["Booking ID", "Client", "Destination", "Value", "Departure", "Pax", "Paid", "Status"].map(h => (
+                  <th key={h}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {bookings.map(b => (
+                <tr
+                  key={b.id}
+                  onClick={() => setSelected(b)}
+                  className={`hover:bg-purple-50 transition-colors cursor-pointer ${b.stage === "urgent" ? "bg-red-50" : ""}`}
+                >
+                  <td className="font-mono text-xs text-purple-600 font-semibold">{b.id}</td>
+                  <td className="font-medium text-slate-800">{b.client}</td>
+                  <td className="text-slate-600 text-xs">{b.destination}</td>
+                  <td className="font-semibold">{b.value}</td>
+                  <td className="text-sm text-slate-500">{b.departure}</td>
+                  <td className="text-slate-600">{b.pax}</td>
+                  <td>
+                    <span className={`font-semibold ${b.paid === "100%" ? "text-emerald-600" : b.paid === "0%" ? "text-red-600" : "text-amber-600"}`}>{b.paid}</span>
+                  </td>
+                  <td><StageBadge stage={b.stage} /></td>
+                </tr>
+              ))}
+              {bookings.length === 0 && (
+                <TableEmpty colSpan={8} icon="🧳" title="No bookings yet" description="New bookings will appear here once created or imported." />
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {selected && (
@@ -220,41 +226,40 @@ export default function BookingsPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-              <h2 className="text-base font-semibold text-slate-800">New Booking</h2>
-              <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="px-6 py-5 space-y-3">
-              {([
-                ["client", "Client / Lead traveller", "Arora Family"],
-                ["destination", "Destination", "Maldives — 5N/6D"],
-                ["value", "Booking value", "₹4,80,000"],
-                ["departure", "Departure date", "10 Jun 2025"],
-                ["pax", "Pax", "4"],
-              ] as const).map(([key, label, placeholder]) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
-                  <input
-                    value={form[key]}
-                    onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2"
-                    style={{ "--tw-ring-color": ACCENT } as React.CSSProperties}
-                  />
-                </div>
-              ))}
-              <button
-                onClick={handleCreate}
-                className="w-full py-2.5 text-sm font-semibold text-white rounded-lg mt-2"
-                style={{ background: ACCENT }}
-              >
-                Create Booking
-              </button>
-            </div>
+        <Modal
+          title="New Booking"
+          onClose={() => { setModalOpen(false); setForm({ client: "", destination: "", value: "", departure: "", pax: "1" }); }}
+          footer={
+            <button
+              onClick={handleCreate}
+              className="px-4 py-2 text-sm font-semibold text-white rounded-lg"
+              style={{ background: ACCENT }}
+            >
+              Create Booking
+            </button>
+          }
+        >
+          <div className="space-y-3">
+            {([
+              ["client", "Client / Lead traveller", "Arora Family"],
+              ["destination", "Destination", "Maldives — 5N/6D"],
+              ["value", "Booking value", "₹4,80,000"],
+              ["departure", "Departure date", "10 Jun 2025"],
+              ["pax", "Pax", "4"],
+            ] as const).map(([key, label, placeholder]) => (
+              <div key={key}>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
+                <input
+                  value={form[key]}
+                  onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+                  style={{ "--tw-ring-color": ACCENT } as React.CSSProperties}
+                />
+              </div>
+            ))}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

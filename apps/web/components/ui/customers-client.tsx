@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, TrendingUp, X, CheckCircle, Star, Plane } from "lucide-react";
+import { AlertCircle, TrendingUp, CheckCircle, Star, Plane } from "lucide-react";
 import type { IndustryTerminology } from "../../lib/industry-config";
 import { ClientDetailPanel, type ClientDetailData } from "./client-detail-panel";
 import { ImportExportButtons } from "./import-export-buttons";
+import { Modal, TableEmpty } from "../ds";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MANUFACTURING — B2B Client Intelligence
@@ -501,62 +502,80 @@ export function CustomersClient({ terminology, industry }: Props) {
           {isFnb ? "Loyalty Members" : isTravel ? "Client Directory" : `${terminology.entityPlural} Directory`}
           <span className="text-xs font-normal text-slate-500 ml-2">Click a row to view full profile</span>
         </h3>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              {isFnb
-                ? ["Customer", "Tier", "Total Spend", "Visits", "Last Visit", "Avg. Bill", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                  ))
-                : isTravel
-                ? ["Client", "Type", "Total Revenue", "Bookings", "Last Booking", "Segment", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                  ))
-                : [terminology.entity, "Type", "Lifetime Value", "Last Order", "Orders", "Segment", "Status"].map(h => (
-                    <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                  ))
-              }
-            </tr>
-          </thead>
-          <tbody>
-            {isFnb
-              ? fnbClients.map((c, i) => (
-                  <tr key={i} onClick={() => setSelectedName(c.name)} className={`border-b border-slate-50 hover:bg-orange-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-amber-50" : ""}`}>
-                    <td className="py-2.5 px-2 font-semibold text-slate-800">{c.name}</td>
-                    <td className="py-2.5 px-2"><FnbTierBadge tier={c.tier} /></td>
-                    <td className="py-2.5 px-2 font-semibold text-slate-700">{c.spend}</td>
-                    <td className="py-2.5 px-2 text-slate-600">{c.visits}</td>
-                    <td className="py-2.5 px-2 text-xs text-slate-500">{c.lastVisit}</td>
-                    <td className="py-2.5 px-2 text-slate-600">{c.avgBill}</td>
-                    <td className="py-2.5 px-2"><StatusDot status={c.status} /></td>
-                  </tr>
-                ))
-              : isTravel
-              ? travelClients.map((c, i) => (
-                  <tr key={i} onClick={() => setSelectedName(c.name)} className={`border-b border-slate-50 hover:bg-purple-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-amber-50" : c.status === "pending" ? "bg-amber-50" : ""}`}>
-                    <td className="py-2.5 px-2 font-semibold text-slate-800 flex items-center gap-1.5"><Plane className="w-3 h-3 text-purple-400" />{c.name}</td>
-                    <td className="py-2.5 px-2 text-xs text-slate-500">{c.type}</td>
-                    <td className="py-2.5 px-2 font-semibold text-slate-700">{c.revenue}</td>
-                    <td className="py-2.5 px-2 text-slate-600">{c.bookings}</td>
-                    <td className="py-2.5 px-2 text-xs text-slate-500">{c.lastBooking}</td>
-                    <td className="py-2.5 px-2"><TravelSegmentBadge segment={c.segment} /></td>
-                    <td className="py-2.5 px-2"><StatusDot status={c.status} /></td>
-                  </tr>
-                ))
-              : mfgClients.map((c, i) => (
-                  <tr key={i} onClick={() => setSelectedName(c.name)} className={`border-b border-slate-50 hover:bg-blue-50 transition-colors cursor-pointer ${c.status === "dormant_90" ? "bg-red-50" : c.status === "dormant_60" ? "bg-amber-50" : ""}`}>
-                    <td className="py-2.5 px-2 font-semibold text-slate-800">{c.name}</td>
-                    <td className="py-2.5 px-2 text-xs text-slate-500">{c.type}</td>
-                    <td className="py-2.5 px-2 font-semibold text-slate-700">{c.ltv}</td>
-                    <td className="py-2.5 px-2 text-xs text-slate-500">{c.lastOrder}</td>
-                    <td className="py-2.5 px-2 text-slate-600">{c.orders}</td>
-                    <td className="py-2.5 px-2"><MfgSegmentBadge segment={c.segment} /></td>
-                    <td className="py-2.5 px-2"><StatusDot status={c.status} /></td>
-                  </tr>
-                ))
-            }
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="data-table no-row-hover">
+            <thead>
+              <tr>
+                {isFnb
+                  ? ["Customer", "Tier", "Total Spend", "Visits", "Last Visit", "Avg. Bill", "Status"].map(h => (
+                      <th key={h}>{h}</th>
+                    ))
+                  : isTravel
+                  ? ["Client", "Type", "Total Revenue", "Bookings", "Last Booking", "Segment", "Status"].map(h => (
+                      <th key={h}>{h}</th>
+                    ))
+                  : [terminology.entity, "Type", "Lifetime Value", "Last Order", "Orders", "Segment", "Status"].map(h => (
+                      <th key={h}>{h}</th>
+                    ))
+                }
+              </tr>
+            </thead>
+            <tbody>
+              {isFnb ? (
+                <>
+                  {fnbClients.map((c, i) => (
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-orange-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-amber-50" : ""}`}>
+                      <td className="font-semibold text-slate-800">{c.name}</td>
+                      <td><FnbTierBadge tier={c.tier} /></td>
+                      <td className="font-semibold text-slate-700">{c.spend}</td>
+                      <td className="text-slate-600">{c.visits}</td>
+                      <td className="text-xs text-slate-500">{c.lastVisit}</td>
+                      <td className="text-slate-600">{c.avgBill}</td>
+                      <td><StatusDot status={c.status} /></td>
+                    </tr>
+                  ))}
+                  {fnbClients.length === 0 && (
+                    <TableEmpty colSpan={7} icon="🍽️" title="No members yet" description="Loyalty members will appear here once added or imported." />
+                  )}
+                </>
+              ) : isTravel ? (
+                <>
+                  {travelClients.map((c, i) => (
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-purple-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-amber-50" : c.status === "pending" ? "bg-amber-50" : ""}`}>
+                      <td className="font-semibold text-slate-800 flex items-center gap-1.5"><Plane className="w-3 h-3 text-purple-400" />{c.name}</td>
+                      <td className="text-xs text-slate-500">{c.type}</td>
+                      <td className="font-semibold text-slate-700">{c.revenue}</td>
+                      <td className="text-slate-600">{c.bookings}</td>
+                      <td className="text-xs text-slate-500">{c.lastBooking}</td>
+                      <td><TravelSegmentBadge segment={c.segment} /></td>
+                      <td><StatusDot status={c.status} /></td>
+                    </tr>
+                  ))}
+                  {travelClients.length === 0 && (
+                    <TableEmpty colSpan={7} icon="✈️" title="No clients yet" description="Travel clients will appear here once added or imported." />
+                  )}
+                </>
+              ) : (
+                <>
+                  {mfgClients.map((c, i) => (
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-blue-50 transition-colors cursor-pointer ${c.status === "dormant_90" ? "bg-red-50" : c.status === "dormant_60" ? "bg-amber-50" : ""}`}>
+                      <td className="font-semibold text-slate-800">{c.name}</td>
+                      <td className="text-xs text-slate-500">{c.type}</td>
+                      <td className="font-semibold text-slate-700">{c.ltv}</td>
+                      <td className="text-xs text-slate-500">{c.lastOrder}</td>
+                      <td className="text-slate-600">{c.orders}</td>
+                      <td><MfgSegmentBadge segment={c.segment} /></td>
+                      <td><StatusDot status={c.status} /></td>
+                    </tr>
+                  ))}
+                  {mfgClients.length === 0 && (
+                    <TableEmpty colSpan={7} icon="🏢" title={`No ${terminology.entityPlural.toLowerCase()} yet`} description="Accounts will appear here once added or imported." />
+                  )}
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* CRM Detail Panel */}
@@ -575,42 +594,40 @@ export function CustomersClient({ terminology, industry }: Props) {
 
       {/* Add Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="font-bold text-slate-800 text-base">Add {terminology.entity}</h2>
-              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        <Modal
+          width={384}
+          title={`Add ${terminology.entity}`}
+          onClose={closeModal}
+          footer={formSuccess ? undefined : (
+            <>
+              <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button
+                onClick={() => {
+                  if (!formName.trim()) return;
+                  if (!isFnb && !isTravel) setMfgClients(prev => [{ name: formName.trim(), type: "Corporate", ltv: "₹0", lastOrder: "—", orders: 0, status: "active", segment: "growth" }, ...prev]);
+                  setFormSuccess(true);
+                  setTimeout(closeModal, 1400);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90"
+                style={{ background: panelAccent }}
+              >
+                Add {terminology.entity}
+              </button>
+            </>
+          )}
+        >
+          {formSuccess ? (
+            <div className="py-8 text-center">
+              <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+              <div className="font-semibold text-emerald-700 text-sm">{terminology.entity} added successfully</div>
             </div>
-            {formSuccess ? (
-              <div className="px-6 py-12 text-center">
-                <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-                <div className="font-semibold text-emerald-700 text-sm">{terminology.entity} added successfully</div>
-              </div>
-            ) : (
-              <div className="px-6 py-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">{terminology.entity} Name <span className="text-red-500">*</span></label>
-                  <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={isFnb ? "e.g. Rahul Sharma" : isTravel ? "e.g. Oberoi Group" : "e.g. Oberoi Hotels Ltd."} value={formName} onChange={e => setFormName(e.target.value)} />
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <button onClick={closeModal} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
-                  <button
-                    onClick={() => {
-                      if (!formName.trim()) return;
-                      if (!isFnb && !isTravel) setMfgClients(prev => [{ name: formName.trim(), type: "Corporate", ltv: "₹0", lastOrder: "—", orders: 0, status: "active", segment: "growth" }, ...prev]);
-                      setFormSuccess(true);
-                      setTimeout(closeModal, 1400);
-                    }}
-                    className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white hover:opacity-90"
-                    style={{ background: panelAccent }}
-                  >
-                    Add {terminology.entity}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">{terminology.entity} Name <span className="text-red-500">*</span></label>
+              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={isFnb ? "e.g. Rahul Sharma" : isTravel ? "e.g. Oberoi Group" : "e.g. Oberoi Hotels Ltd."} value={formName} onChange={e => setFormName(e.target.value)} />
+            </div>
+          )}
+        </Modal>
       )}
 
       {/* Re-engagement sidebar (manufacturing only) */}

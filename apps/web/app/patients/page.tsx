@@ -5,6 +5,7 @@ import { Users, AlertCircle, Clock } from "lucide-react";
 import { ClientDetailPanel } from "../../components/ui/client-detail-panel";
 import type { ClientDetailData } from "../../components/ui/client-detail-panel";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
+import { TableEmpty } from "../../components/ds";
 
 type PatientStatus = "active" | "overdue" | "due" | "lost_follow_up";
 
@@ -255,34 +256,39 @@ export default function PatientsPage() {
           <h3 className="card-title mb-0">Patient Directory</h3>
           <span className="text-xs text-slate-500 font-normal ml-1">— click a row to view full record</span>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              {["Patient", "Age", "Condition", "Last Visit", "Next Appointment", "Visits", "Status"].map(h => (
-                <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {patients.map((p, i) => (
-              <tr
-                key={i}
-                onClick={() => setSelectedPatient(p)}
-                className={`border-b border-slate-50 hover:bg-cyan-50 transition-colors cursor-pointer group ${p.status === "lost_follow_up" ? "bg-purple-50" : p.status === "overdue" ? "bg-red-50" : ""}`}
-              >
-                <td className="py-2.5 px-2">
-                  <span className="font-semibold text-slate-800 group-hover:text-cyan-700 transition-colors">{p.name}</span>
-                </td>
-                <td className="py-2.5 px-2 text-slate-500">{p.age}</td>
-                <td className="py-2.5 px-2 text-slate-600 text-xs">{p.condition}</td>
-                <td className="py-2.5 px-2 text-xs text-slate-500">{p.lastVisit}</td>
-                <td className="py-2.5 px-2 text-xs font-medium text-slate-700">{p.nextAppt}</td>
-                <td className="py-2.5 px-2 text-slate-600">{p.visits}</td>
-                <td className="py-2.5 px-2"><StatusBadge status={p.status} /></td>
+        <div className="table-wrap">
+          <table className="data-table no-row-hover">
+            <thead>
+              <tr>
+                {["Patient", "Age", "Condition", "Last Visit", "Next Appointment", "Visits", "Status"].map(h => (
+                  <th key={h}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {patients.map((p, i) => (
+                <tr
+                  key={i}
+                  onClick={() => setSelectedPatient(p)}
+                  className={`hover:bg-cyan-50 transition-colors cursor-pointer group ${p.status === "lost_follow_up" ? "bg-purple-50" : p.status === "overdue" ? "bg-red-50" : ""}`}
+                >
+                  <td>
+                    <span className="font-semibold text-slate-800 group-hover:text-cyan-700 transition-colors">{p.name}</span>
+                  </td>
+                  <td className="text-slate-500">{p.age}</td>
+                  <td className="text-slate-600 text-xs">{p.condition}</td>
+                  <td className="text-xs text-slate-500">{p.lastVisit}</td>
+                  <td className="text-xs font-medium text-slate-700">{p.nextAppt}</td>
+                  <td className="text-slate-600">{p.visits}</td>
+                  <td><StatusBadge status={p.status} /></td>
+                </tr>
+              ))}
+              {patients.length === 0 && (
+                <TableEmpty colSpan={7} icon="🩺" title="No patients yet" description="Registered patients will appear here." />
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Attention banner for critical patients */}
