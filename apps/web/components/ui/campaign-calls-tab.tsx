@@ -58,27 +58,29 @@ export function CampaignCallsTab({ campaignId }: { campaignId: string }) {
           Calls ({calls.length})
           <a href={`/api/campaigns/${campaignId}/calls?format=csv`} style={csvLink}>Export CSV</a>
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#666", borderBottom: "1px solid #eee" }}>
-              <th style={th}>Lead</th><th style={th}>Variant</th><th style={th}>Status</th>
-              <th style={th}>Outcome</th><th style={th}>Sentiment</th><th style={th}>Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {calls.map((c) => (
-              <tr key={c.id} onClick={() => setSelected(c.id)}
-                style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer", background: selected === c.id ? "#f0fdfa" : undefined }}>
-                <td style={td}>{c.lead.firstName} {c.lead.lastName ?? ""}<div style={{ color: "#9ca3af", fontSize: 12 }}>{c.lead.company ?? c.lead.phone ?? ""}</div></td>
-                <td style={td}>{c.abVariant}</td>
-                <td style={td}><Badge label={c.status} tone={STATUS_TONE[c.status] ?? "neutral"} /></td>
-                <td style={td}>{c.outcome ?? "—"}</td>
-                <td style={td}>{c.sentiment ? <Badge label={c.sentiment} tone={SENT_TONE[c.sentiment] ?? "neutral"} /> : "—"}</td>
-                <td style={td}>{fmtDuration(c.durationSeconds)}</td>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Lead</th><th>Variant</th><th>Status</th>
+                <th>Outcome</th><th>Sentiment</th><th>Duration</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {calls.map((c) => (
+                <tr key={c.id} onClick={() => setSelected(c.id)}
+                  style={{ cursor: "pointer", background: selected === c.id ? "#f0fdfa" : undefined }}>
+                  <td>{c.lead.firstName} {c.lead.lastName ?? ""}<div style={{ color: "#9ca3af", fontSize: 12 }}>{c.lead.company ?? c.lead.phone ?? ""}</div></td>
+                  <td>{c.abVariant}</td>
+                  <td><Badge label={c.status} tone={STATUS_TONE[c.status] ?? "neutral"} /></td>
+                  <td>{c.outcome ?? "—"}</td>
+                  <td>{c.sentiment ? <Badge label={c.sentiment} tone={SENT_TONE[c.sentiment] ?? "neutral"} /> : "—"}</td>
+                  <td>{fmtDuration(c.durationSeconds)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       {selected && <CallDetailPanel campaignId={campaignId} callId={selected} onClose={() => setSelected(null)} />}
     </div>
@@ -189,8 +191,6 @@ function SentimentMeter({ events, finalSentiment, live }: { events: SentimentEve
 const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
 const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" };
 const sub: React.CSSProperties = { color: "#666", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 };
-const th: React.CSSProperties = { padding: "10px 12px", fontWeight: 600 };
-const td: React.CSSProperties = { padding: "10px 12px" };
 const muted: React.CSSProperties = { color: "#9ca3af", padding: 16 };
 const bubble: React.CSSProperties = { maxWidth: "80%", padding: "8px 12px", borderRadius: 12, fontSize: 13 };
 const closeBtn: React.CSSProperties = { background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#9ca3af" };

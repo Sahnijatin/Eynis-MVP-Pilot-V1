@@ -44,27 +44,27 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
           <Link href="/campaigns/new" style={btnPrimary}>+ New Campaign</Link>
         </div>
       ) : (
-        <div style={cardBox}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <div className="table-wrap">
+          <table className="data-table">
             <thead>
-              <tr style={{ textAlign: "left", color: "#666", borderBottom: "1px solid #eee" }}>
-                <th style={th}>Name</th><th style={th}>Channels</th><th style={th}>Status</th>
-                <th style={th}>Leads</th><th style={th}>Calls</th><th style={th}></th>
+              <tr>
+                <th>Name</th><th>Channels</th><th>Status</th>
+                <th>Leads</th><th>Calls</th><th></th>
               </tr>
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={td}><Link href={`/campaigns/${c.id}`} style={{ fontWeight: 600, color: "var(--color-primary, #0f766e)" }}>{c.name}</Link></td>
-                  <td style={td}>
+                <tr key={c.id}>
+                  <td><Link href={`/campaigns/${c.id}`} style={{ fontWeight: 600, color: "var(--color-primary, #0f766e)" }}>{c.name}</Link></td>
+                  <td>
                     <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {(c.channels ?? []).map((ch) => <Badge key={ch} label={CHANNEL_LABEL[ch] ?? ch} tone="neutral" />)}
                     </span>
                   </td>
-                  <td style={td}><Badge label={c.status} tone={STATUS_TONE[c.status] ?? "neutral"} /></td>
-                  <td style={td}>{c.stats?.totalLeads ?? 0}</td>
-                  <td style={td}>{c.stats?.totalCalls ?? 0}</td>
-                  <td style={{ ...td, textAlign: "right" }}>
+                  <td><Badge label={c.status} tone={STATUS_TONE[c.status] ?? "neutral"} /></td>
+                  <td>{c.stats?.totalLeads ?? 0}</td>
+                  <td>{c.stats?.totalCalls ?? 0}</td>
+                  <td style={{ textAlign: "right" }}>
                     {c.status === "active" ? (
                       <button style={btnGhost} disabled={busy === c.id + "pause"} onClick={() => act(c.id, "pause")}>Pause</button>
                     ) : c.status === "draft" || c.status === "paused" ? (
@@ -83,7 +83,5 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
 }
 
 const cardBox: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", overflow: "hidden" };
-const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 600 };
-const td: React.CSSProperties = { padding: "12px 14px" };
 const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };
 const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "6px 12px", borderRadius: 6, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 13 };

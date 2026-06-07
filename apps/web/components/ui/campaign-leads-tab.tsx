@@ -79,42 +79,42 @@ export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
       </div>
 
       <div style={card}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#666", borderBottom: "1px solid #eee" }}>
-              <th style={{ ...th, width: 28 }}></th>
-              <th style={th}>Name</th><th style={th}>Company</th><th style={th}>Phone</th>
-              <th style={th}>Tags</th><th style={th}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {leads.map((l) => (
-              <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: selected.has(l.id) ? "#f0fdfa" : undefined }}>
-                <td style={td}><input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} /></td>
-                <td style={td}>{l.firstName} {l.lastName ?? ""}</td>
-                <td style={td}>{l.company ?? "—"}</td>
-                <td style={td}>{l.phone ?? "—"}</td>
-                <td style={td}>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {l.tags.length ? l.tags.map((t) => <Badge key={t} label={t} tone="neutral" />) : <span style={{ color: "#cbd5e1" }}>—</span>}
-                  </div>
-                </td>
-                <td style={td}><Badge label={l.status} tone={STATUS_TONE[l.status] ?? "neutral"} /></td>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 28 }}></th>
+                <th>Name</th><th>Company</th><th>Phone</th>
+                <th>Tags</th><th>Status</th>
               </tr>
-            ))}
-            {leads.length === 0 && (
-              <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={6}>No leads match this tag.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {leads.map((l) => (
+                <tr key={l.id} style={{ background: selected.has(l.id) ? "#f0fdfa" : undefined }}>
+                  <td><input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} /></td>
+                  <td>{l.firstName} {l.lastName ?? ""}</td>
+                  <td>{l.company ?? "—"}</td>
+                  <td>{l.phone ?? "—"}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {l.tags.length ? l.tags.map((t) => <Badge key={t} label={t} tone="neutral" />) : <span style={{ color: "#cbd5e1" }}>—</span>}
+                    </div>
+                  </td>
+                  <td><Badge label={l.status} tone={STATUS_TONE[l.status] ?? "neutral"} /></td>
+                </tr>
+              ))}
+              {leads.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No leads match this tag.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
 const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
-const th: React.CSSProperties = { padding: "10px 12px", fontWeight: 600 };
-const td: React.CSSProperties = { padding: "10px 12px" };
 const input: React.CSSProperties = { padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, fontFamily: "inherit" };
 const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13, textDecoration: "none" };
 const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13 };

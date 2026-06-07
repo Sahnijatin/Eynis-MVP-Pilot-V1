@@ -2,10 +2,10 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { Download, Upload, UserPlus, Star, Search, CheckCircle, X, AlertCircle } from "lucide-react";
+import { Download, Upload, UserPlus, Star, Search, CheckCircle, AlertCircle } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "./client-detail-panel";
 import { escapeCSV, parseCSVLine } from "../../lib/csv";
-import { TableEmpty } from "../ds";
+import { Modal, TableEmpty } from "../ds";
 
 // Parse a possibly-malformed date string from an imported CSV without throwing.
 // `new Date("garbage").toISOString()` throws a RangeError, which would abort the
@@ -373,25 +373,15 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
 
       {/* Add New Guest Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Add New Guest</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Create a new guest profile in the database</p>
-              </div>
-              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+        <Modal title="Add New Guest" onClose={closeModal} width={448}>
             {success ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3">
                 <CheckCircle className="w-12 h-12 text-emerald-500" />
                 <p className="text-sm font-semibold text-slate-700">Guest added successfully!</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-xs text-slate-500 -mt-1">Create a new guest profile in the database</p>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Full Name *</label>
                   <input
@@ -469,8 +459,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                 </div>
               </form>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {selected && (

@@ -1,8 +1,11 @@
 "use client";
 
+import { TableEmpty } from "../ds";
+
 // Renders the output of a report run (E-16) — either a plain row table or a
 // grouped aggregate table. Used by both the builder preview and the saved-report
-// view so they look identical.
+// view so they look identical. Tables use the shared `.table-wrap`/`.data-table`
+// design-system classes (E-13).
 
 export interface RRColumn { key: string; label: string; type: string }
 export interface RunResult {
@@ -26,30 +29,27 @@ function fmt(value: unknown, type: string): string {
   return String(value);
 }
 
-const th = "px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100";
-const td = "px-3 py-2 text-sm text-slate-700 border-b border-slate-50 align-top";
-
 export function ReportResultTable({ result }: { result: RunResult }) {
   // Grouped aggregate view.
   if (result.grouped) {
     const hasSum = result.grouped.some((g) => g.sum !== null);
-    if (result.grouped.length === 0) {
-      return <p className="text-sm text-slate-500 p-4">No data in the selected window.</p>;
-    }
+    const cols = hasSum ? 3 : 2;
     return (
-      <div className="overflow-x-auto border border-slate-200 rounded-lg">
-        <table className="w-full">
+      <div className="table-wrap">
+        <table className="data-table">
           <thead><tr>
-            <th className={th}>Group</th>
-            <th className={th}>Count</th>
-            {hasSum && <th className={th}>Total</th>}
+            <th>Group</th>
+            <th>Count</th>
+            {hasSum && <th>Total</th>}
           </tr></thead>
           <tbody>
-            {result.grouped.map((g, i) => (
+            {result.grouped.length === 0 ? (
+              <TableEmpty colSpan={cols} title="No data in the selected window" description="Widen the date range or adjust filters." icon="📊" />
+            ) : result.grouped.map((g, i) => (
               <tr key={i}>
-                <td className={td}>{g.group || "—"}</td>
-                <td className={td}>{g.count.toLocaleString("en-IN")}</td>
-                {hasSum && <td className={td}>{(g.sum ?? 0).toLocaleString("en-IN")}</td>}
+                <td>{g.group || "—"}</td>
+                <td>{g.count.toLocaleString("en-IN")}</td>
+                {hasSum && <td>{(g.sum ?? 0).toLocaleString("en-IN")}</td>}
               </tr>
             ))}
           </tbody>
@@ -59,17 +59,16 @@ export function ReportResultTable({ result }: { result: RunResult }) {
   }
 
   // Plain row view.
-  if (result.rows.length === 0) {
-    return <p className="text-sm text-slate-500 p-4">No rows match this report.</p>;
-  }
   return (
-    <div className="overflow-x-auto border border-slate-200 rounded-lg">
-      <table className="w-full">
-        <thead><tr>{result.columns.map((c) => <th key={c.key} className={th}>{c.label}</th>)}</tr></thead>
+    <div className="table-wrap">
+      <table className="data-table">
+        <thead><tr>{result.columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
         <tbody>
-          {result.rows.map((row, i) => (
+          {result.rows.length === 0 ? (
+            <TableEmpty colSpan={Math.max(1, result.columns.length)} title="No rows match this report" description="Try removing a filter or widening the date range." />
+          ) : result.rows.map((row, i) => (
             <tr key={(row.id as string) ?? i}>
-              {result.columns.map((c) => <td key={c.key} className={td}>{fmt(row[c.key], c.type)}</td>)}
+              {result.columns.map((c) => <td key={c.key}>{fmt(row[c.key], c.type)}</td>)}
             </tr>
           ))}
         </tbody>
