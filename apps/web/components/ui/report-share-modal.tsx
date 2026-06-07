@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Loader2, Users, UserRound } from "lucide-react";
+import { Loader2, Users, UserRound } from "lucide-react";
+import { Modal } from "../ds";
 
 // Per-report sharing ACL (E-16 Phase B). Lets the report's creator grant access
 // to specific users and/or whole roles, on top of the tenant-wide "shared"
@@ -70,14 +71,20 @@ export function ReportShareModal({ reportId, onClose }: { reportId: string; onCl
   const rowCls = "flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-800">Share this report</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700"><X className="w-5 h-5" /></button>
-        </div>
-
-        <div className="px-5 py-4 overflow-y-auto">
+    <Modal
+      title="Share this report"
+      onClose={onClose}
+      width={448}
+      footer={
+        <>
+          <button onClick={onClose} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50">Cancel</button>
+          <button onClick={save} disabled={loading || saving} className="px-4 py-2 text-sm font-semibold text-white rounded-lg inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: "var(--color-primary, #0f766e)" }}>
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save sharing
+          </button>
+        </>
+      }
+    >
+      <div>
           <p className="text-xs text-slate-500 mb-4">
             Grant read-only access to specific people or roles. They can open, run, and export this
             report — only you can edit or delete it. (Use “Everyone in workspace” on the report itself
@@ -131,14 +138,6 @@ export function ReportShareModal({ reportId, onClose }: { reportId: string; onCl
             </>
           )}
         </div>
-
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100">
-          <button onClick={onClose} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50">Cancel</button>
-          <button onClick={save} disabled={loading || saving} className="px-4 py-2 text-sm font-semibold text-white rounded-lg inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: "var(--color-primary, #0f766e)" }}>
-            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save sharing
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
