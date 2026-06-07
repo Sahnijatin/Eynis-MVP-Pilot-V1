@@ -3,11 +3,16 @@ import { getApiBaseUrl, getApiToken } from "../../../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/reports/:id/export?format=csv — stream the branded CSV (binary-safe).
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const ALLOWED = new Set(["csv", "html", "pdf"]);
+
+// GET /api/reports/:id/export?format=csv|html|pdf — stream the branded export
+// (binary-safe so a PDF isn't corrupted by text round-tripping).
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const raw = req.nextUrl.searchParams.get("format") ?? "csv";
+  const format = ALLOWED.has(raw) ? raw : "csv";
   const token = await getApiToken();
-  const upstream = await fetch(`${getApiBaseUrl()}/reports/${encodeURIComponent(id)}/export?format=csv`, {
+  const upstream = await fetch(`${getApiBaseUrl()}/reports/${encodeURIComponent(id)}/export?format=${format}`, {
     headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
   });
   const body = await upstream.arrayBuffer();

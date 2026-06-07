@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Play, Save, Loader2 } from "lucide-react";
-import { ReportResultTable, type RunResult } from "./report-result-table";
+import { type RunResult } from "./report-result-table";
+import { ReportResultView } from "./report-result-view";
+
+type Visualization = "table" | "bar" | "line" | "pie" | "number";
+const VISUALIZATIONS: Array<{ key: Visualization; label: string }> = [
+  { key: "table", label: "Table" },
+  { key: "bar", label: "Bar chart" },
+  { key: "line", label: "Line chart" },
+  { key: "pie", label: "Pie chart" },
+  { key: "number", label: "Single number" },
+];
 
 // Custom report builder (E-16, Phase A). Pick a source, columns, filters, date
 // range, group-by, sort; preview against live data; save (private or shared).
@@ -44,6 +54,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
   const [groupBy, setGroupBy] = useState("");
   const [sortField, setSortField] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [visualization, setVisualization] = useState<Visualization>("table");
 
   const [preview, setPreview] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
@@ -77,6 +88,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
             setTo(d.to ?? "");
             setGroupBy(d.groupBy ?? "");
             if (d.sort) { setSortField(d.sort.field); setSortDir(d.sort.dir); }
+            if (d.visualization) setVisualization(d.visualization);
           }
         } else if (srcs.length > 0) {
           selectSource(srcs[0], srcs);
@@ -99,6 +111,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
     setFilters([]);
     setGroupBy("");
     setSortField("");
+    setVisualization("table");
     setPreview(null);
   }
 
@@ -115,7 +128,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
       to: to || null,
       groupBy: groupBy || null,
       sort: sortField ? { field: sortField, dir: sortDir } : null,
-      visualization: "table",
+      visualization,
       limit: 500,
     };
   }
@@ -256,6 +269,15 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
                   {source.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Visualization</label>
+                <select value={visualization} onChange={(e) => setVisualization(e.target.value as Visualization)} className={inputCls}>
+                  {VISUALIZATIONS.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+                </select>
+                {visualization !== "table" && visualization !== "number" && !groupBy && (
+                  <p className="text-[11px] text-amber-600 mt-1">Charts need a “Group by” field.</p>
+                )}
+              </div>
               {!groupBy && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Sort by</label>
@@ -285,7 +307,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
             {!preview ? (
               <p className="text-sm text-slate-400 py-8 text-center">Run a preview to see results.</p>
             ) : (
-              <ReportResultTable result={preview} />
+              <ReportResultView result={preview} />
             )}
           </div>
         </div>

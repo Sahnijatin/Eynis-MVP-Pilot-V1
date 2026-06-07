@@ -17,10 +17,26 @@ const hexToRgb = (hex: string): RGB => {
   return rgb(parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255);
 };
 
+// The standard Helvetica font is WinAnsi-encoded and can't draw characters
+// outside Latin-1 (emoji, ₹, etc.) — which report data routinely contains (e.g.
+// WhatsApp-sourced text). Map the rupee sign and strip anything else unencodable
+// so drawText never throws.
+function pdfSafe(s: unknown): string {
+  return String(s ?? "").replace(/₹/g, "Rs.").replace(/[^\x00-\xFF]/g, "");
+}
+
+// Truncate a single line to a pixel width, adding an ellipsis when it overflows.
+function truncateToWidth(s: string, font: PDFFont, size: number, maxWidth: number): string {
+  if (font.widthOfTextAtSize(s, size) <= maxWidth) return s;
+  let t = s;
+  while (t.length > 1 && font.widthOfTextAtSize(`${t}…`, size) > maxWidth) t = t.slice(0, -1);
+  return `${t}…`;
+}
+
 // Greedy word-wrap to a pixel width using the font's own metrics.
 function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const out: string[] = [];
-  for (const para of String(text).split(/\r?\n/)) {
+  for (const para of pdfSafe(text).split(/\r?\n/)) {
     const words = para.split(/\s+/).filter(Boolean);
     let cur = "";
     for (const w of words) {
@@ -98,14 +114,14 @@ export async function renderBrandedReportPdf(
   y = A4[1] - headerH - 28;
 
   // ── Title + meta ──────────────────────────────────────────────────────────
-  page.drawText(opts.title, { x: MARGIN, y, size: 20, font: bold, color: ink });
+  page.drawText(pdfSafe(opts.title), { x: MARGIN, y, size: 20, font: bold, color: ink });
   y -= 18;
   const metaBits = [
     opts.subtitle,
     `Generated ${(opts.generatedAt ?? new Date()).toLocaleString("en-IN")}`,
     brand.supportEmail ? `Support: ${brand.supportEmail}` : null
   ].filter(Boolean) as string[];
-  page.drawText(metaBits.join("   ·   "), { x: MARGIN, y, size: 9, font, color: muted });
+  page.drawText(pdfSafe(metaBits.join("   ·   ")), { x: MARGIN, y, size: 9, font, color: muted });
   y -= 22;
 
   const text = (s: string, size: number, f: PDFFont, color: RGB, gap = 4) => {
@@ -131,6 +147,36 @@ export async function renderBrandedReportPdf(
         page.drawText("/ 10", { x: A4[0] - MARGIN - 54, y: panelTop - panelH / 2 - 22, size: 9, font, color: muted });
       }
       y = panelTop - panelH - 18;
+      continue;
+    }
+    if (block.kind === "table") {
+      const nCols = Math.max(1, block.header.length);
+      const colW = CONTENT_W / nCols;
+      const pad = 6;
+      const rowH = 16;
+      if (block.heading) {
+        ensure(28);
+        page.drawText(pdfSafe(block.heading).toUpperCase(), { x: MARGIN, y, size: 10, font: bold, color: brandColor });
+        y -= 16;
+      }
+      const drawHeaderRow = () => {
+        ensure(rowH);
+        page.drawRectangle({ x: MARGIN, y: y - rowH + 4, width: CONTENT_W, height: rowH, color: rgb(0.97, 0.98, 0.99) });
+        block.header.forEach((h, i) => {
+          page.drawText(truncateToWidth(pdfSafe(h), bold, 9, colW - pad * 2), { x: MARGIN + i * colW + pad, y: y - 8, size: 9, font: bold, color: muted });
+        });
+        y -= rowH;
+      };
+      drawHeaderRow();
+      for (const row of block.rows) {
+        if (y - rowH < MARGIN + 24) { newPage(); drawHeaderRow(); }
+        row.forEach((c, i) => {
+          page.drawText(truncateToWidth(pdfSafe(c), font, 9, colW - pad * 2), { x: MARGIN + i * colW + pad, y: y - 8, size: 9, font, color: ink });
+        });
+        page.drawLine({ start: { x: MARGIN, y: y - rowH + 3 }, end: { x: MARGIN + CONTENT_W, y: y - rowH + 3 }, thickness: 0.5, color: rgb(0.93, 0.94, 0.96) });
+        y -= rowH;
+      }
+      y -= 10;
       continue;
     }
     // Section / list heading.
