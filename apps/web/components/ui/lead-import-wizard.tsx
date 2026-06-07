@@ -134,12 +134,12 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
 
           <section style={section}>
             <div style={sectionTitle}>3. Preview (first {sample.length} rows)</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
-                <thead><tr>{headers.map((h) => <th key={h} style={{ ...th, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr>{headers.map((h) => <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {sample.map((r, i) => (
-                    <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>{headers.map((_, j) => <td key={j} style={td}>{r[j] ?? ""}</td>)}</tr>
+                    <tr key={i}>{headers.map((_, j) => <td key={j} style={{ whiteSpace: "nowrap" }}>{r[j] ?? ""}</td>)}</tr>
                   ))}
                 </tbody>
               </table>
@@ -183,7 +183,5 @@ const section: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius
 const sectionTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 12, fontSize: 15 };
 const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "#374151", marginBottom: 4, fontWeight: 500 };
 const input: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 14, boxSizing: "border-box" };
-const th: React.CSSProperties = { padding: "8px 10px", fontWeight: 600, textAlign: "left", color: "#666", background: "#fafafa" };
-const td: React.CSSProperties = { padding: "8px 10px", whiteSpace: "nowrap" };
 const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "10px 18px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14, textDecoration: "none" };
 const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "10px 18px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, Copy, Check, X, ChevronDown, Shield } from "lucide-react";
+import { UserPlus, Copy, Check, X, ChevronDown } from "lucide-react";
 import type { TeamUser, TeamRole } from "../../lib/data";
-import { TableEmpty } from "../ds";
+import { Modal, TableEmpty } from "../ds";
 
 const ROLE_COLORS: Record<string, string> = {
   admin: "badge-red",
@@ -275,19 +275,8 @@ export default function TeamClient({
 
       {/* Invite Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" style={{ color: accentColor }} />
-                <h2 className="text-base font-semibold text-slate-800">Invite {teamLabel} Member</h2>
-              </div>
-              <button onClick={closeInviteModal} className="text-slate-500 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title={`Invite ${teamLabel} Member`} onClose={closeInviteModal} width={448}>
+          <div className="space-y-4">
               {!inviteLink ? (
                 <>
                   <div>
@@ -371,9 +360,8 @@ export default function TeamClient({
                   </button>
                 </div>
               )}
-            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
