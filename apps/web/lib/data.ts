@@ -340,6 +340,29 @@ export async function fetchStaffPerformance() {
   return (await res.json()) as StaffPerformanceResponse;
 }
 
+export interface SavedReportItem {
+  id: string;
+  name: string;
+  description: string | null;
+  source: string;
+  shared: boolean;
+  isOwner: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Saved custom reports the current user can see (own + shared) — E-16. Degrades to
+// an empty list on any error so the Reports landing still renders.
+export async function fetchReports(): Promise<{ ok: boolean; items: SavedReportItem[] }> {
+  try {
+    const res = await authedFetch("/reports");
+    if (!res.ok) return { ok: false, items: [] };
+    return (await res.json()) as { ok: boolean; items: SavedReportItem[] };
+  } catch {
+    return { ok: false, items: [] };
+  }
+}
+
 export async function fetchConnectorRegistry() {
   const res = await authedFetch("/connectors/registry");
   return (await res.json()) as ConnectorRegistryResponse;
