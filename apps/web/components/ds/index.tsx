@@ -138,6 +138,27 @@ export function TableEmpty({ colSpan, title, description, icon = "📋" }: { col
   );
 }
 
+// Progressive disclosure (E-13d) — tuck advanced/optional fields behind a
+// click-to-expand summary so the common path stays uncluttered. Collapsed by
+// default unless `defaultOpen`.
+export function Disclosure({ summary, children, defaultOpen = false }: { summary: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: t.color.textMuted, fontSize: t.font.sm, fontWeight: 600, padding: "4px 0" }}
+      >
+        <span style={{ display: "inline-block", transition: "transform 120ms", transform: open ? "rotate(90deg)" : "none", fontSize: 10 }}>▶</span>
+        {summary}
+      </button>
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
+  );
+}
+
 export function Spinner({ size = 18 }: { size?: number }) {
   return <span style={{ display: "inline-block", width: size, height: size, border: `2px solid ${t.color.border}`, borderTopColor: t.color.accent, borderRadius: "50%", animation: "ds-spin 0.7s linear infinite" }} />;
 }

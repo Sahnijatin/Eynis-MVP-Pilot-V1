@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Card, CardTitle, Field, Input, useToast, tokens as t } from "../ds";
+import { Button, Card, CardTitle, Field, Input, Disclosure, useToast, tokens as t } from "../ds";
 import type { TenantBranding } from "../../lib/theme";
 
 // Settings → Branding: edit per-tenant white-label overrides. Anything left
@@ -109,24 +109,6 @@ export function BrandingPanel() {
           style={(logoUrl && !looksLikeImage(logoUrl)) || logoBroken ? { borderColor: t.color.warning } : undefined} />
       </Field>
 
-      <Field
-        label="Favicon URL"
-        hint={
-          form.faviconUrl?.trim() && !looksLikeImage(form.faviconUrl)
-            ? warn("Use a direct image link (.png/.ico/.svg).")
-            : faviconBroken
-              ? warn("Couldn't load that favicon — check the URL.")
-              : "Browser-tab icon (.ico/.png/.svg). Falls back to your logo if blank."
-        }
-      >
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {(form.faviconUrl?.trim() || logoUrl) && !faviconBroken && (
-            <img src={form.faviconUrl?.trim() || logoUrl} alt="" width={20} height={20} style={{ objectFit: "contain", flexShrink: 0 }} onError={() => setFaviconBroken(true)} />
-          )}
-          <Input value={form.faviconUrl ?? ""} onChange={(e) => { setFaviconBroken(false); set({ faviconUrl: e.target.value }); }} placeholder="https://cdn.acme.com/favicon.png" />
-        </div>
-      </Field>
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Primary color" hint="Hex, e.g. #0f766e">
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -143,15 +125,37 @@ export function BrandingPanel() {
       </div>
       <Field label="Support email" hint="Shown on your branded emails and reports."><Input value={form.supportEmail ?? ""} onChange={(e) => set({ supportEmail: e.target.value })} placeholder="support@acme.com" /></Field>
 
-      {/* Artifact-branding flags (E-9): carry the brand onto emails / reports. */}
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: t.font.sm, fontWeight: 600, margin: "4px 0 8px" }}>
-        <input type="checkbox" checked={form.brandEmails !== false} onChange={(e) => set({ brandEmails: e.target.checked })} />
-        Brand outbound emails (header + colors)
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: t.font.sm, fontWeight: 600, margin: "0 0 16px" }}>
-        <input type="checkbox" checked={form.brandReports !== false} onChange={(e) => set({ brandReports: e.target.checked })} />
-        Brand reports &amp; exports (header + colors)
-      </label>
+      {/* Secondary options tucked behind a disclosure (E-13d): favicon + the
+          artifact-branding flags. Keeps the panel's common path uncluttered. */}
+      <div style={{ margin: "4px 0 12px" }}>
+        <Disclosure summary="More branding options">
+          <Field
+            label="Favicon URL"
+            hint={
+              form.faviconUrl?.trim() && !looksLikeImage(form.faviconUrl)
+                ? warn("Use a direct image link (.png/.ico/.svg).")
+                : faviconBroken
+                  ? warn("Couldn't load that favicon — check the URL.")
+                  : "Browser-tab icon (.ico/.png/.svg). Falls back to your logo if blank."
+            }
+          >
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {(form.faviconUrl?.trim() || logoUrl) && !faviconBroken && (
+                <img src={form.faviconUrl?.trim() || logoUrl} alt="" width={20} height={20} style={{ objectFit: "contain", flexShrink: 0 }} onError={() => setFaviconBroken(true)} />
+              )}
+              <Input value={form.faviconUrl ?? ""} onChange={(e) => { setFaviconBroken(false); set({ faviconUrl: e.target.value }); }} placeholder="https://cdn.acme.com/favicon.png" />
+            </div>
+          </Field>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: t.font.sm, fontWeight: 600, margin: "4px 0 8px" }}>
+            <input type="checkbox" checked={form.brandEmails !== false} onChange={(e) => set({ brandEmails: e.target.checked })} />
+            Brand outbound emails (header + colors)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: t.font.sm, fontWeight: 600, margin: "0 0 4px" }}>
+            <input type="checkbox" checked={form.brandReports !== false} onChange={(e) => set({ brandReports: e.target.checked })} />
+            Brand reports &amp; exports (header + colors)
+          </label>
+        </Disclosure>
+      </div>
 
       {/* Deep white-label — gated to the white_label tier (set by us). */}
       <div style={{ borderTop: `1px solid ${t.color.border}`, paddingTop: 16, marginTop: 4 }}>
