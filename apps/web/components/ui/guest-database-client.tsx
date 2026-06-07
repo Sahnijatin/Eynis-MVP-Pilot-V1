@@ -231,7 +231,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             <button
               onClick={openModal}
               className="px-4 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5"
-              style={{ background: "#0f766e" }}
+              style={{ background: "var(--color-primary, #0f766e)" }}
             >
               <UserPlus className="w-3.5 h-3.5" /> Add New Guest
             </button>
@@ -362,7 +362,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             <div className="flex items-center gap-1">
               {[1, 2, 3].map(p => (
                 <button key={p} className={`w-8 h-8 rounded-lg text-sm font-medium ${p === 1 ? "text-white" : "text-slate-600 hover:bg-slate-100"}`}
-                  style={p === 1 ? { background: "#0f766e" } : {}}>{p}</button>
+                  style={p === 1 ? { background: "var(--color-primary, #0f766e)" } : {}}>{p}</button>
               ))}
               <span className="text-slate-400 px-1">...</span>
               <button className="w-8 h-8 rounded-lg text-sm text-slate-600 hover:bg-slate-100">{Math.ceil(total / 20)}</button>
@@ -446,7 +446,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                           onClick={() => setForm(f => ({ ...f, status: s }))}
                           className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
                           style={form.status === s
-                            ? { background: "#0f766e", color: "#fff" }
+                            ? { background: "var(--color-primary, #0f766e)", color: "#fff" }
                             : { border: "1px solid #e2e8f0", color: "#475569" }}
                         >
                           {s}
@@ -463,7 +463,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                   </button>
                   <button type="submit"
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
-                    style={{ background: "#0f766e" }}>
+                    style={{ background: "var(--color-primary, #0f766e)" }}>
                     Add Guest
                   </button>
                 </div>
@@ -486,7 +486,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             { label: "Status",    value: selected.status },
           ]}
           detail={buildGuestDetail(selected)}
-          accentColor="#0f766e"
+          accentColor="var(--color-primary, #0f766e)"
         />
       )}
     </>

@@ -223,7 +223,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
               onChange={(e) => setPropertyName(e.target.value)}
               placeholder={`e.g. The Grand ${config?.name ?? "Hotel"}`}
               className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
-              style={{ "--tw-ring-color": config?.accentColor ?? "#0f766e" } as React.CSSProperties}
+              style={{ "--tw-ring-color": config?.accentColor ?? "var(--color-primary, #0f766e)" } as React.CSSProperties}
             />
           </div>
 
@@ -235,7 +235,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
               onChange={(e) => setOwnerName(e.target.value)}
               placeholder="e.g. Rajnandni Khokar"
               className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
-              style={{ "--tw-ring-color": config?.accentColor ?? "#0f766e" } as React.CSSProperties}
+              style={{ "--tw-ring-color": config?.accentColor ?? "var(--color-primary, #0f766e)" } as React.CSSProperties}
             />
           </div>
 

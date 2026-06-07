@@ -88,7 +88,7 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
 
   return (
     <div style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <Link href={`/campaigns/${campaignId}`} style={{ color: "#0f766e", fontSize: 14 }}>← Back to campaign</Link>
+      <Link href={`/campaigns/${campaignId}`} style={{ color: "var(--color-primary, #0f766e)", fontSize: 14 }}>← Back to campaign</Link>
       <h1 style={{ margin: "8px 0 20px", fontSize: 24 }}>Import leads</h1>
 
       <section style={section}>
@@ -154,7 +154,7 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
       )}
 
       {result && (
-        <section style={{ ...section, borderColor: "#0f766e" }}>
+        <section style={{ ...section, borderColor: "var(--color-primary, #0f766e)" }}>
           <div style={sectionTitle}>Import complete</div>
           <div style={{ display: "flex", gap: 24, marginBottom: 12 }}>
             <div><div style={{ fontSize: 28, fontWeight: 700, color: "#166534" }}>{result.imported}</div><div style={{ color: "#666", fontSize: 13 }}>imported</div></div>
@@ -185,5 +185,5 @@ const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "#3741
 const input: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 14, boxSizing: "border-box" };
 const th: React.CSSProperties = { padding: "8px 10px", fontWeight: 600, textAlign: "left", color: "#666", background: "#fafafa" };
 const td: React.CSSProperties = { padding: "8px 10px", whiteSpace: "nowrap" };
-const btnPrimary: React.CSSProperties = { background: "#0f766e", color: "#fff", padding: "10px 18px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14, textDecoration: "none" };
+const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "10px 18px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14, textDecoration: "none" };
 const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "10px 18px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };

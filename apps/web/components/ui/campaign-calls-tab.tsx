@@ -194,5 +194,5 @@ const td: React.CSSProperties = { padding: "10px 12px" };
 const muted: React.CSSProperties = { color: "#9ca3af", padding: 16 };
 const bubble: React.CSSProperties = { maxWidth: "80%", padding: "8px 12px", borderRadius: 12, fontSize: 13 };
 const closeBtn: React.CSSProperties = { background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#9ca3af" };
-const csvLink: React.CSSProperties = { fontSize: 13, color: "#0f766e", textDecoration: "none", fontWeight: 600 };
+const csvLink: React.CSSProperties = { fontSize: 13, color: "var(--color-primary, #0f766e)", textDecoration: "none", fontWeight: 600 };
 const livePill: React.CSSProperties = { color: "#dc2626", fontSize: 12, fontWeight: 700, marginLeft: 8 };
