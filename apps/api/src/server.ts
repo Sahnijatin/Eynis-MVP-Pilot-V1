@@ -3151,6 +3151,30 @@ const handleRequest = async (
         try { const d = JSON.parse(s) as ReportDefinition; return d && typeof d === "object" ? d : null; } catch { return null; }
       };
 
+      // The share principals that apply to a viewer: themselves, plus their role
+      // (a role grant covers everyone holding that role). Used by both the list
+      // filter and the single-report visibility check (E-16 Phase B ACL).
+      const sharePrincipals = (userId: string, roleKey: string | null): Array<{ principalType: string; principalId: string }> => {
+        const p: Array<{ principalType: string; principalId: string }> = [{ principalType: "user", principalId: userId }];
+        if (roleKey) p.push({ principalType: "role", principalId: roleKey });
+        return p;
+      };
+
+      // A user can view (open/run/export) a report if they own it, it's shared
+      // tenant-wide, or an explicit grant names them or their role. Editing and
+      // deleting stay creator-only regardless of grants.
+      const canViewReport = async (
+        report: { shared: boolean; createdById: string | null },
+        reportId: string, tenantId: string, userId: string, roleKey: string | null,
+      ): Promise<boolean> => {
+        if (report.createdById === userId || report.shared) return true;
+        const grant = await prisma.reportShare.findFirst({
+          where: { reportId, tenantId, OR: sharePrincipals(userId, roleKey) },
+          select: { id: true },
+        });
+        return grant !== null;
+      };
+
       if (rpath === "/reports/sources" && req.method === "GET") {
         const auth = await authorize(req, res, null); if (!auth.ok) return;
         if (!hasPermission(auth.context.permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
@@ -3177,10 +3201,17 @@ const handleRequest = async (
       // GET /reports — list saved reports the user can see (own + shared).
       if (rpath === "/reports" && req.method === "GET") {
         const auth = await authorize(req, res, null); if (!auth.ok) return;
-        const { permissions, tenantId, userId } = auth.context;
+        const { permissions, tenantId, userId, roleKey } = auth.context;
         if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const rows = await prisma.report.findMany({
-          where: { tenantId, OR: [{ shared: true }, { createdById: userId }] },
+          where: {
+            tenantId,
+            OR: [
+              { shared: true },
+              { createdById: userId },
+              { shares: { some: { OR: sharePrincipals(userId, roleKey) } } },
+            ],
+          },
           orderBy: { updatedAt: "desc" },
           select: { id: true, name: true, description: true, source: true, shared: true, createdById: true, createdAt: true, updatedAt: true },
         });
@@ -3215,16 +3246,17 @@ const handleRequest = async (
 
       const runMatch = /^\/reports\/([^/]+)\/run$/.exec(rpath);
       const exportMatch = /^\/reports\/([^/]+)\/export$/.exec(rpath);
+      const sharesMatch = /^\/reports\/([^/]+)\/shares$/.exec(rpath);
       const idMatch = /^\/reports\/([^/]+)$/.exec(rpath);
 
       // GET /reports/:id/run — run a saved report.
       if (runMatch && req.method === "GET") {
         const auth = await authorize(req, res, null); if (!auth.ok) return;
-        const { permissions, tenantId, userId } = auth.context;
+        const { permissions, tenantId, userId, roleKey } = auth.context;
         if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(runMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId } });
-        if (!report || (!report.shared && report.createdById !== userId)) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (!report || !(await canViewReport(report, id, tenantId, userId, roleKey))) { json(res, 404, { ok: false, error: "Report not found" }); return; }
         const def = parseDef(report.definitionJson);
         const source = def && getReportSource(def.source);
         if (!def || !source) { json(res, 400, { ok: false, error: "Invalid report definition" }); return; }
@@ -3238,11 +3270,11 @@ const handleRequest = async (
       // GET /reports/:id/export?format=csv — branded CSV of a saved report.
       if (exportMatch && req.method === "GET") {
         const auth = await authorize(req, res, null); if (!auth.ok) return;
-        const { permissions, tenantId, userId } = auth.context;
+        const { permissions, tenantId, userId, roleKey } = auth.context;
         if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(exportMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId } });
-        if (!report || (!report.shared && report.createdById !== userId)) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (!report || !(await canViewReport(report, id, tenantId, userId, roleKey))) { json(res, 404, { ok: false, error: "Report not found" }); return; }
         const def = parseDef(report.definitionJson);
         const source = def && getReportSource(def.source);
         if (!def || !source) { json(res, 400, { ok: false, error: "Invalid report definition" }); return; }
@@ -3284,11 +3316,11 @@ const handleRequest = async (
       // GET /reports/:id — fetch a saved report's definition.
       if (idMatch && req.method === "GET") {
         const auth = await authorize(req, res, null); if (!auth.ok) return;
-        const { permissions, tenantId, userId } = auth.context;
+        const { permissions, tenantId, userId, roleKey } = auth.context;
         if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(idMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId } });
-        if (!report || (!report.shared && report.createdById !== userId)) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (!report || !(await canViewReport(report, id, tenantId, userId, roleKey))) { json(res, 404, { ok: false, error: "Report not found" }); return; }
         json(res, 200, {
           ok: true,
           report: {
@@ -3296,6 +3328,68 @@ const handleRequest = async (
             shared: report.shared, isOwner: report.createdById === userId, definition: parseDef(report.definitionJson),
           },
         });
+        return;
+      }
+
+      // GET /reports/:id/shares — current grants + pickable users/roles. Creator
+      // only: sharing is a management action, not something a viewer can inspect.
+      if (sharesMatch && req.method === "GET") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(sharesMatch[1] as string);
+        const report = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
+        if (!report) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (report.createdById !== userId) { json(res, 403, { ok: false, error: "Only the report's creator can manage sharing" }); return; }
+        const [shares, users, roles] = await Promise.all([
+          prisma.reportShare.findMany({ where: { reportId: id, tenantId }, select: { principalType: true, principalId: true } }),
+          prisma.user.findMany({ where: { tenantId, isActive: true }, select: { id: true, fullName: true, email: true }, orderBy: { fullName: "asc" } }),
+          prisma.role.findMany({ where: { tenantId }, select: { key: true, displayName: true }, orderBy: { displayName: "asc" } }),
+        ]);
+        // The owner already has access — no point offering to share with themselves.
+        json(res, 200, { ok: true, shares, users: users.filter((u) => u.id !== userId), roles });
+        return;
+      }
+
+      // PUT /reports/:id/shares — replace the full grant set (creator only).
+      // Body: { shares: [{ principalType: "user"|"role", principalId }] }.
+      if (sharesMatch && req.method === "PUT") {
+        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const { permissions, tenantId, userId } = auth.context;
+        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const id = decodeURIComponent(sharesMatch[1] as string);
+        const report = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
+        if (!report) { json(res, 404, { ok: false, error: "Report not found" }); return; }
+        if (report.createdById !== userId) { json(res, 403, { ok: false, error: "Only the report's creator can manage sharing" }); return; }
+        const body = (await parseBody(req)) as { shares?: Array<{ principalType?: unknown; principalId?: unknown }> };
+        const incoming = Array.isArray(body.shares) ? body.shares : [];
+        // Validate every principal against real tenant members/roles so a grant can
+        // never reference a user outside the tenant or a non-existent role.
+        const [tenantUsers, tenantRoles] = await Promise.all([
+          prisma.user.findMany({ where: { tenantId }, select: { id: true } }),
+          prisma.role.findMany({ where: { tenantId }, select: { key: true } }),
+        ]);
+        const userIds = new Set(tenantUsers.map((u) => u.id));
+        const roleKeys = new Set(tenantRoles.map((r) => r.key));
+        const seen = new Set<string>();
+        const valid: Array<{ principalType: string; principalId: string }> = [];
+        for (const s of incoming) {
+          const type = s.principalType === "role" ? "role" : s.principalType === "user" ? "user" : null;
+          const pid = asTrimmedString(s.principalId);
+          if (!type || !pid) continue;
+          // Sharing to a non-member, the owner themselves, or an unknown role is dropped.
+          if (type === "user" && (!userIds.has(pid) || pid === userId)) continue;
+          if (type === "role" && !roleKeys.has(pid)) continue;
+          const k = `${type}:${pid}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          valid.push({ principalType: type, principalId: pid });
+        }
+        await prisma.$transaction([
+          prisma.reportShare.deleteMany({ where: { reportId: id, tenantId } }),
+          ...(valid.length ? [prisma.reportShare.createMany({ data: valid.map((v) => ({ tenantId, reportId: id, ...v })) })] : []),
+        ]);
+        json(res, 200, { ok: true, shares: valid });
         return;
       }
 

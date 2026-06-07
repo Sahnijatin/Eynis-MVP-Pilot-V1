@@ -218,3 +218,68 @@ test("private reports are invisible to others; only the creator can edit/delete"
     assert.equal((await fetch(base + `/reports/${id}`, { method: "DELETE", headers: owner })).status, 200);
   } finally { await close(server); }
 });
+
+test("report ACL: per-user + per-role grants widen visibility; owner-only management (E-16 Phase B)", async () => {
+  const tenantId = await seedTenant();
+  await addUser(tenantId, `owner+${tenantId}@t.local`, "admin", "owner");
+  await addUser(tenantId, `mgr+${tenantId}@t.local`, "manager", "front_desk");
+  await addUser(tenantId, `sup+${tenantId}@t.local`, "supervisor", "fnb_manager");
+  const mgr = await prisma.user.findFirst({ where: { tenantId, email: `mgr+${tenantId}@t.local` }, select: { id: true } });
+
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    const owner = await authHeader(base, tenantId, `owner+${tenantId}@t.local`, "admin");
+    const mgrH = await authHeader(base, tenantId, `mgr+${tenantId}@t.local`, "manager");
+    const supH = await authHeader(base, tenantId, `sup+${tenantId}@t.local`, "supervisor");
+
+    const save = await fetch(base + "/reports", { method: "POST", headers: owner, body: JSON.stringify({
+      name: "ACL", shared: false, definition: { source: "contacts", columns: ["fullName"] },
+    }) });
+    const { id } = await save.json() as { id: string };
+
+    // Private → both non-owners blocked.
+    assert.equal((await fetch(base + `/reports/${id}`, { headers: mgrH })).status, 404);
+    assert.equal((await fetch(base + `/reports/${id}`, { headers: supH })).status, 404);
+
+    // Grant to the manager user specifically + everyone with the supervisor role.
+    // Bogus principals (unknown user / unknown type) are silently dropped.
+    const put = await fetch(base + `/reports/${id}/shares`, { method: "PUT", headers: owner, body: JSON.stringify({
+      shares: [
+        { principalType: "user", principalId: mgr!.id },
+        { principalType: "role", principalId: "supervisor" },
+        { principalType: "user", principalId: "not-a-real-user" },
+        { principalType: "bogus", principalId: "x" },
+      ],
+    }) });
+    const putData = await put.json() as { ok: boolean; shares: unknown[] };
+    assert.equal(put.status, 200);
+    assert.equal(putData.shares.length, 2); // only the two valid grants persist
+
+    // Manager (named grant) can open + run + export, and sees it listed as not-owned.
+    assert.equal((await fetch(base + `/reports/${id}`, { headers: mgrH })).status, 200);
+    assert.equal((await fetch(base + `/reports/${id}/run`, { headers: mgrH })).status, 200);
+    assert.equal((await fetch(base + `/reports/${id}/export?format=csv`, { headers: mgrH })).status, 200);
+    const mgrList = await (await fetch(base + "/reports", { headers: mgrH })).json() as { items: Array<{ id: string; isOwner: boolean }> };
+    assert.ok(mgrList.items.some((r) => r.id === id && !r.isOwner));
+
+    // Supervisor sees it through the role grant.
+    assert.equal((await fetch(base + `/reports/${id}`, { headers: supH })).status, 200);
+
+    // Non-owner can neither inspect nor change the grant set.
+    assert.equal((await fetch(base + `/reports/${id}/shares`, { headers: mgrH })).status, 403);
+    assert.equal((await fetch(base + `/reports/${id}/shares`, { method: "PUT", headers: mgrH, body: JSON.stringify({ shares: [] }) })).status, 403);
+
+    // Owner's share view lists pickable members (excluding themselves) + roles.
+    const view = await (await fetch(base + `/reports/${id}/shares`, { headers: owner })).json() as { ok: boolean; shares: unknown[]; users: Array<{ id: string }>; roles: Array<{ key: string }> };
+    assert.ok(view.ok);
+    assert.equal(view.shares.length, 2);
+    assert.ok(view.users.some((u) => u.id === mgr!.id));
+    assert.equal(view.users.some((u) => u.id === mgr!.id) && view.roles.length >= 1, true);
+
+    // Owner revokes everything → access closes again for both grantees.
+    await fetch(base + `/reports/${id}/shares`, { method: "PUT", headers: owner, body: JSON.stringify({ shares: [] }) });
+    assert.equal((await fetch(base + `/reports/${id}`, { headers: mgrH })).status, 404);
+    assert.equal((await fetch(base + `/reports/${id}`, { headers: supH })).status, 404);
+  } finally { await close(server); }
+});
