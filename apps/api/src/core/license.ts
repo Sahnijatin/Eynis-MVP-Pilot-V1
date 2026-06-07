@@ -10,6 +10,7 @@ const PLAN_FEATURES: Record<string, Set<LicenseFeature>> = {
     "ai_features",
     "automations",
     "night_audit",
+    "research_studio",
   ]),
   enterprise: new Set([
     "custom_roles",
@@ -17,6 +18,7 @@ const PLAN_FEATURES: Record<string, Set<LicenseFeature>> = {
     "ai_features",
     "automations",
     "night_audit",
+    "research_studio",
   ]),
 };
 
@@ -26,6 +28,7 @@ const FEATURE_LABELS: Record<LicenseFeature, string> = {
   ai_features:         "AI Intelligence",
   automations:         "Automations",
   night_audit:         "Night Audit",
+  research_studio:     "Research Studio",
 };
 
 export const isPlanAllowed = (plan: string, feature: LicenseFeature): boolean => {

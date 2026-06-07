@@ -244,6 +244,29 @@ New `apps/api` deps: `playwright`, `@mozilla/readability` (+ `jsdom`). **No new 
 
 ---
 
+## 9a. Implementation status — RS-1 shipped
+
+RS-1 is implemented in this branch. What landed, and a few deliberate calls made during the build:
+
+**Backend (`apps/api`)**
+- Models + migration: `ResearchTemplate`, `ResearchRun`, `ResearchSourceCache`, `ResearchShare` (`prisma/migrations/20260607050000_add_research_studio`).
+- Engine in `src/core/research/`: `sources/{searxng,crawl,pagespeed,http}.ts`, `gather.ts` (parallel + per-tenant crawl cache), `synthesize.ts` (tiered), `validate`-by-construction (score clamp / table sanitize inside synthesize), `render.ts`, `engine.ts`, `worker.ts`, `types.ts`, `templates.ts`, `store.ts`.
+- Routes added to `server.ts` (`/research/sources|templates|templates/:id|runs|runs/:id|runs/:id/export`); `startResearchWorker()` wired into `startServer()`.
+- Permissions `view_research` / `run_research` / `manage_research` (`core/permissions.ts`, self-heal via `syncSystemRolePermissions`); license feature `research_studio` (Growth+).
+- Tiered AI helper `aiCompleteTiered()` added to `core/ai/intelligence.ts` (Haiku/`gpt-4o-mini` cheap tier; premium keeps extended thinking).
+- Unit tests (no DB): `core/research/research.test.ts` (validation, html→text, render, fallback synthesis, built-ins).
+
+**Frontend (`apps/web`)**
+- `/research` page + `components/ui/research-studio-client.tsx` (gallery, 3-step editor, run modal, live-progress run view via polling, branded preview + PDF/CSV/HTML export). Proxy routes under `app/api/research/*`. Nav entry added to the shared CRM module.
+
+**Deliberate deviations from the original plan (all sensible scope calls):**
+1. **Crawl is dependency-free** (`fetch` + an HTML→text reducer) instead of Playwright + `@mozilla/readability`. This keeps RS-1 CI/serverless-safe with **no new npm deps and no headless-browser binary**. A Playwright fallback for JS-heavy sites moves to **RS-4**. Most company/marketing sites yield enough static HTML for synthesis.
+2. **No-AI fallback:** when neither AI key is set, synthesis returns a complete, evidence-grounded report deterministically (mirrors the platform's keyword-fallback philosophy) so dev/test and unconfigured tenants still work end-to-end.
+3. **Run progress via polling** (`GET /research/runs/:id` every ~1.8s) for a robust UX; the global SSE feed also carries `research_run` events. A dedicated SSE stream can come later.
+4. **Early CRM bridge:** a run that targets a contact/deal/company already logs a completion `Activity` to the timeline — bringing part of RS-2/RS-3's value forward at no extra cost.
+
+**New env vars:** `SEARXNG_URL` (web search; unset → search degrades gracefully), `PAGESPEED_API_KEY` (optional, free tier), and optional tuning: `RESEARCH_CLAUDE_CHEAP_MODEL`, `RESEARCH_OPENAI_CHEAP_MODEL`, `RESEARCH_WORKER_INTERVAL_MS`, `RESEARCH_WORKER_BATCH`, `RESEARCH_CACHE_TTL_MS`, `RESEARCH_USER_AGENT`.
+
 ## 10. Non-goals (v1)
 
 - No Python scrape-worker sidecar (revisit only if TS scraping quality is insufficient).

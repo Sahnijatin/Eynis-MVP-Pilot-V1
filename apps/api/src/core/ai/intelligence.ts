@@ -341,6 +341,50 @@ export async function aiComplete(userContent: string, provider: AIProvider = "cl
   return provider === "openai" ? openaiCall(userContent) : claudeCall(userContent);
 }
 
+// ── Research Studio: tiered completion (RS-1) ─────────────────────────────────
+// Keeps research cost low by spending a small/cheap model on high-volume per-source
+// extraction ("cheap") and reserving the premium model (with extended thinking) for
+// the final structured synthesis ("premium"). Model ids are env-overridable so an
+// operator can dial cost/quality without code changes. Callers MUST gate on
+// CLAUDE_AVAILABLE / OPENAI_AVAILABLE and provide their own non-AI fallback.
+const RESEARCH_CLAUDE_CHEAP = process.env.RESEARCH_CLAUDE_CHEAP_MODEL ?? "claude-haiku-4-5";
+const RESEARCH_OPENAI_CHEAP = process.env.RESEARCH_OPENAI_CHEAP_MODEL ?? "gpt-4o-mini";
+
+export async function aiCompleteTiered(
+  userContent: string,
+  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; maxTokens?: number; system?: string } = {},
+): Promise<string> {
+  const provider = opts.provider ?? "claude";
+  const tier = opts.tier ?? "premium";
+  const maxTokens = opts.maxTokens ?? (tier === "cheap" ? 1024 : 4096);
+  const system = opts.system ?? SYSTEM_PROMPT;
+
+  if (provider === "openai") {
+    const res = await getOpenAIClient().chat.completions.create({
+      model: tier === "cheap" ? RESEARCH_OPENAI_CHEAP : OPENAI_MODEL,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+      ],
+      max_tokens: maxTokens,
+    });
+    return res.choices[0]?.message.content ?? "";
+  }
+
+  // Claude: the cheap tier skips extended thinking (faster + cheaper); the premium
+  // tier keeps adaptive thinking + high effort for the final synthesis.
+  const res = await getClaudeClient().messages.create({
+    model: tier === "cheap" ? RESEARCH_CLAUDE_CHEAP : CLAUDE_MODEL,
+    max_tokens: maxTokens,
+    ...(tier === "premium"
+      ? { thinking: { type: "adaptive" as const }, output_config: { effort: "high" as const } }
+      : {}),
+    system: [{ type: "text" as const, text: system }],
+    messages: [{ role: "user", content: userContent }],
+  });
+  return claudeTextContent(res);
+}
+
 async function openaiSmartInsights(data: SmartInsightsData): Promise<SmartInsights> {
   return parseStructured<SmartInsights>(await openaiCall(insightsPrompt(data)), INSIGHTS_KEYS);
 }

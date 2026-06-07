@@ -396,6 +396,67 @@ export async function fetchReports(): Promise<{ ok: boolean; items: SavedReportI
   }
 }
 
+// ── Research Studio (RS-1) ──────────────────────────────────────────────────
+export interface ResearchTemplateItem {
+  id: string;
+  name: string;
+  description: string | null;
+  subjectType: string;
+  isBuiltIn: boolean;
+  sectionCount: number;
+  sourceCount: number;
+  updatedAt: string | null;
+  isOwner: boolean;
+}
+export interface ResearchRunItem {
+  id: string;
+  templateName: string;
+  subjectType: string;
+  subjectLabel: string | null;
+  status: string;
+  progress: number;
+  stage: string | null;
+  score: number | null;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+export interface ResearchSourceCatalog {
+  sources: Array<{ key: string; label: string; cost: string; hint: string; needs?: string }>;
+  subjectTypes: string[];
+  outputs: string[];
+}
+
+export async function fetchResearchTemplates(): Promise<{ ok: boolean; items: ResearchTemplateItem[]; error?: string }> {
+  try {
+    const res = await authedFetch("/research/templates");
+    const data = (await res.json()) as { ok: boolean; items?: ResearchTemplateItem[]; error?: string };
+    return { ok: res.ok && data.ok, items: data.items ?? [], error: data.error };
+  } catch {
+    return { ok: false, items: [] };
+  }
+}
+
+export async function fetchResearchRuns(): Promise<{ ok: boolean; items: ResearchRunItem[] }> {
+  try {
+    const res = await authedFetch("/research/runs");
+    if (!res.ok) return { ok: false, items: [] };
+    return (await res.json()) as { ok: boolean; items: ResearchRunItem[] };
+  } catch {
+    return { ok: false, items: [] };
+  }
+}
+
+export async function fetchResearchSources(): Promise<ResearchSourceCatalog | null> {
+  try {
+    const res = await authedFetch("/research/sources");
+    if (!res.ok) return null;
+    return (await res.json()) as ResearchSourceCatalog;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchConnectorRegistry() {
   const res = await authedFetch("/connectors/registry");
   return (await res.json()) as ConnectorRegistryResponse;

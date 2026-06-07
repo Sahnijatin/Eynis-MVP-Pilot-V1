@@ -5,7 +5,7 @@ import {
   Calculator, CalendarDays, Plane, UtensilsCrossed,
   BarChart3, Brain, Warehouse, ClipboardList,
   Building2, Factory, HeartPulse, Globe, ChefHat, Mic, Handshake,
-  Workflow, Plug, UserCheck
+  Workflow, Plug, UserCheck, Telescope
 } from "lucide-react";
 
 export type Industry = "hospitality" | "manufacturing" | "fnb" | "travel" | "healthcare";
@@ -81,7 +81,8 @@ function crmModule(records: { href: string; label: string; description: string }
       { href: "/contacts", label: "Contacts", icon: Users, description: "People you do business with." },
       { href: "/companies", label: "Companies", icon: Building2, description: "Organizations and accounts." },
       { href: "/deals", label: "Deals", icon: Handshake, description: "Your pipeline and open opportunities." },
-      { href: "/tasks", label: "Tasks", icon: ClipboardList, description: "Follow-ups and to-dos." }
+      { href: "/tasks", label: "Tasks", icon: ClipboardList, description: "Follow-ups and to-dos." },
+      { href: "/research", label: "Research", icon: Telescope, description: "Run configurable AI research on any prospect, deal or company." }
     ]
   };
 }
