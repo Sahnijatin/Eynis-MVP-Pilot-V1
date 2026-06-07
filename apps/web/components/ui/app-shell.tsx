@@ -247,7 +247,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     pathname.startsWith("/request") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
-    pathname.startsWith("/onboarding");
+    pathname.startsWith("/onboarding") ||
+    // Internal Eynis-staff provisioning console (E-8): not a tenant surface, so it
+    // renders bare — no tenant sidebar, branding, or org-role route guard.
+    pathname.startsWith("/admin");
 
   useEffect(() => {
     if (isPublicRoute) return;

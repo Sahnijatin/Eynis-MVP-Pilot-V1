@@ -10,7 +10,11 @@ const isPublicRoute = createRouteMatcher([
   "/api/invitations(.*)",
   "/api/public/(.*)",
   "/api/connectors/(.*)",
-  "/api/sse(.*)"
+  "/api/sse(.*)",
+  // Internal Eynis-staff provisioning console (E-8). It is NOT a Clerk surface —
+  // staff authenticate with the platform-admin secret, gated server-side.
+  "/admin(.*)",
+  "/api/admin(.*)"
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

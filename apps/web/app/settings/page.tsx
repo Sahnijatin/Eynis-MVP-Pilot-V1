@@ -1,5 +1,4 @@
-import { Save, Camera, Clock, Phone } from "lucide-react";
-import { ChangeIndustry } from "../../components/ui/change-industry";
+import { Save, Camera, Clock, Phone, Lock } from "lucide-react";
 import { BrandingPanel } from "../../components/ui/branding-panel";
 import { DomainsPanel } from "../../components/ui/domains-panel";
 import { getUserWorkspace } from "../../lib/workspace";
@@ -17,12 +16,12 @@ function buildTabs(propertyLabel: string, teamLabel: string) {
 }
 
 export default async function SettingsPage() {
-  const { industry, config } = await getUserWorkspace();
+  const { config } = await getUserWorkspace();
   const accent = config.accentColor;
   const tabs = buildTabs(config.terminology.property, config.terminology.team);
 
-  // Only the workspace admin can change industry — invited members are
-  // locked to the industry tied to their role in the hotel.
+  // Only the workspace admin sees the white-label panels. Industry is no longer
+  // self-service for anyone — it is provisioned by Eynis staff (E-8).
   let isAdmin = true;
   try {
     const ctx = await resolveUserContext();
@@ -67,20 +66,23 @@ export default async function SettingsPage() {
       <div className="grid grid-cols-3 gap-4">
         {/* Main settings */}
         <div className="col-span-2 space-y-4">
-          {/* Industry workspace switcher — admins only */}
+          {/* Industry workspace — read-only (E-8). Industry is provisioned by us at
+              onboarding and re-shapes nav/terminology/features, so it is not a
+              self-service setting. Customers see it, but can't change it. */}
           <div className="card">
             <h3 className="text-base font-semibold text-slate-800 mb-1">Industry Workspace</h3>
-            {isAdmin ? (
-              <>
-                <p className="text-sm text-slate-400 mb-4">Switch your workspace to a different industry. Nav, modules, and terminology will update instantly.</p>
-                <ChangeIndustry currentIndustry={industry ?? "hospitality"} />
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-slate-400 mb-2">Your workspace is set to <span className="font-medium text-slate-700">{config.name}</span> — this is locked by your role.</p>
-                <p className="text-xs text-slate-400">Only a workspace admin can change the industry.</p>
-              </>
-            )}
+            <p className="text-sm text-slate-400 mb-3">Your nav, modules, and terminology are tailored to your industry.</p>
+            <div className="flex items-center gap-3">
+              <span
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold"
+                style={{ background: accent + "12", color: accent }}
+              >
+                {config.name}
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                <Lock className="w-3 h-3" /> Managed for you — contact support to change your industry.
+              </span>
+            </div>
           </div>
 
           {/* White-label branding — admins only */}

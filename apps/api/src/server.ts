@@ -35,6 +35,8 @@ import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel, syncSystemRolePermissions } from "./core/rbac";
 import { enforceLicenseFeature } from "./core/license";
 import { type Permission, ALL_PERMISSIONS } from "./core/permissions";
+import { verifyPlatformAdmin, isPlatformAdminConfigured } from "./core/platform-admin";
+import { isValidIndustry, industryOptions, VALID_INDUSTRIES } from "./core/industries";
 
 const eventBus = new InMemoryEventBus();
 
@@ -301,6 +303,21 @@ async function authorize(
   }
   return { ok: true, context: auth.context };
 }
+
+// Gate for the internal provisioning console (E-8). This is the platform-staff
+// boundary — completely separate from tenant RBAC above. Writes its own response
+// and returns false when the caller is not an authenticated staff member.
+const requirePlatformAdmin = (req: IncomingMessage, res: ServerResponse): boolean => {
+  if (!isPlatformAdminConfigured()) {
+    json(res, 503, { ok: false, error: "Provisioning console is not configured (PLATFORM_ADMIN_SECRET unset)" });
+    return false;
+  }
+  if (!verifyPlatformAdmin(req)) {
+    json(res, 401, { ok: false, error: "Invalid platform admin credentials" });
+    return false;
+  }
+  return true;
+};
 
 
 const parseServiceRequestStatusPath = (url: string | undefined): string | null => {
@@ -748,6 +765,82 @@ const handleRequest = async (
       }
       json(res, 200, { ok: true });
       return;
+    }
+
+    // ── Internal provisioning console (E-8) ─────────────────────────────────────
+    // Eynis-staff-only, cross-tenant surface that sets a tenant's industry (and,
+    // per E-9/E-10, white-label tier + custom domain on the same console). Gated by
+    // `requirePlatformAdmin` — the platform-staff secret, NOT tenant RBAC — so a
+    // customer admin can never reach it. Every mutation is audit-logged.
+    {
+      const internalPath = parseUrl(req.url).pathname;
+
+      // GET /internal/tenants — list every tenant for the console picker. Optional
+      // ?search= matches name / id / slug (case-insensitive).
+      if (internalPath === "/internal/tenants" && req.method === "GET") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const search = asTrimmedString(parseUrl(req.url).searchParams.get("search"));
+        const tenants = await prisma.tenant.findMany({
+          where: search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: "insensitive" } },
+                  { id: { contains: search, mode: "insensitive" } },
+                  { slug: { contains: search, mode: "insensitive" } }
+                ]
+              }
+            : undefined,
+          select: { id: true, name: true, industry: true, slug: true, customDomain: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 200
+        });
+        json(res, 200, { ok: true, items: tenants, industries: industryOptions() });
+        return;
+      }
+
+      // PATCH /internal/tenants/:id/industry — set a tenant's industry.
+      const industryMatch = /^\/internal\/tenants\/([^/]+)\/industry$/.exec(internalPath);
+      if (industryMatch && req.method === "PATCH") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(industryMatch[1] as string);
+        const body = (await parseBody(req)) as { industry?: unknown; actor?: unknown };
+        const industry = asTrimmedString(body.industry);
+        if (!industry || !isValidIndustry(industry)) {
+          json(res, 400, { ok: false, error: `industry must be one of: ${VALID_INDUSTRIES.join(", ")}` });
+          return;
+        }
+        const existing = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, industry: true }
+        });
+        if (!existing) {
+          json(res, 404, { ok: false, error: "Tenant not found" });
+          return;
+        }
+        const tenant = await prisma.tenant.update({
+          where: { id: tenantId },
+          data: { industry },
+          select: { id: true, name: true, industry: true, slug: true, customDomain: true, createdAt: true }
+        });
+        // Audit on the affected tenant. `actor` is a free-text label the console can
+        // pass to attribute the change to a specific staff member.
+        await prisma.auditLog.create({
+          data: {
+            tenantId,
+            actorRole: "platform_staff",
+            action: "tenant.industry_changed",
+            entityType: "tenant",
+            entityId: tenantId,
+            metadata: JSON.stringify({
+              from: existing.industry,
+              to: industry,
+              actor: asTrimmedString(body.actor) ?? "platform_console"
+            })
+          }
+        });
+        json(res, 200, { ok: true, tenant });
+        return;
+      }
     }
 
     // ── GET /auth/impersonations/recent — recent targets for the modal (E-6) ────
