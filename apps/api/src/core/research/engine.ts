@@ -125,9 +125,11 @@ async function logToCrm(
   });
 
   // Score write-back (RS-3): a contact's research score updates its lead score so
-  // research enriches the CRM signal, not just the timeline. Best-effort.
+  // research enriches the CRM signal, not just the timeline. Best-effort, and
+  // tenant-scoped via updateMany (defence-in-depth: a no-op if the id isn't this
+  // tenant's, even though subjectId ownership is verified at run creation).
   if (run.subjectType === "contact" && score != null) {
-    await prisma.contact.update({ where: { id: run.subjectId }, data: { leadScore: score } }).catch(() => undefined);
+    await prisma.contact.updateMany({ where: { id: run.subjectId, tenantId: run.tenantId }, data: { leadScore: score } }).catch(() => undefined);
   }
 }
 

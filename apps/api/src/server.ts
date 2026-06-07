@@ -48,6 +48,7 @@ import { provisionSendingDomain, refreshSendingDomain, isValidSendingDomain, isV
 import { listTemplates, getTemplateDetail, loadTemplateForRun } from "./core/research/store";
 import { validateTemplateDef, RESEARCH_SOURCE_CATALOG, SUBJECT_TYPES, SECTION_OUTPUTS, type SubjectType } from "./core/research/types";
 import { isBuiltinId } from "./core/research/templates";
+import { SEARXNG_AVAILABLE } from "./core/research/sources/searxng";
 import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
@@ -3460,7 +3461,7 @@ const handleRequest = async (
         if (rpath === "/research/sources" && req.method === "GET") {
           const auth = await authorize(req, res, null); if (!auth.ok) return;
           if (!hasPermission(auth.context.permissions, "view_research")) { denyPerm(); return; }
-          json(res, 200, { ok: true, sources: RESEARCH_SOURCE_CATALOG, subjectTypes: SUBJECT_TYPES, outputs: SECTION_OUTPUTS });
+          json(res, 200, { ok: true, sources: RESEARCH_SOURCE_CATALOG, subjectTypes: SUBJECT_TYPES, outputs: SECTION_OUTPUTS, searchConfigured: SEARXNG_AVAILABLE });
           return;
         }
 
@@ -3641,6 +3642,18 @@ const handleRequest = async (
           const subjectType: SubjectType = SUBJECT_TYPES.includes(body.subjectType as SubjectType) ? (body.subjectType as SubjectType) : def.subjectType;
           const subjectLabel = asTrimmedString(body.subjectLabel) ?? (inputs.name ? inputs.name : null);
 
+          // A run's subjectId drives CRM write-back (timeline activity, lead score).
+          // It MUST belong to this tenant — otherwise a caller could target another
+          // tenant's record. Verify ownership and reject a foreign/unknown subject.
+          const subjectId = asTrimmedString(body.subjectId);
+          if (subjectId && (subjectType === "contact" || subjectType === "deal" || subjectType === "company")) {
+            const owned =
+              subjectType === "contact" ? await prisma.contact.findFirst({ where: { id: subjectId, tenantId }, select: { id: true } })
+              : subjectType === "deal" ? await prisma.deal.findFirst({ where: { id: subjectId, tenantId }, select: { id: true } })
+              : await prisma.company.findFirst({ where: { id: subjectId, tenantId }, select: { id: true } });
+            if (!owned) { json(res, 404, { ok: false, error: "Subject not found" }); return; }
+          }
+
           const run = await prisma.researchRun.create({
             data: {
               tenantId,
@@ -3648,7 +3661,7 @@ const handleRequest = async (
               templateName: tpl.name,
               templateSnapshot: JSON.stringify(def),
               subjectType,
-              subjectId: asTrimmedString(body.subjectId),
+              subjectId,
               subjectLabel,
               inputsJson: JSON.stringify(inputs),
               status: "queued",

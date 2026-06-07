@@ -208,7 +208,8 @@ function HomeView(props: {
   onDelete: (id: string) => void;
 }) {
   const { accent, templates, runs } = props;
-  const noSearch = props.catalog?.sources.find((s) => s.key === "webSearch") && !process.env.NEXT_PUBLIC_HAS_SEARXNG;
+  // Only nudge about web search when the API reports it isn't configured.
+  const noSearch = props.catalog?.searchConfigured === false;
 
   return (
     <div>

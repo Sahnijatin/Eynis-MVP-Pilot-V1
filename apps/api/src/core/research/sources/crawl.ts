@@ -134,7 +134,8 @@ export async function fetchReadable(url: string): Promise<PageContent | null> {
     if (!res || !res.ok) return null;
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("html") && ct !== "") return null;
-    const html = await res.text();
+    // Cap the body before processing so a huge page can't blow memory / slow the regex.
+    const html = (await res.text()).slice(0, 2_000_000);
     const text = htmlToText(html);
     if (!text) return null;
     return { url: res.url || normalized, title: extractTitle(html) || normalized, text };
