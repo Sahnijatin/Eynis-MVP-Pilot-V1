@@ -114,6 +114,14 @@ const REPORTS_ITEM: NavItem = {
   description: "Generated operational reports and exports."
 };
 
+// Sentiment Trends is shared across every industry (E-14): any vertical has
+// customer/contact sentiment from calls and inbound messages. Industry-neutral
+// copy — no "guest" — so it reads correctly for plants, outlets, clinics, etc.
+const SENTIMENT_ITEM: NavItem = {
+  href: "/sentiment-trends", label: "Sentiment Trends", icon: LineChart,
+  description: "Customer sentiment over time, from calls and messages."
+};
+
 export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
   hospitality: {
     id: "hospitality",
@@ -133,7 +141,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         description: "Revenue, sentiment, team performance and reports.",
         children: [
           { href: "/revenue-intelligence", label: "Revenue Intelligence", icon: TrendingUp, description: "Occupancy, ADR/RevPAR and revenue opportunities." },
-          { href: "/sentiment-trends", label: "Sentiment Trends", icon: LineChart, description: "Guest satisfaction over time." },
+          SENTIMENT_ITEM,
           { href: "/staff-performance", label: "Staff Performance", icon: Users, description: "Team responsiveness and resolution metrics." },
           REPORTS_ITEM
         ]
@@ -179,6 +187,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         children: [
           { href: "/analytics/revenue", label: "Revenue Analytics", icon: TrendingUp, description: "Revenue, margin and trend analysis." },
           { href: "/ai-brain", label: "AI Brain", icon: Brain, description: "Conversational intelligence over your operation." },
+          SENTIMENT_ITEM,
           REPORTS_ITEM
         ]
       },
@@ -223,6 +232,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         children: [
           { href: "/analytics/revenue", label: "Revenue Analytics", icon: TrendingUp, description: "Sales, margin and trend analysis." },
           { href: "/ai-brain", label: "AI Brain", icon: Brain, description: "Conversational intelligence over your outlets." },
+          SENTIMENT_ITEM,
           REPORTS_ITEM
         ]
       },
@@ -259,6 +269,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         children: [
           { href: "/analytics/revenue", label: "Revenue Analytics", icon: TrendingUp, description: "Bookings revenue and trend analysis." },
           { href: "/ai-brain", label: "AI Brain", icon: Brain, description: "Conversational intelligence over your bookings." },
+          SENTIMENT_ITEM,
           REPORTS_ITEM
         ]
       },
@@ -295,6 +306,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         children: [
           { href: "/analytics/revenue", label: "Revenue Analytics", icon: TrendingUp, description: "Practice revenue and trend analysis." },
           { href: "/ai-brain", label: "AI Brain", icon: Brain, description: "Conversational intelligence over your practice." },
+          SENTIMENT_ITEM,
           REPORTS_ITEM
         ]
       },

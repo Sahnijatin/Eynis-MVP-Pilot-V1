@@ -18,7 +18,7 @@ export function SentimentTrendsClient({ data }: { data: SentimentResponse }) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Sentiment Trends</h1>
-            <p className="page-subtitle">Guest satisfaction from voice calls and inbound messages — last 30 days</p>
+            <p className="page-subtitle">Customer sentiment from voice calls and inbound messages — last 30 days</p>
           </div>
           <span className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-500">Last 30 days</span>
         </div>
