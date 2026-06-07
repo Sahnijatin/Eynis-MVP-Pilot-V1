@@ -35,7 +35,7 @@ export default function ErrorBoundary({
           <button
             onClick={() => reset()}
             className="px-4 py-2 text-sm font-medium rounded-lg text-white flex items-center gap-1.5"
-            style={{ background: "var(--color-industry, #0f766e)" }}
+            style={{ background: "var(--color-primary, #0f766e)" }}
           >
             <RefreshCw className="w-3.5 h-3.5" /> Try again
           </button>
