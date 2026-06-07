@@ -403,7 +403,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
       <div className="app-main">
         <header className="topbar">
           <div className="topbar-property">
-            <button className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Open navigation">
+            <button type="button" className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Open navigation">
               <Menu className="w-5 h-5" />
             </button>
             <span className="topbar-dot" style={{ background: config.accentColor }} />
