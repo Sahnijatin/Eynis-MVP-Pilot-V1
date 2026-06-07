@@ -1,5 +1,5 @@
 import { getUserWorkspace } from "../../lib/workspace";
-import { fetchResearchTemplates, fetchResearchRuns, fetchResearchSources } from "../../lib/data";
+import { fetchResearchTemplates, fetchResearchRuns, fetchResearchSources, fetchResearchTriggers, fetchPipelines } from "../../lib/data";
 import ResearchStudioClient from "../../components/ui/research-studio-client";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,12 @@ export const dynamic = "force-dynamic";
 export default async function ResearchPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
   const { run } = await searchParams;
   const { config } = await getUserWorkspace();
-  const [templates, runs, catalog] = await Promise.all([
+  const [templates, runs, catalog, triggers, pipelines] = await Promise.all([
     fetchResearchTemplates(),
     fetchResearchRuns(),
     fetchResearchSources(),
+    fetchResearchTriggers(),
+    fetchPipelines(),
   ]);
 
   return (
@@ -24,6 +26,8 @@ export default async function ResearchPage({ searchParams }: { searchParams: Pro
       catalog={catalog}
       licenseError={templates.ok ? null : templates.error ?? null}
       initialRunId={typeof run === "string" ? run : null}
+      initialTriggers={triggers.triggers}
+      pipelines={pipelines.items}
     />
   );
 }

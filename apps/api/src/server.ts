@@ -3497,6 +3497,70 @@ const handleRequest = async (
           return;
         }
 
+        // ── Auto-run triggers (RS-3): deal stage → research ─────────────────────
+        // Stored as a list inside one AutomationRule (code "research_on_stage"),
+        // since the rule table is unique per (tenant, code). The automation engine
+        // evaluates these every cycle and enqueues runs for open deals in the stage.
+        const RESEARCH_RULE_CODE = "research_on_stage";
+        const readTriggers = (configJson: string): Array<{ stageId: string; templateId: string; fast?: boolean }> => {
+          try {
+            const cfg = JSON.parse(configJson) as { triggers?: Array<{ stageId: string; templateId: string; fast?: boolean }> };
+            return Array.isArray(cfg.triggers) ? cfg.triggers : [];
+          } catch { return []; }
+        };
+
+        if (rpath === "/research/triggers" && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const rule = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
+          json(res, 200, { ok: true, triggers: rule ? readTriggers(rule.configJson) : [], isActive: rule?.isActive ?? false });
+          return;
+        }
+
+        if (rpath === "/research/triggers" && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const body = (await parseBody(req)) as { stageId?: unknown; templateId?: unknown; fast?: unknown };
+          const stageId = asTrimmedString(body.stageId);
+          const templateId = asTrimmedString(body.templateId);
+          if (!stageId || !templateId) { json(res, 400, { ok: false, error: "stageId and templateId are required" }); return; }
+          const stage = await prisma.stage.findFirst({ where: { id: stageId, tenantId }, select: { id: true } });
+          if (!stage) { json(res, 404, { ok: false, error: "Stage not found" }); return; }
+          const tpl = await loadTemplateForRun(tenantId, templateId);
+          if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+          const existing = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
+          const triggers = existing ? readTriggers(existing.configJson).filter((t) => t.stageId !== stageId) : [];
+          triggers.push({ stageId, templateId, fast: body.fast !== false });
+          await prisma.automationRule.upsert({
+            where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } },
+            update: { configJson: JSON.stringify({ triggers }), isActive: true },
+            create: { tenantId, code: RESEARCH_RULE_CODE, name: "Auto-run research on deal stage", isActive: true, configJson: JSON.stringify({ triggers }) },
+          });
+          json(res, 200, { ok: true, triggers });
+          return;
+        }
+
+        const triggerDelMatch = /^\/research\/triggers\/([^/]+)$/.exec(rpath);
+        if (triggerDelMatch && req.method === "DELETE") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          const stageId = decodeURIComponent(triggerDelMatch[1] as string);
+          const existing = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
+          if (existing) {
+            const triggers = readTriggers(existing.configJson).filter((t) => t.stageId !== stageId);
+            await prisma.automationRule.update({
+              where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } },
+              data: { configJson: JSON.stringify({ triggers }), isActive: triggers.length > 0 },
+            });
+          }
+          json(res, 200, { ok: true });
+          return;
+        }
+
         const tplMatch = /^\/research\/templates\/([^/]+)$/.exec(rpath);
         const runExportMatch = /^\/research\/runs\/([^/]+)\/export$/.exec(rpath);
         const runIdMatch = /^\/research\/runs\/([^/]+)$/.exec(rpath);

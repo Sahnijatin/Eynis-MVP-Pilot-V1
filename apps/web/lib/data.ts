@@ -447,6 +447,18 @@ export async function fetchResearchRuns(): Promise<{ ok: boolean; items: Researc
   }
 }
 
+export interface ResearchTrigger { stageId: string; templateId: string; fast?: boolean }
+
+export async function fetchResearchTriggers(): Promise<{ ok: boolean; triggers: ResearchTrigger[] }> {
+  try {
+    const res = await authedFetch("/research/triggers");
+    if (!res.ok) return { ok: false, triggers: [] };
+    return (await res.json()) as { ok: boolean; triggers: ResearchTrigger[] };
+  } catch {
+    return { ok: false, triggers: [] };
+  }
+}
+
 export async function fetchResearchSources(): Promise<ResearchSourceCatalog | null> {
   try {
     const res = await authedFetch("/research/sources");

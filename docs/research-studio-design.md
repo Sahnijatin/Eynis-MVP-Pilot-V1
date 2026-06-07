@@ -283,6 +283,29 @@ The contextual lite Research button is implemented.
   research is covered via the linked company/contact and, in **RS-3**, the
   `research_on_stage` auto-run. A deal button can drop in once a deal detail view exists.
 
+## 9c. Implementation status — RS-3 shipped
+
+Automation tie-in + CRM write-back.
+
+- **`research_on_stage` automation rule** (`core/automations/engine.ts`): added to the
+  60s cycle. A single per-tenant rule holds a list of stage→template triggers (the
+  rule table is unique per `tenant+code`). For each configured stage it enqueues a
+  `fast` research run for every open deal in that stage, once per `(stage, deal)` via
+  the idempotency record. Uses the linked company (name + domain) for richer inputs.
+- **Trigger management API** (`/research/triggers` GET/POST, `/research/triggers/:stageId`
+  DELETE) + proxies + a **"Auto-run on deal stage"** card in the Studio (pick a
+  pipeline stage + template → add/remove).
+- **Score write-back:** a contact run now updates `Contact.leadScore` (in addition to
+  the timeline activity from RS-1), so research enriches the CRM signal.
+
+**Deferred from RS-3:** per-run share ACL. Runs are already team-visible to anyone
+with `view_research` in the tenant, so a `ReportShare`-style ACL adds little until run
+visibility is restricted to creator/shared — moved to a later pass. (CSV export and
+the `ResearchShare` model already exist.) A safe-mode `DealSuggestion` write-back was
+also skipped: `DealSuggestion` is specifically a *stage-move* proposal, which a
+research score doesn't map onto cleanly — the timeline activity + lead-score are the
+honest signals.
+
 ## 10. Non-goals (v1)
 
 - No Python scrape-worker sidecar (revisit only if TS scraping quality is insufficient).

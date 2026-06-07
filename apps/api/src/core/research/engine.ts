@@ -116,6 +116,12 @@ async function logToCrm(
       meta: { researchRunId: run.id, score },
     },
   });
+
+  // Score write-back (RS-3): a contact's research score updates its lead score so
+  // research enriches the CRM signal, not just the timeline. Best-effort.
+  if (run.subjectType === "contact" && score != null) {
+    await prisma.contact.update({ where: { id: run.subjectId }, data: { leadScore: score } }).catch(() => undefined);
+  }
 }
 
 function safeParse(json: string): unknown {

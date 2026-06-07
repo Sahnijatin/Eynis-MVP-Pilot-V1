@@ -8,12 +8,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Telescope, Plus, Play, Pencil, Copy, Trash2, ArrowLeft, FileDown, ExternalLink,
-  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X,
+  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap,
 } from "lucide-react";
 import {
   Button, Card, Badge, Field, Input, Select, Textarea, Modal, Spinner, EmptyState, useToast, tokens as t,
 } from "../ds";
-import type { ResearchTemplateItem, ResearchRunItem, ResearchSourceCatalog } from "../../lib/data";
+import type { ResearchTemplateItem, ResearchRunItem, ResearchSourceCatalog, ResearchTrigger, PipelineRow } from "../../lib/data";
 
 // ── Local types (mirror the API shapes) ──────────────────────────────────────
 interface TemplateInput { key: string; label: string; prefillFrom?: string; required?: boolean }
@@ -45,6 +45,8 @@ interface Props {
   catalog: ResearchSourceCatalog | null;
   licenseError: string | null;
   initialRunId?: string | null;
+  initialTriggers?: ResearchTrigger[];
+  pipelines?: PipelineRow[];
 }
 
 type View = { mode: "home" } | { mode: "editor"; templateId?: string; clone?: boolean } | { mode: "run"; runId: string };
@@ -66,6 +68,7 @@ export default function ResearchStudioClient(props: Props) {
   const [view, setView] = useState<View>(props.initialRunId ? { mode: "run", runId: props.initialRunId } : { mode: "home" });
   const [templates, setTemplates] = useState(props.initialTemplates);
   const [runs, setRuns] = useState(props.initialRuns);
+  const [triggers, setTriggers] = useState<ResearchTrigger[]>(props.initialTriggers ?? []);
   const [runModalFor, setRunModalFor] = useState<TemplateDetail | null>(null);
 
   const refreshTemplates = useCallback(async () => {
@@ -75,6 +78,10 @@ export default function ResearchStudioClient(props: Props) {
   const refreshRuns = useCallback(async () => {
     const d = await jsonFetch<{ items: ResearchRunItem[] }>("/api/research/runs");
     setRuns(d.items ?? []);
+  }, []);
+  const refreshTriggers = useCallback(async () => {
+    const d = await jsonFetch<{ triggers: ResearchTrigger[] }>("/api/research/triggers");
+    setTriggers(d.triggers ?? []);
   }, []);
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -122,6 +129,17 @@ export default function ResearchStudioClient(props: Props) {
           templates={templates}
           runs={runs}
           catalog={props.catalog}
+          triggers={triggers}
+          pipelines={props.pipelines ?? []}
+          onAddTrigger={async (stageId, templateId) => {
+            const d = await jsonFetch<{ ok: boolean; error?: string }>("/api/research/triggers", { method: "POST", body: JSON.stringify({ stageId, templateId, fast: true }) });
+            if (d.ok) { toast.push("Auto-run added", "success"); refreshTriggers(); }
+            else toast.push(d.error ?? "Couldn't add", "error");
+          }}
+          onRemoveTrigger={async (stageId) => {
+            const d = await jsonFetch<{ ok: boolean }>(`/api/research/triggers/${encodeURIComponent(stageId)}`, { method: "DELETE" });
+            if (d.ok) { toast.push("Auto-run removed", "success"); refreshTriggers(); }
+          }}
           onNew={() => setView({ mode: "editor" })}
           onEdit={(id) => setView({ mode: "editor", templateId: id })}
           onClone={(id) => setView({ mode: "editor", templateId: id, clone: true })}
@@ -175,6 +193,10 @@ function HomeView(props: {
   templates: ResearchTemplateItem[];
   runs: ResearchRunItem[];
   catalog: ResearchSourceCatalog | null;
+  triggers: ResearchTrigger[];
+  pipelines: PipelineRow[];
+  onAddTrigger: (stageId: string, templateId: string) => void;
+  onRemoveTrigger: (stageId: string) => void;
   onNew: () => void;
   onEdit: (id: string) => void;
   onClone: (id: string) => void;
@@ -241,6 +263,17 @@ function HomeView(props: {
         </div>
       )}
 
+      <h2 className="text-sm font-semibold text-slate-700 mb-3" style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap className="w-4 h-4" style={{ color: accent }} /> Auto-run on deal stage</h2>
+      <TriggersCard
+        accent={accent}
+        triggers={props.triggers}
+        pipelines={props.pipelines}
+        templates={templates}
+        onAdd={props.onAddTrigger}
+        onRemove={props.onRemoveTrigger}
+      />
+      <div style={{ height: 28 }} />
+
       <h2 className="text-sm font-semibold text-slate-700 mb-3">Recent runs</h2>
       {runs.length === 0 ? (
         <Card style={{ color: t.color.textMuted, fontSize: t.font.sm }}>No runs yet — pick a template and hit Run.</Card>
@@ -268,6 +301,63 @@ function HomeView(props: {
         </Card>
       )}
     </div>
+  );
+}
+
+// ── Triggers: auto-run research when a deal enters a stage ────────────────────
+function TriggersCard(props: {
+  accent: string;
+  triggers: ResearchTrigger[];
+  pipelines: PipelineRow[];
+  templates: ResearchTemplateItem[];
+  onAdd: (stageId: string, templateId: string) => void;
+  onRemove: (stageId: string) => void;
+}) {
+  const { accent, triggers, pipelines, templates } = props;
+  const stages = pipelines.flatMap((p) => p.stages.map((s) => ({ id: s.id, label: `${p.name} · ${s.name}` })));
+  const [stageId, setStageId] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const stageLabel = (id: string) => stages.find((s) => s.id === id)?.label ?? "Unknown stage";
+  const tplName = (id: string) => templates.find((tt) => tt.id === id)?.name ?? id;
+
+  if (pipelines.length === 0) {
+    return <Card style={{ color: t.color.textMuted, fontSize: t.font.sm }}>Create a deal pipeline first to enable stage-based auto-research.</Card>;
+  }
+
+  return (
+    <Card>
+      <div style={{ color: t.color.textMuted, fontSize: t.font.sm, marginBottom: 12 }}>
+        When a deal enters a stage, automatically run a research template against it. Results land on the deal&apos;s timeline.
+      </div>
+      {triggers.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+          {triggers.map((trig) => (
+            <div key={trig.stageId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: `1px solid ${t.color.border}`, borderRadius: t.radius.md }}>
+              <Badge tone="accent">{stageLabel(trig.stageId)}</Badge>
+              <span style={{ color: t.color.textFaint }}>→</span>
+              <span style={{ fontWeight: 600, color: t.color.text, fontSize: t.font.sm }}>{tplName(trig.templateId)}</span>
+              <Badge tone="success">fast</Badge>
+              <Button size="sm" variant="ghost" style={{ marginLeft: "auto" }} onClick={() => props.onRemove(trig.stageId)}><X className="w-4 h-4" /></Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <Select value={stageId} onChange={(e) => setStageId(e.target.value)} style={{ width: 220 }}>
+          <option value="">Choose a stage…</option>
+          {stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </Select>
+        <span style={{ color: t.color.textFaint }}>→</span>
+        <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={{ width: 220 }}>
+          <option value="">Choose a template…</option>
+          {templates.map((tt) => <option key={tt.id} value={tt.id}>{tt.name}</option>)}
+        </Select>
+        <Button size="sm" disabled={!stageId || !templateId} style={{ background: accent }}
+          onClick={() => { props.onAdd(stageId, templateId); setStageId(""); setTemplateId(""); }}>
+          <Plus className="w-3.5 h-3.5" /> Add
+        </Button>
+      </div>
+    </Card>
   );
 }
 
