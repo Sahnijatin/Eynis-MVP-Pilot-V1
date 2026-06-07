@@ -40,11 +40,60 @@ test("GET /internal/tenants requires the platform-admin secret", async () => {
   assert.equal(wrong.status, 401);
 
   const ok = await fetch(base + "/internal/tenants", { headers: staff });
-  const body = await ok.json() as { ok: boolean; items: unknown[]; industries: unknown[] };
+  const body = await ok.json() as { ok: boolean; items: Array<{ whitelabelTier?: string }>; industries: unknown[]; tiers: unknown[] };
   assert.equal(ok.status, 200);
   assert.equal(body.ok, true);
   assert.ok(Array.isArray(body.items));
   assert.ok(body.industries.length >= 5);
+  // E-9: list also carries the tier option set + each tenant's current tier.
+  assert.ok(body.tiers.length >= 2);
+  if (body.items.length) assert.equal(typeof body.items[0]!.whitelabelTier, "string");
+});
+
+test("PATCH /internal/tenants/:id/whitelabel-tier updates tier and audit-logs it (E-9)", async () => {
+  const tenantId = await seedTenant("hospitality");
+
+  const r = await fetch(base + `/internal/tenants/${tenantId}/whitelabel-tier`, {
+    method: "PATCH", headers: staff, body: JSON.stringify({ tier: "white_label", actor: "jatin@eynis" })
+  });
+  const body = await r.json() as { ok: boolean; tenant: { whitelabelTier: string } };
+  assert.equal(r.status, 200);
+  assert.equal(body.tenant.whitelabelTier, "white_label");
+
+  const fresh = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { whitelabelTier: true } });
+  assert.equal(fresh?.whitelabelTier, "white_label");
+
+  const log = await prisma.auditLog.findFirst({
+    where: { tenantId, action: "tenant.whitelabel_tier_changed" }, orderBy: { createdAt: "desc" }
+  });
+  assert.ok(log, "an audit row should be written");
+  assert.equal(log!.actorRole, "platform_staff");
+  const meta = JSON.parse(log!.metadata) as { from: string; to: string; actor: string };
+  assert.equal(meta.from, "standard");
+  assert.equal(meta.to, "white_label");
+});
+
+test("PATCH whitelabel-tier rejects an invalid tier and requires the secret", async () => {
+  const tenantId = await seedTenant("hospitality");
+  const bad = await fetch(base + `/internal/tenants/${tenantId}/whitelabel-tier`, {
+    method: "PATCH", headers: staff, body: JSON.stringify({ tier: "platinum-plus" })
+  });
+  assert.equal(bad.status, 400);
+
+  const noAuth = await fetch(base + `/internal/tenants/${tenantId}/whitelabel-tier`, {
+    method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tier: "white_label" })
+  });
+  assert.equal(noAuth.status, 401);
+
+  const fresh = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { whitelabelTier: true } });
+  assert.equal(fresh?.whitelabelTier, "standard");
+});
+
+test("PATCH whitelabel-tier returns 404 for an unknown tenant", async () => {
+  const r = await fetch(base + "/internal/tenants/nope-nope/whitelabel-tier", {
+    method: "PATCH", headers: staff, body: JSON.stringify({ tier: "white_label" })
+  });
+  assert.equal(r.status, 404);
 });
 
 test("a tenant JWT cannot reach the internal routes", async () => {

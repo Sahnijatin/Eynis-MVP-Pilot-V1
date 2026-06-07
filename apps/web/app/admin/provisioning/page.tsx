@@ -31,22 +31,24 @@ export default async function ProvisioningPage() {
 
   let tenants: ConsoleTenant[] = [];
   let industries: IndustryOption[] = [];
+  let tiers: IndustryOption[] = [];
   let error: string | null = null;
   try {
     const r = await fetch(`${getApiBaseUrl()}/internal/tenants`, {
       headers: { authorization: `Bearer ${platformBearer()}` },
       cache: "no-store"
     });
-    const data = (await r.json()) as { ok: boolean; error?: string; items?: ConsoleTenant[]; industries?: IndustryOption[] };
+    const data = (await r.json()) as { ok: boolean; error?: string; items?: ConsoleTenant[]; industries?: IndustryOption[]; tiers?: IndustryOption[] };
     if (!r.ok || !data.ok) {
       error = data.error ?? "Failed to load tenants.";
     } else {
       tenants = data.items ?? [];
       industries = data.industries ?? [];
+      tiers = data.tiers ?? [];
     }
   } catch {
     error = "Could not reach the API.";
   }
 
-  return <ProvisioningConsole tenants={tenants} industries={industries} error={error} />;
+  return <ProvisioningConsole tenants={tenants} industries={industries} tiers={tiers} error={error} />;
 }

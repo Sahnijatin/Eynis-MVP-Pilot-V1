@@ -7,6 +7,7 @@
 // templates behave identically across voice scripts, WhatsApp, and email.
 
 import { renderTemplate, buildTemplateVars, resolveResendCredentials, sendFollowUpEmail } from "../email/resend";
+import { loadEmailBrand } from "../email/branding";
 import { sendWhatsAppTemplate } from "../connectors/whatsapp-outbound";
 
 export interface SenderLead {
@@ -97,11 +98,13 @@ const emailSender: ChannelSender = {
     }
     const creds = await resolveResendCredentials(ctx.tenantId);
     const vars = contextVars(ctx);
+    const brand = await loadEmailBrand(ctx.tenantId);
     const result = await sendFollowUpEmail(creds, {
       to: ctx.lead.email,
       subjectTemplate: ctx.campaign.emailSubjectTemplate,
       htmlTemplate: ctx.campaign.emailBodyTemplate,
       vars,
+      brand,
     });
     return {
       ok: result.sent,

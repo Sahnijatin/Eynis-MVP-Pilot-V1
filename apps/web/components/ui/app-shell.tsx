@@ -199,6 +199,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
   const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
   const [branding, setBranding] = useState<TenantBranding | null>(null);
+  const [whitelabelTier, setWhitelabelTier] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState<Impersonating | null>(null);
   const [impModalOpen, setImpModalOpen] = useState(false);
   const [stoppingImp, setStoppingImp] = useState(false);
@@ -213,9 +214,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     if (!isLoaded || !user) return;
     fetch("/api/me", { cache: "no-store" })
       .then(r => r.json())
-      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null; impersonating?: Impersonating | null; workspaces?: WorkspaceSummary[]; tenantId?: string | null }) => {
+      .then((data: { ok: boolean; exists?: boolean; orgRole?: OrgRole; industry?: Industry; propertyName?: string | null; branding?: TenantBranding | null; whitelabelTier?: string | null; impersonating?: Impersonating | null; workspaces?: WorkspaceSummary[]; tenantId?: string | null }) => {
         if (data.ok && data.exists) {
           setBranding(data.branding ?? null);
+          setWhitelabelTier(data.whitelabelTier ?? null);
           if (data.orgRole) setOrgRoleState(data.orgRole);
           if (data.industry) setIndustryState(data.industry);
           if (data.propertyName) setPropertyNameState(data.propertyName);
@@ -240,7 +242,8 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const visibleModules = getAllowedModules(config.modules, orgRole);
 
   // ── Resolved white-label theme (tenant ▶ industry ▶ Eynis) ─────────────────
-  const theme = resolveTheme(branding, config);
+  // Tier gates the deep overrides (font, sidebar token, hide "powered by").
+  const theme = resolveTheme(branding, config, whitelabelTier);
 
   // ── Route guard ──────────────────────────────────────────────────────────
   const isPublicRoute =
@@ -270,7 +273,13 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     root.setProperty("--color-industry", theme.primaryColor);
     root.setProperty("--color-primary", theme.primaryColor);
     root.setProperty("--color-accent", theme.accentColor);
-  }, [theme.primaryColor, theme.accentColor]);
+    // Deep white-label tokens (E-9, white_label tier). Removing the property when
+    // null lets the default theme/font win — no stale override lingers.
+    if (theme.sidebarColor) root.setProperty("--color-sidebar", theme.sidebarColor);
+    else root.removeProperty("--color-sidebar");
+    if (theme.fontFamily) root.setProperty("--font-brand", theme.fontFamily);
+    else root.removeProperty("--font-brand");
+  }, [theme.primaryColor, theme.accentColor, theme.sidebarColor, theme.fontFamily]);
 
   // White-label the browser tab: favicon (falls back to the logo) + brand title.
   useEffect(() => {

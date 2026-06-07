@@ -3,6 +3,10 @@
 // precedence is testable and identical wherever a theme is resolved.
 //
 //   tenant branding  ▶  industry default  ▶  Eynis fallback
+//
+// White-label TIER (E-9) gates the "deep" overrides: hiding "powered by", a
+// custom font, and the extended sidebar token are honored only on the
+// `white_label` tier. Logo / name / tagline / colors are available to every tier.
 
 import type { IndustryConfig } from "./industry-config";
 
@@ -13,8 +17,12 @@ export interface TenantBranding {
   faviconUrl?: string | null;
   primaryColor?: string | null;
   accentColor?: string | null;
+  sidebarColor?: string | null;
+  fontFamily?: string | null;
   supportEmail?: string | null;
   hidePoweredBy?: boolean | null;
+  brandEmails?: boolean | null;
+  brandReports?: boolean | null;
 }
 
 export interface ResolvedTheme {
@@ -31,14 +39,24 @@ export interface ResolvedTheme {
   primaryColor: string;
   /** Secondary accent; defaults to primaryColor. */
   accentColor: string;
+  /** Extended token: sidebar background (white_label tier). null → default chrome. */
+  sidebarColor: string | null;
+  /** Typography override (white_label tier). null → default font stack. */
+  fontFamily: string | null;
   hidePoweredBy: boolean;
 }
+
+// Only the `white_label` tier unlocks the deep overrides. Kept in sync with the
+// API's core/whitelabel.ts.
+export const isFullWhiteLabel = (tier: string | null | undefined): boolean => tier === "white_label";
 
 export function resolveTheme(
   branding: TenantBranding | null | undefined,
   industry: Pick<IndustryConfig, "accentColor" | "tagline">,
+  tier?: string | null,
 ): ResolvedTheme {
   const b = branding ?? {};
+  const fullWl = isFullWhiteLabel(tier);
   const primaryColor = b.primaryColor || industry.accentColor;
   return {
     brandName: b.brandName ?? null,
@@ -47,6 +65,9 @@ export function resolveTheme(
     faviconUrl: b.faviconUrl || b.logoUrl || null,
     primaryColor,
     accentColor: b.accentColor || primaryColor,
-    hidePoweredBy: b.hidePoweredBy === true,
+    // Deep overrides — gated to the white_label tier.
+    sidebarColor: fullWl ? (b.sidebarColor ?? null) : null,
+    fontFamily: fullWl ? (b.fontFamily ?? null) : null,
+    hidePoweredBy: fullWl && b.hidePoweredBy === true,
   };
 }

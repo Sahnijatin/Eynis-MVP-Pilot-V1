@@ -7,6 +7,7 @@ export interface ConsoleTenant {
   id: string;
   name: string;
   industry: string;
+  whitelabelTier: string;
   slug: string | null;
   customDomain: string | null;
   createdAt: string;
@@ -16,38 +17,56 @@ export interface IndustryOption {
   label: string;
 }
 
-interface RowState {
-  selected: string; // currently-chosen industry in the dropdown
+// What a single editable cell tracks. `field` distinguishes the two columns so a
+// save targets the right endpoint.
+type Field = "industry" | "tier";
+
+interface CellState {
+  selected: string;
   saving: boolean;
   saved: boolean;
   error: string | null;
 }
 
-// The internal provisioning console (E-8): a cross-tenant table where Eynis staff
-// set each tenant's industry. Custom domain + white-label tier (E-9/E-10) will
-// land here too — this is the shared provisioning surface.
+const ENDPOINT: Record<Field, (id: string) => string> = {
+  industry: (id) => `/api/admin/tenants/${encodeURIComponent(id)}/industry`,
+  tier: (id) => `/api/admin/tenants/${encodeURIComponent(id)}/whitelabel-tier`
+};
+const PAYLOAD_KEY: Record<Field, "industry" | "tier"> = { industry: "industry", tier: "tier" };
+const RESULT_KEY: Record<Field, "industry" | "whitelabelTier"> = { industry: "industry", tier: "whitelabelTier" };
+
+// The internal provisioning console (E-8/E-9): a cross-tenant table where Eynis
+// staff set each tenant's industry and white-label tier. Custom domain (E-10)
+// will land here too — this is the shared provisioning surface.
 export function ProvisioningConsole({
   tenants,
   industries,
+  tiers,
   error
 }: {
   tenants: ConsoleTenant[];
   industries: IndustryOption[];
+  tiers: IndustryOption[];
   error: string | null;
 }) {
   const [query, setQuery] = useState("");
-  const [rows, setRows] = useState<Record<string, RowState>>(() =>
-    Object.fromEntries(tenants.map((t) => [t.id, { selected: t.industry, saving: false, saved: false, error: null }]))
-  );
-  // Authoritative persisted industry per tenant (updates after a successful save).
-  const [persisted, setPersisted] = useState<Record<string, string>>(() =>
-    Object.fromEntries(tenants.map((t) => [t.id, t.industry]))
-  );
-
-  const labelFor = useMemo(() => {
-    const m = new Map(industries.map((i) => [i.key, i.label]));
-    return (key: string) => m.get(key) ?? key;
-  }, [industries]);
+  // Keyed by `${tenantId}:${field}`.
+  const [cells, setCells] = useState<Record<string, CellState>>(() => {
+    const init: Record<string, CellState> = {};
+    for (const t of tenants) {
+      init[`${t.id}:industry`] = { selected: t.industry, saving: false, saved: false, error: null };
+      init[`${t.id}:tier`] = { selected: t.whitelabelTier, saving: false, saved: false, error: null };
+    }
+    return init;
+  });
+  const [persisted, setPersisted] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const t of tenants) {
+      init[`${t.id}:industry`] = t.industry;
+      init[`${t.id}:tier`] = t.whitelabelTier;
+    }
+    return init;
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -60,31 +79,32 @@ export function ProvisioningConsole({
     );
   }, [tenants, query]);
 
-  function setRow(id: string, patch: Partial<RowState>) {
-    setRows((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  function setCell(key: string, patch: Partial<CellState>) {
+    setCells((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
-  async function save(t: ConsoleTenant) {
-    const row = rows[t.id];
-    if (!row || row.selected === persisted[t.id]) return;
-    setRow(t.id, { saving: true, saved: false, error: null });
+  async function save(tenantId: string, field: Field) {
+    const key = `${tenantId}:${field}`;
+    const cell = cells[key];
+    if (!cell || cell.selected === persisted[key]) return;
+    setCell(key, { saving: true, saved: false, error: null });
     try {
-      const r = await fetch(`/api/admin/tenants/${encodeURIComponent(t.id)}/industry`, {
+      const r = await fetch(ENDPOINT[field](tenantId), {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ industry: row.selected })
+        body: JSON.stringify({ [PAYLOAD_KEY[field]]: cell.selected })
       });
-      const data = (await r.json()) as { ok: boolean; error?: string; tenant?: { industry: string } };
+      const data = (await r.json()) as { ok: boolean; error?: string; tenant?: Record<string, string> };
       if (!r.ok || !data.ok) {
-        setRow(t.id, { saving: false, error: data.error ?? "Save failed." });
+        setCell(key, { saving: false, error: data.error ?? "Save failed." });
         return;
       }
-      const newIndustry = data.tenant?.industry ?? row.selected;
-      setPersisted((prev) => ({ ...prev, [t.id]: newIndustry }));
-      setRow(t.id, { saving: false, saved: true, selected: newIndustry, error: null });
-      setTimeout(() => setRow(t.id, { saved: false }), 2500);
+      const newValue = data.tenant?.[RESULT_KEY[field]] ?? cell.selected;
+      setPersisted((prev) => ({ ...prev, [key]: newValue }));
+      setCell(key, { saving: false, saved: true, selected: newValue, error: null });
+      setTimeout(() => setCell(key, { saved: false }), 2500);
     } catch {
-      setRow(t.id, { saving: false, error: "Could not reach the server." });
+      setCell(key, { saving: false, error: "Could not reach the server." });
     }
   }
 
@@ -93,9 +113,46 @@ export function ProvisioningConsole({
     window.location.reload();
   }
 
+  function EditableCell({ tenantId, field, options }: { tenantId: string; field: Field; options: IndustryOption[] }) {
+    const key = `${tenantId}:${field}`;
+    const cell = cells[key];
+    const dirty = cell && cell.selected !== persisted[key];
+    return (
+      <div className="flex items-center gap-2">
+        <select
+          value={cell?.selected ?? ""}
+          onChange={(e) => setCell(key, { selected: e.target.value, saved: false, error: null })}
+          className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+        >
+          {options.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+          {!options.some((o) => o.key === cell?.selected) && cell?.selected && (
+            <option value={cell.selected}>{cell.selected} (current)</option>
+          )}
+        </select>
+        {cell?.saved ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-700">
+            <Check className="w-4 h-4" /> Saved
+          </span>
+        ) : (
+          <button
+            onClick={() => save(tenantId, field)}
+            disabled={!dirty || cell?.saving}
+            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg text-white inline-flex items-center gap-1.5 bg-teal-700 disabled:opacity-40"
+          >
+            {cell?.saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {cell?.saving ? "Saving…" : "Save"}
+          </button>
+        )}
+        {cell?.error && <span className="text-xs text-red-600">{cell.error}</span>}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-8">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-semibold text-slate-800">Provisioning Console</h1>
           <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
@@ -103,8 +160,8 @@ export function ProvisioningConsole({
           </button>
         </div>
         <p className="text-sm text-slate-400 mb-6">
-          Internal staff surface. Set each tenant&apos;s industry — this re-shapes their nav, terminology and
-          modules, so it is provisioned by us, not the customer.
+          Internal staff surface. Set each tenant&apos;s industry and white-label tier — these re-shape the
+          tenant&apos;s experience, so they are provisioned by us, not the customer.
         </p>
 
         {error ? (
@@ -127,7 +184,7 @@ export function ProvisioningConsole({
                   <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
                     <th className="px-4 py-3">Tenant</th>
                     <th className="px-4 py-3">Industry</th>
-                    <th className="px-4 py-3 w-32"></th>
+                    <th className="px-4 py-3">White-label tier</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -136,58 +193,24 @@ export function ProvisioningConsole({
                       <td colSpan={3} className="px-4 py-8 text-center text-slate-400">No tenants match your search.</td>
                     </tr>
                   )}
-                  {filtered.map((t) => {
-                    const row = rows[t.id];
-                    const dirty = row && row.selected !== persisted[t.id];
-                    return (
-                      <tr key={t.id} className="border-b border-slate-50 last:border-0">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
-                            <div className="min-w-0">
-                              <div className="font-medium text-slate-800 truncate">{t.name}</div>
-                              <div className="text-xs text-slate-400 truncate">
-                                {t.id}
-                                {t.slug ? ` · ${t.slug}` : ""}
-                              </div>
+                  {filtered.map((t) => (
+                    <tr key={t.id} className="border-b border-slate-50 last:border-0 align-top">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-800 truncate">{t.name}</div>
+                            <div className="text-xs text-slate-400 truncate">
+                              {t.id}
+                              {t.slug ? ` · ${t.slug}` : ""}
                             </div>
                           </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <select
-                            value={row?.selected ?? t.industry}
-                            onChange={(e) => setRow(t.id, { selected: e.target.value, saved: false, error: null })}
-                            className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          >
-                            {industries.map((i) => (
-                              <option key={i.key} value={i.key}>{i.label}</option>
-                            ))}
-                            {/* Surface an unrecognised stored value rather than hiding it. */}
-                            {!industries.some((i) => i.key === (row?.selected ?? t.industry)) && (
-                              <option value={row?.selected ?? t.industry}>{labelFor(row?.selected ?? t.industry)} (current)</option>
-                            )}
-                          </select>
-                          {row?.error && <div className="text-xs text-red-600 mt-1">{row.error}</div>}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {row?.saved ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-700">
-                              <Check className="w-4 h-4" /> Saved
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => save(t)}
-                              disabled={!dirty || row?.saving}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white inline-flex items-center gap-1.5 bg-teal-700 disabled:opacity-40"
-                            >
-                              {row?.saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                              {row?.saving ? "Saving…" : "Save"}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3"><EditableCell tenantId={t.id} field="industry" options={industries} /></td>
+                      <td className="px-4 py-3"><EditableCell tenantId={t.id} field="tier" options={tiers} /></td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

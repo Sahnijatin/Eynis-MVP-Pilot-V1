@@ -16,7 +16,7 @@ export default function GlobalError({
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ maxWidth: 480, textAlign: "center" }}>
             <h1 style={{ fontSize: 18, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
-              Something went wrong loading Eynis
+              Something went wrong
             </h1>
             <p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>
               {process.env.NODE_ENV !== "production" && error?.message

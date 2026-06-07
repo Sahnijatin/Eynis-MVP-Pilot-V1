@@ -86,6 +86,44 @@ test("PUT /tenant/branding upserts, validates colors, and persists", async () =>
   } finally { await closeS(server); }
 });
 
+test("PUT /tenant/branding round-trips the E-9 fields + GET returns the tier", async () => {
+  const tenantId = uid();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    const headers = await authHeaders(base, tenantId, "owner+" + tenantId + "@test.local", "owner");
+    const put = await fetch(base + "/tenant/branding", {
+      method: "PUT", headers,
+      body: JSON.stringify({
+        sidebarColor: "#142032",                       // valid hex
+        fontFamily: "Poppins, system-ui, sans-serif",  // valid font stack
+        brandEmails: false,
+        brandReports: true,
+      }),
+    });
+    const p = (await put.json()) as { ok: boolean; branding: Record<string, unknown> };
+    assert.equal(put.status, 200);
+    assert.equal(p.branding.sidebarColor, "#142032");
+    assert.equal(p.branding.fontFamily, "Poppins, system-ui, sans-serif");
+    assert.equal(p.branding.brandEmails, false);
+    assert.equal(p.branding.brandReports, true);
+
+    // A malicious font stack with CSS-breakout chars is rejected → null.
+    const bad = await fetch(base + "/tenant/branding", {
+      method: "PUT", headers, body: JSON.stringify({ fontFamily: "x; } body{display:none} url(evil)" }),
+    });
+    const bp = (await bad.json()) as { branding: Record<string, unknown> };
+    assert.equal(bp.branding.fontFamily, null);
+
+    // GET exposes the (read-only) white-label tier so the panel can gate controls.
+    const get = await fetch(base + "/tenant/branding", { headers });
+    const g = (await get.json()) as { ok: boolean; whitelabelTier: string };
+    assert.equal(g.whitelabelTier, "standard");
+  } finally { await closeS(server); }
+});
+
 test("PUT /tenant/branding is forbidden without manage_settings", async () => {
   const tenantId = uid();
   await createHotel(tenantId);

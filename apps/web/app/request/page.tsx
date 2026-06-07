@@ -1,4 +1,5 @@
 import { RequestVoicePlayer } from "../../components/ui/request-voice-player";
+import { resolveHostTheme } from "../../lib/host-theme";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +23,23 @@ export default async function RequestPage({
       ? query.ack
       : "Thank you. Your request has been received. Our team will respond shortly.";
 
+  // Brand the public intake page with the tenant when it's served on their host
+  // (white-label, E-9). Degrades to the platform default off a custom domain.
+  const theme = await resolveHostTheme();
+
   return (
     <main style={{ maxWidth: 720 }}>
-      <h1>Guest Request</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 8, background: theme.primaryColor, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+          {theme.logoUrl
+            ? <img src={theme.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            : <span style={{ color: "#fff", fontWeight: 700 }}>{theme.brandName.charAt(0).toUpperCase()}</span>}
+        </div>
+        <span style={{ fontWeight: 700, fontSize: 18 }}>{theme.brandName}</span>
+      </div>
+      <h1>Submit a Request</h1>
       <p style={{ color: "#64748b" }}>
-        Scan-ready request form for in-room QR use. Submit once and hotel staff will follow up.
+        Scan-ready request form. Submit once and our team will follow up.
       </p>
       {result ? (
         <div
@@ -82,8 +95,8 @@ export default async function RequestPage({
             type="submit"
             style={{
               width: "fit-content",
-              border: "1px solid #2563eb",
-              background: "#2563eb",
+              border: `1px solid ${theme.primaryColor}`,
+              background: theme.primaryColor,
               color: "#fff",
               borderRadius: 6,
               padding: "6px 12px",

@@ -227,7 +227,7 @@ Issue numbers: **E-N → #(87+N)** (E-1 → #88 … E-16 → #103). Epic: **#104
     httpOnly cookie; server-side proxies keep the API secret out of the browser; cross-tenant industry table.
   - API tests: `apps/api/src/core/platform-provisioning.test.ts` (auth-gating, validation, update + audit, 404).
 
-### E-9 · Wider white-label (#96) — 🔴
+### E-9 · Wider white-label (#96) — 🔴 ⏳ core slice landed
 - **Ask:** white-label should be wider; research; proper architecture.
 - **Reality:** `TenantBranding` (`schema.prisma:106-122`) = name/tagline/logo/favicon/primary+accent/support
   email/hidePoweredBy. Theme resolution in `apps/web/lib/theme.ts`.
@@ -237,6 +237,21 @@ Issue numbers: **E-N → #(87+N)** (E-1 → #88 … E-16 → #103). Epic: **#104
 - **Acceptance:** `TenantBranding` extended + migration; artifacts brand-correct (zero hardcoded "Eynis");
   login/loading branded; sanitised custom CSS; tier-gated.
 - **Research:** §3.2.
+- **Done (core slice):**
+  - `Tenant.whitelabelTier` (`standard` / `white_label`) + extended `TenantBranding`
+    (`sidebarColor`, `fontFamily`, `brandEmails`, `brandReports`) + migration `20260607000000_widen_white_label`.
+  - Tier modelled in `core/whitelabel.ts`; set via the provisioning console
+    (`PATCH /internal/tenants/:id/whitelabel-tier`, audit-logged) + a tier column in the console UI.
+  - `resolveTheme(branding, industry, tier)` widened; deep overrides (font, sidebar token, hide
+    "powered by") **gated to `white_label`**. New CSS vars `--font-brand`, `--color-sidebar`.
+  - Branding panel edits the new fields; premium controls disabled below the white_label tier.
+  - Branded email wrapper (`core/email/branding.ts`, tier-gated "powered by", `brandEmails` flag);
+    branded night-audit report header (`brandReports` flag).
+  - Invite + public `/request` pages now carry the tenant brand (`resolveHostTheme`); hardcoded "Eynis"
+    removed from invite / global-error / branding panel.
+- **Deferred (fast-follows):** sanitised raw **custom CSS** (only structured tokens + font landed);
+  real **PDF / CSV export** renderer (no PDF lib yet — header brands the in-app/print view);
+  per-tenant **email sending domain** (deliverability "Phase 3" in `docs/email-deliverability-design.md`).
 
 ### E-10 · Custom domain provider-managed (#97) — 🟠
 - **Ask:** don't give customers self-serve custom domains; we set them up (or optionally offer it).
