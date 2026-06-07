@@ -9,6 +9,7 @@
 // share the exact same namespace as voice scripts and WhatsApp messages.
 
 import { prisma } from "../../db/prisma";
+import { wrapBrandedEmail, type EmailBrand } from "./branding";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -136,6 +137,8 @@ export interface FollowUpEmailParams {
   subjectTemplate: string;
   htmlTemplate: string;
   vars: Record<string, string>;
+  // When set, the rendered body is wrapped in the tenant's branded shell (E-9).
+  brand?: EmailBrand | null;
 }
 
 // Renders subject + html through the {variable} system and sends via Resend.
@@ -147,11 +150,12 @@ export async function sendFollowUpEmail(
     return { sent: false, provider: "resend", error: "Resend not configured — set RESEND_API_KEY and EMAIL_FROM_ADDRESS" };
   }
   const from = creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress!;
+  const renderedBody = toEmailHtml(renderTemplate(params.htmlTemplate, params.vars));
   const payload = {
     from,
     to: [params.to],
     subject: renderTemplate(params.subjectTemplate, params.vars),
-    html: toEmailHtml(renderTemplate(params.htmlTemplate, params.vars)),
+    html: params.brand ? wrapBrandedEmail(renderedBody, params.brand) : renderedBody,
   };
   try {
     const res = await fetch(RESEND_API_URL, {

@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <ClerkProvider>
       <html lang="en">
-        <body style={{ margin: 0, fontFamily: "Inter, system-ui, Segoe UI, Arial, sans-serif", background: "var(--color-bg)" }}>
+        <body style={{ margin: 0, fontFamily: "var(--font-brand, Inter, system-ui, Segoe UI, Arial, sans-serif)", background: "var(--color-bg)" }}>
           <ToastProvider>
             <AppShell>
               {children}

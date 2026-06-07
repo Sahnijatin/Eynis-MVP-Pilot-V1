@@ -29,11 +29,11 @@ export async function resolveHostTheme(): Promise<HostTheme> {
     try {
       const res = await fetch(`${apiBase()}/tenant/resolve?host=${encodeURIComponent(host)}`, { cache: "no-store", signal: ctrl.signal });
       if (!res.ok) return DEFAULT_THEME;
-      const data = (await res.json()) as { ok: boolean; found?: boolean; industry?: string; propertyName?: string; branding?: TenantBranding | null };
+      const data = (await res.json()) as { ok: boolean; found?: boolean; industry?: string; propertyName?: string; whitelabelTier?: string | null; branding?: TenantBranding | null };
       if (!data.ok || !data.found) return DEFAULT_THEME;
 
       const config = getIndustryConfig((data.industry as Industry) ?? "hospitality");
-      const theme = resolveTheme(data.branding ?? null, config);
+      const theme = resolveTheme(data.branding ?? null, config, data.whitelabelTier);
       return {
         brandName: theme.brandName ?? data.propertyName ?? "Eynis",
         logoUrl: theme.logoUrl,

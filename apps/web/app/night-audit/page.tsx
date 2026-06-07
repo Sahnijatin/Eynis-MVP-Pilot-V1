@@ -12,6 +12,7 @@ import {
   Clock
 } from "lucide-react";
 import type { NightAuditReport, NightAuditResponse } from "../../lib/data";
+import { ReportBrandHeader } from "../../components/ui/report-brand-header";
 
 // Client-safe wrappers around the /api/night-audit proxy route. Defined here (not
 // imported from lib/data) because lib/data transitively imports server-only Clerk
@@ -172,6 +173,9 @@ export default function NightAuditPage() {
         </div>
       ) : (
         <>
+          {/* Branded report header (E-9) — carries the tenant brand on screen + print. */}
+          <ReportBrandHeader title="Night Audit Report" subtitle={reportDate ?? undefined} />
+
           {/* Report metadata */}
           <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">
             <span className="flex items-center gap-1">

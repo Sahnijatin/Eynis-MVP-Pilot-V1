@@ -37,6 +37,7 @@ import { enforceLicenseFeature } from "./core/license";
 import { type Permission, ALL_PERMISSIONS } from "./core/permissions";
 import { verifyPlatformAdmin, isPlatformAdminConfigured } from "./core/platform-admin";
 import { isValidIndustry, industryOptions, VALID_INDUSTRIES } from "./core/industries";
+import { isValidTier, tierOptions, WHITELABEL_TIERS } from "./core/whitelabel";
 
 const eventBus = new InMemoryEventBus();
 
@@ -128,7 +129,8 @@ const ensureTenantAccess = async (tenantId: string) => {
 // Fields the client may read/write. `id`/`tenantId`/timestamps are never client-set.
 const BRANDING_SELECT = {
   brandName: true, tagline: true, logoUrl: true, faviconUrl: true,
-  primaryColor: true, accentColor: true, supportEmail: true, hidePoweredBy: true,
+  primaryColor: true, accentColor: true, sidebarColor: true, fontFamily: true,
+  supportEmail: true, hidePoweredBy: true, brandEmails: true, brandReports: true,
 } as const;
 
 // Coerce/validate an inbound branding payload into the writable columns. Strings
@@ -139,6 +141,14 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
     const s = str(v);
     return s && /^#[0-9a-fA-F]{6}$/.test(s) ? s : null; // only accept #rrggbb
   };
+  // Font-family stack: a conservative whitelist so it can be safely dropped into a
+  // CSS variable. Letters/digits/space/comma/hyphen and quotes only — no ; { } < >
+  // ( ) so it can't break out of the declaration or smuggle url()/expression().
+  const font = (v: unknown): string | null => {
+    const s = str(v);
+    return s && s.length <= 200 && /^[a-zA-Z0-9 ,"'\-]+$/.test(s) ? s : null;
+  };
+  const bool = (v: unknown, dflt: boolean): boolean => (typeof v === "boolean" ? v : dflt);
   return {
     brandName: str(body.brandName),
     tagline: str(body.tagline),
@@ -146,8 +156,12 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
     faviconUrl: str(body.faviconUrl),
     primaryColor: color(body.primaryColor),
     accentColor: color(body.accentColor),
+    sidebarColor: color(body.sidebarColor),
+    fontFamily: font(body.fontFamily),
     supportEmail: str(body.supportEmail),
     hidePoweredBy: body.hidePoweredBy === true,
+    brandEmails: bool(body.brandEmails, true),
+    brandReports: bool(body.brandReports, true),
   };
 };
 
@@ -790,11 +804,11 @@ const handleRequest = async (
                 ]
               }
             : undefined,
-          select: { id: true, name: true, industry: true, slug: true, customDomain: true, createdAt: true },
+          select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true },
           orderBy: { createdAt: "desc" },
           take: 200
         });
-        json(res, 200, { ok: true, items: tenants, industries: industryOptions() });
+        json(res, 200, { ok: true, items: tenants, industries: industryOptions(), tiers: tierOptions() });
         return;
       }
 
@@ -820,7 +834,7 @@ const handleRequest = async (
         const tenant = await prisma.tenant.update({
           where: { id: tenantId },
           data: { industry },
-          select: { id: true, name: true, industry: true, slug: true, customDomain: true, createdAt: true }
+          select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true }
         });
         // Audit on the affected tenant. `actor` is a free-text label the console can
         // pass to attribute the change to a specific staff member.
@@ -834,6 +848,48 @@ const handleRequest = async (
             metadata: JSON.stringify({
               from: existing.industry,
               to: industry,
+              actor: asTrimmedString(body.actor) ?? "platform_console"
+            })
+          }
+        });
+        json(res, 200, { ok: true, tenant });
+        return;
+      }
+
+      // PATCH /internal/tenants/:id/whitelabel-tier — set a tenant's white-label tier (E-9).
+      const tierMatch = /^\/internal\/tenants\/([^/]+)\/whitelabel-tier$/.exec(internalPath);
+      if (tierMatch && req.method === "PATCH") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(tierMatch[1] as string);
+        const body = (await parseBody(req)) as { tier?: unknown; actor?: unknown };
+        const tier = asTrimmedString(body.tier);
+        if (!tier || !isValidTier(tier)) {
+          json(res, 400, { ok: false, error: `tier must be one of: ${WHITELABEL_TIERS.join(", ")}` });
+          return;
+        }
+        const existing = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, whitelabelTier: true }
+        });
+        if (!existing) {
+          json(res, 404, { ok: false, error: "Tenant not found" });
+          return;
+        }
+        const tenant = await prisma.tenant.update({
+          where: { id: tenantId },
+          data: { whitelabelTier: tier },
+          select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true }
+        });
+        await prisma.auditLog.create({
+          data: {
+            tenantId,
+            actorRole: "platform_staff",
+            action: "tenant.whitelabel_tier_changed",
+            entityType: "tenant",
+            entityId: tenantId,
+            metadata: JSON.stringify({
+              from: existing.whitelabelTier,
+              to: tier,
               actor: asTrimmedString(body.actor) ?? "platform_console"
             })
           }
@@ -902,7 +958,7 @@ const handleRequest = async (
           fullName: true,
           createdAt: true,
           systemRole: { select: { key: true } },
-          tenant: { select: { industry: true, name: true, branding: { select: BRANDING_SELECT } } }
+          tenant: { select: { industry: true, name: true, whitelabelTier: true, branding: { select: BRANDING_SELECT } } }
         },
         orderBy: { createdAt: "asc" }
       });
@@ -925,6 +981,7 @@ const handleRequest = async (
         roleKey: m.systemRole?.key ?? null,
         industry: m.tenant.industry,
         propertyName: m.tenant.name,
+        whitelabelTier: m.tenant.whitelabelTier,
         branding: m.tenant.branding ?? null,
         fullName: m.fullName
       }));
@@ -939,6 +996,7 @@ const handleRequest = async (
         roleKey: workspaces[0].roleKey,
         industry: workspaces[0].industry,
         propertyName: workspaces[0].propertyName,
+        whitelabelTier: workspaces[0].whitelabelTier,
         branding: workspaces[0].branding,
         fullName: workspaces[0].fullName
       });
@@ -970,12 +1028,13 @@ const handleRequest = async (
       const or = [customDomain ? { customDomain } : null, slug ? { slug } : null].filter(Boolean) as object[];
       const tenant = await prisma.tenant.findFirst({
         where: { OR: or },
-        select: { id: true, industry: true, name: true, branding: { select: BRANDING_SELECT } },
+        select: { id: true, industry: true, name: true, whitelabelTier: true, branding: { select: BRANDING_SELECT } },
       });
       if (!tenant) { json(res, 200, { ok: true, found: false }); return; }
       json(res, 200, {
         ok: true, found: true,
         tenantId: tenant.id, industry: tenant.industry, propertyName: tenant.name,
+        whitelabelTier: tenant.whitelabelTier,
         branding: tenant.branding ?? null,
       });
       return;
@@ -1166,10 +1225,13 @@ const handleRequest = async (
       }
 
       if (req.method === "GET") {
-        const branding = await prisma.tenantBranding.findUnique({
-          where: { tenantId }, select: BRANDING_SELECT,
-        });
-        json(res, 200, { ok: true, branding: branding ?? null });
+        const [branding, tenant] = await Promise.all([
+          prisma.tenantBranding.findUnique({ where: { tenantId }, select: BRANDING_SELECT }),
+          prisma.tenant.findUnique({ where: { id: tenantId }, select: { whitelabelTier: true } }),
+        ]);
+        // The tier is read-only here (set via the provisioning console) — the panel
+        // uses it to gate which white-label controls a tenant may edit (E-9).
+        json(res, 200, { ok: true, branding: branding ?? null, whitelabelTier: tenant?.whitelabelTier ?? "standard" });
         return;
       }
 

@@ -15,6 +15,11 @@ model Tenant {
   id                    String                     @id @default(cuid())
   name                  String
   industry              String                     @default("hospitality")
+  // White-label tier — how much a tenant may customise (E-9). Set by Eynis staff
+  // via the internal provisioning console, NOT self-serve. "standard" = your
+  // logo/colors on our product; "white_label" = full (hide "powered by", custom
+  // font + extended tokens). Distinct from billing (License.plan).
+  whitelabelTier        String                     @default("standard")
   timezone              String                     @default("Asia/Kolkata")
   slug                  String?                    @unique // <slug>.eynis.com (white-label subdomain)
   customDomain          String?                    @unique // e.g. app.tempus.com (CNAME → platform)
@@ -113,8 +118,12 @@ model TenantBranding {
   faviconUrl    String?
   primaryColor  String? // overrides industry accentColor (primary brand color)
   accentColor   String? // secondary accent; defaults to primaryColor when null
+  sidebarColor  String? // extended token (E-9): sidebar background; white_label tier
+  fontFamily    String? // typography (E-9): CSS font-family stack; white_label tier
   supportEmail  String?
-  hidePoweredBy Boolean  @default(false)
+  hidePoweredBy Boolean  @default(false) // white_label tier only (see whitelabelTier)
+  brandEmails   Boolean  @default(true)  // artifact flag (E-9): brand outbound emails
+  brandReports  Boolean  @default(true)  // artifact flag (E-9): brand reports/exports
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

@@ -1,5 +1,6 @@
 import { Building2 } from "lucide-react";
 import InviteAcceptClient from "./invite-accept-client";
+import { resolveHostTheme } from "../../../lib/host-theme";
 
 interface InviteInfo {
   ok: boolean;
@@ -30,16 +31,22 @@ export default async function InvitePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const invite = await getInviteInfo(token);
+  const [invite, theme] = await Promise.all([getInviteInfo(token), resolveHostTheme()]);
+  // Brand the invite with the tenant: logo/color from the host theme (custom
+  // domain), wordmark from the host theme or the inviting workspace's name — never
+  // a hardcoded platform brand (white-label, E-9).
+  const brandLabel = theme.isTenant ? theme.brandName : invite.hotelName ?? theme.brandName;
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-3 justify-center mb-8">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden" style={{ background: theme.primaryColor }}>
+            {theme.logoUrl
+              ? <img src={theme.logoUrl} alt="" className="w-full h-full object-contain" />
+              : <Building2 className="w-5 h-5 text-white" />}
           </div>
-          <span className="text-xl font-bold text-gray-900">Eynis</span>
+          <span className="text-xl font-bold text-gray-900">{brandLabel}</span>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">

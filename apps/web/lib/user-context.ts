@@ -21,6 +21,7 @@ export interface UserContext {
   industry: string | null;
   propertyName: string | null;
   branding: TenantBranding | null;  // per-tenant white-label overrides (null = industry defaults)
+  whitelabelTier: string | null;    // white-label tier (E-9); gates deep overrides
   fullName: string | null;
   email: string | null;
   exists: boolean;            // true if user has a DB record
@@ -45,6 +46,7 @@ interface Membership {
   industry: string | null;
   propertyName: string | null;
   branding: TenantBranding | null;
+  whitelabelTier: string | null;
   fullName: string | null;
 }
 
@@ -88,7 +90,7 @@ async function identifyByEmail(email: string): Promise<Membership[]> {
     if (!res.ok) return [];
     const data = await res.json() as {
       ok: boolean; exists?: boolean;
-      workspaces?: Array<{ tenantId: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; fullName?: string }>;
+      workspaces?: Array<{ tenantId: string; role?: string; roleKey?: string | null; industry?: string; propertyName?: string; branding?: TenantBranding | null; whitelabelTier?: string | null; fullName?: string }>;
     };
     if (!data.ok || !data.exists || !data.workspaces?.length) return [];
     return data.workspaces.map(w => ({
@@ -98,6 +100,7 @@ async function identifyByEmail(email: string): Promise<Membership[]> {
       industry: w.industry ?? null,
       propertyName: w.propertyName ?? null,
       branding: w.branding ?? null,
+      whitelabelTier: w.whitelabelTier ?? null,
       fullName: w.fullName ?? null,
     }));
   } catch {
@@ -116,7 +119,7 @@ export async function resolveUserContext(opts: { ignoreImpersonation?: boolean }
   }
 
   if (!clerkUser) {
-    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: null, email: null, exists: false, workspaces: [], impersonating: null };
+    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: null, email: null, exists: false, workspaces: [], impersonating: null };
   }
 
   const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
@@ -143,6 +146,7 @@ export async function resolveUserContext(opts: { ignoreImpersonation?: boolean }
       industry: active.industry ?? "hospitality",
       propertyName: active.propertyName ?? null,
       branding: active.branding ?? null,
+      whitelabelTier: active.whitelabelTier ?? null,
       fullName: active.fullName ?? null,
       email,
       exists: true,
@@ -176,5 +180,5 @@ export async function resolveUserContext(opts: { ignoreImpersonation?: boolean }
   }
 
   // No membership — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
-  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, fullName: clerkUser.fullName ?? null, email, exists: false, workspaces: [], impersonating: null };
+  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: clerkUser.fullName ?? null, email, exists: false, workspaces: [], impersonating: null };
 }
