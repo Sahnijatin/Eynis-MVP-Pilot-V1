@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import { TrendingUp, TrendingDown, AlertCircle, Star, Lightbulb, Flame, AlertTriangle, X } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertCircle, Star, Lightbulb, Flame, AlertTriangle } from "lucide-react";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
+import { Modal, TableEmpty } from "../../components/ds";
 
 const CATEGORIES = ["Starters", "Mains", "Desserts", "Beverages", "Other"];
 
@@ -125,42 +126,47 @@ export default function MenuPage() {
       <div className="grid grid-cols-3 gap-4">
         <div className="card col-span-2">
           <h3 className="card-title mb-4">Menu Performance</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100">
-                {["Item", "Category", "Price", "Margin", "Orders (30d)", "Rating", "Trend"].map(h => (
-                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, i) => (
-                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-2.5 px-2">
-                    <span className="font-medium text-slate-800">{item.name}</span>
-                    {item.tag === "bestseller" && <span className="ml-2 badge" style={{ background: "#fef3c7", color: "#d97706" }}>⭐ Top</span>}
-                    {item.tag === "slow" && <span className="ml-2 badge" style={{ background: "#fee2e2", color: "#dc2626" }}>Slow</span>}
-                    {item.tag === "promoted" && <span className="ml-2 badge" style={{ background: "#eff6ff", color: "#1d4ed8" }}>Promoted</span>}
-                    {item.tag === "review" && <span className="ml-2 badge" style={{ background: "#fef3c7", color: "#d97706" }}>Review</span>}
-                  </td>
-                  <td className="py-2.5 px-2 text-xs text-slate-500">{item.category}</td>
-                  <td className="py-2.5 px-2 font-medium">₹{item.price}</td>
-                  <td className="py-2.5 px-2">
-                    <span className={`font-bold ${item.margin < 50 ? "text-red-600" : item.margin >= 75 ? "text-emerald-600" : "text-amber-600"}`}>{item.margin}%</span>
-                  </td>
-                  <td className="py-2.5 px-2 text-slate-600">{item.orders30d}</td>
-                  <td className="py-2.5 px-2">
-                    {item.rating > 0
-                      ? <span className="flex items-center gap-1 text-sm"><Star className="w-3.5 h-3.5 text-amber-400" />{item.rating}</span>
-                      : <span className="text-xs text-slate-500">—</span>}
-                  </td>
-                  <td className="py-2.5 px-2">
-                    {item.trend === "up" ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-red-500" />}
-                  </td>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  {["Item", "Category", "Price", "Margin", "Orders (30d)", "Rating", "Trend"].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item, i) => (
+                  <tr key={i}>
+                    <td>
+                      <span className="font-medium text-slate-800">{item.name}</span>
+                      {item.tag === "bestseller" && <span className="ml-2 badge" style={{ background: "#fef3c7", color: "#d97706" }}>⭐ Top</span>}
+                      {item.tag === "slow" && <span className="ml-2 badge" style={{ background: "#fee2e2", color: "#dc2626" }}>Slow</span>}
+                      {item.tag === "promoted" && <span className="ml-2 badge" style={{ background: "#eff6ff", color: "#1d4ed8" }}>Promoted</span>}
+                      {item.tag === "review" && <span className="ml-2 badge" style={{ background: "#fef3c7", color: "#d97706" }}>Review</span>}
+                    </td>
+                    <td className="text-xs text-slate-500">{item.category}</td>
+                    <td className="font-medium">₹{item.price}</td>
+                    <td>
+                      <span className={`font-bold ${item.margin < 50 ? "text-red-600" : item.margin >= 75 ? "text-emerald-600" : "text-amber-600"}`}>{item.margin}%</span>
+                    </td>
+                    <td className="text-slate-600">{item.orders30d}</td>
+                    <td>
+                      {item.rating > 0
+                        ? <span className="flex items-center gap-1 text-sm"><Star className="w-3.5 h-3.5 text-amber-400" />{item.rating}</span>
+                        : <span className="text-xs text-slate-500">—</span>}
+                    </td>
+                    <td>
+                      {item.trend === "up" ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-red-500" />}
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <TableEmpty colSpan={7} icon="🍽️" title="No menu items yet" description="Add an item or import a menu to see performance." />
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="card">
@@ -180,15 +186,8 @@ export default function MenuPage() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-800">Add Menu Item</h2>
-              <button onClick={() => { setShowModal(false); setForm(EMPTY_FORM); }} className="text-slate-500 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <Modal title="Add Menu Item" onClose={() => { setShowModal(false); setForm(EMPTY_FORM); }}>
+          <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1">Item Name *</label>
                 <input
@@ -265,8 +264,7 @@ export default function MenuPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

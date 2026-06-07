@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, X } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
+import { Modal } from "../../components/ds";
 
 const TODAY_SLOTS = [
   { time: "09:00 AM", patient: "Rahul Sharma", type: "Consultation", doctor: "Dr. Patel", status: "checked_in", duration: "30 min" },
@@ -125,35 +126,29 @@ export default function AppointmentsPage() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <form onSubmit={handleCreate} className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-              <h2 className="text-base font-semibold text-slate-800">Book Appointment</h2>
-              <button type="button" onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="px-6 py-5 space-y-3">
-              {([
-                ["patient", "Patient name", "Rahul Sharma"],
-                ["time", "Slot time", "10:30 AM"],
-                ["type", "Visit type", "Consultation / Follow-up / ECG"],
-                ["doctor", "Doctor", "Dr. Patel"],
-                ["duration", "Duration", "30 min"],
-              ] as const).map(([key, label, placeholder]) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
-                  <input
-                    value={form[key]}
-                    onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2"
-                    style={{ "--tw-ring-color": "#0891b2" } as React.CSSProperties}
-                  />
-                </div>
-              ))}
-              <button type="submit" className="w-full py-2.5 text-sm font-semibold text-white rounded-lg mt-2" style={{ background: "#0891b2" }}>Book Appointment</button>
-            </div>
+        <Modal title="Book Appointment" onClose={() => setModalOpen(false)}>
+          <form onSubmit={handleCreate} className="space-y-3">
+            {([
+              ["patient", "Patient name", "Rahul Sharma"],
+              ["time", "Slot time", "10:30 AM"],
+              ["type", "Visit type", "Consultation / Follow-up / ECG"],
+              ["doctor", "Doctor", "Dr. Patel"],
+              ["duration", "Duration", "30 min"],
+            ] as const).map(([key, label, placeholder]) => (
+              <div key={key}>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
+                <input
+                  value={form[key]}
+                  onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+                  style={{ "--tw-ring-color": "#0891b2" } as React.CSSProperties}
+                />
+              </div>
+            ))}
+            <button type="submit" className="w-full py-2.5 text-sm font-semibold text-white rounded-lg mt-2" style={{ background: "#0891b2" }}>Book Appointment</button>
           </form>
-        </div>
+        </Modal>
       )}
     </div>
   );

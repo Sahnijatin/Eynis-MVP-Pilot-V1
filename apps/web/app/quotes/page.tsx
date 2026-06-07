@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { TrendingUp, TrendingDown, AlertCircle, CheckCircle, XCircle, Clock, X, Building2, Briefcase, ShoppingBag, Home, Download, Upload } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertCircle, CheckCircle, XCircle, Clock, Building2, Briefcase, ShoppingBag, Home, Download, Upload } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
+import { Modal, TableEmpty } from "../../components/ds";
 import { escapeCSV, parseCSVLine } from "../../lib/csv";
 
 const QUOTES_INIT = [
@@ -281,36 +282,38 @@ export default function QuotesPage() {
               ))}
             </div>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100">
-                {["Quote ID", "Client", "Project", "Value", "Margin", "Status", "Expiry"].map(h => (
-                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredQuotes.map((q) => (
-                <tr key={q.id} onClick={() => setSelected(q)} className="border-b border-slate-50 hover:bg-blue-50 transition-colors cursor-pointer">
-                  <td className="py-2.5 px-2 font-mono text-xs text-blue-600 font-semibold">{q.id}</td>
-                  <td className="py-2.5 px-2 font-medium text-slate-800">{q.client}</td>
-                  <td className="py-2.5 px-2 text-slate-500 text-xs max-w-[180px] truncate">{q.project}</td>
-                  <td className="py-2.5 px-2 font-semibold text-slate-700">{fmt(q.value)}</td>
-                  <td className="py-2.5 px-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-sm font-bold ${q.margin < MARGIN_FLOOR ? "text-red-600" : q.margin >= 35 ? "text-emerald-600" : "text-amber-600"}`}>{q.margin}%</span>
-                      {q.margin >= 35 ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : q.margin < MARGIN_FLOOR ? <TrendingDown className="w-3 h-3 text-red-500" /> : null}
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-2"><StatusBadge status={q.status} /></td>
-                  <td className="py-2.5 px-2 text-xs text-slate-500">{q.expiry}</td>
+          <div className="table-wrap">
+            <table className="data-table no-row-hover">
+              <thead>
+                <tr>
+                  {["Quote ID", "Client", "Project", "Value", "Margin", "Status", "Expiry"].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-              {filteredQuotes.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-8 text-slate-500 text-sm">No {activeTab.toLowerCase()} quotes</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredQuotes.map((q) => (
+                  <tr key={q.id} onClick={() => setSelected(q)} className="hover:bg-blue-50 transition-colors cursor-pointer">
+                    <td className="font-mono text-xs text-blue-600 font-semibold">{q.id}</td>
+                    <td className="font-medium text-slate-800">{q.client}</td>
+                    <td className="text-slate-500 text-xs max-w-[180px] truncate">{q.project}</td>
+                    <td className="font-semibold text-slate-700">{fmt(q.value)}</td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-sm font-bold ${q.margin < MARGIN_FLOOR ? "text-red-600" : q.margin >= 35 ? "text-emerald-600" : "text-amber-600"}`}>{q.margin}%</span>
+                        {q.margin >= 35 ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : q.margin < MARGIN_FLOOR ? <TrendingDown className="w-3 h-3 text-red-500" /> : null}
+                      </div>
+                    </td>
+                    <td><StatusBadge status={q.status} /></td>
+                    <td className="text-xs text-slate-500">{q.expiry}</td>
+                  </tr>
+                ))}
+                {filteredQuotes.length === 0 && (
+                  <TableEmpty colSpan={7} icon="📄" title={`No ${activeTab.toLowerCase()} quotes`} description="Quotes matching this filter will appear here." />
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4">
@@ -359,79 +362,71 @@ export default function QuotesPage() {
 
       {/* New Quote Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <h2 className="font-bold text-slate-800 text-base">
-                  {step === "template" ? "New Quote" : `New Quote${selectedTemplate ? ` — ${selectedTemplate.name}` : " — Blank"}`}
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {step === "template" ? "Choose a template to get started" : "Fill in the quote details"}
-                </p>
+        <Modal
+          width={512}
+          onClose={closeModal}
+          title={step === "template" ? "New Quote" : `New Quote${selectedTemplate ? ` — ${selectedTemplate.name}` : " — Blank"}`}
+          footer={step === "form" ? (
+            <>
+              <button onClick={() => setStep("template")} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Back</button>
+              <button onClick={submitQuote} className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>Create Quote</button>
+            </>
+          ) : undefined}
+        >
+          <p className="text-xs text-slate-500 -mt-1 mb-4">
+            {step === "template" ? "Choose a template to get started" : "Fill in the quote details"}
+          </p>
+
+          {step === "template" ? (
+            <div>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {TEMPLATES.map((t) => (
+                  <button key={t.id} onClick={() => openTemplate(t)} className="text-left p-4 rounded-xl border-2 border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: t.color + "18" }}>
+                      <t.Icon className="w-5 h-5" style={{ color: t.color }} />
+                    </div>
+                    <div className="font-semibold text-slate-800 text-sm mb-1">{t.name}</div>
+                    <div className="text-xs text-slate-500 mb-2.5 leading-relaxed">{t.desc}</div>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: t.color + "14", color: t.color }}>Default margin: {t.defaultMargin}%</span>
+                  </button>
+                ))}
               </div>
-              <button onClick={closeModal} className="text-slate-500 hover:text-slate-600 p-1">
-                <X className="w-5 h-5" />
+              <button onClick={() => openTemplate(null)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-colors">
+                + Start from scratch
               </button>
             </div>
-
-            {step === "template" ? (
-              <div className="px-6 py-5">
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  {TEMPLATES.map((t) => (
-                    <button key={t.id} onClick={() => openTemplate(t)} className="text-left p-4 rounded-xl border-2 border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all">
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: t.color + "18" }}>
-                        <t.Icon className="w-5 h-5" style={{ color: t.color }} />
-                      </div>
-                      <div className="font-semibold text-slate-800 text-sm mb-1">{t.name}</div>
-                      <div className="text-xs text-slate-500 mb-2.5 leading-relaxed">{t.desc}</div>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: t.color + "14", color: t.color }}>Default margin: {t.defaultMargin}%</span>
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => openTemplate(null)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-colors">
-                  + Start from scratch
-                </button>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client Name <span className="text-red-500">*</span></label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="e.g. Marriott Hotels India" value={form.client} onChange={e => setForm(f => ({ ...f, client: e.target.value }))} />
               </div>
-            ) : (
-              <div className="px-6 py-5">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Client Name <span className="text-red-500">*</span></label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="e.g. Marriott Hotels India" value={form.client} onChange={e => setForm(f => ({ ...f, client: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Project Description</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="Describe the project scope" value={form.project} onChange={e => setForm(f => ({ ...f, project: e.target.value }))} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Estimated Value (₹) <span className="text-red-500">*</span></label>
-                      <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="e.g. 500000" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Target Margin (%)</label>
-                      <input type="number" min="0" max="100" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="e.g. 35" value={form.margin} onChange={e => setForm(f => ({ ...f, margin: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quote Valid Until</label>
-                    <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" value={form.expiry} onChange={e => setForm(f => ({ ...f, expiry: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Internal Notes</label>
-                    <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-none" rows={2} placeholder="Any internal notes for this quote..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-                  </div>
-                  {formError && <p className="text-xs text-red-600 font-medium">{formError}</p>}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Project Description</label>
+                <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="Describe the project scope" value={form.project} onChange={e => setForm(f => ({ ...f, project: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Estimated Value (₹) <span className="text-red-500">*</span></label>
+                  <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="e.g. 500000" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} />
                 </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={() => setStep("template")} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Back</button>
-                  <button onClick={submitQuote} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: "#1d4ed8" }}>Create Quote</button>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Target Margin (%)</label>
+                  <input type="number" min="0" max="100" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="e.g. 35" value={form.margin} onChange={e => setForm(f => ({ ...f, margin: e.target.value }))} />
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Quote Valid Until</label>
+                <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" value={form.expiry} onChange={e => setForm(f => ({ ...f, expiry: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Internal Notes</label>
+                <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-none" rows={2} placeholder="Any internal notes for this quote..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+              {formError && <p className="text-xs text-red-600 font-medium">{formError}</p>}
+            </div>
+          )}
+        </Modal>
       )}
 
       {selected && (
