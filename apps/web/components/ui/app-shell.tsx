@@ -318,6 +318,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
 
   return (
     <div className="app-shell">
+      {/* Per-tenant custom CSS (E-9, white_label tier). Server-sanitised on write
+          (no <>/url()/@import/expression), and only present here for white_label
+          tenants via resolveTheme — so the injection has no script/network reach. */}
+      {theme.customCss && <style data-tenant-css="" dangerouslySetInnerHTML={{ __html: theme.customCss }} />}
       {/* Sidebar */}
       <aside className="app-sidebar">
         <div className="brand-block">

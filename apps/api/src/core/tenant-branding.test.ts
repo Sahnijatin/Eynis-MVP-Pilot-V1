@@ -124,6 +124,28 @@ test("PUT /tenant/branding round-trips the E-9 fields + GET returns the tier", a
   } finally { await closeS(server); }
 });
 
+test("PUT /tenant/branding sanitises custom CSS (strips url()/@import/<>) and round-trips the safe part", async () => {
+  const tenantId = uid();
+  await createHotel(tenantId);
+  await createUser(tenantId, "owner", "owner+" + tenantId + "@test.local");
+  const server = buildServer();
+  const base = await listen(server);
+  try {
+    const headers = await authHeaders(base, tenantId, "owner+" + tenantId + "@test.local", "owner");
+    const malicious = '@import url("https://evil/x.css"); .a{background:url(https://evil/leak)} </style><script>x</script> .card{border-radius:14px}';
+    const put = await fetch(base + "/tenant/branding", {
+      method: "PUT", headers, body: JSON.stringify({ customCss: malicious }),
+    });
+    const p = (await put.json()) as { ok: boolean; branding: { customCss: string | null } };
+    assert.equal(put.status, 200);
+    const css = p.branding.customCss ?? "";
+    assert.doesNotMatch(css, /@import/i);
+    assert.doesNotMatch(css, /url\s*\(/i);
+    assert.doesNotMatch(css, /[<>]/);
+    assert.match(css, /\.card\{border-radius:14px\}/); // the safe rule survives
+  } finally { await closeS(server); }
+});
+
 test("PUT /tenant/branding is forbidden without manage_settings", async () => {
   const tenantId = uid();
   await createHotel(tenantId);

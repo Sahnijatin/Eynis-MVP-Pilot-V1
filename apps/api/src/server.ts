@@ -38,6 +38,7 @@ import { type Permission, ALL_PERMISSIONS } from "./core/permissions";
 import { verifyPlatformAdmin, isPlatformAdminConfigured } from "./core/platform-admin";
 import { isValidIndustry, industryOptions, VALID_INDUSTRIES } from "./core/industries";
 import { isValidTier, tierOptions, WHITELABEL_TIERS } from "./core/whitelabel";
+import { sanitizeCustomCss } from "./core/css-sanitize";
 
 const eventBus = new InMemoryEventBus();
 
@@ -130,7 +131,7 @@ const ensureTenantAccess = async (tenantId: string) => {
 const BRANDING_SELECT = {
   brandName: true, tagline: true, logoUrl: true, faviconUrl: true,
   primaryColor: true, accentColor: true, sidebarColor: true, fontFamily: true,
-  supportEmail: true, hidePoweredBy: true, brandEmails: true, brandReports: true,
+  customCss: true, supportEmail: true, hidePoweredBy: true, brandEmails: true, brandReports: true,
 } as const;
 
 // Coerce/validate an inbound branding payload into the writable columns. Strings
@@ -158,6 +159,7 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
     accentColor: color(body.accentColor),
     sidebarColor: color(body.sidebarColor),
     fontFamily: font(body.fontFamily),
+    customCss: sanitizeCustomCss(body.customCss),
     supportEmail: str(body.supportEmail),
     hidePoweredBy: body.hidePoweredBy === true,
     brandEmails: bool(body.brandEmails, true),

@@ -120,6 +120,7 @@ model TenantBranding {
   accentColor   String? // secondary accent; defaults to primaryColor when null
   sidebarColor  String? // extended token (E-9): sidebar background; white_label tier
   fontFamily    String? // typography (E-9): CSS font-family stack; white_label tier
+  customCss     String? // sanitised custom CSS (E-9); white_label tier only
   supportEmail  String?
   hidePoweredBy Boolean  @default(false) // white_label tier only (see whitelabelTier)
   brandEmails   Boolean  @default(true)  // artifact flag (E-9): brand outbound emails
