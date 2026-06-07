@@ -64,7 +64,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
             onClick={() => applyPreset(p.days)}
             className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
             style={active === p.key && !showCustom
-              ? { background: "#0f766e", color: "#fff" }
+              ? { background: "var(--color-primary, #0f766e)", color: "#fff" }
               : { border: "1px solid #e2e8f0", color: "#475569" }}
           >
             {p.label}
@@ -74,7 +74,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
           onClick={() => setShowCustom((v) => !v)}
           className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
           style={active === "custom" || showCustom
-            ? { background: "#0f766e", color: "#fff" }
+            ? { background: "var(--color-primary, #0f766e)", color: "#fff" }
             : { border: "1px solid #e2e8f0", color: "#475569" }}
         >
           <Calendar className="w-3.5 h-3.5" /> Custom
@@ -97,7 +97,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
             onClick={() => { push(cFrom, cTo); setShowCustom(false); }}
             disabled={!cFrom || !cTo}
             className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 transition-opacity"
-            style={{ background: "#0f766e" }}
+            style={{ background: "var(--color-primary, #0f766e)" }}
           >
             Apply
           </button>
