@@ -43,6 +43,14 @@ export const planOptions = (): Array<{ key: string; label: string }> => VALID_PL
 // Sensible default seat counts when a plan is provisioned without an explicit count.
 export const DEFAULT_SEATS_FOR_PLAN: Record<PlanKey, number> = { starter: 5, growth: 25, enterprise: 100 };
 
+// Deployment-wide plan override (single-tenant / demo / self-hosted): when
+// LICENSE_PLAN_OVERRIDE is set to a valid plan, EVERY tenant is treated as that
+// plan for feature gating — so plan-gated features (Research Studio, advanced
+// analytics, automations, night audit) can be unlocked with one env var, no DB or
+// billing change. Leave unset in real multi-tenant prod (it ignores per-tenant plans).
+const PLAN_OVERRIDE = process.env.LICENSE_PLAN_OVERRIDE?.trim().toLowerCase();
+export const planOverride = (): PlanKey | null => (PLAN_OVERRIDE && isValidPlan(PLAN_OVERRIDE) ? PLAN_OVERRIDE : null);
+
 export const isPlanAllowed = (plan: string, feature: LicenseFeature): boolean => {
   const features = PLAN_FEATURES[plan] ?? PLAN_FEATURES.starter;
   return features.has(feature);
@@ -52,11 +60,19 @@ export const enforceLicenseFeature = async (
   tenantId: string,
   feature: LicenseFeature,
 ): Promise<{ ok: true } | { ok: false; error: string; requiredPlan: string }> => {
-  const license = await prisma.license.findUnique({
-    where: { tenantId },
-    select: { plan: true },
-  });
-  const plan = license?.plan ?? "starter";
+  // Env override wins, so a demo/single-tenant deploy can unlock features without
+  // touching the DB. Falls through to the tenant's real plan when unset.
+  const override = planOverride();
+  let plan: string;
+  if (override) {
+    plan = override;
+  } else {
+    const license = await prisma.license.findUnique({
+      where: { tenantId },
+      select: { plan: true },
+    });
+    plan = license?.plan ?? "starter";
+  }
   if (!isPlanAllowed(plan, feature)) {
     return {
       ok: false,
