@@ -181,9 +181,14 @@ interface AppShellProps {
   initialOrgRole?: OrgRole;
   initialIndustry?: Industry;
   initialPropertyName?: string | null;
+  // Tenant branding resolved server-side in the root layout so the very first
+  // paint already carries the tenant's brand — no flash of the Eynis fallback
+  // before /api/me resolves (E-12).
+  initialBranding?: TenantBranding | null;
+  initialWhitelabelTier?: string | null;
 }
 
-export function AppShell({ children, initialOrgRole = "org_admin", initialIndustry = "hospitality", initialPropertyName = null }: AppShellProps) {
+export function AppShell({ children, initialOrgRole = "org_admin", initialIndustry = "hospitality", initialPropertyName = null, initialBranding = null, initialWhitelabelTier = null }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoaded } = useUser();
@@ -198,8 +203,8 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [orgRole, setOrgRoleState] = useState<OrgRole>(initialOrgRole);
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
   const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
-  const [branding, setBranding] = useState<TenantBranding | null>(null);
-  const [whitelabelTier, setWhitelabelTier] = useState<string | null>(null);
+  const [branding, setBranding] = useState<TenantBranding | null>(initialBranding);
+  const [whitelabelTier, setWhitelabelTier] = useState<string | null>(initialWhitelabelTier);
   const [impersonating, setImpersonating] = useState<Impersonating | null>(null);
   const [impModalOpen, setImpModalOpen] = useState(false);
   const [stoppingImp, setStoppingImp] = useState(false);

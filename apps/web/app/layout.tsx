@@ -3,20 +3,42 @@ import type { ReactNode } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AppShell } from "../components/ui/app-shell";
 import { ToastProvider } from "../components/ds";
+import { resolveUserContext } from "../lib/user-context";
+import type { Industry } from "../lib/industry-config";
+import type { OrgRole } from "../lib/rbac";
 import "./globals.css";
+
+// Resolved per request so the shell can paint the tenant brand on first render.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Eynis Platform",
   description: "Intelligent operations platform for every industry"
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Resolve the tenant's identity + branding server-side so AppShell's first
+  // paint already carries the tenant brand — eliminates the Eynis/industry
+  // fallback flash that appeared before /api/me resolved client-side (E-12).
+  // resolveUserContext never throws (it has its own timeouts/fallbacks), but we
+  // guard anyway so a context failure can never blank the whole app.
+  let ctx: Awaited<ReturnType<typeof resolveUserContext>> | null = null;
+  try {
+    ctx = await resolveUserContext();
+  } catch { /* keep AppShell defaults */ }
+
   return (
     <ClerkProvider>
       <html lang="en">
         <body style={{ margin: 0, fontFamily: "var(--font-brand, Inter, system-ui, Segoe UI, Arial, sans-serif)", background: "var(--color-bg)" }}>
           <ToastProvider>
-            <AppShell>
+            <AppShell
+              initialOrgRole={ctx?.orgRole as OrgRole | undefined}
+              initialIndustry={(ctx?.industry as Industry | null) ?? undefined}
+              initialPropertyName={ctx?.propertyName ?? null}
+              initialBranding={ctx?.branding ?? null}
+              initialWhitelabelTier={ctx?.whitelabelTier ?? null}
+            >
               {children}
             </AppShell>
           </ToastProvider>

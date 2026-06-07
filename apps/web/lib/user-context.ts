@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { currentUser } from "@clerk/nextjs/server";
 import type { OrgRole } from "./rbac";
 import type { TenantBranding } from "./theme";
@@ -110,7 +111,12 @@ async function identifyByEmail(email: string): Promise<Membership[]> {
   }
 }
 
-export async function resolveUserContext(opts: { ignoreImpersonation?: boolean } = {}): Promise<UserContext> {
+// Wrapped in React `cache()` so repeated calls within a single server request
+// render (root layout + page + getUserWorkspace, etc.) dedupe to one /auth/identify
+// fetch. cache() keys on call-site args: no-arg calls collapse to one entry,
+// while `{ ignoreImpersonation: true }` callers (api.ts / api/workspace) get their
+// own. Per-request only — never shared across requests.
+export const resolveUserContext = cache(async function resolveUserContext(opts: { ignoreImpersonation?: boolean } = {}): Promise<UserContext> {
   let clerkUser: Awaited<ReturnType<typeof currentUser>> = null;
   try {
     clerkUser = await currentUser();
@@ -181,4 +187,4 @@ export async function resolveUserContext(opts: { ignoreImpersonation?: boolean }
 
   // No membership — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
   return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: clerkUser.fullName ?? null, email, exists: false, workspaces: [], impersonating: null };
-}
+});
