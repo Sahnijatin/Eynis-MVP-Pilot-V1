@@ -9,7 +9,9 @@ import {
   TrendingUp,
   Lightbulb,
   Star,
-  Clock
+  Clock,
+  Download,
+  Printer
 } from "lucide-react";
 import type { NightAuditReport, NightAuditResponse } from "../../lib/data";
 import { ReportBrandHeader } from "../../components/ui/report-brand-header";
@@ -117,6 +119,23 @@ export default function NightAuditPage() {
           <p className="text-sm text-slate-500 mt-0.5">AI-generated daily operations summary</p>
         </div>
         <div className="flex items-center gap-2">
+          {report && (
+            <>
+              {/* Branded exports (E-9): real binary PDF + CSV. */}
+              <a
+                href="/api/night-audit/export?format=pdf"
+                className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
+              >
+                <Printer className="w-3.5 h-3.5" /> PDF
+              </a>
+              <a
+                href="/api/night-audit/export?format=csv"
+                className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
+              >
+                <Download className="w-3.5 h-3.5" /> CSV
+              </a>
+            </>
+          )}
           <select
             value={selectedProvider}
             onChange={(e) => setSelectedProvider(e.target.value as "claude" | "openai")}

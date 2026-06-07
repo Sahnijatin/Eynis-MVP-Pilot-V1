@@ -8,7 +8,7 @@ import type { TenantBranding } from "../../lib/theme";
 // blank falls back to the industry default, so this is purely additive.
 const EMPTY: TenantBranding = {
   brandName: "", tagline: "", logoUrl: "", faviconUrl: "", primaryColor: "", accentColor: "",
-  sidebarColor: "", fontFamily: "", supportEmail: "", hidePoweredBy: false, brandEmails: true, brandReports: true,
+  sidebarColor: "", fontFamily: "", customCss: "", supportEmail: "", hidePoweredBy: false, brandEmails: true, brandReports: true,
 };
 
 // True for direct image links / data URLs. Page links (e.g. freeimage.host/i/…)
@@ -175,6 +175,16 @@ export function BrandingPanel() {
           </Field>
           <Field label="Font family" hint="A CSS font stack, e.g. Poppins, system-ui, sans-serif. Letters/quotes/commas only.">
             <Input value={form.fontFamily ?? ""} onChange={(e) => set({ fontFamily: e.target.value })} placeholder="Inter, system-ui, sans-serif" />
+          </Field>
+          <Field label="Custom CSS" hint="Advanced. Applied across your workspace. For safety we strip url(), @import, and HTML — so remote fonts/images aren't supported here (use the logo + font fields).">
+            <textarea
+              value={form.customCss ?? ""}
+              onChange={(e) => set({ customCss: e.target.value })}
+              placeholder={".app-sidebar { letter-spacing: .02em; }\n.card { border-radius: 14px; }"}
+              rows={6}
+              spellCheck={false}
+              style={{ width: "100%", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, padding: 10, borderRadius: t.radius.md, border: `1px solid ${t.color.border}`, resize: "vertical" }}
+            />
           </Field>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: t.font.sm, fontWeight: 600, margin: "4px 0 4px" }}>
             <input type="checkbox" disabled={!fullWl} checked={form.hidePoweredBy === true} onChange={(e) => set({ hidePoweredBy: e.target.checked })} />

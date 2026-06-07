@@ -19,6 +19,7 @@ export interface TenantBranding {
   accentColor?: string | null;
   sidebarColor?: string | null;
   fontFamily?: string | null;
+  customCss?: string | null;
   supportEmail?: string | null;
   hidePoweredBy?: boolean | null;
   brandEmails?: boolean | null;
@@ -43,6 +44,8 @@ export interface ResolvedTheme {
   sidebarColor: string | null;
   /** Typography override (white_label tier). null → default font stack. */
   fontFamily: string | null;
+  /** Sanitised custom CSS (white_label tier). null → none injected. */
+  customCss: string | null;
   hidePoweredBy: boolean;
 }
 
@@ -68,6 +71,7 @@ export function resolveTheme(
     // Deep overrides — gated to the white_label tier.
     sidebarColor: fullWl ? (b.sidebarColor ?? null) : null,
     fontFamily: fullWl ? (b.fontFamily ?? null) : null,
+    customCss: fullWl ? (b.customCss ?? null) : null,
     hidePoweredBy: fullWl && b.hidePoweredBy === true,
   };
 }
