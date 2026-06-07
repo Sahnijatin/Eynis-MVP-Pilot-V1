@@ -124,6 +124,20 @@ export function EmptyState({ title, description, action, icon }: { title: string
   );
 }
 
+// Friendly empty state for inside a <table> body — drop where rows would go.
+// Keeps table empties consistent and on-brand instead of a bare centered <td>.
+export function TableEmpty({ colSpan, title, description, icon = "📋" }: { colSpan: number; title: string; description?: string; icon?: React.ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} style={{ textAlign: "center", padding: "40px 16px" }}>
+        <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
+        <div style={{ fontWeight: 600, color: t.color.text, fontSize: t.font.base }}>{title}</div>
+        {description && <div style={{ color: t.color.textMuted, fontSize: t.font.sm, margin: "4px auto 0", maxWidth: 360 }}>{description}</div>}
+      </td>
+    </tr>
+  );
+}
+
 export function Spinner({ size = 18 }: { size?: number }) {
   return <span style={{ display: "inline-block", width: size, height: size, border: `2px solid ${t.color.border}`, borderTopColor: t.color.accent, borderRadius: "50%", animation: "ds-spin 0.7s linear infinite" }} />;
 }

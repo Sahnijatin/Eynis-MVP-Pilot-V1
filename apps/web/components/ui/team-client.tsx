@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { UserPlus, Copy, Check, X, ChevronDown, Shield } from "lucide-react";
 import type { TeamUser, TeamRole } from "../../lib/data";
+import { TableEmpty } from "../ds";
 
 const ROLE_COLORS: Record<string, string> = {
   admin: "badge-red",
@@ -263,7 +264,8 @@ export default function TeamClient({
                   </tr>
                 ))}
                 {users.length === 0 && (
-                  <tr><td colSpan={4} className="text-center py-8 text-slate-400 text-sm">No team members yet</td></tr>
+                  <TableEmpty colSpan={4} icon="👥" title="No team members yet"
+                    description="Invite teammates to collaborate in your workspace." />
                 )}
               </tbody>
             </table>

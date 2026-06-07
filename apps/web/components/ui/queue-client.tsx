@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertCircle, Clock, RefreshCw, Search, Download } from "lucide-react";
 import { QueueActionBanner } from "./queue-action-banner";
 import { PendingForm, PendingSubmitButton } from "./pending-form";
+import { TableEmpty } from "../ds";
 
 type Period = "Today" | "Week" | "Month";
 
@@ -256,7 +257,8 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
                   );
                 })}
                 {items.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-10 text-slate-400">No requests match the current filter</td></tr>
+                  <TableEmpty colSpan={7} icon="🔔" title="No requests here"
+                    description="New requests appear as they arrive — or adjust the filters above." />
                 )}
               </tbody>
             </table>

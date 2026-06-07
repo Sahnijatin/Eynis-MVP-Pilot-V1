@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Upload, UserPlus, Star, Search, CheckCircle, X, AlertCircle } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "./client-detail-panel";
 import { escapeCSV, parseCSVLine } from "../../lib/csv";
+import { TableEmpty } from "../ds";
 
 // Parse a possibly-malformed date string from an imported CSV without throwing.
 // `new Date("garbage").toISOString()` throws a RangeError, which would abort the
@@ -349,7 +350,8 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                 </tr>
               ))}
               {guests.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-10 text-slate-400">No guests found</td></tr>
+                <TableEmpty colSpan={6} icon="👤" title="No records yet"
+                  description="Records appear here as customers are added or imported." />
               )}
             </tbody>
           </table>
