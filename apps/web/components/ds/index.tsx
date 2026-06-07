@@ -10,7 +10,7 @@ import { tokens as t } from "./tokens";
 type BtnVariant = "primary" | "secondary" | "ghost" | "danger";
 type BtnSize = "sm" | "md";
 export function Button({
-  variant = "primary", size = "md", style, disabled, ...rest
+  variant = "primary", size = "md", style, disabled, className, ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; size?: BtnSize }) {
   const [hover, setHover] = useState(false);
   const base: React.CSSProperties = {
@@ -29,13 +29,14 @@ export function Button({
   };
   return (
     <button {...rest} disabled={disabled}
+      className={["ds-btn", className].filter(Boolean).join(" ")}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ ...base, ...variants[variant], ...style }} />
   );
 }
 
 // LinkButton — anchor styled as a button (for hrefs / downloads).
-export function LinkButton({ variant = "secondary", size = "md", style, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { variant?: BtnVariant; size?: BtnSize }) {
+export function LinkButton({ variant = "secondary", size = "md", style, className, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { variant?: BtnVariant; size?: BtnSize }) {
   const map: Record<BtnVariant, React.CSSProperties> = {
     primary: { background: t.color.accent, color: "#fff" },
     secondary: { background: t.color.surface, color: t.color.text, border: `1px solid ${t.color.border}` },
@@ -43,7 +44,7 @@ export function LinkButton({ variant = "secondary", size = "md", style, ...rest 
     danger: { background: "transparent", color: t.color.danger },
   };
   return (
-    <a {...rest} style={{
+    <a {...rest} className={["ds-btn", className].filter(Boolean).join(" ")} style={{
       display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, textDecoration: "none",
       fontSize: size === "sm" ? t.font.sm : t.font.base, padding: size === "sm" ? "7px 12px" : "9px 16px",
       borderRadius: t.radius.md, ...map[variant], ...style,
@@ -89,14 +90,14 @@ const controlStyle: React.CSSProperties = {
   width: "100%", padding: "9px 12px", borderRadius: t.radius.md, border: `1px solid ${t.color.borderStrong}`,
   fontSize: t.font.base, color: t.color.text, background: t.color.surface, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
 };
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input({ style, ...rest }, ref) {
-  return <input ref={ref} {...rest} style={{ ...controlStyle, ...style }} />;
+export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input({ style, className, ...rest }, ref) {
+  return <input ref={ref} {...rest} className={["ds-field", className].filter(Boolean).join(" ")} style={{ ...controlStyle, ...style }} />;
 });
-export function Select({ style, children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...rest} style={{ ...controlStyle, ...style }}>{children}</select>;
+export function Select({ style, className, children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...rest} className={["ds-field", className].filter(Boolean).join(" ")} style={{ ...controlStyle, ...style }}>{children}</select>;
 }
-export function Textarea({ style, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...rest} style={{ ...controlStyle, minHeight: 80, resize: "vertical", ...style }} />;
+export function Textarea({ style, className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...rest} className={["ds-field", className].filter(Boolean).join(" ")} style={{ ...controlStyle, minHeight: 80, resize: "vertical", ...style }} />;
 }
 
 // ── Badge ───────────────────────────────────────────────────────────────────

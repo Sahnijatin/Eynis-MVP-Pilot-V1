@@ -664,3 +664,31 @@
 }
 
 @keyframes ds-spin { to { transform: rotate(360deg); } }
+
+/* E-13e — visible keyboard focus for design-system controls + buttons (WCAG
+   2.4.7). Inline styles can't express :focus-visible, so the ds/ primitives
+   carry these classes. Controls already have an inline border, so a box-shadow
+   ring reads cleanly; buttons get an offset outline. Both use the white-label
+   brand var with a teal fallback. */
+.ds-field:focus-visible { box-shadow: 0 0 0 2px var(--color-primary, #0f766e); }
+.ds-btn:focus-visible { outline: 2px solid var(--color-primary, #0f766e); outline-offset: 2px; }
+
+/* E-13e — mobile nav drawer. The shell is a fixed two-column desktop layout; on
+   small screens the sidebar slides in over a backdrop, toggled by a hamburger in
+   the topbar (hidden on desktop). */
+.nav-toggle { display: none; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 4px; border-radius: 8px; color: var(--color-muted, #64748b); border: 1px solid var(--color-border, #e6eaf0); background: #fff; cursor: pointer; }
+.nav-toggle:hover { background: var(--color-surface-muted, #f1f5f9); }
+
+@media (max-width: 768px) {
+  .nav-toggle { display: inline-flex; }
+  .app-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 60;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  }
+  .app-sidebar.open { transform: translateX(0); }
+  .nav-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 55; }
+  .topbar { padding-left: 1rem; padding-right: 1rem; }
+}
