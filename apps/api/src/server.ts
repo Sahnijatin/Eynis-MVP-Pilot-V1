@@ -33,7 +33,7 @@ import { checkWebhookSignature, verifySharedWebhookSecret } from "./core/connect
 import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel, syncSystemRolePermissions } from "./core/rbac";
-import { enforceLicenseFeature } from "./core/license";
+import { enforceLicenseFeature, planOptions, isValidPlan, VALID_PLANS, DEFAULT_SEATS_FOR_PLAN, type PlanKey } from "./core/license";
 import { type Permission, ALL_PERMISSIONS } from "./core/permissions";
 import { verifyPlatformAdmin, isPlatformAdminConfigured } from "./core/platform-admin";
 import { isValidIndustry, industryOptions, VALID_INDUSTRIES } from "./core/industries";
@@ -866,11 +866,12 @@ const handleRequest = async (
                 ]
               }
             : undefined,
-          select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true },
+          select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true, license: { select: { plan: true } } },
           orderBy: { createdAt: "desc" },
           take: 200
         });
-        json(res, 200, { ok: true, items: tenants, industries: industryOptions(), tiers: tierOptions() });
+        const items = tenants.map(({ license, ...rest }) => ({ ...rest, plan: license?.plan ?? "starter" }));
+        json(res, 200, { ok: true, items, industries: industryOptions(), tiers: tierOptions(), plans: planOptions() });
         return;
       }
 
@@ -957,6 +958,54 @@ const handleRequest = async (
           }
         });
         json(res, 200, { ok: true, tenant });
+        return;
+      }
+
+      // PATCH /internal/tenants/:id/plan — set a tenant's billing plan (which gates
+      // features like Research Studio / advanced analytics). Staff-provisioned with
+      // NO payment step, so a demo / per-deal instance can be moved to Growth or
+      // Enterprise without a Razorpay flow. Upserts the license + audit-logs.
+      const planMatch = /^\/internal\/tenants\/([^/]+)\/plan$/.exec(internalPath);
+      if (planMatch && req.method === "PATCH") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(planMatch[1] as string);
+        const body = (await parseBody(req)) as { plan?: unknown; maxSeats?: unknown; actor?: unknown };
+        const plan = asTrimmedString(body.plan);
+        if (!plan || !isValidPlan(plan)) {
+          json(res, 400, { ok: false, error: `plan must be one of: ${VALID_PLANS.join(", ")}` });
+          return;
+        }
+        const existingTenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+        if (!existingTenant) {
+          json(res, 404, { ok: false, error: "Tenant not found" });
+          return;
+        }
+        const existingLicense = await prisma.license.findUnique({ where: { tenantId }, select: { plan: true, maxSeats: true } });
+        const fromPlan = existingLicense?.plan ?? "starter";
+        // Use an explicit seat count if given; otherwise keep the larger of the
+        // current count and the new plan's default (never silently shrink seats).
+        const requestedSeats = asPositiveInt(body.maxSeats);
+        const maxSeats = requestedSeats ?? Math.max(existingLicense?.maxSeats ?? 0, DEFAULT_SEATS_FOR_PLAN[plan as PlanKey]);
+        await prisma.license.upsert({
+          where: { tenantId },
+          update: { plan, maxSeats },
+          create: { tenantId, plan, maxSeats, renewsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) }
+        });
+        await prisma.auditLog.create({
+          data: {
+            tenantId,
+            actorRole: "platform_staff",
+            action: "tenant.plan_changed",
+            entityType: "tenant",
+            entityId: tenantId,
+            metadata: JSON.stringify({ from: fromPlan, to: plan, maxSeats, actor: asTrimmedString(body.actor) ?? "platform_console" })
+          }
+        });
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, name: true, industry: true, whitelabelTier: true, slug: true, customDomain: true, createdAt: true }
+        });
+        json(res, 200, { ok: true, tenant: { ...tenant, plan } });
         return;
       }
 
