@@ -15,17 +15,33 @@ function buildTabs(propertyLabel: string, teamLabel: string) {
   ];
 }
 
+function initials(name: string | null): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
 export default async function SettingsPage() {
   const { config } = await getUserWorkspace();
   const accent = config.accentColor;
   const tabs = buildTabs(config.terminology.property, config.terminology.team);
+  const propertyLabel = config.terminology.property;
 
-  // Only the workspace admin sees the white-label panels. Industry is no longer
-  // self-service for anyone — it is provisioned by Eynis staff (E-8).
+  // Drive profile + property sections from the current tenant/user, not the
+  // hardcoded Riviera demo data (E-11 / white-label by default).
   let isAdmin = true;
+  let fullName: string | null = null;
+  let email: string | null = null;
+  // The tenant's property name; falls back to the industry term ("Hotel"/"Plant"/…).
+  let propertyName = propertyLabel;
   try {
     const ctx = await resolveUserContext();
+    // Only the workspace admin sees the white-label panels. Industry is no longer
+    // self-service for anyone — it is provisioned by Eynis staff (E-8).
     isAdmin = ctx.orgRole === "org_admin";
+    fullName = ctx.fullName;
+    email = ctx.email;
+    if (ctx.propertyName) propertyName = ctx.propertyName;
   } catch {}
 
   return (
@@ -98,7 +114,7 @@ export default async function SettingsPage() {
 
             <div className="flex items-center gap-4 mb-5">
               <div className="relative">
-                <div className="w-16 h-16 rounded-full bg-teal-700 flex items-center justify-center text-white text-xl font-bold">VM</div>
+                <div className="w-16 h-16 rounded-full bg-teal-700 flex items-center justify-center text-white text-xl font-bold">{initials(fullName)}</div>
                 <button className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white shadow border border-slate-200 flex items-center justify-center">
                   <Camera className="w-3 h-3 text-slate-500" />
                 </button>
@@ -108,11 +124,11 @@ export default async function SettingsPage() {
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Full Name</label>
-                <input defaultValue="Marcus Vane" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <input defaultValue={fullName ?? ""} placeholder="Your full name" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Email Address</label>
-                <input defaultValue="vikram@theriviera.com" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <input defaultValue={email ?? ""} placeholder="you@example.com" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
               </div>
             </div>
 
@@ -125,39 +141,28 @@ export default async function SettingsPage() {
           {/* Property Details */}
           <div className="card">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-semibold text-slate-800">The Riviera Details</h3>
+              <h3 className="text-base font-semibold text-slate-800">{propertyName} Details</h3>
               <span className="badge badge-amber text-[10px]">GLOBAL MASTER</span>
             </div>
-            <p className="text-sm text-slate-400 mb-4">Property configuration for all staff and integrations.</p>
+            <p className="text-sm text-slate-400 mb-4">{propertyLabel} configuration for all staff and integrations.</p>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Address</label>
-                <input defaultValue="72 Promenade des Anglais, Nice, France" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <input defaultValue="" placeholder="Street, city, country" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Room Count</label>
-                <input defaultValue="142" className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Contact Phone</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{propertyLabel} Phone</label>
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-slate-400" />
-                  <input defaultValue="+91 98765 40001" className="flex-1 px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  <input defaultValue="" placeholder="Contact number" className="flex-1 px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Check-in Time</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Timezone</label>
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-slate-400" />
-                  <input defaultValue="03:00 PM" className="flex-1 px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Check-out Time</label>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-slate-400" />
-                  <input defaultValue="11:00 AM" className="flex-1 px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  <input defaultValue="" placeholder="e.g. Asia/Kolkata" className="flex-1 px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 </div>
               </div>
             </div>
@@ -215,8 +220,8 @@ export default async function SettingsPage() {
           <div className="card overflow-hidden p-0">
             <div className="h-36 bg-slate-200 flex items-end" style={{ background: "linear-gradient(135deg, #1a365d 0%, #2b6cb0 50%, #63b3ed 100%)" }}>
               <div className="p-3 text-white">
-                <div className="text-xs font-semibold uppercase tracking-wider opacity-70">Property Location</div>
-                <div className="text-sm font-bold">Promenade des Anglais, Nice</div>
+                <div className="text-xs font-semibold uppercase tracking-wider opacity-70">{propertyLabel} Location</div>
+                <div className="text-sm font-bold">{propertyName}</div>
               </div>
             </div>
           </div>
