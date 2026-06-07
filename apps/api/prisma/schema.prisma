@@ -65,6 +65,9 @@ model Tenant {
   activities            Activity[]
   dealSuggestions       DealSuggestion[]
   reports               Report[]
+  researchTemplates     ResearchTemplate[]
+  researchRuns          ResearchRun[]
+  researchSourceCaches  ResearchSourceCache[]
 
   @@map("Hotel")
 }
@@ -177,6 +180,8 @@ model User {
   ownedCompanies     Company[]                  @relation("company_owner")
   activities         Activity[]                 @relation("activity_actor")
   reports            Report[]                   @relation("report_creator")
+  researchTemplates  ResearchTemplate[]         @relation("research_template_creator")
+  researchRuns       ResearchRun[]              @relation("research_run_creator")
 
   @@unique([tenantId, email])
 }
@@ -1027,4 +1032,95 @@ model ReportShare {
   @@index([reportId])
   @@index([tenantId, principalType, principalId])
   @@map("ReportShare")
+}
+
+// ── Research Studio (RS-1) ───────────────────────────────────────────────────
+// A configurable, tenant-owned research-and-report capability. A ResearchTemplate
+// is a saved *definition* of what to research (subject + inputs), which sources to
+// gather from, and how the report is structured (sections). It is industry-agnostic
+// and not limited to marketing — "marketing audit" is just one saved template.
+// All JSON columns are app-validated against an allow-list before use.
+model ResearchTemplate {
+  id           String        @id @default(cuid())
+  tenantId     String        @map("hotelId")
+  name         String
+  description  String?
+  subjectType  String        @default("freeform") // deal | contact | company | freeform
+  inputsJson   String // JSON: [{ key, label, prefillFrom?, required? }]
+  sourcesJson  String // JSON: { webSearch:{enabled,queries[]}, crawl:{enabled,seeds[],maxPages}, pagespeed:{enabled} }
+  sectionsJson String // JSON: [{ id, title, prompt, outputs:["text"|"table"|"chart"|"score"], weight? }]
+  createdById  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("research_template_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  runs         ResearchRun[]
+
+  @@index([tenantId])
+}
+
+// One execution of a template against a subject. The template definition is
+// snapshotted (templateSnapshot) so editing a template never mutates past reports.
+// subjectId is a loose reference (deal/contact/company id) — no FK, because the
+// subject can be any of three entity types (or free-form).
+model ResearchRun {
+  id               String            @id @default(cuid())
+  tenantId         String            @map("hotelId")
+  templateId       String?
+  templateName     String
+  templateSnapshot String // JSON snapshot of the template def used for this run
+  subjectType      String            @default("freeform")
+  subjectId        String? // loose ref to a deal/contact/company (no FK)
+  subjectLabel     String?
+  inputsJson       String // JSON of resolved input values
+  status           String            @default("queued") // queued|gathering|synthesizing|validating|ready|failed
+  progress         Int               @default(0) // 0-100 for the progress UI
+  stage            String? // human-readable current stage
+  gatheredJson     String? // raw gathered evidence (sources, crawl text, metrics)
+  resultJson       String? // structured { sections:[...] }
+  score            Int? // overall 0-100 score, if the template defines one
+  usageJson        String? // { tokensIn, tokensOut, llmCalls, sourcesFetched }
+  error            String?
+  createdById      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  startedAt        DateTime?
+  completedAt      DateTime?
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template         ResearchTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdBy        User?             @relation("research_run_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  shares           ResearchShare[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, subjectType, subjectId])
+}
+
+// Per-tenant crawl cache so repeat runs don't re-fetch the same URL (cost/latency).
+model ResearchSourceCache {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("hotelId")
+  urlHash   String // sha256 of the normalized URL
+  url       String
+  content   String // extracted readable text (markdown-ish)
+  fetchedAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, urlHash])
+  @@index([tenantId])
+}
+
+// Per-run sharing ACL — mirrors ReportShare. A grant confers read/export only.
+model ResearchShare {
+  id            String      @id @default(cuid())
+  tenantId      String      @map("hotelId")
+  runId         String
+  principalType String // "user" | "role"
+  principalId   String // User.id or Role.key
+  createdAt     DateTime    @default(now())
+  run           ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, principalType, principalId])
+  @@index([runId])
+  @@index([tenantId, principalType, principalId])
 }

@@ -45,6 +45,13 @@ import { REPORT_SOURCES, getReportSource, runReportDefinition, validateDefinitio
 import { renderBrandedReportHtml, type ReportBlock } from "./core/export/report-html";
 import { renderBrandedReportPdf } from "./core/export/report-pdf";
 import { provisionSendingDomain, refreshSendingDomain, isValidSendingDomain, isValidLocalPart } from "./core/email/domains";
+import { listTemplates, getTemplateDetail, loadTemplateForRun } from "./core/research/store";
+import { validateTemplateDef, RESEARCH_SOURCE_CATALOG, SUBJECT_TYPES, SECTION_OUTPUTS, type SubjectType } from "./core/research/types";
+import { isBuiltinId } from "./core/research/templates";
+import { SEARXNG_AVAILABLE } from "./core/research/sources/searxng";
+import { buildReportBlocks, buildReportCsv } from "./core/research/render";
+import type { SynthResult } from "./core/research/synthesize";
+import { startResearchWorker } from "./core/research/worker";
 
 const eventBus = new InMemoryEventBus();
 
@@ -3435,6 +3442,340 @@ const handleRequest = async (
       }
     }
 
+    // ── Research Studio: configurable research & report module (RS-1) ─────────
+    // Gated by the research_studio license feature + per-action permissions
+    // (view_research / run_research / manage_research). Runs execute async on the
+    // research worker; the UI polls GET /research/runs/:id (and the global SSE feed
+    // carries "research_run" progress events). All queries are tenant-scoped.
+    {
+      const rpath = parseUrl(req.url).pathname;
+      if (rpath === "/research" || rpath.startsWith("/research/")) {
+        const denyPerm = () => json(res, 403, { ok: false, error: "Insufficient permissions" });
+        const ensureResearchLicense = async (tenantId: string): Promise<boolean> => {
+          const lic = await enforceLicenseFeature(tenantId, "research_studio");
+          if (!lic.ok) { json(res, 402, lic); return false; }
+          return true;
+        };
+
+        // GET /research/sources — source catalog + enums for the builder UI.
+        if (rpath === "/research/sources" && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          if (!hasPermission(auth.context.permissions, "view_research")) { denyPerm(); return; }
+          json(res, 200, { ok: true, sources: RESEARCH_SOURCE_CATALOG, subjectTypes: SUBJECT_TYPES, outputs: SECTION_OUTPUTS, searchConfigured: SEARXNG_AVAILABLE });
+          return;
+        }
+
+        // GET /research/templates — built-ins + tenant templates.
+        if (rpath === "/research/templates" && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const items = await listTemplates(tenantId);
+          json(res, 200, { ok: true, items: items.map((t) => ({ ...t, isOwner: t.createdById === userId })) });
+          return;
+        }
+
+        // POST /research/templates — create a saved template.
+        if (rpath === "/research/templates" && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const valid = validateTemplateDef(body);
+          if (!valid.ok) { json(res, 400, valid); return; }
+          const def = valid.def;
+          const created = await prisma.researchTemplate.create({
+            data: {
+              tenantId, name: def.name, description: def.description ?? null, subjectType: def.subjectType,
+              inputsJson: JSON.stringify(def.inputs), sourcesJson: JSON.stringify(def.sources), sectionsJson: JSON.stringify(def.sections),
+              createdById: userId,
+            },
+            select: { id: true },
+          });
+          json(res, 201, { ok: true, id: created.id });
+          return;
+        }
+
+        // ── Auto-run triggers (RS-3): deal stage → research ─────────────────────
+        // Stored as a list inside one AutomationRule (code "research_on_stage"),
+        // since the rule table is unique per (tenant, code). The automation engine
+        // evaluates these every cycle and enqueues runs for open deals in the stage.
+        const RESEARCH_RULE_CODE = "research_on_stage";
+        const readTriggers = (configJson: string): Array<{ stageId: string; templateId: string; fast?: boolean }> => {
+          try {
+            const cfg = JSON.parse(configJson) as { triggers?: Array<{ stageId: string; templateId: string; fast?: boolean }> };
+            return Array.isArray(cfg.triggers) ? cfg.triggers : [];
+          } catch { return []; }
+        };
+
+        if (rpath === "/research/triggers" && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const rule = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
+          json(res, 200, { ok: true, triggers: rule ? readTriggers(rule.configJson) : [], isActive: rule?.isActive ?? false });
+          return;
+        }
+
+        if (rpath === "/research/triggers" && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const body = (await parseBody(req)) as { stageId?: unknown; templateId?: unknown; fast?: unknown };
+          const stageId = asTrimmedString(body.stageId);
+          const templateId = asTrimmedString(body.templateId);
+          if (!stageId || !templateId) { json(res, 400, { ok: false, error: "stageId and templateId are required" }); return; }
+          const stage = await prisma.stage.findFirst({ where: { id: stageId, tenantId }, select: { id: true } });
+          if (!stage) { json(res, 404, { ok: false, error: "Stage not found" }); return; }
+          const tpl = await loadTemplateForRun(tenantId, templateId);
+          if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+          const existing = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
+          const triggers = existing ? readTriggers(existing.configJson).filter((t) => t.stageId !== stageId) : [];
+          triggers.push({ stageId, templateId, fast: body.fast !== false });
+          await prisma.automationRule.upsert({
+            where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } },
+            update: { configJson: JSON.stringify({ triggers }), isActive: true },
+            create: { tenantId, code: RESEARCH_RULE_CODE, name: "Auto-run research on deal stage", isActive: true, configJson: JSON.stringify({ triggers }) },
+          });
+          json(res, 200, { ok: true, triggers });
+          return;
+        }
+
+        const triggerDelMatch = /^\/research\/triggers\/([^/]+)$/.exec(rpath);
+        if (triggerDelMatch && req.method === "DELETE") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          const stageId = decodeURIComponent(triggerDelMatch[1] as string);
+          const existing = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
+          if (existing) {
+            const triggers = readTriggers(existing.configJson).filter((t) => t.stageId !== stageId);
+            await prisma.automationRule.update({
+              where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } },
+              data: { configJson: JSON.stringify({ triggers }), isActive: triggers.length > 0 },
+            });
+          }
+          json(res, 200, { ok: true });
+          return;
+        }
+
+        const tplMatch = /^\/research\/templates\/([^/]+)$/.exec(rpath);
+        const runExportMatch = /^\/research\/runs\/([^/]+)\/export$/.exec(rpath);
+        const runIdMatch = /^\/research\/runs\/([^/]+)$/.exec(rpath);
+
+        // GET /research/templates/:id — full definition for the editor.
+        if (tplMatch && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(tplMatch[1] as string);
+          const detail = await getTemplateDetail(tenantId, id);
+          if (!detail) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+          json(res, 200, { ok: true, template: { id: detail.id, isBuiltIn: detail.isBuiltIn, isOwner: detail.createdById === userId, ...detail.def } });
+          return;
+        }
+
+        // PUT /research/templates/:id — update (built-ins are read-only; clone instead).
+        if (tplMatch && req.method === "PUT") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(tplMatch[1] as string);
+          if (isBuiltinId(id)) { json(res, 400, { ok: false, error: "Built-in templates can't be edited — duplicate it first" }); return; }
+          const existing = await prisma.researchTemplate.findFirst({ where: { id, tenantId }, select: { id: true } });
+          if (!existing) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+          const body = (await parseBody(req)) as Record<string, unknown>;
+          const valid = validateTemplateDef(body);
+          if (!valid.ok) { json(res, 400, valid); return; }
+          const def = valid.def;
+          await prisma.researchTemplate.update({
+            where: { id },
+            data: {
+              name: def.name, description: def.description ?? null, subjectType: def.subjectType,
+              inputsJson: JSON.stringify(def.inputs), sourcesJson: JSON.stringify(def.sources), sectionsJson: JSON.stringify(def.sections),
+            },
+          });
+          json(res, 200, { ok: true });
+          return;
+        }
+
+        // DELETE /research/templates/:id — delete (built-ins read-only).
+        if (tplMatch && req.method === "DELETE") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(tplMatch[1] as string);
+          if (isBuiltinId(id)) { json(res, 400, { ok: false, error: "Built-in templates can't be deleted" }); return; }
+          const existing = await prisma.researchTemplate.findFirst({ where: { id, tenantId }, select: { id: true } });
+          if (!existing) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+          await prisma.researchTemplate.delete({ where: { id } });
+          json(res, 200, { ok: true });
+          return;
+        }
+
+        // POST /research/runs — enqueue a run against a template.
+        if (rpath === "/research/runs" && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const body = (await parseBody(req)) as {
+            templateId?: unknown; inputs?: unknown; subjectType?: unknown; subjectId?: unknown; subjectLabel?: unknown; fast?: unknown;
+          };
+          const templateId = asTrimmedString(body.templateId);
+          if (!templateId) { json(res, 400, { ok: false, error: "templateId is required" }); return; }
+          const tpl = await loadTemplateForRun(tenantId, templateId);
+          if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+          const def = body.fast === true ? { ...tpl.def, fast: true } : tpl.def;
+
+          // Coerce inputs to a flat string map (allow-listed keys only).
+          const inputs: Record<string, string> = {};
+          if (body.inputs && typeof body.inputs === "object") {
+            for (const [k, v] of Object.entries(body.inputs as Record<string, unknown>)) {
+              const key = k.replace(/[^a-zA-Z0-9_]/g, "");
+              if (key && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")) inputs[key] = String(v).slice(0, 500);
+            }
+          }
+          const subjectType: SubjectType = SUBJECT_TYPES.includes(body.subjectType as SubjectType) ? (body.subjectType as SubjectType) : def.subjectType;
+          const subjectLabel = asTrimmedString(body.subjectLabel) ?? (inputs.name ? inputs.name : null);
+
+          // A run's subjectId drives CRM write-back (timeline activity, lead score).
+          // It MUST belong to this tenant — otherwise a caller could target another
+          // tenant's record. Verify ownership and reject a foreign/unknown subject.
+          const subjectId = asTrimmedString(body.subjectId);
+          if (subjectId && (subjectType === "contact" || subjectType === "deal" || subjectType === "company")) {
+            const owned =
+              subjectType === "contact" ? await prisma.contact.findFirst({ where: { id: subjectId, tenantId }, select: { id: true } })
+              : subjectType === "deal" ? await prisma.deal.findFirst({ where: { id: subjectId, tenantId }, select: { id: true } })
+              : await prisma.company.findFirst({ where: { id: subjectId, tenantId }, select: { id: true } });
+            if (!owned) { json(res, 404, { ok: false, error: "Subject not found" }); return; }
+          }
+
+          const run = await prisma.researchRun.create({
+            data: {
+              tenantId,
+              templateId: isBuiltinId(templateId) ? null : templateId,
+              templateName: tpl.name,
+              templateSnapshot: JSON.stringify(def),
+              subjectType,
+              subjectId,
+              subjectLabel,
+              inputsJson: JSON.stringify(inputs),
+              status: "queued",
+              createdById: userId,
+            },
+            select: { id: true },
+          });
+          broadcastSSEEvent(tenantId, { type: "research_run", data: { id: run.id, status: "queued", progress: 0, stage: "Queued" } });
+          json(res, 201, { ok: true, id: run.id });
+          return;
+        }
+
+        // POST /research/runs/:id/rerun — re-run with the same snapshot/inputs/subject (RS-4).
+        const runRerunMatch = /^\/research\/runs\/([^/]+)\/rerun$/.exec(rpath);
+        if (runRerunMatch && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const id = decodeURIComponent(runRerunMatch[1] as string);
+          const prev = await prisma.researchRun.findFirst({ where: { id, tenantId } });
+          if (!prev) { json(res, 404, { ok: false, error: "Run not found" }); return; }
+          const fresh = await prisma.researchRun.create({
+            data: {
+              tenantId,
+              templateId: prev.templateId,
+              templateName: prev.templateName,
+              templateSnapshot: prev.templateSnapshot,
+              subjectType: prev.subjectType,
+              subjectId: prev.subjectId,
+              subjectLabel: prev.subjectLabel,
+              inputsJson: prev.inputsJson,
+              status: "queued",
+              createdById: userId,
+            },
+            select: { id: true },
+          });
+          broadcastSSEEvent(tenantId, { type: "research_run", data: { id: fresh.id, status: "queued", progress: 0, stage: "Queued" } });
+          json(res, 201, { ok: true, id: fresh.id });
+          return;
+        }
+
+        // GET /research/runs — list recent runs (tenant-wide; team-visible).
+        if (rpath === "/research/runs" && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const limit = asSafeLimit(parseUrl(req.url).searchParams.get("limit"), 50, 200);
+          const rows = await prisma.researchRun.findMany({
+            where: { tenantId },
+            orderBy: { createdAt: "desc" },
+            take: limit,
+            select: { id: true, templateName: true, subjectType: true, subjectLabel: true, status: true, progress: true, stage: true, score: true, error: true, createdAt: true, completedAt: true },
+          });
+          json(res, 200, { ok: true, items: rows });
+          return;
+        }
+
+        // GET /research/runs/:id/export?format=pdf|csv|html — branded export.
+        if (runExportMatch && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(runExportMatch[1] as string);
+          const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
+          if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
+          if (run.status !== "ready" || !run.resultJson) { json(res, 409, { ok: false, error: "Report is not ready yet" }); return; }
+          const result = JSON.parse(run.resultJson) as SynthResult;
+          const brand = await loadReportBrand(tenantId);
+          const title = run.templateName;
+          const subtitle = run.subjectLabel ?? undefined;
+          const safeName = (run.subjectLabel ?? run.templateName).replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-|-$/g, "") || "research";
+          const fmt = parseUrl(req.url).searchParams.get("format");
+          if (fmt === "csv") {
+            sendDoc(res, "text/csv; charset=utf-8", brandedCsv(brand, title, buildReportCsv(result)), `${safeName}.csv`);
+            return;
+          }
+          const blocks: ReportBlock[] = buildReportBlocks({ title, subject: run.subjectLabel ?? "", score: run.score, result });
+          if (fmt === "pdf") {
+            const pdf = await renderBrandedReportPdf(brand, { title, subtitle, blocks });
+            sendBinary(res, "application/pdf", pdf, `${safeName}.pdf`);
+            return;
+          }
+          sendDoc(res, "text/html; charset=utf-8", renderBrandedReportHtml(brand, { title, subtitle, blocks }));
+          return;
+        }
+
+        // GET /research/runs/:id — run detail + result (for polling + preview).
+        if (runIdMatch && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(runIdMatch[1] as string);
+          const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
+          if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
+          let result: SynthResult | null = null;
+          let gathered: unknown = null;
+          let usage: unknown = null;
+          try { if (run.resultJson) result = JSON.parse(run.resultJson) as SynthResult; } catch { result = null; }
+          try { if (run.gatheredJson) gathered = JSON.parse(run.gatheredJson); } catch { gathered = null; }
+          try { if (run.usageJson) usage = JSON.parse(run.usageJson); } catch { usage = null; }
+          json(res, 200, {
+            ok: true,
+            run: {
+              id: run.id, templateName: run.templateName, subjectType: run.subjectType, subjectLabel: run.subjectLabel,
+              status: run.status, progress: run.progress, stage: run.stage, score: run.score, error: run.error,
+              createdAt: run.createdAt, completedAt: run.completedAt, result, gathered, usage,
+            },
+          });
+          return;
+        }
+      }
+    }
+
     // ── Inventory (vertical with real persistence) ───────────────────────────
     if (req.url === "/inventory/items" && req.method === "GET") {
       const auth = await authorize(req, res, "GET /inventory/items");
@@ -5765,6 +6106,8 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     startCampaignDispatchWorker();
     startCampaignWorker();
     startSequenceWorker();
+    startResearchWorker();
+    console.log("Eynis ResearchWorker started");
   });
   return server;
 };

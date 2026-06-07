@@ -6,6 +6,7 @@ import { Button, PageHeader, Field, Input, Select, Textarea, Badge, Modal, Spinn
 import { DataGrid, type GridColumn } from "./data-grid";
 import { CrmTabs } from "./crm-tabs";
 import { CsvImportModal } from "./csv-import-modal";
+import ResearchButton from "./research-button";
 import type { CompanyRow, ContactRow } from "../../lib/data";
 
 const SIZES = ["1-10", "11-50", "51-200", "200+"];
@@ -209,6 +210,9 @@ function CompanyDetailModal({ id, owners, onClose, onChanged }: { id: string; ow
       footer={<><Button variant="secondary" onClick={remove} disabled={busy} style={{ marginRight: "auto", color: t.color.danger }}>Delete</Button><Button variant="secondary" onClick={onClose} disabled={busy}>Close</Button><Button onClick={save} disabled={busy}>{busy ? <Spinner size={14} /> : "Save"}</Button></>}>
       {loading ? <div style={{ textAlign: "center", padding: 24 }}><Spinner /></div> : !company ? <div>Not found.</div> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <ResearchButton subjectType="company" subjectId={id} subjectLabel={company.name} prefill={{ name: company.name, website: domain, industry }} />
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
             <Field label="Domain"><Input value={domain} onChange={(e) => setDomain(e.target.value)} /></Field>

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
 import { singleFlight } from "../single-flight";
+import { loadTemplateForRun } from "../research/store";
 
 async function hasExecution(ruleId: string, triggerEntityId: string): Promise<boolean> {
   const existing = await prisma.automationExecution.findFirst({
@@ -253,6 +254,88 @@ export async function evaluateUpsellFollowup() {
   }
 }
 
+// ── Rule 5: Deal enters a stage → auto-run research (RS-3) ────────────────────
+
+// One AutomationRule per tenant (code "research_on_stage") holds a list of
+// stage→template triggers in its config (the rule table is unique per tenant+code).
+// For each configured stage we enqueue a research run for every open deal in that
+// stage, once per (stage, deal) via the idempotency record. The research worker
+// then processes the queued runs and logs results back to the deal timeline.
+export async function evaluateResearchOnStage() {
+  const rules = await prisma.automationRule.findMany({
+    where: { code: "research_on_stage", isActive: true },
+    select: { id: true, tenantId: true, code: true, configJson: true }
+  });
+
+  for (const rule of rules) {
+    let triggers: Array<{ stageId: string; templateId: string; fast?: boolean }> = [];
+    try {
+      const cfg = JSON.parse(rule.configJson) as { triggers?: Array<{ stageId: string; templateId: string; fast?: boolean }> };
+      triggers = Array.isArray(cfg.triggers) ? cfg.triggers : [];
+    } catch { triggers = []; }
+
+    for (const trig of triggers) {
+      if (!trig.stageId || !trig.templateId) continue;
+
+      const deals = await prisma.deal.findMany({
+        where: { tenantId: rule.tenantId, stageId: trig.stageId, status: "open" },
+        select: { id: true, title: true, company: { select: { name: true, domain: true } } }
+      });
+      if (deals.length === 0) continue;
+
+      const tpl = await loadTemplateForRun(rule.tenantId, trig.templateId);
+
+      for (const deal of deals) {
+        const triggerEntityId = `${trig.stageId}:${deal.id}`;
+        if (await hasExecution(rule.id, triggerEntityId)) continue;
+
+        if (!tpl) {
+          await recordExecution({
+            tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+            triggerType: "deal_stage", triggerEntityId,
+            actionType: "enqueue_research", actionResult: "skipped",
+            resultDetail: `Template ${trig.templateId} not found`
+          });
+          continue;
+        }
+
+        try {
+          // Prefer the linked company (name + domain) for richer research; fall back to the deal title.
+          const name = deal.company?.name ?? deal.title;
+          const inputs = { name, website: deal.company?.domain ?? "" };
+          const def = trig.fast === false ? tpl.def : { ...tpl.def, fast: true };
+          await prisma.researchRun.create({
+            data: {
+              tenantId: rule.tenantId,
+              templateId: trig.templateId.startsWith("builtin:") ? null : trig.templateId,
+              templateName: tpl.name,
+              templateSnapshot: JSON.stringify(def),
+              subjectType: "deal",
+              subjectId: deal.id,
+              subjectLabel: deal.title,
+              inputsJson: JSON.stringify(inputs),
+              status: "queued"
+            }
+          });
+          await recordExecution({
+            tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+            triggerType: "deal_stage", triggerEntityId,
+            actionType: "enqueue_research", actionResult: "success",
+            resultDetail: `Queued research for "${deal.title}"`
+          });
+        } catch (err) {
+          await recordExecution({
+            tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+            triggerType: "deal_stage", triggerEntityId,
+            actionType: "enqueue_research", actionResult: "failed",
+            resultDetail: err instanceof Error ? err.message : "Unknown error"
+          });
+        }
+      }
+    }
+  }
+}
+
 // ── Public: start worker ──────────────────────────────────────────────────────
 
 // Wrapped in singleFlight so a cycle that overruns the 60s interval can't overlap
@@ -264,7 +347,8 @@ export const runAutomationCycle = singleFlight(async (): Promise<void> => {
       evaluateSlaBreachEscalate(),
       evaluateSentimentLowFlag(),
       evaluateCheckinWelcome(),
-      evaluateUpsellFollowup()
+      evaluateUpsellFollowup(),
+      evaluateResearchOnStage()
     ]);
   } catch (err) {
     console.error("[AutomationEngine] Cycle error:", err);

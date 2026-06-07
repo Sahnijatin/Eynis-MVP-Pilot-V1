@@ -19,7 +19,8 @@ export type LicenseFeature =
   | "advanced_analytics"
   | "ai_features"
   | "automations"
-  | "night_audit";
+  | "night_audit"
+  | "research_studio";
 
 /** The tenant / organization — the billable, isolated account. */
 export interface Tenant {
