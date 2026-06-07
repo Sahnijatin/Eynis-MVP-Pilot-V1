@@ -32,8 +32,8 @@ export function OccupancyChart({ data }: OccupancyChartProps) {
         <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="occGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#0f766e" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="#0f766e" stopOpacity={0.02} />
+              <stop offset="5%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -44,7 +44,7 @@ export function OccupancyChart({ data }: OccupancyChartProps) {
             formatter={(value) => [`${value as number}%`, "Occupancy"]}
           />
           <ReferenceLine y={70} stroke="#cbd5e1" strokeDasharray="4 4" />
-          <Area type="monotone" dataKey="value" stroke="#0f766e" strokeWidth={2.5} fill="url(#occGrad)" dot={{ fill: "#0f766e", r: 3.5 }} activeDot={{ r: 5 }} />
+          <Area type="monotone" dataKey="value" stroke="var(--color-primary, #0f766e)" strokeWidth={2.5} fill="url(#occGrad)" dot={{ fill: "var(--color-primary, #0f766e)", r: 3.5 }} activeDot={{ r: 5 }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -68,7 +68,7 @@ export function RevenueBarChart({ data }: RevenueBarProps) {
             contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
             formatter={(val) => [`₹${(val as number).toLocaleString()}`, ""]}
           />
-          <Bar dataKey="upgrades" stackId="a" fill="#0f766e" radius={[0, 0, 0, 0]} name="Upgrades" />
+          <Bar dataKey="upgrades" stackId="a" fill="var(--color-primary, #0f766e)" radius={[0, 0, 0, 0]} name="Upgrades" />
           <Bar dataKey="lateCO" stackId="a" fill="#14b8a6" name="Late C/O" />
           <Bar dataKey="fnb" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name="F&B Offers" />
         </BarChart>
@@ -119,7 +119,7 @@ export function SentimentLineChart({ data }: SentimentLineProps) {
           />
           <YAxis domain={[40, 100]} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }} />
-          <Line type="monotone" dataKey="score" stroke="#0f766e" strokeWidth={2} dot={false} name="Current Period" />
+          <Line type="monotone" dataKey="score" stroke="var(--color-primary, #0f766e)" strokeWidth={2} dot={false} name="Current Period" />
           {data[0]?.prev !== undefined && (
             <Line type="monotone" dataKey="prev" stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Previous Period" />
           )}
@@ -141,8 +141,8 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
         <AreaChart data={data} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
           <defs>
             <linearGradient id="effGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#0f766e" stopOpacity={0.2} />
-              <stop offset="95%" stopColor="#0f766e" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.2} />
+              <stop offset="95%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -151,7 +151,7 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
           <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
             formatter={(v) => [`${v as number}m`, "Avg Resolution"]}
           />
-          <Area type="monotone" dataKey="minutes" stroke="#0f766e" strokeWidth={2} fill="url(#effGrad)" dot={false} />
+          <Area type="monotone" dataKey="minutes" stroke="var(--color-primary, #0f766e)" strokeWidth={2} fill="url(#effGrad)" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -172,7 +172,7 @@ export function CampaignBarChart({ data }: CampaignBarProps) {
           <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }} />
-          <Bar dataKey="executions" fill="#0f766e" radius={[3, 3, 0, 0]} name="Executions" />
+          <Bar dataKey="executions" fill="var(--color-primary, #0f766e)" radius={[3, 3, 0, 0]} name="Executions" />
           <Bar dataKey="conversions" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Conversions" />
         </BarChart>
       </ResponsiveContainer>
