@@ -96,6 +96,62 @@ test("PATCH whitelabel-tier returns 404 for an unknown tenant", async () => {
   assert.equal(r.status, 404);
 });
 
+test("sending domain: PUT registers it (offline → pending + DNS), GET reads it, audit-logged (E-9)", async () => {
+  const tenantId = await seedTenant();
+
+  const noAuth = await fetch(base + `/internal/tenants/${tenantId}/sending-domain`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ domain: "mail.acme.com" })
+  });
+  assert.equal(noAuth.status, 401);
+
+  const put = await fetch(base + `/internal/tenants/${tenantId}/sending-domain`, {
+    method: "PUT", headers: staff, body: JSON.stringify({ domain: "Mail.Acme.com", fromLocalPart: "campaigns", fromName: "Acme Co" })
+  });
+  const pj = await put.json() as { ok: boolean; sendingDomain: { domain: string; status: string; fromLocalPart: string; dnsRecords: unknown[] } };
+  assert.equal(put.status, 200);
+  assert.equal(pj.sendingDomain.domain, "mail.acme.com"); // lower-cased
+  assert.equal(pj.sendingDomain.status, "pending");
+  assert.equal(pj.sendingDomain.fromLocalPart, "campaigns");
+  assert.ok(pj.sendingDomain.dnsRecords.length >= 3);
+
+  const get = await fetch(base + `/internal/tenants/${tenantId}/sending-domain`, { headers: staff });
+  const gj = await get.json() as { ok: boolean; sendingDomain: { domain: string } };
+  assert.equal(gj.sendingDomain.domain, "mail.acme.com");
+
+  const log = await prisma.auditLog.findFirst({ where: { tenantId, action: "tenant.sending_domain_set" } });
+  assert.ok(log, "a set audit row should exist");
+  assert.equal(log!.actorRole, "platform_staff");
+});
+
+test("sending domain: PUT rejects an invalid domain / local part", async () => {
+  const tenantId = await seedTenant();
+  const badDomain = await fetch(base + `/internal/tenants/${tenantId}/sending-domain`, {
+    method: "PUT", headers: staff, body: JSON.stringify({ domain: "not a domain" })
+  });
+  assert.equal(badDomain.status, 400);
+  const badLocal = await fetch(base + `/internal/tenants/${tenantId}/sending-domain`, {
+    method: "PUT", headers: staff, body: JSON.stringify({ domain: "mail.acme.com", fromLocalPart: "bad part" })
+  });
+  assert.equal(badLocal.status, 400);
+});
+
+test("sending domain: POST verify refreshes status + audit-logs; 404 when unset", async () => {
+  const none = await seedTenant();
+  const missing = await fetch(base + `/internal/tenants/${none}/sending-domain/verify`, { method: "POST", headers: staff });
+  assert.equal(missing.status, 404);
+
+  const tenantId = await seedTenant();
+  await fetch(base + `/internal/tenants/${tenantId}/sending-domain`, {
+    method: "PUT", headers: staff, body: JSON.stringify({ domain: "mail.acme.com" })
+  });
+  const verify = await fetch(base + `/internal/tenants/${tenantId}/sending-domain/verify`, { method: "POST", headers: staff });
+  const vj = await verify.json() as { ok: boolean; sendingDomain: { status: string } };
+  assert.equal(verify.status, 200);
+  assert.equal(vj.sendingDomain.status, "pending"); // offline → stays pending
+  const log = await prisma.auditLog.findFirst({ where: { tenantId, action: "tenant.sending_domain_verified" } });
+  assert.ok(log, "a verify audit row should exist");
+});
+
 test("a tenant JWT cannot reach the internal routes", async () => {
   // A normal tenant bearer is not the platform secret → 401, never tenant-RBAC 403.
   const r = await fetch(base + "/internal/tenants", { headers: { authorization: "Bearer some.tenant.jwt" } });

@@ -54,6 +54,7 @@ model Tenant {
   messageDeliveries     MessageDelivery[]
   doNotContacts         DoNotContact[]
   branding              TenantBranding?
+  sendingDomain         SendingDomain?
   emailSuppressions     EmailSuppression[]
   inventoryItems        InventoryItem[]
   pipelines             Pipeline[]
@@ -127,6 +128,28 @@ model TenantBranding {
   brandReports  Boolean  @default(true)  // artifact flag (E-9): brand reports/exports
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// Per-tenant white-label email sending domain (E-9, Model B). Staff-provisioned
+// via the internal console: we register the domain with the email provider, store
+// the DNS records the tenant must publish, and poll verification. Outbound email
+// only uses this identity once `status = "verified"` (else it falls back to the
+// platform/connector identity so we never send from an unverified domain).
+model SendingDomain {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique @map("hotelId")
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  domain         String // e.g. "mail.acme.com"
+  fromLocalPart  String   @default("notifications") // local part: <localPart>@<domain>
+  fromName       String? // display name; falls back to brand/tenant name
+  resendDomainId String? // provider (Resend) Domains API id
+  status         String   @default("pending") // pending | verified | failed
+  dnsRecords     String? // JSON array of { type, name, value, priority? } to publish
+  lastCheckedAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([tenantId])
 }

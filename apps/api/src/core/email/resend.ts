@@ -113,11 +113,29 @@ export async function resolveResendCredentials(tenantId: string): Promise<Resend
   }).catch(() => null);
 
   const parsed = cfg?.enabled ? parseConfig(cfg.configJson) : {};
-  return {
+  const base: ResendCredentials = {
     apiKey: asStr(parsed.apiKey) ?? asStr(process.env.RESEND_API_KEY),
     fromAddress: asStr(parsed.fromAddress) ?? asStr(process.env.EMAIL_FROM_ADDRESS),
     fromName: asStr(parsed.fromName) ?? asStr(process.env.EMAIL_FROM_NAME),
   };
+
+  // White-label sending domain (E-9, Model B): once the tenant's own domain is
+  // verified, send from it. The verified domain is registered on the *platform*
+  // Resend account, so it must be sent with the platform key — fall back to the
+  // base config only if no platform key is set. Unverified/absent → base identity
+  // (we never send from an unverified domain).
+  const sd = await prisma.sendingDomain.findUnique({
+    where: { tenantId },
+    select: { domain: true, fromLocalPart: true, fromName: true, status: true },
+  }).catch(() => null);
+  if (sd && sd.status === "verified") {
+    return {
+      apiKey: asStr(process.env.RESEND_API_KEY) ?? base.apiKey,
+      fromAddress: `${sd.fromLocalPart}@${sd.domain}`,
+      fromName: asStr(sd.fromName) ?? base.fromName,
+    };
+  }
+  return base;
 }
 
 export const isResendConfigured = (creds: ResendCredentials): boolean =>

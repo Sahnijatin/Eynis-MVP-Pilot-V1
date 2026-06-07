@@ -33,15 +33,37 @@ function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number):
   return out.length ? out : [""];
 }
 
-// Best-effort logo embed: PNG/JPG only, short timeout, never throws.
+// Rejects URLs that could be used for SSRF when we fetch the logo server-side:
+// only https, and never a private/loopback/link-local host (incl. cloud metadata
+// at 169.254.169.254). A best-effort host check — the redirect:"error" below also
+// stops a public host from bouncing us to an internal one.
+export function isSafeLogoUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (u.protocol !== "https:") return false;
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) return false;
+  // Block literal private/loopback/link-local IPs.
+  if (host === "0.0.0.0" || host === "::1" || host === "[::1]") return false;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
+  }
+  return true;
+}
+
+// Best-effort logo embed: https public host only, PNG/JPG, no redirects, short
+// timeout, never throws.
 async function tryEmbedLogo(doc: PDFDocument, url: string | null) {
-  if (!url || !/\.(png|jpe?g)(\?.*)?$/i.test(url)) return null;
+  if (!url || !/\.(png|jpe?g)(\?.*)?$/i.test(url) || !isSafeLogoUrl(url)) return null;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 2500);
-    const res = await fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+    const res = await fetch(url, { signal: ctrl.signal, redirect: "error" }).finally(() => clearTimeout(timer));
     if (!res.ok) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength > 5_000_000) return null; // cap embed size
     return /\.png(\?.*)?$/i.test(url) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
   } catch { return null; }
 }
