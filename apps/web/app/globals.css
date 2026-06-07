@@ -664,3 +664,11 @@
 }
 
 @keyframes ds-spin { to { transform: rotate(360deg); } }
+
+/* E-13e — visible keyboard focus for design-system controls + buttons (WCAG
+   2.4.7). Inline styles can't express :focus-visible, so the ds/ primitives
+   carry these classes. Controls already have an inline border, so a box-shadow
+   ring reads cleanly; buttons get an offset outline. Both use the white-label
+   brand var with a teal fallback. */
+.ds-field:focus-visible { box-shadow: 0 0 0 2px var(--color-primary, #0f766e); }
+.ds-btn:focus-visible { outline: 2px solid var(--color-primary, #0f766e); outline-offset: 2px; }
