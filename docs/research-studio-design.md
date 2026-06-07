@@ -306,6 +306,29 @@ also skipped: `DealSuggestion` is specifically a *stage-move* proposal, which a
 research score doesn't map onto cleanly — the timeline activity + lead-score are the
 honest signals.
 
+## 9d. Implementation status — RS-4 shipped
+
+Polish + hardening.
+
+- **SSRF hardening (security):** the crawler fetches *user-supplied* URLs (template
+  seeds / run inputs), so `sources/crawl.ts` now resolves each host and **rejects
+  private/loopback/link-local/metadata addresses**, and follows redirects
+  **manually**, re-validating every hop (a public URL can't 302 into `169.254.169.254`).
+  Residual DNS-rebinding (TOCTOU) is noted; the guard blocks the common direct +
+  redirect vectors. SearXNG (operator-configured `SEARXNG_URL`) and PageSpeed (Google
+  fetches the target, not us) are not SSRF surfaces.
+- **Cost/usage visibility:** runs record `{ provider, llmCalls, usedAI, sourcesFetched,
+  cacheHits, durationMs }`; the run view shows a one-line usage summary, and crawl
+  **cache hits** are tracked (the per-tenant `ResearchSourceCache` already shipped in RS-1).
+- **Re-run:** `POST /research/runs/:id/rerun` clones a past run (same snapshot/inputs/
+  subject); "Re-run" buttons on the run view (ready *and* failed).
+- **First web tests:** `apps/web/lib/research-format.ts` (pure formatting/usage helpers)
+  + `research-format.test.ts`, with the web `test` script wired to `tsx --test` — the
+  module's first web-side tests, no React/DOM harness.
+
+**Deferred:** recurring/scheduled re-research (cron). Re-run is the manual primitive;
+a scheduler (model + worker) is a clean follow-up and out of scope for this PR.
+
 ## 10. Non-goals (v1)
 
 - No Python scrape-worker sidecar (revisit only if TS scraping quality is insufficient).

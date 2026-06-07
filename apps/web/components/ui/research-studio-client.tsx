@@ -8,12 +8,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Telescope, Plus, Play, Pencil, Copy, Trash2, ArrowLeft, FileDown, ExternalLink,
-  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap,
+  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap, RotateCw,
 } from "lucide-react";
 import {
   Button, Card, Badge, Field, Input, Select, Textarea, Modal, Spinner, EmptyState, useToast, tokens as t,
 } from "../ds";
 import type { ResearchTemplateItem, ResearchRunItem, ResearchSourceCatalog, ResearchTrigger, PipelineRow } from "../../lib/data";
+import { splitSectionContent, usageSummary } from "../../lib/research-format";
 
 // ── Local types (mirror the API shapes) ──────────────────────────────────────
 interface TemplateInput { key: string; label: string; prefillFrom?: string; required?: boolean }
@@ -36,6 +37,7 @@ interface RunDetail {
   status: string; progress: number; stage: string | null; score: number | null; error: string | null;
   result: { sections: SynthSection[]; score: number | null } | null;
   gathered: { fetchedCount?: number; sources?: Array<{ kind: string; title: string; url?: string }> } | null;
+  usage: { provider?: string; llmCalls?: number; usedAI?: boolean; sourcesFetched?: number; cacheHits?: number; durationMs?: number } | null;
 }
 
 interface Props {
@@ -172,6 +174,7 @@ export default function ResearchStudioClient(props: Props) {
           accent={accent}
           runId={view.runId}
           onBack={() => { setView({ mode: "home" }); refreshRuns(); }}
+          onOpenRun={(rid) => { setView({ mode: "run", runId: rid }); refreshRuns(); }}
         />
       )}
 
@@ -419,10 +422,21 @@ function RunModal(props: { accent: string; template: TemplateDetail; onClose: ()
 }
 
 // ── Run view: live progress + branded preview ─────────────────────────────────
-function RunView(props: { accent: string; runId: string; onBack: () => void }) {
+function RunView(props: { accent: string; runId: string; onBack: () => void; onOpenRun: (runId: string) => void }) {
   const { accent, runId } = props;
+  const toast = useToast();
   const [run, setRun] = useState<RunDetail | null>(null);
+  const [rerunning, setRerunning] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const rerun = async () => {
+    setRerunning(true);
+    try {
+      const d = await jsonFetch<{ ok: boolean; id?: string; error?: string }>(`/api/research/runs/${runId}/rerun`, { method: "POST" });
+      if (d.ok && d.id) props.onOpenRun(d.id);
+      else { toast.push(d.error ?? "Couldn't re-run", "error"); setRerunning(false); }
+    } catch { toast.push("Couldn't re-run", "error"); setRerunning(false); }
+  };
 
   useEffect(() => {
     let active = true;
@@ -465,12 +479,17 @@ function RunView(props: { accent: string; runId: string; onBack: () => void }) {
         {inProgress && <ProgressStepper status={run.status} progress={run.progress} accent={accent} />}
 
         {run.status === "ready" && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
-            <a href={`/api/research/runs/${runId}/export?format=pdf`}><Button size="sm" style={{ background: accent }}><FileDown className="w-3.5 h-3.5" /> PDF</Button></a>
-            <a href={`/api/research/runs/${runId}/export?format=csv`}><Button size="sm" variant="secondary"><FileDown className="w-3.5 h-3.5" /> CSV</Button></a>
-            <a href={`/api/research/runs/${runId}/export?format=html`} target="_blank" rel="noreferrer"><Button size="sm" variant="secondary"><ExternalLink className="w-3.5 h-3.5" /> Branded report</Button></a>
-            {run.gathered?.fetchedCount != null && <Badge>{run.gathered.fetchedCount} sources gathered</Badge>}
-          </div>
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, alignItems: "center" }}>
+              <a href={`/api/research/runs/${runId}/export?format=pdf`}><Button size="sm" style={{ background: accent }}><FileDown className="w-3.5 h-3.5" /> PDF</Button></a>
+              <a href={`/api/research/runs/${runId}/export?format=csv`}><Button size="sm" variant="secondary"><FileDown className="w-3.5 h-3.5" /> CSV</Button></a>
+              <a href={`/api/research/runs/${runId}/export?format=html`} target="_blank" rel="noreferrer"><Button size="sm" variant="secondary"><ExternalLink className="w-3.5 h-3.5" /> Branded report</Button></a>
+              <Button size="sm" variant="secondary" onClick={rerun} disabled={rerunning}>{rerunning ? <Spinner size={13} /> : <RotateCw className="w-3.5 h-3.5" />} Re-run</Button>
+            </div>
+            {usageSummary(run.usage) && (
+              <div style={{ marginTop: 10, fontSize: t.font.xs, color: t.color.textFaint }}>{usageSummary(run.usage)}</div>
+            )}
+          </>
         )}
       </Card>
 
@@ -480,6 +499,9 @@ function RunView(props: { accent: string; runId: string; onBack: () => void }) {
             <AlertTriangle className="w-5 h-5" /> Run failed
           </div>
           <div style={{ color: t.color.text, fontSize: t.font.sm, marginTop: 6 }}>{run.error || "Something went wrong."}</div>
+          <div style={{ marginTop: 12 }}>
+            <Button size="sm" variant="secondary" onClick={rerun} disabled={rerunning}>{rerunning ? <Spinner size={13} /> : <RotateCw className="w-3.5 h-3.5" />} Re-run</Button>
+          </div>
         </Card>
       )}
 
@@ -502,16 +524,15 @@ function RunView(props: { accent: string; runId: string; onBack: () => void }) {
 }
 
 function SectionBody({ content }: { content: string }) {
-  const lines = content.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-  const bullets = lines.filter((l) => /^([-*•]|\d+\.)\s+/.test(l));
-  if (bullets.length >= 2 && bullets.length >= lines.length * 0.6) {
+  const block = splitSectionContent(content);
+  if (block.kind === "list") {
     return (
       <ul style={{ margin: 0, paddingLeft: 18, color: t.color.text, fontSize: t.font.sm, lineHeight: 1.6 }}>
-        {bullets.map((b, i) => <li key={i}>{b.replace(/^([-*•]|\d+\.)\s+/, "")}</li>)}
+        {block.items.map((b, i) => <li key={i}>{b}</li>)}
       </ul>
     );
   }
-  return <div style={{ color: t.color.text, fontSize: t.font.sm, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{content}</div>;
+  return <div style={{ color: t.color.text, fontSize: t.font.sm, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{block.text}</div>;
 }
 
 function ResultTable({ table }: { table: SynthTable }) {

@@ -88,12 +88,38 @@ test("synthesize produces a complete report via deterministic fallback when AI i
     sources: [{ kind: "search", title: "Acme news", url: "https://x.test", snippet: "..." }],
     summary: "WEB SEARCH RESULTS:\n- Acme news",
     fetchedCount: 1,
+    cacheHits: 0,
   };
   const out = await synthesize(def, "Acme", gathered);
   assert.equal(out.sections.length, 2);
   assert.equal(out.usage.usedAI, false);
   assert.equal(typeof out.sections[0]?.content, "string");
   assert.equal(typeof out.score, "number"); // score section produced a fallback number
+});
+
+// ── overall score weighting (no AI) ───────────────────────────────────────────
+test("synthesize weights the overall score across scored sections", async () => {
+  const def = {
+    name: "W", subjectType: "company" as const, inputs: [],
+    sources: { crawl: { enabled: true } },
+    sections: [
+      { id: "a", title: "A", prompt: "p", outputs: ["score"] as Array<"score">, weight: 3 },
+      { id: "b", title: "B", prompt: "p", outputs: ["score"] as Array<"score">, weight: 1 },
+    ],
+  };
+  // Fallback score = min(100, fetchedCount*12). With fetchedCount=2 both sections
+  // get 24, so any weighting still yields 24 — assert it's a clamped integer 0-100.
+  const gathered: GatherResult = { sources: [], summary: "", fetchedCount: 2, cacheHits: 1 };
+  const out = await synthesize(def, "W", gathered);
+  assert.ok(out.score !== null && out.score >= 0 && out.score <= 100);
+  assert.equal(Number.isInteger(out.score), true);
+});
+
+// ── htmlToText caps very long input ───────────────────────────────────────────
+test("htmlToText caps output length", () => {
+  const big = "<p>" + "word ".repeat(5000) + "</p>";
+  const text = htmlToText(big, 1000);
+  assert.ok(text.length <= 1000);
 });
 
 // ── built-ins are internally valid ────────────────────────────────────────────

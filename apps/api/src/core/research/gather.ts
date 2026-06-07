@@ -23,6 +23,7 @@ export interface GatherResult {
   sources: GatheredSource[];
   summary: string; // compact evidence digest for synthesis prompts
   fetchedCount: number;
+  cacheHits: number; // crawled pages served from the per-tenant cache (cost saved)
 }
 
 // Replace {key} tokens in a string from the resolved inputs (plus {name} = subject).
@@ -35,13 +36,13 @@ const urlHash = (url: string): string => createHash("sha256").update(url.toLower
 
 // Crawl a URL through the per-tenant cache. A fresh hit is reused; otherwise we
 // fetch, store, and return. Cache misses/failures never throw.
-async function crawlCached(tenantId: string, url: string): Promise<{ url: string; title: string; text: string } | null> {
+async function crawlCached(tenantId: string, url: string): Promise<{ url: string; title: string; text: string; cached: boolean } | null> {
   const hash = urlHash(url);
   const cached = await prisma.researchSourceCache
     .findUnique({ where: { tenantId_urlHash: { tenantId, urlHash: hash } } })
     .catch(() => null);
   if (cached && Date.now() - cached.fetchedAt.getTime() < CACHE_TTL_MS) {
-    return { url: cached.url, title: "", text: cached.content };
+    return { url: cached.url, title: "", text: cached.content, cached: true };
   }
   const page = await fetchReadable(url);
   if (!page) return null;
@@ -52,7 +53,7 @@ async function crawlCached(tenantId: string, url: string): Promise<{ url: string
       create: { tenantId, urlHash: hash, url: page.url, content: page.text },
     })
     .catch(() => undefined);
-  return page;
+  return { ...page, cached: false };
 }
 
 export async function gather(
@@ -61,6 +62,7 @@ export async function gather(
   vars: Record<string, string>,
 ): Promise<GatherResult> {
   const sources: GatheredSource[] = [];
+  let cacheHits = 0;
 
   // 1. Web search — one batch per configured query (deduped by URL).
   if (def.sources.webSearch?.enabled) {
@@ -86,7 +88,9 @@ export async function gather(
       .slice(0, maxPages);
     const pages = await Promise.all(seeds.map((s) => crawlCached(tenantId, s)));
     for (const p of pages) {
-      if (p) sources.push({ kind: "page", title: p.title || p.url, url: p.url, content: p.text });
+      if (!p) continue;
+      if (p.cached) cacheHits += 1;
+      sources.push({ kind: "page", title: p.title || p.url, url: p.url, content: p.text });
     }
   }
 
@@ -106,7 +110,7 @@ export async function gather(
     }
   }
 
-  return { sources, summary: buildSummary(sources), fetchedCount: sources.length };
+  return { sources, summary: buildSummary(sources), fetchedCount: sources.length, cacheHits };
 }
 
 // Compact, token-aware digest of everything gathered, fed into each section prompt.

@@ -59,6 +59,7 @@ export async function processRun(runId: string): Promise<void> {
   }
   const def: ResearchTemplateDef = validated.def;
 
+  const startedMs = Date.now();
   try {
     const inputs = parseInputs(run.inputsJson);
     const vars: Record<string, string> = { ...inputs };
@@ -75,10 +76,16 @@ export async function processRun(runId: string): Promise<void> {
 
     await setStage(runId, tenantId, "validating", 90);
 
+    const usage = {
+      ...result.usage,
+      cacheHits: gathered.cacheHits,
+      fetchedCount: gathered.fetchedCount,
+      durationMs: Date.now() - startedMs,
+    };
     await setStage(runId, tenantId, "ready", 100, {
       resultJson: JSON.stringify(result),
       score: result.score,
-      usageJson: JSON.stringify(result.usage),
+      usageJson: JSON.stringify(usage),
       completedAt: new Date(),
     });
 

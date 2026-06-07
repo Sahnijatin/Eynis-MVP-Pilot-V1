@@ -3661,6 +3661,36 @@ const handleRequest = async (
           return;
         }
 
+        // POST /research/runs/:id/rerun — re-run with the same snapshot/inputs/subject (RS-4).
+        const runRerunMatch = /^\/research\/runs\/([^/]+)\/rerun$/.exec(rpath);
+        if (runRerunMatch && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const id = decodeURIComponent(runRerunMatch[1] as string);
+          const prev = await prisma.researchRun.findFirst({ where: { id, tenantId } });
+          if (!prev) { json(res, 404, { ok: false, error: "Run not found" }); return; }
+          const fresh = await prisma.researchRun.create({
+            data: {
+              tenantId,
+              templateId: prev.templateId,
+              templateName: prev.templateName,
+              templateSnapshot: prev.templateSnapshot,
+              subjectType: prev.subjectType,
+              subjectId: prev.subjectId,
+              subjectLabel: prev.subjectLabel,
+              inputsJson: prev.inputsJson,
+              status: "queued",
+              createdById: userId,
+            },
+            select: { id: true },
+          });
+          broadcastSSEEvent(tenantId, { type: "research_run", data: { id: fresh.id, status: "queued", progress: 0, stage: "Queued" } });
+          json(res, 201, { ok: true, id: fresh.id });
+          return;
+        }
+
         // GET /research/runs — list recent runs (tenant-wide; team-visible).
         if (rpath === "/research/runs" && req.method === "GET") {
           const auth = await authorize(req, res, null); if (!auth.ok) return;
@@ -3716,14 +3746,16 @@ const handleRequest = async (
           if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
           let result: SynthResult | null = null;
           let gathered: unknown = null;
+          let usage: unknown = null;
           try { if (run.resultJson) result = JSON.parse(run.resultJson) as SynthResult; } catch { result = null; }
           try { if (run.gatheredJson) gathered = JSON.parse(run.gatheredJson); } catch { gathered = null; }
+          try { if (run.usageJson) usage = JSON.parse(run.usageJson); } catch { usage = null; }
           json(res, 200, {
             ok: true,
             run: {
               id: run.id, templateName: run.templateName, subjectType: run.subjectType, subjectLabel: run.subjectLabel,
               status: run.status, progress: run.progress, stage: run.stage, score: run.score, error: run.error,
-              createdAt: run.createdAt, completedAt: run.completedAt, result, gathered,
+              createdAt: run.createdAt, completedAt: run.completedAt, result, gathered, usage,
             },
           });
           return;
