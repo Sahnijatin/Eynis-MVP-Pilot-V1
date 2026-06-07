@@ -249,9 +249,15 @@ Issue numbers: **E-N → #(87+N)** (E-1 → #88 … E-16 → #103). Epic: **#104
     branded night-audit report header (`brandReports` flag).
   - Invite + public `/request` pages now carry the tenant brand (`resolveHostTheme`); hardcoded "Eynis"
     removed from invite / global-error / branding panel.
-- **Deferred (fast-follows):** sanitised raw **custom CSS** (only structured tokens + font landed);
-  real **PDF / CSV export** renderer (no PDF lib yet — header brands the in-app/print view);
-  per-tenant **email sending domain** (deliverability "Phase 3" in `docs/email-deliverability-design.md`).
+- **Fast-follows landed:**
+  - **Custom CSS** — `TenantBranding.customCss`, server-sanitised (`core/css-sanitize.ts`), tier-gated injection.
+  - **PDF / CSV exports** — real binary PDF via `pdf-lib` + branded CSV; night-audit + service-requests
+    exports; `core/export/*`.
+  - **Email sending domain** (white-label Model B) — `SendingDomain` model + migration;
+    `core/email/domains.ts` (Resend Domains API client, offline-graceful); staff-provisioned via the
+    console (`PUT/GET /internal/tenants/:id/sending-domain`, `POST …/verify`, audit-logged); the email
+    sender uses the tenant's **verified** domain, else falls back. DNS records + status surfaced in the
+    console. (Per-stream tx/marketing split — design §3 — remains a follow-up.)
 
 ### E-10 · Custom domain provider-managed (#97) — 🟠
 - **Ask:** don't give customers self-serve custom domains; we set them up (or optionally offer it).

@@ -43,6 +43,7 @@ import { loadReportBrand } from "./core/export/brand";
 import { brandedCsv } from "./core/export/csv";
 import { renderBrandedReportHtml, type ReportBlock } from "./core/export/report-html";
 import { renderBrandedReportPdf } from "./core/export/report-pdf";
+import { provisionSendingDomain, refreshSendingDomain, isValidSendingDomain, isValidLocalPart } from "./core/email/domains";
 
 const eventBus = new InMemoryEventBus();
 
@@ -922,6 +923,86 @@ const handleRequest = async (
           }
         });
         json(res, 200, { ok: true, tenant });
+        return;
+      }
+
+      // ── Sending domain (E-9, white-label Model B) ────────────────────────────
+      // GET /internal/tenants/:id/sending-domain — read current config.
+      const sdGet = /^\/internal\/tenants\/([^/]+)\/sending-domain$/.exec(internalPath);
+      if (sdGet && req.method === "GET") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(sdGet[1] as string);
+        const sd = await prisma.sendingDomain.findUnique({ where: { tenantId } });
+        json(res, 200, { ok: true, sendingDomain: sd ? { ...sd, dnsRecords: sd.dnsRecords ? JSON.parse(sd.dnsRecords) : [] } : null });
+        return;
+      }
+
+      // PUT /internal/tenants/:id/sending-domain — set/replace the domain. Registers
+      // it with the provider (Resend) when a key is present, stores the DNS records
+      // the tenant must publish, and resets status to the provider's answer.
+      const sdPut = /^\/internal\/tenants\/([^/]+)\/sending-domain$/.exec(internalPath);
+      if (sdPut && req.method === "PUT") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(sdPut[1] as string);
+        if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Tenant not found" }); return; }
+        const body = (await parseBody(req)) as { domain?: unknown; fromLocalPart?: unknown; fromName?: unknown; actor?: unknown };
+        const domain = asTrimmedString(body.domain)?.toLowerCase() ?? null;
+        if (!domain || !isValidSendingDomain(domain)) {
+          json(res, 400, { ok: false, error: "domain must be a valid hostname, e.g. mail.acme.com" });
+          return;
+        }
+        const localPartInput = asTrimmedString(body.fromLocalPart) ?? "notifications";
+        if (!isValidLocalPart(localPartInput)) {
+          json(res, 400, { ok: false, error: "fromLocalPart must be a valid email local part, e.g. campaigns" });
+          return;
+        }
+        const fromName = asTrimmedString(body.fromName);
+        const provision = await provisionSendingDomain(domain);
+        const data = {
+          domain,
+          fromLocalPart: localPartInput,
+          fromName,
+          resendDomainId: provision.resendDomainId,
+          status: provision.status,
+          dnsRecords: JSON.stringify(provision.dnsRecords),
+          lastCheckedAt: new Date()
+        };
+        const sd = await prisma.sendingDomain.upsert({ where: { tenantId }, create: { tenantId, ...data }, update: data });
+        await prisma.auditLog.create({
+          data: {
+            tenantId, actorRole: "platform_staff", action: "tenant.sending_domain_set",
+            entityType: "sending_domain", entityId: sd.id,
+            metadata: JSON.stringify({ domain, status: provision.status, live: provision.live, actor: asTrimmedString(body.actor) ?? "platform_console" })
+          }
+        });
+        json(res, 200, { ok: true, sendingDomain: { ...sd, dnsRecords: provision.dnsRecords }, live: provision.live });
+        return;
+      }
+
+      // POST /internal/tenants/:id/sending-domain/verify — re-check verification.
+      const sdVerify = /^\/internal\/tenants\/([^/]+)\/sending-domain\/verify$/.exec(internalPath);
+      if (sdVerify && req.method === "POST") {
+        if (!requirePlatformAdmin(req, res)) return;
+        const tenantId = decodeURIComponent(sdVerify[1] as string);
+        const existing = await prisma.sendingDomain.findUnique({ where: { tenantId } });
+        if (!existing) { json(res, 404, { ok: false, error: "No sending domain configured" }); return; }
+        const result = await refreshSendingDomain(existing.resendDomainId, existing.domain);
+        const sd = await prisma.sendingDomain.update({
+          where: { tenantId },
+          data: {
+            status: result.status,
+            lastCheckedAt: new Date(),
+            ...(result.dnsRecords ? { dnsRecords: JSON.stringify(result.dnsRecords) } : {})
+          }
+        });
+        await prisma.auditLog.create({
+          data: {
+            tenantId, actorRole: "platform_staff", action: "tenant.sending_domain_verified",
+            entityType: "sending_domain", entityId: sd.id,
+            metadata: JSON.stringify({ domain: sd.domain, status: result.status, live: result.live })
+          }
+        });
+        json(res, 200, { ok: true, sendingDomain: { ...sd, dnsRecords: sd.dnsRecords ? JSON.parse(sd.dnsRecords) : [] }, live: result.live });
         return;
       }
     }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2, Search, LogOut, Check, Building2 } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { Loader2, Search, LogOut, Check, Building2, Mail, ChevronDown } from "lucide-react";
+import { SendingDomainPanel } from "./sending-domain-panel";
 
 export interface ConsoleTenant {
   id: string;
@@ -50,6 +51,7 @@ export function ProvisioningConsole({
   error: string | null;
 }) {
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null); // tenantId whose domain panel is open
   // Keyed by `${tenantId}:${field}`.
   const [cells, setCells] = useState<Record<string, CellState>>(() => {
     const init: Record<string, CellState> = {};
@@ -185,31 +187,48 @@ export function ProvisioningConsole({
                     <th className="px-4 py-3">Tenant</th>
                     <th className="px-4 py-3">Industry</th>
                     <th className="px-4 py-3">White-label tier</th>
+                    <th className="px-4 py-3">Email domain</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="px-4 py-8 text-center text-slate-400">No tenants match your search.</td>
+                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400">No tenants match your search.</td>
                     </tr>
                   )}
                   {filtered.map((t) => (
-                    <tr key={t.id} className="border-b border-slate-50 last:border-0 align-top">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
-                          <div className="min-w-0">
-                            <div className="font-medium text-slate-800 truncate">{t.name}</div>
-                            <div className="text-xs text-slate-400 truncate">
-                              {t.id}
-                              {t.slug ? ` · ${t.slug}` : ""}
+                    <Fragment key={t.id}>
+                      <tr className="border-b border-slate-50 align-top">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-800 truncate">{t.name}</div>
+                              <div className="text-xs text-slate-400 truncate">
+                                {t.id}
+                                {t.slug ? ` · ${t.slug}` : ""}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3"><EditableCell tenantId={t.id} field="industry" options={industries} /></td>
-                      <td className="px-4 py-3"><EditableCell tenantId={t.id} field="tier" options={tiers} /></td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3"><EditableCell tenantId={t.id} field="industry" options={industries} /></td>
+                        <td className="px-4 py-3"><EditableCell tenantId={t.id} field="tier" options={tiers} /></td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setExpanded(expanded === t.id ? null : t.id)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                          >
+                            <Mail className="w-3.5 h-3.5" /> Sending domain
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded === t.id ? "rotate-180" : ""}`} />
+                          </button>
+                        </td>
+                      </tr>
+                      {expanded === t.id && (
+                        <tr className="border-b border-slate-50">
+                          <td colSpan={4} className="px-4 pb-4 pt-0"><SendingDomainPanel tenantId={t.id} /></td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
