@@ -67,13 +67,20 @@ export async function processRun(runId: string): Promise<void> {
     if (!vars.name && run.subjectLabel) vars.name = run.subjectLabel;
     const subject = vars.name || run.subjectLabel || def.name;
 
+    const credentials = await resolveAiCredentials(tenantId);
+
     await setStage(runId, tenantId, "gathering", 20, { startedAt: new Date() });
-    const gathered = await gather(tenantId, def, vars);
+    // The agent may run several autonomous search rounds; surface progress as the
+    // current stage label (lightweight — no status/progress churn).
+    const onProgress = (msg: string) => {
+      broadcastSSEEvent(tenantId, { type: "research_run", data: { id: runId, status: "gathering", progress: 30, stage: msg } });
+      void prisma.researchRun.update({ where: { id: runId }, data: { stage: msg } }).catch(() => undefined);
+    };
+    const gathered = await gather(tenantId, def, vars, { credentials, onProgress });
 
     await setStage(runId, tenantId, "synthesizing", 55, {
-      gatheredJson: JSON.stringify({ fetchedCount: gathered.fetchedCount, sources: gathered.sources.map((s) => ({ kind: s.kind, title: s.title, url: s.url })) }),
+      gatheredJson: JSON.stringify({ fetchedCount: gathered.fetchedCount, rounds: gathered.rounds, sources: gathered.sources.map((s) => ({ kind: s.kind, title: s.title, url: s.url })) }),
     });
-    const credentials = await resolveAiCredentials(tenantId);
     const result = await synthesize(def, subject, gathered, { credentials, inputs: vars });
 
     await setStage(runId, tenantId, "validating", 90);
@@ -82,6 +89,7 @@ export async function processRun(runId: string): Promise<void> {
       ...result.usage,
       cacheHits: gathered.cacheHits,
       fetchedCount: gathered.fetchedCount,
+      rounds: gathered.rounds,
       durationMs: Date.now() - startedMs,
     };
     await setStage(runId, tenantId, "ready", 100, {

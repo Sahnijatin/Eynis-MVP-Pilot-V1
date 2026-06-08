@@ -37,7 +37,7 @@ interface RunDetail {
   status: string; progress: number; stage: string | null; score: number | null; error: string | null;
   result: { sections: SynthSection[]; score: number | null; sources?: Array<{ n: number; title: string; url: string }> } | null;
   gathered: { fetchedCount?: number; sources?: Array<{ kind: string; title: string; url?: string }> } | null;
-  usage: { provider?: string; llmCalls?: number; usedAI?: boolean; sourcesFetched?: number; cacheHits?: number; durationMs?: number } | null;
+  usage: { provider?: string; llmCalls?: number; usedAI?: boolean; sourcesFetched?: number; cacheHits?: number; durationMs?: number; rounds?: number } | null;
 }
 
 interface Props {
