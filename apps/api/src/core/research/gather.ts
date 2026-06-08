@@ -14,9 +14,16 @@ import { aiCompleteTiered, parseStructured, type AIProvider } from "../ai/intell
 import { chooseProvider, providerKey, type AiCredentials } from "./ai-credentials";
 
 // Autonomous multi-round search caps — keep the agent from running away / looping.
-const MAX_ROUNDS = Math.min(Math.max(1, Number(process.env.RESEARCH_MAX_ROUNDS ?? 3)), 5);
-const MAX_TOTAL_QUERIES = Math.max(1, Number(process.env.RESEARCH_MAX_TOTAL_QUERIES ?? 30));
-const MAX_TOTAL_PAGES = Math.max(1, Number(process.env.RESEARCH_MAX_TOTAL_PAGES ?? 24));
+// Parse defensively: a malformed env var (e.g. a typo → NaN) must fall back to the
+// default, never silently disable search — NaN in the round/budget math would make
+// every loop guard short-circuit and gather nothing.
+const intEnv = (v: string | undefined, dflt: number): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : dflt;
+};
+const MAX_ROUNDS = Math.min(Math.max(1, intEnv(process.env.RESEARCH_MAX_ROUNDS, 3)), 5);
+const MAX_TOTAL_QUERIES = Math.max(1, intEnv(process.env.RESEARCH_MAX_TOTAL_QUERIES, 30));
+const MAX_TOTAL_PAGES = Math.max(1, intEnv(process.env.RESEARCH_MAX_TOTAL_PAGES, 24));
 const norm = (u: string): string => u.replace(/\/+$/, "").toLowerCase();
 
 export interface GatheredSource {
@@ -87,7 +94,11 @@ export async function gather(
   const searchKeys = new Set<string>(); // normalized URLs already in search results
   let totalQueries = 0;
   let totalPages = 0;
-  const pageBudget = def.fast ? 6 : MAX_TOTAL_PAGES;
+  // Honor the template's per-run crawl budget (maxPages) as the page cap, bounded by
+  // the global hard ceiling. Without this the template's setting would be dead config
+  // and every run would crawl up to MAX_TOTAL_PAGES regardless of the template.
+  const templateMaxPages = def.sources.crawl?.maxPages ?? MAX_TOTAL_PAGES;
+  const pageBudget = def.fast ? 6 : Math.min(MAX_TOTAL_PAGES, Math.max(1, templateMaxPages));
 
   // Deep-crawl a set of URLs (cached, SSRF-safe, budget-aware). Returns # added.
   const crawlUrls = async (urls: string[], titleByUrl?: Map<string, string>): Promise<number> => {
