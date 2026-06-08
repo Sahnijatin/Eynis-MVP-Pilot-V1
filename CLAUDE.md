@@ -134,7 +134,8 @@ Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twi
 | `JWT_SECRET` | `dev-only-secret-change-me` | JWT signing key |
 | `ANTHROPIC_API_KEY` | — | Claude AI (optional; keyword fallback used if absent) |
 | `OPENAI_API_KEY` | — | OpenAI fallback (optional) |
-| `SEARXNG_URL` | — | API: base URL of a self-hosted SearXNG instance with the JSON API enabled (`search.formats: [html, json]`). Powers Research Studio web search. Unset → web search degrades gracefully (crawl + PageSpeed still work). Lock the JSON API to your app/IPs or run it as a private service. |
+| `SEARXNG_URL` | — | API: base URL of a self-hosted SearXNG instance with the JSON API enabled (`search.formats: [html, json]`). The default Research Studio web-search provider (platform-wide). Unset → web search degrades gracefully (crawl + PageSpeed still work). Lock the JSON API to your app/IPs or run it as a private service. |
+| `TAVILY_API_KEY` | — | API: env fallback for the optional **Tavily** web-search provider. Preferred path is per-tenant via Integrations (connector `search_tavily`). SearXNG + Tavily can run together (results merged); use either, both, or neither. |
 | `RESEARCH_AI_PROVIDER` | auto | API: force Research Studio synthesis to `claude` or `openai`. Default auto-selects: Claude if `ANTHROPIC_API_KEY` is set, else OpenAI. Set `openai` if you only have an OpenAI key (or to prefer it when both are set). |
 | `VERIFY_WEBHOOKS` | `false` | Enforce Twilio/Interakt webhook signatures |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | — | Twilio WhatsApp outbound |

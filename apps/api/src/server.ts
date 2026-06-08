@@ -48,7 +48,7 @@ import { provisionSendingDomain, refreshSendingDomain, isValidSendingDomain, isV
 import { listTemplates, getTemplateDetail, loadTemplateForRun } from "./core/research/store";
 import { validateTemplateDef, RESEARCH_SOURCE_CATALOG, SUBJECT_TYPES, SECTION_OUTPUTS, type SubjectType } from "./core/research/types";
 import { isBuiltinId } from "./core/research/templates";
-import { SEARXNG_AVAILABLE } from "./core/research/sources/searxng";
+import { searchProvidersAvailable } from "./core/research/sources/search";
 import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
@@ -3510,7 +3510,11 @@ const handleRequest = async (
         if (rpath === "/research/sources" && req.method === "GET") {
           const auth = await authorize(req, res, null); if (!auth.ok) return;
           if (!hasPermission(auth.context.permissions, "view_research")) { denyPerm(); return; }
-          json(res, 200, { ok: true, sources: RESEARCH_SOURCE_CATALOG, subjectTypes: SUBJECT_TYPES, outputs: SECTION_OUTPUTS, searchConfigured: SEARXNG_AVAILABLE });
+          const searchProviders = await searchProvidersAvailable(auth.context.tenantId);
+          json(res, 200, {
+            ok: true, sources: RESEARCH_SOURCE_CATALOG, subjectTypes: SUBJECT_TYPES, outputs: SECTION_OUTPUTS,
+            searchConfigured: searchProviders.searxng || searchProviders.tavily, searchProviders,
+          });
           return;
         }
 
