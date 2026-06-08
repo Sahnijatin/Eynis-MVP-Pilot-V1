@@ -5,26 +5,20 @@
 // configured (mirrors the platform's keyword-fallback philosophy so dev/test and
 // unconfigured tenants still get a complete report).
 
-import {
-  aiCompleteTiered,
-  parseStructured,
-  AI_AVAILABLE,
-  CLAUDE_AVAILABLE,
-  OPENAI_AVAILABLE,
-  type AIProvider,
-} from "../ai/intelligence";
-
-// Pick the synthesis provider: an explicit RESEARCH_AI_PROVIDER wins (if its key is
-// set), otherwise prefer Claude when available, else OpenAI. This way a deployment
-// with ONLY OPENAI_API_KEY uses OpenAI instead of silently falling back.
-function defaultResearchProvider(): AIProvider {
-  const pref = process.env.RESEARCH_AI_PROVIDER?.trim().toLowerCase();
-  if (pref === "openai" && OPENAI_AVAILABLE) return "openai";
-  if (pref === "claude" && CLAUDE_AVAILABLE) return "claude";
-  return CLAUDE_AVAILABLE ? "claude" : "openai";
-}
+import { aiCompleteTiered, parseStructured, type AIProvider } from "../ai/intelligence";
 import type { ResearchTemplateDef, TemplateSection } from "./types";
 import type { GatherResult } from "./gather";
+import type { AiCredentials } from "./ai-credentials";
+
+// Pick the synthesis provider from the resolved credentials: an explicit
+// RESEARCH_AI_PROVIDER wins (if that provider's key exists), else prefer Claude when
+// available, else OpenAI. So a tenant/deploy with only an OpenAI key uses OpenAI.
+function chooseProvider(creds: AiCredentials): AIProvider {
+  const pref = process.env.RESEARCH_AI_PROVIDER?.trim().toLowerCase();
+  if (pref === "openai" && creds.openaiKey) return "openai";
+  if (pref === "claude" && creds.anthropicKey) return "claude";
+  return creds.anthropicKey ? "claude" : "openai";
+}
 
 export interface SynthTable {
   headers: string[];
@@ -43,8 +37,32 @@ export interface SynthResult {
   usage: { provider: string; llmCalls: number; usedAI: boolean; sourcesFetched: number };
 }
 
-const SYSTEM = `You are a research analyst producing one section of a business research report.
-Ground every claim in the evidence provided. Do not invent specific numbers, names, or quotes that are not supported by the evidence — if something is unknown, say so. Be concise and useful.`;
+const SYSTEM = `You are a senior B2B research analyst writing one section of an executive-grade account/competitor/prospect brief that a CXO, CIO, or revenue leader will read to make a decision.
+
+Standards:
+- Be specific and quantitative. Pull out real figures (revenue, headcount, funding amounts, growth %, pricing, dates, locations, named people and their titles, products, customers, partners) from the evidence — not vague generalities.
+- Lead with what matters most; within anything time-based, put the MOST RECENT first and include the date/period (e.g. "Mar 2026:").
+- Cite as you go: reference the source inline in parentheses (e.g. "(Wikipedia)", "(company site)", "(Crunchbase)") so claims are traceable.
+- Use a compact Markdown table when the content is structured (facts, comparisons, people, metrics, timelines). Prose for narrative/analysis.
+- Be decision-useful: call out implications, not just facts. Where the evidence is thin or silent, say so explicitly — never invent specifics, numbers, names, or quotes that aren't supported.
+- Write tightly and professionally. No filler, no hedging boilerplate.`;
+
+const SYNTH_CONCURRENCY = Math.max(1, Number(process.env.RESEARCH_SYNTH_CONCURRENCY ?? 3));
+
+// Run an async mapper over items with a fixed concurrency, preserving input order.
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i] as T);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 const clampScore = (v: unknown): number | null => {
   const n = Math.round(Number(v));
@@ -59,26 +77,28 @@ function sanitizeTable(raw: unknown): SynthTable | null {
     ? o.rows
         .filter((r) => Array.isArray(r))
         .map((r) => (r as unknown[]).map((c) => String(c ?? "")).slice(0, 8))
-        .slice(0, 30)
+        .slice(0, 40)
     : [];
   if (headers.length === 0 && rows.length === 0) return null;
   return { headers, rows };
 }
 
 function sectionPrompt(def: ResearchTemplateDef, section: TemplateSection, subject: string, evidence: string): string {
-  const wants: string[] = ['"content": a clear written section (markdown allowed)'];
-  if (section.outputs.includes("table")) wants.push('"table": { "headers": [...], "rows": [[...], ...] } (or null if not applicable)');
-  if (section.outputs.includes("score")) wants.push('"score": an integer 0-100 (or null if not applicable)');
-  return `Report subject: ${subject || "(unspecified)"}
-Report type: ${def.name}
-Section: ${section.title}
-Instruction: ${section.prompt}
+  const wants: string[] = ['"content": a detailed, specific written section in Markdown (use **bold** labels and bullet lists where helpful)'];
+  if (section.outputs.includes("table")) wants.push('"table": { "headers": [...], "rows": [[...], ...] } — a structured table of the concrete facts for this section (or null if genuinely not applicable)');
+  if (section.outputs.includes("score")) wants.push('"score": an integer 0-100 with the one-line justification folded into "content" (or null)');
+  return `SUBJECT: ${subject || "(unspecified)"}
+REPORT TYPE: ${def.name}
+SECTION: ${section.title}
+WHAT TO PRODUCE: ${section.prompt}
 
-Return a JSON object with these keys:
+Write this section to an executive standard: extract every relevant specific from the evidence (numbers, names+titles, dates, products, customers, competitors, funding), most-recent-first where time-based, with inline source citations. If the evidence doesn't cover something important, note the gap rather than guessing.
+
+Return ONLY a JSON object with these keys:
 { ${wants.join(", ")} }
 
-EVIDENCE (use only this; do not fabricate beyond it):
-${evidence || "(no external evidence was gathered — say what cannot be determined)"}`;
+EVIDENCE (your only source of facts — do not fabricate beyond it):
+${evidence || "(no external evidence was gathered — state what cannot be determined without it)"}`;
 }
 
 // Deterministic fallback for one section when AI is unavailable or errors out.
@@ -104,40 +124,48 @@ export async function synthesize(
   def: ResearchTemplateDef,
   subject: string,
   gathered: GatherResult,
-  opts: { provider?: AIProvider; tier?: "cheap" | "premium" } = {},
+  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; credentials?: AiCredentials } = {},
 ): Promise<SynthResult> {
-  const provider = opts.provider ?? defaultResearchProvider();
+  // Effective AI keys: tenant credentials (from Integrations) if passed, else env.
+  const creds: AiCredentials = opts.credentials ?? {
+    openaiKey: process.env.OPENAI_API_KEY?.trim() || null,
+    anthropicKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
+  };
+  const anyAI = Boolean(creds.openaiKey || creds.anthropicKey);
+  const provider = opts.provider ?? chooseProvider(creds);
+  const apiKey = (provider === "openai" ? creds.openaiKey : creds.anthropicKey) ?? undefined;
   // "fast" templates (the contextual lite button) always use the cheap tier.
   const tier = opts.tier ?? (def.fast ? "cheap" : "premium");
-  const sections: SynthSection[] = [];
   let llmCalls = 0;
 
-  for (const section of def.sections) {
-    if (!AI_AVAILABLE) {
-      sections.push(fallbackSection(section, gathered));
-      continue;
-    }
+  const synthOne = async (section: TemplateSection): Promise<SynthSection> => {
+    if (!anyAI) return fallbackSection(section, gathered);
     try {
       const text = await aiCompleteTiered(sectionPrompt(def, section, subject, gathered.summary), {
         provider,
         tier,
         system: SYSTEM,
-        maxTokens: tier === "cheap" ? 1200 : 2400,
+        apiKey,
+        maxTokens: tier === "cheap" ? 1600 : 4000,
       });
       llmCalls += 1;
       const parsed = parseStructured<{ content: string; table?: unknown; score?: unknown }>(text, ["content"]);
-      sections.push({
+      return {
         id: section.id,
         title: section.title,
         content: String(parsed.content).trim() || "(no content)",
         table: section.outputs.includes("table") ? sanitizeTable(parsed.table) : null,
         score: section.outputs.includes("score") ? clampScore(parsed.score) : null,
-      });
+      };
     } catch {
       // One bad section never fails the whole report — fall back for just this one.
-      sections.push(fallbackSection(section, gathered));
+      return fallbackSection(section, gathered);
     }
-  }
+  };
+
+  // Synthesize sections with bounded concurrency (these reports have many sections;
+  // sequential calls would make a run minutes-long). Order is preserved.
+  const sections = await mapWithConcurrency(def.sections, SYNTH_CONCURRENCY, synthOne);
 
   // Overall score = weighted average of sections that produced a score.
   const scored = sections
@@ -151,6 +179,6 @@ export async function synthesize(
   return {
     sections,
     score,
-    usage: { provider, llmCalls, usedAI: AI_AVAILABLE && llmCalls > 0, sourcesFetched: gathered.fetchedCount },
+    usage: { provider, llmCalls, usedAI: anyAI && llmCalls > 0, sourcesFetched: gathered.fetchedCount },
   };
 }

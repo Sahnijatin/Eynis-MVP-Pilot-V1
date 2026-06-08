@@ -210,12 +210,18 @@ function HomeView(props: {
   const { accent, templates, runs } = props;
   // Only nudge about web search when the API reports it isn't configured.
   const noSearch = props.catalog?.searchConfigured === false;
+  const noAi = props.catalog?.aiConfigured === false;
 
   return (
     <div>
+      {noAi && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
+          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> (or set <code>OPENAI_API_KEY</code> on the API) to generate full reports.
+        </div>
+      )}
       {noSearch && (
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          Tip: set <code>SEARXNG_URL</code> on the API to enable free self-hosted web search. Crawl &amp; site-performance sources work without it.
+          Tip: add a <strong>Tavily</strong> key in <a href="/integrations" style={{ color: "#92400e", textDecoration: "underline" }}>Integrations</a> or set <code>SEARXNG_URL</code> on the API to enable web search. Crawl &amp; site-performance still work without it.
         </div>
       )}
 
@@ -524,16 +530,29 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
   );
 }
 
+// Render inline **bold** (and strip stray markdown heading marks) safely — no
+// dangerouslySetInnerHTML, just React nodes.
+function inlineMd(s: string): React.ReactNode {
+  const clean = s.replace(/^#{1,6}\s+/, "");
+  const parts = clean.split(/\*\*(.+?)\*\*/g); // odd indices are the bold captures
+  return parts.map((p, i) => (i % 2 === 1 ? <strong key={i}>{p}</strong> : p));
+}
+
 function SectionBody({ content }: { content: string }) {
   const block = splitSectionContent(content);
   if (block.kind === "list") {
     return (
       <ul style={{ margin: 0, paddingLeft: 18, color: t.color.text, fontSize: t.font.sm, lineHeight: 1.6 }}>
-        {block.items.map((b, i) => <li key={i}>{b}</li>)}
+        {block.items.map((b, i) => <li key={i} style={{ marginBottom: 3 }}>{inlineMd(b)}</li>)}
       </ul>
     );
   }
-  return <div style={{ color: t.color.text, fontSize: t.font.sm, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{block.text}</div>;
+  const lines = block.text.split("\n").map((l) => l.trim());
+  return (
+    <div style={{ color: t.color.text, fontSize: t.font.sm, lineHeight: 1.65 }}>
+      {lines.map((ln, i) => (ln ? <p key={i} style={{ margin: "0 0 8px" }}>{inlineMd(ln)}</p> : null))}
+    </div>
+  );
 }
 
 function ResultTable({ table }: { table: SynthTable }) {

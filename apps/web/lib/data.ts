@@ -426,6 +426,7 @@ export interface ResearchSourceCatalog {
   subjectTypes: string[];
   outputs: string[];
   searchConfigured?: boolean;
+  aiConfigured?: boolean;
 }
 
 export async function fetchResearchTemplates(): Promise<{ ok: boolean; items: ResearchTemplateItem[]; error?: string }> {

@@ -9,6 +9,7 @@ import { broadcastSSEEvent } from "../../sse/clients";
 import { validateTemplateDef, type ResearchTemplateDef } from "./types";
 import { gather } from "./gather";
 import { synthesize } from "./synthesize";
+import { resolveAiCredentials } from "./ai-credentials";
 
 type Stage = "gathering" | "synthesizing" | "validating" | "ready" | "failed";
 
@@ -72,7 +73,8 @@ export async function processRun(runId: string): Promise<void> {
     await setStage(runId, tenantId, "synthesizing", 55, {
       gatheredJson: JSON.stringify({ fetchedCount: gathered.fetchedCount, sources: gathered.sources.map((s) => ({ kind: s.kind, title: s.title, url: s.url })) }),
     });
-    const result = await synthesize(def, subject, gathered);
+    const credentials = await resolveAiCredentials(tenantId);
+    const result = await synthesize(def, subject, gathered, { credentials });
 
     await setStage(runId, tenantId, "validating", 90);
 

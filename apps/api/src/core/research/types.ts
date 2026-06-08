@@ -55,10 +55,10 @@ export interface ResearchTemplateDef {
 
 // Caps — protect the gather/synthesis budget from a hand-edited template.
 export const LIMITS = {
-  maxQueriesPerSource: 8,
+  maxQueriesPerSource: 12,
   maxSeeds: 10,
-  maxPages: 10,
-  maxSections: 20,
+  maxPages: 20,
+  maxSections: 24,
   maxInputs: 20,
 } as const;
 

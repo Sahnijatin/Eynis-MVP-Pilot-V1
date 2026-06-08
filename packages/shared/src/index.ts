@@ -97,7 +97,7 @@ export const isValidConsentSource = (source: string): source is ConsentSource =>
 // when the per-tenant status call is unavailable; the API overlays env flags and
 // per-tenant config/status at request time.
 
-export type ConnectorCategory = "communication" | "email" | "voice" | "pms" | "pos" | "payments" | "search";
+export type ConnectorCategory = "communication" | "email" | "voice" | "pms" | "pos" | "payments" | "search" | "ai";
 
 export interface ConnectorField {
   key: string;
@@ -126,6 +126,7 @@ export const CONNECTOR_CATEGORY_LABELS: Record<ConnectorCategory, string> = {
   pos: "POS",
   payments: "Payments",
   search: "Search",
+  ai: "AI",
 };
 
 // The env flag that gates a connector's default availability, derived from its key
@@ -194,5 +195,17 @@ export const CONNECTOR_CATALOG: ConnectorCatalogItem[] = [
     description: "Hosted web search for Research Studio. Optional — works alongside (or instead of) the self-hosted SearXNG default.",
     icon: "🔎", brandColor: "#6366f1", planned: false, ingestModes: ["api"],
     requiredFields: [{ key: "apiKey", label: "Tavily API Key", secret: true, placeholder: "tvly-xxxxxxxx" }],
+  },
+  {
+    key: "ai_openai", category: "ai", name: "AI · OpenAI",
+    description: "Use your own OpenAI key for AI features (Research Studio synthesis, insights). Falls back to the platform key if unset.",
+    icon: "🤖", brandColor: "#10a37f", planned: false, ingestModes: ["api"],
+    requiredFields: [{ key: "apiKey", label: "OpenAI API Key", secret: true, placeholder: "sk-..." }],
+  },
+  {
+    key: "ai_anthropic", category: "ai", name: "AI · Anthropic (Claude)",
+    description: "Use your own Anthropic (Claude) key for AI features. Falls back to the platform key if unset.",
+    icon: "🧠", brandColor: "#d97757", planned: false, ingestModes: ["api"],
+    requiredFields: [{ key: "apiKey", label: "Anthropic API Key", secret: true, placeholder: "sk-ant-..." }],
   },
 ];
