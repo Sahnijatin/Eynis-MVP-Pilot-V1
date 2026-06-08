@@ -8,17 +8,7 @@
 import { aiCompleteTiered, parseStructured, type AIProvider } from "../ai/intelligence";
 import type { ResearchTemplateDef, TemplateSection } from "./types";
 import type { GatherResult, Citation } from "./gather";
-import type { AiCredentials } from "./ai-credentials";
-
-// Pick the synthesis provider from the resolved credentials: an explicit
-// RESEARCH_AI_PROVIDER wins (if that provider's key exists), else prefer Claude when
-// available, else OpenAI. So a tenant/deploy with only an OpenAI key uses OpenAI.
-function chooseProvider(creds: AiCredentials): AIProvider {
-  const pref = process.env.RESEARCH_AI_PROVIDER?.trim().toLowerCase();
-  if (pref === "openai" && creds.openaiKey) return "openai";
-  if (pref === "claude" && creds.anthropicKey) return "claude";
-  return creds.anthropicKey ? "claude" : "openai";
-}
+import { chooseProvider, type AiCredentials } from "./ai-credentials";
 
 export interface SynthTable {
   headers: string[];

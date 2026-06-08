@@ -91,6 +91,7 @@ test("synthesize produces a complete report via deterministic fallback when AI i
     citations: [{ n: 1, title: "Acme news", url: "https://x.test" }],
     fetchedCount: 1,
     cacheHits: 0,
+    rounds: 1,
   };
   const out = await synthesize(def, "Acme", gathered);
   assert.equal(out.sections.length, 2);
@@ -111,7 +112,7 @@ test("synthesize weights the overall score across scored sections", async () => 
   };
   // Fallback score = min(100, fetchedCount*12). With fetchedCount=2 both sections
   // get 24, so any weighting still yields 24 — assert it's a clamped integer 0-100.
-  const gathered: GatherResult = { sources: [], summary: "", citations: [], fetchedCount: 2, cacheHits: 1 };
+  const gathered: GatherResult = { sources: [], summary: "", citations: [], fetchedCount: 2, cacheHits: 1, rounds: 1 };
   const out = await synthesize(def, "W", gathered);
   assert.ok(out.score !== null && out.score >= 0 && out.score <= 100);
   assert.equal(Number.isInteger(out.score), true);
