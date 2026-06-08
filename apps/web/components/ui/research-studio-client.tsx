@@ -524,16 +524,29 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
   );
 }
 
+// Render inline **bold** (and strip stray markdown heading marks) safely — no
+// dangerouslySetInnerHTML, just React nodes.
+function inlineMd(s: string): React.ReactNode {
+  const clean = s.replace(/^#{1,6}\s+/, "");
+  const parts = clean.split(/\*\*(.+?)\*\*/g); // odd indices are the bold captures
+  return parts.map((p, i) => (i % 2 === 1 ? <strong key={i}>{p}</strong> : p));
+}
+
 function SectionBody({ content }: { content: string }) {
   const block = splitSectionContent(content);
   if (block.kind === "list") {
     return (
       <ul style={{ margin: 0, paddingLeft: 18, color: t.color.text, fontSize: t.font.sm, lineHeight: 1.6 }}>
-        {block.items.map((b, i) => <li key={i}>{b}</li>)}
+        {block.items.map((b, i) => <li key={i} style={{ marginBottom: 3 }}>{inlineMd(b)}</li>)}
       </ul>
     );
   }
-  return <div style={{ color: t.color.text, fontSize: t.font.sm, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{block.text}</div>;
+  const lines = block.text.split("\n").map((l) => l.trim());
+  return (
+    <div style={{ color: t.color.text, fontSize: t.font.sm, lineHeight: 1.65 }}>
+      {lines.map((ln, i) => (ln ? <p key={i} style={{ margin: "0 0 8px" }}>{inlineMd(ln)}</p> : null))}
+    </div>
+  );
 }
 
 function ResultTable({ table }: { table: SynthTable }) {

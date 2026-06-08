@@ -67,32 +67,43 @@ export async function gather(
 
   // 1. Web search — one batch per configured query (deduped by URL). Runs every
   // configured provider (SearXNG and/or Tavily) and merges results.
+  const searchHits: SearchHit[] = [];
   if (def.sources.webSearch?.enabled) {
     const seen = new Set<string>();
     const queries = (def.sources.webSearch.queries ?? []).map((q) => interpolate(q, vars)).filter(Boolean);
-    const perQuery = def.fast ? 4 : 6;
+    const perQuery = def.fast ? 5 : 8;
     const batches = await Promise.all(queries.map((q) => aggregateWebSearch(tenantId, q, perQuery)));
     for (const hits of batches) {
       for (const h of hits as SearchHit[]) {
-        if (seen.has(h.url)) continue;
-        seen.add(h.url);
+        const k = h.url.replace(/\/+$/, "").toLowerCase();
+        if (seen.has(k)) continue;
+        seen.add(k);
+        searchHits.push(h);
         sources.push({ kind: "search", title: h.title, url: h.url, snippet: h.snippet });
       }
     }
   }
 
-  // 2. Crawl — seed URLs (cached). Capped by the template's maxPages.
-  if (def.sources.crawl?.enabled) {
-    const maxPages = Math.min(def.sources.crawl.maxPages ?? 5, def.fast ? 3 : 10);
-    const seeds = (def.sources.crawl.seeds ?? [])
+  // 2. Deep crawl — fetch the ACTUAL content of the most useful pages, not just
+  // their search snippets. We crawl the template's seed URLs PLUS the top
+  // search-result URLs (this is what turns "a list of links" into real evidence:
+  // company site, Wikipedia, news, profiles…). Social/login-walled hosts are kept
+  // as citations only (they don't yield readable content to a bot). Cached + capped.
+  if (def.sources.crawl?.enabled || searchHits.length) {
+    const maxPages = Math.min(def.sources.crawl?.maxPages ?? 8, def.fast ? 5 : 14);
+    const seeds = (def.sources.crawl?.enabled ? def.sources.crawl.seeds ?? [] : [])
       .map((s) => interpolate(s, vars))
-      .filter(Boolean)
-      .slice(0, maxPages);
-    const pages = await Promise.all(seeds.map((s) => crawlCached(tenantId, s)));
+      .filter(Boolean);
+    const searchUrls = searchHits.map((h) => h.url).filter((u) => !isUncrawlable(u));
+    const toCrawl = dedupeUrls([...seeds, ...searchUrls]).slice(0, maxPages);
+    const titleByUrl = new Map(searchHits.map((h) => [h.url.replace(/\/+$/, "").toLowerCase(), h.title]));
+
+    const pages = await Promise.all(toCrawl.map((u) => crawlCached(tenantId, u)));
     for (const p of pages) {
       if (!p) continue;
       if (p.cached) cacheHits += 1;
-      sources.push({ kind: "page", title: p.title || p.url, url: p.url, content: p.text });
+      const title = p.title || titleByUrl.get(p.url.replace(/\/+$/, "").toLowerCase()) || p.url;
+      sources.push({ kind: "page", title, url: p.url, content: p.text });
     }
   }
 
@@ -112,27 +123,52 @@ export async function gather(
     }
   }
 
-  return { sources, summary: buildSummary(sources), fetchedCount: sources.length, cacheHits };
+  return { sources, summary: buildSummary(sources, def.fast ? 9000 : 18000), fetchedCount: sources.length, cacheHits };
 }
 
-// Compact, token-aware digest of everything gathered, fed into each section prompt.
-function buildSummary(sources: GatheredSource[], maxChars = 6000): string {
+// Hosts that return login walls / block bots — keep as citations, don't deep-crawl.
+const UNCRAWLABLE = ["linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "youtube.com", "tiktok.com"];
+function isUncrawlable(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, "");
+    return UNCRAWLABLE.some((d) => h === d || h.endsWith(`.${d}`));
+  } catch {
+    return true;
+  }
+}
+function dedupeUrls(urls: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const u of urls) {
+    const k = u.replace(/\/+$/, "").toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(u);
+  }
+  return out;
+}
+
+// Token-aware evidence digest fed into each section prompt. Page content is the
+// high-value part, so it gets the lion's share of the budget; search snippets give
+// breadth + citations; PageSpeed adds site-health signal.
+function buildSummary(sources: GatheredSource[], maxChars = 18000): string {
   const parts: string[] = [];
   const search = sources.filter((s) => s.kind === "search");
-  const pages = sources.filter((s) => s.kind === "page");
+  const pages = sources.filter((s) => s.kind === "page" && (s.content ?? "").trim().length > 0);
   const speed = sources.filter((s) => s.kind === "pagespeed");
 
-  if (search.length) {
-    parts.push("WEB SEARCH RESULTS:");
-    for (const s of search.slice(0, 12)) parts.push(`- ${s.title} (${s.url})\n  ${s.snippet ?? ""}`);
-  }
   if (pages.length) {
-    parts.push("\nPAGE CONTENT:");
-    const per = Math.max(600, Math.floor(3500 / pages.length));
-    for (const p of pages) parts.push(`- ${p.title} (${p.url})\n  ${(p.content ?? "").slice(0, per)}`);
+    parts.push("=== PAGE CONTENT (primary evidence — cite these) ===");
+    const budget = Math.floor(maxChars * 0.8);
+    const per = Math.max(900, Math.floor(budget / pages.length));
+    for (const p of pages) parts.push(`### ${p.title}\n${p.url}\n${(p.content ?? "").slice(0, per)}`);
+  }
+  if (search.length) {
+    parts.push("\n=== ADDITIONAL SEARCH RESULTS (titles + snippets) ===");
+    for (const s of search.slice(0, 20)) parts.push(`- ${s.title} (${s.url}) — ${s.snippet ?? ""}`);
   }
   if (speed.length) {
-    parts.push("\nSITE PERFORMANCE:");
+    parts.push("\n=== SITE PERFORMANCE ===");
     for (const s of speed) parts.push(`- ${JSON.stringify(s.data ?? {})}`);
   }
   const out = parts.join("\n");
