@@ -35,7 +35,7 @@ interface SynthSection { id: string; title: string; content: string; table: Synt
 interface RunDetail {
   id: string; templateName: string; subjectType: string; subjectLabel: string | null;
   status: string; progress: number; stage: string | null; score: number | null; error: string | null;
-  result: { sections: SynthSection[]; score: number | null } | null;
+  result: { sections: SynthSection[]; score: number | null; sources?: Array<{ n: number; title: string; url: string }> } | null;
   gathered: { fetchedCount?: number; sources?: Array<{ kind: string; title: string; url?: string }> } | null;
   usage: { provider?: string; llmCalls?: number; usedAI?: boolean; sourcesFetched?: number; cacheHits?: number; durationMs?: number } | null;
 }
@@ -524,6 +524,23 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
               {s.table && s.table.headers.length > 0 && <ResultTable table={s.table} />}
             </Card>
           ))}
+
+          {run.result.sources && run.result.sources.length > 0 && (
+            <Card>
+              <div style={{ fontWeight: 600, fontSize: t.font.lg, color: t.color.text, marginBottom: 8 }}>Sources</div>
+              <ol style={{ margin: 0, paddingLeft: 20, color: t.color.textMuted, fontSize: t.font.xs, lineHeight: 1.7 }}>
+                {run.result.sources.map((c) => (
+                  <li key={c.n}>
+                    {c.url ? <a href={c.url} target="_blank" rel="noreferrer" style={{ color: accent }}>{c.title || c.url}</a> : c.title}
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          )}
+
+          <div style={{ fontSize: t.font.xs, color: t.color.textFaint, textAlign: "center", padding: "4px 0 8px" }}>
+            AI-generated from the cited sources — verify key facts (figures, names, dates) before acting.
+          </div>
         </div>
       )}
     </div>

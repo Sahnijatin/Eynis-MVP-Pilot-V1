@@ -58,6 +58,7 @@ test("buildReportBlocks emits a headline, sections and tables", () => {
       { id: "s2", title: "Fit", content: "- one\n- two\n- three", table: { headers: ["A"], rows: [["1"]] }, score: 80 },
     ],
     score: 80,
+    sources: [{ n: 1, title: "Acme", url: "https://acme.test" }],
     usage: { provider: "claude", llmCalls: 0, usedAI: false, sourcesFetched: 0 },
   };
   const blocks = buildReportBlocks({ title: "T", subject: "Acme", score: 80, result });
@@ -87,6 +88,7 @@ test("synthesize produces a complete report via deterministic fallback when AI i
   const gathered: GatherResult = {
     sources: [{ kind: "search", title: "Acme news", url: "https://x.test", snippet: "..." }],
     summary: "WEB SEARCH RESULTS:\n- Acme news",
+    citations: [{ n: 1, title: "Acme news", url: "https://x.test" }],
     fetchedCount: 1,
     cacheHits: 0,
   };
@@ -109,7 +111,7 @@ test("synthesize weights the overall score across scored sections", async () => 
   };
   // Fallback score = min(100, fetchedCount*12). With fetchedCount=2 both sections
   // get 24, so any weighting still yields 24 — assert it's a clamped integer 0-100.
-  const gathered: GatherResult = { sources: [], summary: "", fetchedCount: 2, cacheHits: 1 };
+  const gathered: GatherResult = { sources: [], summary: "", citations: [], fetchedCount: 2, cacheHits: 1 };
   const out = await synthesize(def, "W", gathered);
   assert.ok(out.score !== null && out.score >= 0 && out.score <= 100);
   assert.equal(Number.isInteger(out.score), true);

@@ -35,6 +35,13 @@ export function buildReportBlocks(opts: {
       blocks.push({ kind: "table", header: s.table.headers, rows: s.table.rows });
     }
   }
+
+  // Sources list (numbered, matches the [n] citations in the body) so every claim
+  // is traceable — like a proper analyst report.
+  const sources = opts.result.sources ?? [];
+  if (sources.length) {
+    blocks.push({ kind: "list", heading: "Sources", items: sources.map((c) => `[${c.n}] ${c.title}${c.url ? ` — ${c.url}` : ""}`) });
+  }
   return blocks;
 }
 
