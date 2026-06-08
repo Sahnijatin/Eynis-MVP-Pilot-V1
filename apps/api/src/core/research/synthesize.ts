@@ -5,26 +5,20 @@
 // configured (mirrors the platform's keyword-fallback philosophy so dev/test and
 // unconfigured tenants still get a complete report).
 
-import {
-  aiCompleteTiered,
-  parseStructured,
-  AI_AVAILABLE,
-  CLAUDE_AVAILABLE,
-  OPENAI_AVAILABLE,
-  type AIProvider,
-} from "../ai/intelligence";
-
-// Pick the synthesis provider: an explicit RESEARCH_AI_PROVIDER wins (if its key is
-// set), otherwise prefer Claude when available, else OpenAI. This way a deployment
-// with ONLY OPENAI_API_KEY uses OpenAI instead of silently falling back.
-function defaultResearchProvider(): AIProvider {
-  const pref = process.env.RESEARCH_AI_PROVIDER?.trim().toLowerCase();
-  if (pref === "openai" && OPENAI_AVAILABLE) return "openai";
-  if (pref === "claude" && CLAUDE_AVAILABLE) return "claude";
-  return CLAUDE_AVAILABLE ? "claude" : "openai";
-}
+import { aiCompleteTiered, parseStructured, type AIProvider } from "../ai/intelligence";
 import type { ResearchTemplateDef, TemplateSection } from "./types";
 import type { GatherResult } from "./gather";
+import type { AiCredentials } from "./ai-credentials";
+
+// Pick the synthesis provider from the resolved credentials: an explicit
+// RESEARCH_AI_PROVIDER wins (if that provider's key exists), else prefer Claude when
+// available, else OpenAI. So a tenant/deploy with only an OpenAI key uses OpenAI.
+function chooseProvider(creds: AiCredentials): AIProvider {
+  const pref = process.env.RESEARCH_AI_PROVIDER?.trim().toLowerCase();
+  if (pref === "openai" && creds.openaiKey) return "openai";
+  if (pref === "claude" && creds.anthropicKey) return "claude";
+  return creds.anthropicKey ? "claude" : "openai";
+}
 
 export interface SynthTable {
   headers: string[];
@@ -130,20 +124,28 @@ export async function synthesize(
   def: ResearchTemplateDef,
   subject: string,
   gathered: GatherResult,
-  opts: { provider?: AIProvider; tier?: "cheap" | "premium" } = {},
+  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; credentials?: AiCredentials } = {},
 ): Promise<SynthResult> {
-  const provider = opts.provider ?? defaultResearchProvider();
+  // Effective AI keys: tenant credentials (from Integrations) if passed, else env.
+  const creds: AiCredentials = opts.credentials ?? {
+    openaiKey: process.env.OPENAI_API_KEY?.trim() || null,
+    anthropicKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
+  };
+  const anyAI = Boolean(creds.openaiKey || creds.anthropicKey);
+  const provider = opts.provider ?? chooseProvider(creds);
+  const apiKey = (provider === "openai" ? creds.openaiKey : creds.anthropicKey) ?? undefined;
   // "fast" templates (the contextual lite button) always use the cheap tier.
   const tier = opts.tier ?? (def.fast ? "cheap" : "premium");
   let llmCalls = 0;
 
   const synthOne = async (section: TemplateSection): Promise<SynthSection> => {
-    if (!AI_AVAILABLE) return fallbackSection(section, gathered);
+    if (!anyAI) return fallbackSection(section, gathered);
     try {
       const text = await aiCompleteTiered(sectionPrompt(def, section, subject, gathered.summary), {
         provider,
         tier,
         system: SYSTEM,
+        apiKey,
         maxTokens: tier === "cheap" ? 1600 : 4000,
       });
       llmCalls += 1;
@@ -177,6 +179,6 @@ export async function synthesize(
   return {
     sections,
     score,
-    usage: { provider, llmCalls, usedAI: AI_AVAILABLE && llmCalls > 0, sourcesFetched: gathered.fetchedCount },
+    usage: { provider, llmCalls, usedAI: anyAI && llmCalls > 0, sourcesFetched: gathered.fetchedCount },
   };
 }

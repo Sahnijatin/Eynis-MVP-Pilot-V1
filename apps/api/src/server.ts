@@ -49,6 +49,7 @@ import { listTemplates, getTemplateDetail, loadTemplateForRun } from "./core/res
 import { validateTemplateDef, RESEARCH_SOURCE_CATALOG, SUBJECT_TYPES, SECTION_OUTPUTS, type SubjectType } from "./core/research/types";
 import { isBuiltinId } from "./core/research/templates";
 import { searchProvidersAvailable } from "./core/research/sources/search";
+import { resolveAiCredentials, aiConfigured } from "./core/research/ai-credentials";
 import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
@@ -3510,10 +3511,14 @@ const handleRequest = async (
         if (rpath === "/research/sources" && req.method === "GET") {
           const auth = await authorize(req, res, null); if (!auth.ok) return;
           if (!hasPermission(auth.context.permissions, "view_research")) { denyPerm(); return; }
-          const searchProviders = await searchProvidersAvailable(auth.context.tenantId);
+          const [searchProviders, aiCreds] = await Promise.all([
+            searchProvidersAvailable(auth.context.tenantId),
+            resolveAiCredentials(auth.context.tenantId),
+          ]);
           json(res, 200, {
             ok: true, sources: RESEARCH_SOURCE_CATALOG, subjectTypes: SUBJECT_TYPES, outputs: SECTION_OUTPUTS,
             searchConfigured: searchProviders.searxng || searchProviders.tavily, searchProviders,
+            aiConfigured: aiConfigured(aiCreds),
           });
           return;
         }

@@ -352,7 +352,7 @@ const RESEARCH_OPENAI_CHEAP = process.env.RESEARCH_OPENAI_CHEAP_MODEL ?? "gpt-4o
 
 export async function aiCompleteTiered(
   userContent: string,
-  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; maxTokens?: number; system?: string } = {},
+  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; maxTokens?: number; system?: string; apiKey?: string } = {},
 ): Promise<string> {
   const provider = opts.provider ?? "claude";
   const tier = opts.tier ?? "premium";
@@ -360,7 +360,9 @@ export async function aiCompleteTiered(
   const system = opts.system ?? SYSTEM_PROMPT;
 
   if (provider === "openai") {
-    const res = await getOpenAIClient().chat.completions.create({
+    // An explicit apiKey (a tenant's own, via Integrations) overrides the env client.
+    const client = opts.apiKey ? new OpenAI({ apiKey: opts.apiKey }) : getOpenAIClient();
+    const res = await client.chat.completions.create({
       model: tier === "cheap" ? RESEARCH_OPENAI_CHEAP : OPENAI_MODEL,
       messages: [
         { role: "system", content: system },
@@ -373,7 +375,8 @@ export async function aiCompleteTiered(
 
   // Claude: the cheap tier skips extended thinking (faster + cheaper); the premium
   // tier keeps adaptive thinking + high effort for the final synthesis.
-  const res = await getClaudeClient().messages.create({
+  const client = opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : getClaudeClient();
+  const res = await client.messages.create({
     model: tier === "cheap" ? RESEARCH_CLAUDE_CHEAP : CLAUDE_MODEL,
     max_tokens: maxTokens,
     ...(tier === "premium"

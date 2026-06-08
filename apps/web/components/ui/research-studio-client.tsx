@@ -210,12 +210,18 @@ function HomeView(props: {
   const { accent, templates, runs } = props;
   // Only nudge about web search when the API reports it isn't configured.
   const noSearch = props.catalog?.searchConfigured === false;
+  const noAi = props.catalog?.aiConfigured === false;
 
   return (
     <div>
+      {noAi && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
+          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> (or set <code>OPENAI_API_KEY</code> on the API) to generate full reports.
+        </div>
+      )}
       {noSearch && (
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          Tip: set <code>SEARXNG_URL</code> on the API to enable free self-hosted web search. Crawl &amp; site-performance sources work without it.
+          Tip: add a <strong>Tavily</strong> key in <a href="/integrations" style={{ color: "#92400e", textDecoration: "underline" }}>Integrations</a> or set <code>SEARXNG_URL</code> on the API to enable web search. Crawl &amp; site-performance still work without it.
         </div>
       )}
 
