@@ -20,9 +20,16 @@ export interface GatheredSource {
   data?: Record<string, string>;
 }
 
+export interface Citation {
+  n: number;
+  title: string;
+  url: string;
+}
+
 export interface GatherResult {
   sources: GatheredSource[];
-  summary: string; // compact evidence digest for synthesis prompts
+  summary: string; // compact evidence digest for synthesis prompts (numbered [n])
+  citations: Citation[]; // numbered sources the model can cite, for the Sources list
   fetchedCount: number;
   cacheHits: number; // crawled pages served from the per-tenant cache (cost saved)
 }
@@ -123,7 +130,23 @@ export async function gather(
     }
   }
 
-  return { sources, summary: buildSummary(sources, def.fast ? 9000 : 18000), fetchedCount: sources.length, cacheHits };
+  // Number every source that has a URL so the model can cite [n] and we can render
+  // a Sources list. Pages first (primary evidence), then search, then pagespeed.
+  const ordered = [
+    ...sources.filter((s) => s.kind === "page" && (s.content ?? "").trim().length > 0),
+    ...sources.filter((s) => s.kind === "search" && s.url),
+    ...sources.filter((s) => s.kind === "pagespeed"),
+  ];
+  const citations: Citation[] = ordered.map((s, i) => ({ n: i + 1, title: s.title || s.url || `Source ${i + 1}`, url: s.url ?? "" }));
+  const numberOf = new Map(ordered.map((s, i) => [s, i + 1]));
+
+  return {
+    sources,
+    summary: buildSummary(sources, numberOf, def.fast ? 9000 : 18000),
+    citations,
+    fetchedCount: sources.length,
+    cacheHits,
+  };
 }
 
 // Hosts that return login walls / block bots — keep as citations, don't deep-crawl.
@@ -148,28 +171,28 @@ function dedupeUrls(urls: string[]): string[] {
   return out;
 }
 
-// Token-aware evidence digest fed into each section prompt. Page content is the
-// high-value part, so it gets the lion's share of the budget; search snippets give
-// breadth + citations; PageSpeed adds site-health signal.
-function buildSummary(sources: GatheredSource[], maxChars = 18000): string {
+// Token-aware evidence digest fed into each section prompt. Each source is labelled
+// with its citation number [n] so the model can cite claims precisely. Page content
+// is the high-value part and gets the lion's share of the budget.
+function buildSummary(sources: GatheredSource[], numberOf: Map<GatheredSource, number>, maxChars = 18000): string {
   const parts: string[] = [];
-  const search = sources.filter((s) => s.kind === "search");
+  const search = sources.filter((s) => s.kind === "search" && s.url);
   const pages = sources.filter((s) => s.kind === "page" && (s.content ?? "").trim().length > 0);
   const speed = sources.filter((s) => s.kind === "pagespeed");
 
   if (pages.length) {
-    parts.push("=== PAGE CONTENT (primary evidence — cite these) ===");
+    parts.push("=== PAGE CONTENT (primary evidence — cite by [number]) ===");
     const budget = Math.floor(maxChars * 0.8);
     const per = Math.max(900, Math.floor(budget / pages.length));
-    for (const p of pages) parts.push(`### ${p.title}\n${p.url}\n${(p.content ?? "").slice(0, per)}`);
+    for (const p of pages) parts.push(`[${numberOf.get(p)}] ${p.title} — ${p.url}\n${(p.content ?? "").slice(0, per)}`);
   }
   if (search.length) {
     parts.push("\n=== ADDITIONAL SEARCH RESULTS (titles + snippets) ===");
-    for (const s of search.slice(0, 20)) parts.push(`- ${s.title} (${s.url}) — ${s.snippet ?? ""}`);
+    for (const s of search.slice(0, 20)) parts.push(`[${numberOf.get(s)}] ${s.title} — ${s.url}\n${s.snippet ?? ""}`);
   }
   if (speed.length) {
     parts.push("\n=== SITE PERFORMANCE ===");
-    for (const s of speed) parts.push(`- ${JSON.stringify(s.data ?? {})}`);
+    for (const s of speed) parts.push(`[${numberOf.get(s)}] ${JSON.stringify(s.data ?? {})}`);
   }
   const out = parts.join("\n");
   return out.length > maxChars ? `${out.slice(0, maxChars)}…` : out;

@@ -74,7 +74,7 @@ export async function processRun(runId: string): Promise<void> {
       gatheredJson: JSON.stringify({ fetchedCount: gathered.fetchedCount, sources: gathered.sources.map((s) => ({ kind: s.kind, title: s.title, url: s.url })) }),
     });
     const credentials = await resolveAiCredentials(tenantId);
-    const result = await synthesize(def, subject, gathered, { credentials });
+    const result = await synthesize(def, subject, gathered, { credentials, inputs: vars });
 
     await setStage(runId, tenantId, "validating", 90);
 

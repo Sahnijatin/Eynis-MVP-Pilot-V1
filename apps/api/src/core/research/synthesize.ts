@@ -7,7 +7,7 @@
 
 import { aiCompleteTiered, parseStructured, type AIProvider } from "../ai/intelligence";
 import type { ResearchTemplateDef, TemplateSection } from "./types";
-import type { GatherResult } from "./gather";
+import type { GatherResult, Citation } from "./gather";
 import type { AiCredentials } from "./ai-credentials";
 
 // Pick the synthesis provider from the resolved credentials: an explicit
@@ -34,18 +34,25 @@ export interface SynthSection {
 export interface SynthResult {
   sections: SynthSection[];
   score: number | null;
+  sources: Citation[]; // numbered sources for the report's Sources list
   usage: { provider: string; llmCalls: number; usedAI: boolean; sourcesFetched: number };
 }
 
-const SYSTEM = `You are a senior B2B research analyst writing one section of an executive-grade account/competitor/prospect brief that a CXO, CIO, or revenue leader will read to make a decision.
+const TODAY = new Date().toISOString().slice(0, 10);
 
-Standards:
-- Be specific and quantitative. Pull out real figures (revenue, headcount, funding amounts, growth %, pricing, dates, locations, named people and their titles, products, customers, partners) from the evidence — not vague generalities.
-- Lead with what matters most; within anything time-based, put the MOST RECENT first and include the date/period (e.g. "Mar 2026:").
-- Cite as you go: reference the source inline in parentheses (e.g. "(Wikipedia)", "(company site)", "(Crunchbase)") so claims are traceable.
-- Use a compact Markdown table when the content is structured (facts, comparisons, people, metrics, timelines). Prose for narrative/analysis.
-- Be decision-useful: call out implications, not just facts. Where the evidence is thin or silent, say so explicitly — never invent specifics, numbers, names, or quotes that aren't supported.
-- Write tightly and professionally. No filler, no hedging boilerplate.`;
+const SYSTEM = `You are a senior B2B research analyst writing one section of an executive-grade account/competitor/prospect brief that a CXO/CIO/revenue leader will act on. Today is ${TODAY}.
+
+ABSOLUTE GROUNDING RULES (a wrong "fact" is worse than a missing one):
+- Use ONLY the EVIDENCE provided in this prompt. Do NOT use your own training/prior knowledge about the subject — it may be outdated, or about a DIFFERENT entity that shares the name. If the evidence doesn't establish something, you do not know it.
+- NEVER invent or guess specific people, names, titles, customers, partners, numbers, revenue, dates, quotes, or events. State a specific ONLY if it appears in the evidence.
+- Every specific claim must end with its source number(s) in brackets, e.g. "Revenue was $13.3B [2]." If you cannot cite it, do not write it.
+- If a source could not be read (e.g. a LinkedIn/profile page that returned no usable content), say "profile could not be accessed" and describe the ROLE generically — do NOT guess who the person is or fabricate their background.
+- If the evidence is thin or silent on a section, say so plainly ("The available sources don't cover X.") and keep the section short. It is correct and expected to say "Not found in the available sources."
+
+STYLE:
+- Specific and quantitative where (and only where) the evidence supports it; most-recent-first for anything time-based, with the date.
+- Use a compact Markdown table for structured facts/comparisons/people/metrics; prose for analysis.
+- Call out implications, not just facts. Tight and professional — no filler.`;
 
 const SYNTH_CONCURRENCY = Math.max(1, Number(process.env.RESEARCH_SYNTH_CONCURRENCY ?? 3));
 
@@ -83,22 +90,28 @@ function sanitizeTable(raw: unknown): SynthTable | null {
   return { headers, rows };
 }
 
-function sectionPrompt(def: ResearchTemplateDef, section: TemplateSection, subject: string, evidence: string): string {
-  const wants: string[] = ['"content": a detailed, specific written section in Markdown (use **bold** labels and bullet lists where helpful)'];
-  if (section.outputs.includes("table")) wants.push('"table": { "headers": [...], "rows": [[...], ...] } — a structured table of the concrete facts for this section (or null if genuinely not applicable)');
-  if (section.outputs.includes("score")) wants.push('"score": an integer 0-100 with the one-line justification folded into "content" (or null)');
+function inputsBlock(inputs: Record<string, string>): string {
+  const entries = Object.entries(inputs).filter(([, v]) => v && v.trim());
+  if (entries.length === 0) return "";
+  return `PROVIDED INPUTS (identifiers the user gave — use these to know WHICH entity this is; do not infer facts about a person/company beyond what the EVIDENCE shows):\n${entries.map(([k, v]) => `- ${k}: ${v}`).join("\n")}\n\n`;
+}
+
+function sectionPrompt(def: ResearchTemplateDef, section: TemplateSection, subject: string, evidence: string, inputs: Record<string, string>): string {
+  const wants: string[] = ['"content": a detailed, specific Markdown section. Cite every specific with bracketed source numbers, e.g. [2]. (use **bold** labels and bullet lists where helpful)'];
+  if (section.outputs.includes("table")) wants.push('"table": { "headers": [...], "rows": [[...], ...] } — a table of the concrete, cited facts for this section (or null if the evidence doesn\'t support one)');
+  if (section.outputs.includes("score")) wants.push('"score": an integer 0-100 with the one-line justification folded into "content" (or null if the evidence is too thin to score)');
   return `SUBJECT: ${subject || "(unspecified)"}
 REPORT TYPE: ${def.name}
 SECTION: ${section.title}
 WHAT TO PRODUCE: ${section.prompt}
 
-Write this section to an executive standard: extract every relevant specific from the evidence (numbers, names+titles, dates, products, customers, competitors, funding), most-recent-first where time-based, with inline source citations. If the evidence doesn't cover something important, note the gap rather than guessing.
+${inputsBlock(inputs)}Write to an executive standard using ONLY the evidence below. Extract real specifics (numbers, names+titles, dates, products, customers, competitors, funding) and cite each with its [number]. Most-recent-first where time-based. If the evidence doesn't cover something, write that it was not found — never fill gaps with guesses or prior knowledge.
 
 Return ONLY a JSON object with these keys:
 { ${wants.join(", ")} }
 
-EVIDENCE (your only source of facts — do not fabricate beyond it):
-${evidence || "(no external evidence was gathered — state what cannot be determined without it)"}`;
+EVIDENCE (your ONLY source of facts — each item is prefixed with its citation [number]):
+${evidence || "(No external evidence was gathered. Do not invent anything — state that the report could not be produced without sources.)"}`;
 }
 
 // Deterministic fallback for one section when AI is unavailable or errors out.
@@ -124,8 +137,9 @@ export async function synthesize(
   def: ResearchTemplateDef,
   subject: string,
   gathered: GatherResult,
-  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; credentials?: AiCredentials } = {},
+  opts: { provider?: AIProvider; tier?: "cheap" | "premium"; credentials?: AiCredentials; inputs?: Record<string, string> } = {},
 ): Promise<SynthResult> {
+  const inputs = opts.inputs ?? {};
   // Effective AI keys: tenant credentials (from Integrations) if passed, else env.
   const creds: AiCredentials = opts.credentials ?? {
     openaiKey: process.env.OPENAI_API_KEY?.trim() || null,
@@ -141,7 +155,7 @@ export async function synthesize(
   const synthOne = async (section: TemplateSection): Promise<SynthSection> => {
     if (!anyAI) return fallbackSection(section, gathered);
     try {
-      const text = await aiCompleteTiered(sectionPrompt(def, section, subject, gathered.summary), {
+      const text = await aiCompleteTiered(sectionPrompt(def, section, subject, gathered.summary, inputs), {
         provider,
         tier,
         system: SYSTEM,
@@ -179,6 +193,7 @@ export async function synthesize(
   return {
     sections,
     score,
+    sources: gathered.citations,
     usage: { provider, llmCalls, usedAI: anyAI && llmCalls > 0, sourcesFetched: gathered.fetchedCount },
   };
 }
