@@ -97,7 +97,7 @@ export const isValidConsentSource = (source: string): source is ConsentSource =>
 // when the per-tenant status call is unavailable; the API overlays env flags and
 // per-tenant config/status at request time.
 
-export type ConnectorCategory = "communication" | "email" | "voice" | "pms" | "pos" | "payments";
+export type ConnectorCategory = "communication" | "email" | "voice" | "pms" | "pos" | "payments" | "search";
 
 export interface ConnectorField {
   key: string;
@@ -125,6 +125,7 @@ export const CONNECTOR_CATEGORY_LABELS: Record<ConnectorCategory, string> = {
   pms: "PMS",
   pos: "POS",
   payments: "Payments",
+  search: "Search",
 };
 
 // The env flag that gates a connector's default availability, derived from its key
@@ -187,5 +188,11 @@ export const CONNECTOR_CATALOG: ConnectorCatalogItem[] = [
       { key: "fromAddress", label: "From Address", placeholder: "campaigns@yourdomain.com" },
       { key: "fromName", label: "From Name", placeholder: "Your Brand" },
     ],
+  },
+  {
+    key: "search_tavily", category: "search", name: "Web Search · Tavily",
+    description: "Hosted web search for Research Studio. Optional — works alongside (or instead of) the self-hosted SearXNG default.",
+    icon: "🔎", brandColor: "#6366f1", planned: false, ingestModes: ["api"],
+    requiredFields: [{ key: "apiKey", label: "Tavily API Key", secret: true, placeholder: "tvly-xxxxxxxx" }],
   },
 ];

@@ -6,7 +6,8 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../../db/prisma";
 import type { ResearchTemplateDef } from "./types";
-import { webSearch, type SearchHit } from "./sources/searxng";
+import { aggregateWebSearch } from "./sources/search";
+import type { SearchHit } from "./sources/searxng";
 import { fetchReadable } from "./sources/crawl";
 import { fetchPageSpeed } from "./sources/pagespeed";
 
@@ -64,12 +65,13 @@ export async function gather(
   const sources: GatheredSource[] = [];
   let cacheHits = 0;
 
-  // 1. Web search — one batch per configured query (deduped by URL).
+  // 1. Web search — one batch per configured query (deduped by URL). Runs every
+  // configured provider (SearXNG and/or Tavily) and merges results.
   if (def.sources.webSearch?.enabled) {
     const seen = new Set<string>();
     const queries = (def.sources.webSearch.queries ?? []).map((q) => interpolate(q, vars)).filter(Boolean);
     const perQuery = def.fast ? 4 : 6;
-    const batches = await Promise.all(queries.map((q) => webSearch(q, perQuery)));
+    const batches = await Promise.all(queries.map((q) => aggregateWebSearch(tenantId, q, perQuery)));
     for (const hits of batches) {
       for (const h of hits as SearchHit[]) {
         if (seen.has(h.url)) continue;
