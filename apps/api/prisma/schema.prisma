@@ -291,7 +291,7 @@ model DealSuggestion {
   suggestedStageId String
   reason           String
   confidence       Int? // 0–100
-  source           String    @default("ai") // ai | rule
+  source           String    @default("ai") // ai | rule | research
   status           String    @default("pending") // pending | accepted | dismissed
   createdAt        DateTime  @default(now())
   resolvedAt       DateTime?
