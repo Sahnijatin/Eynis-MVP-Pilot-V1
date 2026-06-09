@@ -8,13 +8,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Telescope, Plus, Play, Pencil, Copy, Trash2, ArrowLeft, FileDown, ExternalLink,
-  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap, RotateCw,
+  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap, RotateCw, Share2,
 } from "lucide-react";
 import {
   Button, Card, Badge, Field, Input, Select, Textarea, Modal, Spinner, EmptyState, useToast, tokens as t,
 } from "../ds";
 import type { ResearchTemplateItem, ResearchRunItem, ResearchSourceCatalog, ResearchTrigger, PipelineRow } from "../../lib/data";
 import { splitSectionContent, usageSummary } from "../../lib/research-format";
+import { ResearchShareModal } from "./research-share-modal";
 
 // ── Local types (mirror the API shapes) ──────────────────────────────────────
 interface TemplateInput { key: string; label: string; prefillFrom?: string; required?: boolean }
@@ -35,6 +36,7 @@ interface SynthSection { id: string; title: string; content: string; table: Synt
 interface RunDetail {
   id: string; templateName: string; subjectType: string; subjectLabel: string | null;
   status: string; progress: number; stage: string | null; score: number | null; error: string | null;
+  shared?: boolean; isOwner?: boolean;
   result: { sections: SynthSection[]; score: number | null; sources?: Array<{ n: number; title: string; url: string }> } | null;
   gathered: { fetchedCount?: number; sources?: Array<{ kind: string; title: string; url?: string }> } | null;
   usage: { provider?: string; llmCalls?: number; usedAI?: boolean; sourcesFetched?: number; cacheHits?: number; durationMs?: number; rounds?: number } | null;
@@ -434,6 +436,7 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
   const toast = useToast();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [rerunning, setRerunning] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rerun = async () => {
@@ -492,6 +495,11 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
               <a href={`/api/research/runs/${runId}/export?format=csv`}><Button size="sm" variant="secondary"><FileDown className="w-3.5 h-3.5" /> CSV</Button></a>
               <a href={`/api/research/runs/${runId}/export?format=html`} target="_blank" rel="noreferrer"><Button size="sm" variant="secondary"><ExternalLink className="w-3.5 h-3.5" /> Branded report</Button></a>
               <Button size="sm" variant="secondary" onClick={rerun} disabled={rerunning}>{rerunning ? <Spinner size={13} /> : <RotateCw className="w-3.5 h-3.5" />} Re-run</Button>
+              {run.isOwner && (
+                <Button size="sm" variant="secondary" onClick={() => setSharing(true)}>
+                  <Share2 className="w-3.5 h-3.5" /> Share{run.shared ? " · workspace" : ""}
+                </Button>
+              )}
             </div>
             {usageSummary(run.usage) && (
               <div style={{ marginTop: 10, fontSize: t.font.xs, color: t.color.textFaint }}>{usageSummary(run.usage)}</div>
@@ -542,6 +550,10 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
             AI-generated from the cited sources — verify key facts (figures, names, dates) before acting.
           </div>
         </div>
+      )}
+
+      {sharing && run.isOwner && (
+        <ResearchShareModal runId={runId} onClose={() => setSharing(false)} onSaved={(shared) => setRun((r) => (r ? { ...r, shared } : r))} />
       )}
     </div>
   );

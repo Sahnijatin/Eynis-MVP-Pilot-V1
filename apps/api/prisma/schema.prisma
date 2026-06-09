@@ -1081,6 +1081,7 @@ model ResearchRun {
   score            Int? // overall 0-100 score, if the template defines one
   usageJson        String? // { tokensIn, tokensOut, llmCalls, sourcesFetched }
   error            String?
+  shared           Boolean           @default(false) // tenant-wide visibility (mirrors Report.shared)
   createdById      String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
