@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { validateTemplateDef, LIMITS } from "./types";
-import { htmlToText } from "./sources/crawl";
+import { htmlToText, needsDynamicRender, fetchReadable } from "./sources/crawl";
 import { buildReportBlocks, buildReportCsv } from "./render";
 import { synthesize } from "./synthesize";
 import type { GatherResult } from "./gather";
@@ -123,6 +123,27 @@ test("htmlToText caps output length", () => {
   const big = "<p>" + "word ".repeat(5000) + "</p>";
   const text = htmlToText(big, 1000);
   assert.ok(text.length <= 1000);
+});
+
+// ── Playwright fallback gating (RS-4) ─────────────────────────────────────────
+test("needsDynamicRender flags thin/empty static text as JS-rendered", () => {
+  assert.equal(needsDynamicRender(""), true);
+  assert.equal(needsDynamicRender(null), true);
+  assert.equal(needsDynamicRender("   "), true);
+  assert.equal(needsDynamicRender("short shell"), true);
+  assert.equal(needsDynamicRender("x".repeat(1000)), false); // a content-rich page
+});
+
+test("fetchReadable does not attempt the Playwright fallback unless enabled", async () => {
+  // With the fallback off (default) a non-public host yields null and never tries
+  // to launch a browser — proving the static-only path stays the default.
+  const prev = process.env.RESEARCH_PLAYWRIGHT_ENABLED;
+  delete process.env.RESEARCH_PLAYWRIGHT_ENABLED;
+  try {
+    assert.equal(await fetchReadable("http://localhost:1/never"), null);
+  } finally {
+    if (prev !== undefined) process.env.RESEARCH_PLAYWRIGHT_ENABLED = prev;
+  }
 });
 
 // ── built-ins are internally valid ────────────────────────────────────────────
