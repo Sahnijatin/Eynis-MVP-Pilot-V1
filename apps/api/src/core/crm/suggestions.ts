@@ -116,6 +116,42 @@ export async function generateDealSuggestion(tenantId: string, dealId: string, p
   return serializeSuggestion(created, deal.title, stages);
 }
 
+// Safe-mode write-back from a Research Studio run (RS-3). A strong research/fit
+// score is a qualification signal, so it maps onto the one stage-move that's
+// honest: *advance the deal one stage*. A human still confirms — research never
+// moves a deal on its own. No-op for low scores, non-open deals, deals already
+// in the last (or a won/lost) stage, or when a pending suggestion already exists
+// (we don't clobber a conversation-derived proposal). Best-effort + tenant-scoped.
+const RESEARCH_DEAL_SUGGEST_THRESHOLD = Number(process.env.RESEARCH_DEAL_SUGGEST_THRESHOLD ?? 70);
+
+export async function suggestFromResearchScore(tenantId: string, dealId: string, score: number) {
+  if (!Number.isFinite(score) || score < RESEARCH_DEAL_SUGGEST_THRESHOLD) return null;
+  const deal = await prisma.deal.findFirst({
+    where: { id: dealId, tenantId },
+    include: { pipeline: { include: { stages: { orderBy: { order: "asc" } } } } },
+  });
+  if (!deal || deal.status !== "open") return null;
+  const stages = deal.pipeline.stages as StageRow[];
+  const currentIdx = stages.findIndex((s) => s.id === deal.stageId);
+  const next = stages[currentIdx + 1];
+  if (!next || next.isWon || next.isLost || next.id === deal.stageId) return null;
+
+  // Don't override an existing pending suggestion (e.g. a conversation-derived one).
+  const existing = await prisma.dealSuggestion.findFirst({ where: { tenantId, dealId, status: "pending" } });
+  if (existing) return serializeSuggestion(existing, deal.title, stages);
+
+  const rounded = Math.round(score);
+  const confidence = Math.max(0, Math.min(100, rounded));
+  const created = await prisma.dealSuggestion.create({
+    data: {
+      tenantId, dealId, fromStageId: deal.stageId, suggestedStageId: next.id,
+      reason: `Research scored this ${rounded}/100 — a strong fit signal. Consider advancing to "${next.name}".`,
+      confidence, source: "research",
+    },
+  });
+  return serializeSuggestion(created, deal.title, stages);
+}
+
 // Accept a pending suggestion → perform the move (mirrors POST /deals/:id/move).
 export async function acceptSuggestion(tenantId: string, suggestionId: string, userId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const sug = await prisma.dealSuggestion.findFirst({ where: { id: suggestionId, tenantId } });
