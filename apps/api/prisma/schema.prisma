@@ -68,6 +68,7 @@ model Tenant {
   researchTemplates     ResearchTemplate[]
   researchRuns          ResearchRun[]
   researchSourceCaches  ResearchSourceCache[]
+  researchSchedules     ResearchSchedule[]
 
   @@map("Hotel")
 }
@@ -182,6 +183,7 @@ model User {
   reports            Report[]                   @relation("report_creator")
   researchTemplates  ResearchTemplate[]         @relation("research_template_creator")
   researchRuns       ResearchRun[]              @relation("research_run_creator")
+  researchSchedules  ResearchSchedule[]         @relation("research_schedule_creator")
 
   @@unique([tenantId, email])
 }
@@ -1123,4 +1125,36 @@ model ResearchShare {
   @@unique([runId, principalType, principalId])
   @@index([runId])
   @@index([tenantId, principalType, principalId])
+}
+
+// Scheduled / recurring re-research (RS-4). A schedule re-enqueues a research run
+// on a cadence (daily|weekly|monthly). It snapshots the run parameters (template
+// + subject + inputs) so it stays valid even if the originating run is deleted;
+// re-running is therefore the same primitive as POST /research/runs/:id/rerun,
+// just driven by the clock. The schedule worker claims a due row atomically
+// (advances nextRunAt) before enqueueing, so a crash or overlapping cycle can
+// never double-run it.
+model ResearchSchedule {
+  id               String       @id @default(cuid())
+  tenantId         String       @map("hotelId")
+  templateId       String? // null for built-in or deleted templates
+  templateName     String
+  templateSnapshot String // JSON snapshot of the template def to run
+  subjectType      String       @default("freeform")
+  subjectId        String?
+  subjectLabel     String?
+  inputsJson       String // JSON of resolved input values
+  cadence          String       @default("weekly") // daily | weekly | monthly
+  isActive         Boolean      @default(true)
+  nextRunAt        DateTime
+  lastRunAt        DateTime?
+  lastRunId        String?
+  createdById      String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?        @relation("research_schedule_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([isActive, nextRunAt])
 }

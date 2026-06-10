@@ -325,9 +325,14 @@ Polish + hardening.
 - **First web tests:** `apps/web/lib/research-format.ts` (pure formatting/usage helpers)
   + `research-format.test.ts`, with the web `test` script wired to `tsx --test` — the
   module's first web-side tests, no React/DOM harness.
-
-**Deferred:** recurring/scheduled re-research (cron). Re-run is the manual primitive;
-a scheduler (model + worker) is a clean follow-up and out of scope for this PR.
+- **Scheduled / recurring re-research (Unit C):** the clock-driven twin of `/rerun`. A
+  new `ResearchSchedule` model snapshots a run's params and re-enqueues it on a cadence
+  (`daily`|`weekly`|`monthly`). `startResearchScheduleWorker` (`core/research/schedule.ts`)
+  drains due rows on a 60s tick, claiming each atomically (advances `nextRunAt` before
+  enqueue) so an overrun/second instance can't double-run. Managed via
+  `POST`/`GET /research/runs/:id/schedule` (one schedule per subject — re-posting updates
+  it) and `GET /research/schedules` + `PATCH`/`DELETE /research/schedules/:id` (creator or
+  `manage_research`). An **Auto-refresh** control on the run view drives it.
 
 ## 10. Non-goals (v1)
 
