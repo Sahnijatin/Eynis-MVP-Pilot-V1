@@ -297,14 +297,24 @@ Automation tie-in + CRM write-back.
   pipeline stage + template → add/remove).
 - **Score write-back:** a contact run now updates `Contact.leadScore` (in addition to
   the timeline activity from RS-1), so research enriches the CRM signal.
+- **Per-run share ACL (Unit B):** runs are now **private to their creator by default**
+  (a new `ResearchRun.shared` flag mirrors `Report.shared`). A run is visible to a
+  teammate only when shared tenant-wide, granted to them/their role via `ResearchShare`,
+  or when they hold `manage_research` (admin/manager oversight). The ACL gates run
+  detail, list, export, and re-run; sharing is creator-only
+  (`GET`/`PUT /research/runs/:id/shares`). A `ResearchShareModal` in the Studio mirrors
+  the report share modal. Grants confer read/export; re-running additionally needs
+  `run_research`. (CSV export already shipped in RS-4.)
 
-**Deferred from RS-3:** per-run share ACL. Runs are already team-visible to anyone
-with `view_research` in the tenant, so a `ReportShare`-style ACL adds little until run
-visibility is restricted to creator/shared — moved to a later pass. (CSV export and
-the `ResearchShare` model already exist.) A safe-mode `DealSuggestion` write-back was
-also skipped: `DealSuggestion` is specifically a *stage-move* proposal, which a
-research score doesn't map onto cleanly — the timeline activity + lead-score are the
-honest signals.
+**Deal write-back (RS-3, follow-up):** a deal run now also feeds a **safe-mode**
+`DealSuggestion`. A research score *does* map onto one honest stage-move — a strong
+fit signal means the deal is worth advancing — so `suggestFromResearchScore`
+(`core/crm/suggestions.ts`) proposes advancing the deal **one stage** when the score
+clears `RESEARCH_DEAL_SUGGEST_THRESHOLD` (default 70). It's strictly a proposal: a
+human accepts (which performs the move) or dismisses; research never auto-moves a
+deal. No-op for low scores, non-open deals, deals already at a won/lost/last stage,
+or when a pending suggestion already exists (it won't clobber a conversation-derived
+one). The suggestion carries `source: "research"` and the score as its confidence.
 
 ## 9d. Implementation status — RS-4 shipped
 
@@ -325,9 +335,14 @@ Polish + hardening.
 - **First web tests:** `apps/web/lib/research-format.ts` (pure formatting/usage helpers)
   + `research-format.test.ts`, with the web `test` script wired to `tsx --test` — the
   module's first web-side tests, no React/DOM harness.
-
-**Deferred:** recurring/scheduled re-research (cron). Re-run is the manual primitive;
-a scheduler (model + worker) is a clean follow-up and out of scope for this PR.
+- **Scheduled / recurring re-research (Unit C):** the clock-driven twin of `/rerun`. A
+  new `ResearchSchedule` model snapshots a run's params and re-enqueues it on a cadence
+  (`daily`|`weekly`|`monthly`). `startResearchScheduleWorker` (`core/research/schedule.ts`)
+  drains due rows on a 60s tick, claiming each atomically (advances `nextRunAt` before
+  enqueue) so an overrun/second instance can't double-run. Managed via
+  `POST`/`GET /research/runs/:id/schedule` (one schedule per subject — re-posting updates
+  it) and `GET /research/schedules` + `PATCH`/`DELETE /research/schedules/:id` (creator or
+  `manage_research`). An **Auto-refresh** control on the run view drives it.
 
 ## 10. Non-goals (v1)
 
