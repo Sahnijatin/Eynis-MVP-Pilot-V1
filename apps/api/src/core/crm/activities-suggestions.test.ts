@@ -4,7 +4,7 @@ import type { Server } from "node:http";
 import { buildServer } from "../../server";
 import { prisma } from "../../db/prisma";
 import { heuristicScore } from "./scoring";
-import { heuristicStageIntent } from "./suggestions";
+import { heuristicStageIntent, suggestFromResearchScore } from "./suggestions";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(16).slice(2, 8);
 const createHotel = async (tenantId: string) => {
@@ -166,6 +166,42 @@ test("safe-mode suggestion: generate → list → accept performs the move", asy
     // No more pending suggestions.
     const after = (await (await fetch(base + "/deals/suggestions?status=pending", { headers })).json()) as any;
     assert.ok(!after.items.some((s: any) => s.id === sid));
+  } finally { await stop(server); }
+});
+
+test("research write-back: a high score proposes a safe-mode advance; low score is a no-op", async () => {
+  const tenantId = "crm-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
+  const { server, base } = await startServer();
+  try {
+    const headers = await authHeaders(base, tenantId, email, "owner");
+    await fetch(base + "/pipelines", { headers });
+    const pipeline = (await (await fetch(base + "/pipelines", { headers })).json()) as any;
+    const stages = pipeline.items[0].stages;
+    const dealRes = (await (await fetch(base + "/deals", { method: "POST", headers, body: JSON.stringify({ title: "Research deal", stageId: stages[0].id }) })).json()) as any;
+    const did = dealRes.deal.id;
+
+    // High score → a pending, safe-mode suggestion to advance one stage. Deal not moved.
+    const sug = await suggestFromResearchScore(tenantId, did, 88);
+    assert.ok(sug, "expected a suggestion from a high research score");
+    assert.equal(sug!.suggestedStageId, stages[1].id);
+    assert.equal(sug!.source, "research");
+    assert.equal(sug!.status, "pending");
+    assert.equal(sug!.confidence, 88);
+    const stillOpen = await prisma.deal.findUnique({ where: { id: did } });
+    assert.equal(stillOpen!.status, "open");
+    assert.equal(stillOpen!.stageId, stages[0].id);
+
+    // A second high-score run must not clobber the existing pending suggestion.
+    const again = await suggestFromResearchScore(tenantId, did, 95);
+    assert.equal(again!.id, sug!.id);
+
+    // Low score on a different deal → no suggestion.
+    const deal2 = (await (await fetch(base + "/deals", { method: "POST", headers, body: JSON.stringify({ title: "Weak deal", stageId: stages[0].id }) })).json()) as any;
+    const none = await suggestFromResearchScore(tenantId, deal2.deal.id, 40);
+    assert.equal(none, null);
   } finally { await stop(server); }
 });
 

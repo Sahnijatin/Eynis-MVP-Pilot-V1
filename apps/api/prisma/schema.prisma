@@ -293,7 +293,7 @@ model DealSuggestion {
   suggestedStageId String
   reason           String
   confidence       Int? // 0–100
-  source           String    @default("ai") // ai | rule
+  source           String    @default("ai") // ai | rule | research
   status           String    @default("pending") // pending | accepted | dismissed
   createdAt        DateTime  @default(now())
   resolvedAt       DateTime?
@@ -1083,6 +1083,7 @@ model ResearchRun {
   score            Int? // overall 0-100 score, if the template defines one
   usageJson        String? // { tokensIn, tokensOut, llmCalls, sourcesFetched }
   error            String?
+  shared           Boolean           @default(false) // tenant-wide visibility (mirrors Report.shared)
   createdById      String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt

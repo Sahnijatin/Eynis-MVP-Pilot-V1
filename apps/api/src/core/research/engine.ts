@@ -10,6 +10,7 @@ import { validateTemplateDef, type ResearchTemplateDef } from "./types";
 import { gather } from "./gather";
 import { synthesize } from "./synthesize";
 import { resolveAiCredentials } from "./ai-credentials";
+import { suggestFromResearchScore } from "../crm/suggestions";
 
 type Stage = "gathering" | "synthesizing" | "validating" | "ready" | "failed";
 
@@ -140,6 +141,13 @@ async function logToCrm(
   // tenant's, even though subjectId ownership is verified at run creation).
   if (run.subjectType === "contact" && score != null) {
     await prisma.contact.updateMany({ where: { id: run.subjectId, tenantId: run.tenantId }, data: { leadScore: score } }).catch(() => undefined);
+  }
+
+  // Deal write-back (RS-3): a deal run's research score feeds a SAFE-MODE
+  // DealSuggestion — an advance-stage proposal a human confirms — so research
+  // nudges the pipeline without ever auto-moving a deal.
+  if (run.subjectType === "deal" && score != null) {
+    await suggestFromResearchScore(run.tenantId, run.subjectId, score).catch(() => undefined);
   }
 }
 
