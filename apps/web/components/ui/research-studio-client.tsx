@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Telescope, Plus, Play, Pencil, Copy, Trash2, ArrowLeft, FileDown, ExternalLink,
-  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap, RotateCw, Share2,
+  CheckCircle2, AlertTriangle, Search, Globe, Gauge, Sparkles, X, Zap, RotateCw, CalendarClock, Share2,
 } from "lucide-react";
 import {
   Button, Card, Badge, Field, Input, Select, Textarea, Modal, Spinner, EmptyState, useToast, tokens as t,
@@ -41,6 +41,7 @@ interface RunDetail {
   gathered: { fetchedCount?: number; sources?: Array<{ kind: string; title: string; url?: string }> } | null;
   usage: { provider?: string; llmCalls?: number; usedAI?: boolean; sourcesFetched?: number; cacheHits?: number; durationMs?: number; rounds?: number } | null;
 }
+interface ScheduleInfo { id: string; cadence: string; isActive: boolean; nextRunAt: string; lastRunAt: string | null }
 
 interface Props {
   accent: string;
@@ -436,6 +437,8 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
   const toast = useToast();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [rerunning, setRerunning] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
+  const [schedBusy, setSchedBusy] = useState(false);
   const [sharing, setSharing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -446,6 +449,24 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
       if (d.ok && d.id) props.onOpenRun(d.id);
       else { toast.push(d.error ?? "Couldn't re-run", "error"); setRerunning(false); }
     } catch { toast.push("Couldn't re-run", "error"); setRerunning(false); }
+  };
+
+  // Recurring re-research (RS-4): "off" + the three cadences. Picking a cadence
+  // creates/updates the subject's schedule; "off" removes it.
+  const onScheduleChange = async (value: string) => {
+    setSchedBusy(true);
+    try {
+      if (value === "off") {
+        if (schedule) await jsonFetch(`/api/research/schedules/${schedule.id}`, { method: "DELETE" });
+        setSchedule(null);
+        toast.push("Auto-refresh off", "success");
+      } else {
+        const d = await jsonFetch<{ ok: boolean; schedule?: ScheduleInfo; error?: string }>(`/api/research/runs/${runId}/schedule`, { method: "POST", body: JSON.stringify({ cadence: value }) });
+        if (d.ok && d.schedule) { setSchedule(d.schedule); toast.push(`Auto-refresh ${value}`, "success"); }
+        else toast.push(d.error ?? "Couldn't schedule", "error");
+      }
+    } catch { toast.push("Couldn't update schedule", "error"); }
+    finally { setSchedBusy(false); }
   };
 
   useEffect(() => {
@@ -466,6 +487,18 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
     };
     poll();
     return () => { active = false; if (timer.current) clearTimeout(timer.current); };
+  }, [runId]);
+
+  // Load the subject's recurring-research schedule (if any) for the auto-refresh control.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const d = await jsonFetch<{ ok: boolean; schedule?: ScheduleInfo | null }>(`/api/research/runs/${runId}/schedule`);
+        if (active && d.ok) setSchedule(d.schedule ?? null);
+      } catch { /* non-fatal — the control just shows "off" */ }
+    })();
+    return () => { active = false; };
   }, [runId]);
 
   const back = <Button variant="ghost" onClick={props.onBack} style={{ marginBottom: 12 }}><ArrowLeft className="w-4 h-4" /> Back to Studio</Button>;
@@ -495,12 +528,31 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
               <a href={`/api/research/runs/${runId}/export?format=csv`}><Button size="sm" variant="secondary"><FileDown className="w-3.5 h-3.5" /> CSV</Button></a>
               <a href={`/api/research/runs/${runId}/export?format=html`} target="_blank" rel="noreferrer"><Button size="sm" variant="secondary"><ExternalLink className="w-3.5 h-3.5" /> Branded report</Button></a>
               <Button size="sm" variant="secondary" onClick={rerun} disabled={rerunning}>{rerunning ? <Spinner size={13} /> : <RotateCw className="w-3.5 h-3.5" />} Re-run</Button>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: t.font.xs, color: t.color.textMuted }}>
+                <CalendarClock className="w-3.5 h-3.5" /> Auto-refresh
+                <select
+                  value={schedule?.isActive ? schedule.cadence : "off"}
+                  disabled={schedBusy}
+                  onChange={(e) => onScheduleChange(e.target.value)}
+                  style={{ fontSize: t.font.xs, padding: "3px 6px", borderRadius: 6, border: `1px solid ${t.color.border}`, background: "#fff", color: t.color.text }}
+                >
+                  <option value="off">Off</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
               {run.isOwner && (
                 <Button size="sm" variant="secondary" onClick={() => setSharing(true)}>
                   <Share2 className="w-3.5 h-3.5" /> Share{run.shared ? " · workspace" : ""}
                 </Button>
               )}
             </div>
+            {schedule?.isActive && (
+              <div style={{ marginTop: 8, fontSize: t.font.xs, color: t.color.textFaint }}>
+                Next auto-refresh {new Date(schedule.nextRunAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.
+              </div>
+            )}
             {usageSummary(run.usage) && (
               <div style={{ marginTop: 10, fontSize: t.font.xs, color: t.color.textFaint }}>{usageSummary(run.usage)}</div>
             )}

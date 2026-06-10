@@ -53,6 +53,7 @@ import { resolveAiCredentials, aiConfigured } from "./core/research/ai-credentia
 import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
+import { startResearchScheduleWorker, isCadence, advanceCadence, type Cadence } from "./core/research/schedule";
 
 const eventBus = new InMemoryEventBus();
 
@@ -3644,8 +3645,22 @@ const handleRequest = async (
 
         const tplMatch = /^\/research\/templates\/([^/]+)$/.exec(rpath);
         const runExportMatch = /^\/research\/runs\/([^/]+)\/export$/.exec(rpath);
+        const runScheduleMatch = /^\/research\/runs\/([^/]+)\/schedule$/.exec(rpath);
+        const scheduleIdMatch = /^\/research\/schedules\/([^/]+)$/.exec(rpath);
         const runSharesMatch = /^\/research\/runs\/([^/]+)\/shares$/.exec(rpath);
         const runIdMatch = /^\/research\/runs\/([^/]+)$/.exec(rpath);
+
+        // The active schedule (if any) matching a run's subject: keyed by the
+        // persistent subject when present, else by the freeform run signature.
+        const scheduleMatchFor = (run: { tenantId: string; subjectType: string; subjectId: string | null; templateName: string; subjectLabel: string | null; inputsJson: string }) =>
+          run.subjectId
+            ? { tenantId: run.tenantId, subjectType: run.subjectType, subjectId: run.subjectId }
+            : { tenantId: run.tenantId, subjectType: run.subjectType, subjectId: null, templateName: run.templateName, subjectLabel: run.subjectLabel, inputsJson: run.inputsJson };
+        const serializeSchedule = (s: { id: string; cadence: string; isActive: boolean; nextRunAt: Date; lastRunAt: Date | null; lastRunId: string | null; subjectType: string; subjectLabel: string | null; templateName: string; createdById: string | null }) => ({
+          id: s.id, cadence: s.cadence, isActive: s.isActive,
+          nextRunAt: s.nextRunAt.toISOString(), lastRunAt: s.lastRunAt ? s.lastRunAt.toISOString() : null,
+          lastRunId: s.lastRunId, subjectType: s.subjectType, subjectLabel: s.subjectLabel, templateName: s.templateName,
+        });
 
         // GET /research/templates/:id — full definition for the editor.
         if (tplMatch && req.method === "GET") {
@@ -3837,6 +3852,87 @@ const handleRequest = async (
             return;
           }
           sendDoc(res, "text/html; charset=utf-8", renderBrandedReportHtml(brand, { title, subtitle, blocks }));
+          return;
+        }
+
+        // GET /research/runs/:id/schedule — the active recurring schedule (if any)
+        // for this run's subject, so the run view can show its auto-refresh state.
+        if (runScheduleMatch && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(runScheduleMatch[1] as string);
+          const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
+          if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
+          const schedule = await prisma.researchSchedule.findFirst({ where: scheduleMatchFor(run), orderBy: { createdAt: "desc" } });
+          json(res, 200, { ok: true, schedule: schedule ? serializeSchedule(schedule) : null });
+          return;
+        }
+
+        // POST /research/runs/:id/schedule — turn on (or update) recurring
+        // re-research for this run's subject. Body: { cadence: daily|weekly|monthly }.
+        // The clock-driven twin of /rerun: it snapshots the run's params.
+        if (runScheduleMatch && req.method === "POST") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
+          if (!(await ensureResearchLicense(tenantId))) return;
+          const id = decodeURIComponent(runScheduleMatch[1] as string);
+          const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
+          if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
+          const body = (await parseBody(req)) as { cadence?: unknown };
+          const cadence: Cadence = isCadence(body.cadence) ? body.cadence : "weekly";
+          const nextRunAt = advanceCadence(new Date(), cadence);
+          const existing = await prisma.researchSchedule.findFirst({ where: scheduleMatchFor(run) });
+          const saved = existing
+            ? await prisma.researchSchedule.update({ where: { id: existing.id }, data: { cadence, isActive: true, nextRunAt } })
+            : await prisma.researchSchedule.create({
+                data: {
+                  tenantId, templateId: run.templateId, templateName: run.templateName, templateSnapshot: run.templateSnapshot,
+                  subjectType: run.subjectType, subjectId: run.subjectId, subjectLabel: run.subjectLabel, inputsJson: run.inputsJson,
+                  cadence, isActive: true, nextRunAt, createdById: userId,
+                },
+              });
+          json(res, existing ? 200 : 201, { ok: true, schedule: serializeSchedule(saved) });
+          return;
+        }
+
+        // GET /research/schedules — all recurring schedules in the tenant.
+        if (rpath === "/research/schedules" && req.method === "GET") {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId } = auth.context;
+          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
+          const rows = await prisma.researchSchedule.findMany({ where: { tenantId }, orderBy: [{ isActive: "desc" }, { nextRunAt: "asc" }] });
+          json(res, 200, { ok: true, items: rows.map(serializeSchedule) });
+          return;
+        }
+
+        // PATCH /research/schedules/:id — change cadence or pause/resume. Creator
+        // or a manager (manage_research) only. DELETE removes it entirely.
+        if (scheduleIdMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const { permissions, tenantId, userId } = auth.context;
+          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
+          const id = decodeURIComponent(scheduleIdMatch[1] as string);
+          const sched = await prisma.researchSchedule.findFirst({ where: { id, tenantId } });
+          if (!sched) { json(res, 404, { ok: false, error: "Schedule not found" }); return; }
+          if (sched.createdById !== userId && !hasPermission(permissions, "manage_research")) {
+            json(res, 403, { ok: false, error: "Only the schedule's creator or a manager can change it" }); return;
+          }
+          if (req.method === "DELETE") {
+            await prisma.researchSchedule.delete({ where: { id } });
+            json(res, 200, { ok: true });
+            return;
+          }
+          const body = (await parseBody(req)) as { cadence?: unknown; isActive?: unknown };
+          const data: { cadence?: string; isActive?: boolean; nextRunAt?: Date } = {};
+          const cadence: Cadence = isCadence(body.cadence) ? body.cadence : (isCadence(sched.cadence) ? sched.cadence : "weekly");
+          if (isCadence(body.cadence)) data.cadence = body.cadence;
+          if (typeof body.isActive === "boolean") data.isActive = body.isActive;
+          // Reactivating, or changing the cadence, reschedules the next fire from now.
+          if (data.isActive === true || (data.cadence && sched.isActive)) data.nextRunAt = advanceCadence(new Date(), cadence);
+          const saved = await prisma.researchSchedule.update({ where: { id }, data });
+          json(res, 200, { ok: true, schedule: serializeSchedule(saved) });
           return;
         }
 
@@ -6262,6 +6358,7 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     startCampaignWorker();
     startSequenceWorker();
     startResearchWorker();
+    startResearchScheduleWorker();
     console.log("Eynis ResearchWorker started");
   });
   return server;
