@@ -297,6 +297,14 @@ Automation tie-in + CRM write-back.
   pipeline stage + template → add/remove).
 - **Score write-back:** a contact run now updates `Contact.leadScore` (in addition to
   the timeline activity from RS-1), so research enriches the CRM signal.
+- **Per-run share ACL (Unit B):** runs are now **private to their creator by default**
+  (a new `ResearchRun.shared` flag mirrors `Report.shared`). A run is visible to a
+  teammate only when shared tenant-wide, granted to them/their role via `ResearchShare`,
+  or when they hold `manage_research` (admin/manager oversight). The ACL gates run
+  detail, list, export, and re-run; sharing is creator-only
+  (`GET`/`PUT /research/runs/:id/shares`). A `ResearchShareModal` in the Studio mirrors
+  the report share modal. Grants confer read/export; re-running additionally needs
+  `run_research`. (CSV export already shipped in RS-4.)
 
 **Deal write-back (RS-3, follow-up):** a deal run now also feeds a **safe-mode**
 `DealSuggestion`. A research score *does* map onto one honest stage-move — a strong
@@ -307,11 +315,6 @@ human accepts (which performs the move) or dismisses; research never auto-moves 
 deal. No-op for low scores, non-open deals, deals already at a won/lost/last stage,
 or when a pending suggestion already exists (it won't clobber a conversation-derived
 one). The suggestion carries `source: "research"` and the score as its confidence.
-
-**Deferred from RS-3:** per-run share ACL. Runs are already team-visible to anyone
-with `view_research` in the tenant, so a `ReportShare`-style ACL adds little until run
-visibility is restricted to creator/shared — moved to a later pass. (CSV export and
-the `ResearchShare` model already exist.)
 
 ## 9d. Implementation status — RS-4 shipped
 
