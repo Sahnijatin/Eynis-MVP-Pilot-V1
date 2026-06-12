@@ -5,7 +5,7 @@ import {
   Calculator, CalendarDays, Plane, UtensilsCrossed,
   BarChart3, Brain, Warehouse, ClipboardList,
   Building2, Factory, HeartPulse, Globe, ChefHat, Mic, Handshake,
-  Workflow, Plug, UserCheck, Telescope
+  Workflow, Plug, UserCheck, Telescope, Compass
 } from "lucide-react";
 
 export type Industry = "hospitality" | "manufacturing" | "fnb" | "travel" | "healthcare";
@@ -98,6 +98,15 @@ const MARKETING_MODULE: NavModule = {
   ]
 };
 
+// Discover is shared across every industry: a curated local-discovery map with
+// an AI concierge and the Golden-Pin promotion. Neutral copy so it reads well
+// for hotels (things to do nearby), clinics (partner pharmacies/labs), outlets
+// (footfall partners), etc.
+const DISCOVER_MODULE: NavModule = {
+  key: "discover", label: "Discover", icon: Compass, href: "/discover",
+  description: "An interactive map of curated nearby places, with an AI concierge and Golden-Pin promotion."
+};
+
 const INTEGRATIONS_MODULE: NavModule = {
   key: "integrations", label: "Integrations", icon: Plug, href: "/integrations",
   description: "Connect WhatsApp, your PMS/POS, payments and other tools."
@@ -136,6 +145,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       DASHBOARD_MODULE,
       { key: "operations", label: "Service Requests", icon: Bell, href: "/queue", description: "The live request queue and operational feed." },
       crmModule({ href: "/guest-database", label: "Guest Database", description: "Your full guest records and history." }),
+      DISCOVER_MODULE,
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -181,6 +191,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         ]
       },
       crmModule({ href: "/customers", label: "Client Intelligence", description: "Your full client records and history." }),
+      DISCOVER_MODULE,
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -226,6 +237,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
         ]
       },
       crmModule({ href: "/customers", label: "Customer Loyalty", description: "Your full diner records and loyalty." }),
+      DISCOVER_MODULE,
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -263,6 +275,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       DASHBOARD_MODULE,
       { key: "operations", label: "Bookings", icon: Plane, href: "/bookings", description: "Your booking pipeline and departures." },
       crmModule({ href: "/customers", label: "Client Database", description: "Your full traveller records and history." }),
+      DISCOVER_MODULE,
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -300,6 +313,7 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
       DASHBOARD_MODULE,
       { key: "operations", label: "Appointments", icon: CalendarDays, href: "/appointments", description: "Today's schedule and patient flow." },
       crmModule({ href: "/patients", label: "Patient Records", description: "Your full patient records and history." }),
+      DISCOVER_MODULE,
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",

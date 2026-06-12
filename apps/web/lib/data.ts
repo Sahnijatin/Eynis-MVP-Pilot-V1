@@ -1015,3 +1015,27 @@ export async function fetchDealSuggestions(status = "pending"): Promise<{ ok: bo
   const res = await authedFetch("/deals/suggestions?status=" + encodeURIComponent(status));
   return (await res.json()) as { ok: boolean; items: DealSuggestionRow[] };
 }
+
+// ── Discover (places map) ─────────────────────────────────────────────────────
+import type { Place } from "@eynis/shared";
+
+export async function fetchPlaces(): Promise<{ ok: boolean; items: Place[] }> {
+  try {
+    const res = await authedFetch("/places");
+    const data = (await res.json()) as { ok: boolean; items?: Place[] };
+    return { ok: data.ok, items: data.items ?? [] };
+  } catch {
+    return { ok: false, items: [] };
+  }
+}
+
+// The signed-in user's live permissions (used to gate curate/golden controls).
+export async function fetchMyPermissions(): Promise<string[]> {
+  try {
+    const res = await authedFetch("/context");
+    const data = (await res.json()) as { ok: boolean; context?: { permissions?: string[] } };
+    return data.ok ? data.context?.permissions ?? [] : [];
+  } catch {
+    return [];
+  }
+}
