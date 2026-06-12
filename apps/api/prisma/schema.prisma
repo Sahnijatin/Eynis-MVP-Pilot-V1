@@ -69,6 +69,7 @@ model Tenant {
   researchRuns          ResearchRun[]
   researchSourceCaches  ResearchSourceCache[]
   researchSchedules     ResearchSchedule[]
+  places                Place[]
 
   @@map("Hotel")
 }
@@ -184,6 +185,7 @@ model User {
   researchTemplates  ResearchTemplate[]         @relation("research_template_creator")
   researchRuns       ResearchRun[]              @relation("research_run_creator")
   researchSchedules  ResearchSchedule[]         @relation("research_schedule_creator")
+  createdPlaces      Place[]                    @relation("place_creator")
 
   @@unique([tenantId, email])
 }
@@ -1158,4 +1160,46 @@ model ResearchSchedule {
 
   @@index([tenantId])
   @@index([isActive, nextRunAt])
+}
+
+// Discover (local-discovery map) — a curated point-of-interest a tenant surfaces
+// to its audience on an interactive map with an AI concierge. Industry-neutral:
+// a "place" is any nearby destination (restaurant, attraction, clinic, partner
+// outlet, store…). New table — physical column is `tenantId` directly.
+//
+// Golden Pins: a place can pay to be promoted ("golden"). `goldenTier` records
+// the package and `goldenUntil` the paid-through date; a place is rendered as a
+// premium golden pin only while `goldenUntil` is in the future. Provisioned by
+// staff/billing flow (no live payment gateway wired here), mirroring the
+// staff-provisioned billing-plan pattern already used for Licenses.
+model Place {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  category    String    @default("other") // restaurant | cafe | attraction | shopping | nightlife | hotel | service | outdoors | other
+  description String?
+  // Geo
+  lat         Float
+  lng         Float
+  address     String?
+  // Display / discovery metadata
+  rating      Float? // 0..5, editorial or aggregate
+  priceLevel  Int? // 1..4 ($..$$$$)
+  imageUrl    String?
+  website     String?
+  phone       String?
+  tags        String[]  @default([]) // freeform discovery tags ("rooftop", "family", "vegan"…)
+  isActive    Boolean   @default(true)
+  // Golden-pin promotion
+  goldenTier  String? // null = not promoted | "spotlight" | "premium" | "elite"
+  goldenUntil DateTime? // paid-through date; golden only while in the future
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?     @relation("place_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, category])
+  @@index([tenantId, goldenUntil])
 }

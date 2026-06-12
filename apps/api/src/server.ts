@@ -54,6 +54,8 @@ import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
 import { startResearchScheduleWorker, isCadence, advanceCadence, type Cadence } from "./core/research/schedule";
+import { runConcierge, type ConciergePlace, type ConciergeTurn } from "./core/discover/concierge";
+import { PLACE_CATEGORIES, GOLDEN_TIERS, isPlaceCategory, isGoldenTier } from "@eynis/shared";
 
 const eventBus = new InMemoryEventBus();
 
@@ -664,6 +666,13 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /deals/suggestions":               "view_crm",
   "POST /deals/suggestions/:id/accept":   "manage_crm",
   "POST /deals/suggestions/:id/dismiss":  "manage_crm",
+  "GET /places":                          "view_places",
+  "POST /places":                         "manage_places",
+  "POST /places/concierge":               "view_places",
+  "GET /places/:id":                      "view_places",
+  "PATCH /places/:id":                    "manage_places",
+  "DELETE /places/:id":                   "manage_places",
+  "POST /places/:id/golden":              "manage_places",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -3489,6 +3498,207 @@ const handleRequest = async (
         if (existing.createdById !== userId) { json(res, 403, { ok: false, error: "Only the report's creator can delete it" }); return; }
         await prisma.report.delete({ where: { id } });
         json(res, 200, { ok: true });
+        return;
+      }
+    }
+
+    // ── Discover: places map + AI concierge (golden-pin promotion) ───────────
+    // Tenant-scoped curated points of interest rendered on an interactive map.
+    // view_places to browse / ask the concierge; manage_places to curate + run
+    // the Golden-Pin promotion. Golden is staff/billing-provisioned (no live
+    // gateway), mirroring the staff-provisioned billing-plan pattern.
+    {
+      const rpath = parseUrl(req.url).pathname;
+      const asFiniteNumber = (v: unknown): number | null => {
+        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : null;
+      };
+      const asStringArray = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean).slice(0, 20) : [];
+
+      type PlaceRow = {
+        id: string; tenantId: string; name: string; category: string; description: string | null;
+        lat: number; lng: number; address: string | null; rating: number | null; priceLevel: number | null;
+        imageUrl: string | null; website: string | null; phone: string | null; tags: string[]; isActive: boolean;
+        goldenTier: string | null; goldenUntil: Date | null; createdAt: Date; updatedAt: Date;
+      };
+      const isGoldenNow = (p: { goldenTier: string | null; goldenUntil: Date | null }): boolean =>
+        Boolean(p.goldenTier && p.goldenUntil && p.goldenUntil.getTime() > Date.now());
+      const serializePlace = (p: PlaceRow) => ({
+        id: p.id, tenantId: p.tenantId, name: p.name, category: p.category, description: p.description,
+        lat: p.lat, lng: p.lng, address: p.address, rating: p.rating, priceLevel: p.priceLevel,
+        imageUrl: p.imageUrl, website: p.website, phone: p.phone, tags: p.tags, isActive: p.isActive,
+        goldenTier: p.goldenTier, goldenUntil: p.goldenUntil ? p.goldenUntil.toISOString() : null,
+        isGolden: isGoldenNow(p),
+        createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString(),
+      });
+
+      // GET /places — list curated places for the map (filterable).
+      if (rpath === "/places" && req.method === "GET") {
+        const auth = await authorize(req, res, "GET /places"); if (!auth.ok) return;
+        const q = parseUrl(req.url).searchParams;
+        const category = asTrimmedString(q.get("category"));
+        const search = asTrimmedString(q.get("q"))?.toLowerCase();
+        const goldenOnly = q.get("golden") === "true";
+        const includeInactive = q.get("all") === "true" && hasPermission(auth.context.permissions, "manage_places");
+        const rows = await prisma.place.findMany({
+          where: {
+            tenantId: auth.context.tenantId,
+            ...(includeInactive ? {} : { isActive: true }),
+            ...(category && isPlaceCategory(category) ? { category } : {}),
+          },
+          orderBy: [{ goldenUntil: { sort: "desc", nulls: "last" } }, { rating: "desc" }, { name: "asc" }],
+          take: 500,
+        }) as PlaceRow[];
+        let items = rows.map(serializePlace);
+        if (goldenOnly) items = items.filter((p) => p.isGolden);
+        if (search) {
+          items = items.filter((p) =>
+            [p.name, p.description ?? "", p.category, ...p.tags].join(" ").toLowerCase().includes(search));
+        }
+        json(res, 200, { ok: true, items, categories: PLACE_CATEGORIES });
+        return;
+      }
+
+      // POST /places/concierge — ask the AI concierge for recommendations.
+      if (rpath === "/places/concierge" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /places/concierge"); if (!auth.ok) return;
+        const body = (await parseBody(req)) as { query?: unknown; history?: unknown; provider?: unknown };
+        const query = asTrimmedString(body.query);
+        if (!query) { json(res, 400, { ok: false, error: "query is required" }); return; }
+        const history: ConciergeTurn[] = Array.isArray(body.history)
+          ? body.history
+              .map((t): ConciergeTurn | null => {
+                const turn = t as { role?: unknown; content?: unknown };
+                const content = asTrimmedString(turn.content);
+                if (!content) return null;
+                return { role: turn.role === "assistant" ? "assistant" : "user", content };
+              })
+              .filter((t): t is ConciergeTurn => t !== null)
+              .slice(-10)
+          : [];
+        const provider = body.provider === "openai" ? "openai" : "claude";
+        const rows = await prisma.place.findMany({
+          where: { tenantId: auth.context.tenantId, isActive: true },
+          take: 500,
+        }) as PlaceRow[];
+        const conciergePlaces: ConciergePlace[] = rows.map((p) => ({
+          id: p.id, name: p.name, category: p.category, description: p.description,
+          tags: p.tags, rating: p.rating, priceLevel: p.priceLevel, isGolden: isGoldenNow(p),
+        }));
+        const result = await runConcierge(query, conciergePlaces, history, provider);
+        json(res, 200, { ok: true, ...result });
+        return;
+      }
+
+      // POST /places — create a curated place.
+      if (rpath === "/places" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /places"); if (!auth.ok) return;
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const name = asTrimmedString(body.name);
+        const lat = asFiniteNumber(body.lat);
+        const lng = asFiniteNumber(body.lng);
+        if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+        if (lat === null || lng === null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          json(res, 400, { ok: false, error: "valid lat (-90..90) and lng (-180..180) are required" }); return;
+        }
+        const category = asTrimmedString(body.category);
+        const priceLevel = asPositiveInt(body.priceLevel);
+        const rating = asFiniteNumber(body.rating);
+        const created = await prisma.place.create({
+          data: {
+            tenantId: auth.context.tenantId,
+            name,
+            category: category && isPlaceCategory(category) ? category : "other",
+            description: asTrimmedString(body.description),
+            lat, lng,
+            address: asTrimmedString(body.address),
+            rating: rating !== null ? Math.max(0, Math.min(5, rating)) : null,
+            priceLevel: priceLevel !== null ? Math.max(1, Math.min(4, priceLevel)) : null,
+            imageUrl: asTrimmedString(body.imageUrl),
+            website: asTrimmedString(body.website),
+            phone: asTrimmedString(body.phone),
+            tags: asStringArray(body.tags),
+            createdById: auth.context.userId,
+          },
+        }) as PlaceRow;
+        json(res, 201, { ok: true, place: serializePlace(created) });
+        return;
+      }
+
+      const placeIdMatch = /^\/places\/([^/]+)$/.exec(rpath);
+      const placeGoldenMatch = /^\/places\/([^/]+)\/golden$/.exec(rpath);
+
+      // GET /places/:id — single place.
+      if (placeIdMatch && req.method === "GET") {
+        const auth = await authorize(req, res, "GET /places/:id"); if (!auth.ok) return;
+        const id = decodeURIComponent(placeIdMatch[1] as string);
+        const place = await prisma.place.findFirst({ where: { id, tenantId: auth.context.tenantId } }) as PlaceRow | null;
+        if (!place) { json(res, 404, { ok: false, error: "Place not found" }); return; }
+        json(res, 200, { ok: true, place: serializePlace(place) });
+        return;
+      }
+
+      // PATCH /places/:id — update an existing place.
+      if (placeIdMatch && req.method === "PATCH") {
+        const auth = await authorize(req, res, "PATCH /places/:id"); if (!auth.ok) return;
+        const id = decodeURIComponent(placeIdMatch[1] as string);
+        const existing = await prisma.place.findFirst({ where: { id, tenantId: auth.context.tenantId }, select: { id: true } });
+        if (!existing) { json(res, 404, { ok: false, error: "Place not found" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const data: Record<string, unknown> = {};
+        if ("name" in body) { const n = asTrimmedString(body.name); if (!n) { json(res, 400, { ok: false, error: "name cannot be empty" }); return; } data.name = n; }
+        if ("category" in body) { const c = asTrimmedString(body.category); data.category = c && isPlaceCategory(c) ? c : "other"; }
+        if ("description" in body) data.description = asTrimmedString(body.description);
+        if ("lat" in body) { const v = asFiniteNumber(body.lat); if (v === null || v < -90 || v > 90) { json(res, 400, { ok: false, error: "invalid lat" }); return; } data.lat = v; }
+        if ("lng" in body) { const v = asFiniteNumber(body.lng); if (v === null || v < -180 || v > 180) { json(res, 400, { ok: false, error: "invalid lng" }); return; } data.lng = v; }
+        if ("address" in body) data.address = asTrimmedString(body.address);
+        if ("rating" in body) { const v = asFiniteNumber(body.rating); data.rating = v !== null ? Math.max(0, Math.min(5, v)) : null; }
+        if ("priceLevel" in body) { const v = asPositiveInt(body.priceLevel); data.priceLevel = v !== null ? Math.max(1, Math.min(4, v)) : null; }
+        if ("imageUrl" in body) data.imageUrl = asTrimmedString(body.imageUrl);
+        if ("website" in body) data.website = asTrimmedString(body.website);
+        if ("phone" in body) data.phone = asTrimmedString(body.phone);
+        if ("tags" in body) data.tags = asStringArray(body.tags);
+        if ("isActive" in body) data.isActive = body.isActive === true;
+        const updated = await prisma.place.update({ where: { id }, data }) as PlaceRow;
+        json(res, 200, { ok: true, place: serializePlace(updated) });
+        return;
+      }
+
+      // DELETE /places/:id — remove a place.
+      if (placeIdMatch && req.method === "DELETE") {
+        const auth = await authorize(req, res, "DELETE /places/:id"); if (!auth.ok) return;
+        const id = decodeURIComponent(placeIdMatch[1] as string);
+        const existing = await prisma.place.findFirst({ where: { id, tenantId: auth.context.tenantId }, select: { id: true } });
+        if (!existing) { json(res, 404, { ok: false, error: "Place not found" }); return; }
+        await prisma.place.delete({ where: { id } });
+        json(res, 200, { ok: true });
+        return;
+      }
+
+      // POST /places/:id/golden — provision (or clear) a Golden-Pin promotion.
+      // Body: { tier: "spotlight"|"premium"|"elite"|null, months?: number }.
+      // tier:null clears the promotion; otherwise sets goldenUntil = now + months*30d.
+      if (placeGoldenMatch && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /places/:id/golden"); if (!auth.ok) return;
+        const id = decodeURIComponent(placeGoldenMatch[1] as string);
+        const existing = await prisma.place.findFirst({ where: { id, tenantId: auth.context.tenantId }, select: { id: true } });
+        if (!existing) { json(res, 404, { ok: false, error: "Place not found" }); return; }
+        const body = (await parseBody(req)) as { tier?: unknown; months?: unknown };
+        const tierRaw = body.tier;
+        if (tierRaw === null || tierRaw === "" || tierRaw === "none") {
+          const cleared = await prisma.place.update({ where: { id }, data: { goldenTier: null, goldenUntil: null } }) as PlaceRow;
+          json(res, 200, { ok: true, place: serializePlace(cleared) });
+          return;
+        }
+        const tier = asTrimmedString(tierRaw);
+        if (!tier || !isGoldenTier(tier)) {
+          json(res, 400, { ok: false, error: `tier must be one of ${GOLDEN_TIERS.join(", ")} (or null to clear)` }); return;
+        }
+        const months = asPositiveInt(body.months) ?? 1;
+        const goldenUntil = new Date(Date.now() + Math.min(months, 36) * 30 * 24 * 60 * 60 * 1000);
+        const promoted = await prisma.place.update({ where: { id }, data: { goldenTier: tier, goldenUntil } }) as PlaceRow;
+        json(res, 200, { ok: true, place: serializePlace(promoted) });
         return;
       }
     }

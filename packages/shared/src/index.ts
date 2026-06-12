@@ -53,6 +53,61 @@ export interface ServiceRequest {
   createdAt: string;
 }
 
+// ── Discover (local-discovery map) ───────────────────────────────────────────
+
+/** Categories a Place can belong to (industry-neutral, drives map pin colour). */
+export const PLACE_CATEGORIES = [
+  "restaurant", "cafe", "attraction", "shopping",
+  "nightlife", "hotel", "service", "outdoors", "other",
+] as const;
+export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
+
+export const isPlaceCategory = (value: string): value is PlaceCategory =>
+  (PLACE_CATEGORIES as readonly string[]).includes(value);
+
+/**
+ * Golden-pin promotion packages, cheapest → most prominent. A Place renders as a
+ * premium "golden" pin while it holds an active tier (paid-through date in the
+ * future). `null`/absent = a standard pin.
+ */
+export const GOLDEN_TIERS = ["spotlight", "premium", "elite"] as const;
+export type GoldenTier = (typeof GOLDEN_TIERS)[number];
+
+export const isGoldenTier = (value: string): value is GoldenTier =>
+  (GOLDEN_TIERS as readonly string[]).includes(value);
+
+/** Monthly list price (INR) per golden tier — shown in the upgrade UI. */
+export const GOLDEN_TIER_PRICING_INR: Record<GoldenTier, number> = {
+  spotlight: 2500,
+  premium: 6000,
+  elite: 15000,
+};
+
+/** A curated point of interest surfaced on the Discover map. */
+export interface Place {
+  id: string;
+  tenantId: string;
+  name: string;
+  category: PlaceCategory;
+  description: string | null;
+  lat: number;
+  lng: number;
+  address: string | null;
+  rating: number | null;
+  priceLevel: number | null;
+  imageUrl: string | null;
+  website: string | null;
+  phone: string | null;
+  tags: string[];
+  isActive: boolean;
+  goldenTier: GoldenTier | null;
+  goldenUntil: string | null;
+  /** Derived: true when goldenTier is set and goldenUntil is in the future. */
+  isGolden: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** @deprecated Validates the legacy hospitality role union; prefer {@link isSystemRoleKey}. */
 export const isValidRole = (role: string): role is UserRole =>
   role === "owner" ||

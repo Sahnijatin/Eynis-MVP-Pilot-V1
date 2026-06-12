@@ -96,7 +96,7 @@ async function main() {
   for (const s of staff) {
     const key = LEGACY_TO_KEY[s.role] ?? "agent";
     const u = await prisma.user.upsert({
-      where: { email: s.email },
+      where: { tenantId_email: { tenantId: HOTEL_ID, email: s.email } },
       update: { roleId: roleIdMap[key] },
       create: {
         tenantId: hotel.id,
@@ -618,6 +618,51 @@ async function main() {
   if (secondContact) {
     await prisma.activity.create({ data: { tenantId: hotel.id, contactId: secondContact, userId: dealOwners[0] ?? null, type: "task", title: "Follow up on wedding package", status: "open", dueAt: new Date(now.getTime() - dayMs) } });
   }
+
+  // ── Discover: curated nearby places (map + AI concierge) ────────────────────
+  // Centred on a North-Goa beach-resort area near "The Riviera". A few carry an
+  // active golden tier so the Golden-Pin promotion renders out of the box.
+  await prisma.place.deleteMany({ where: { tenantId: HOTEL_ID } });
+  const goldenSoon = new Date(now.getTime() + 60 * dayMs); // paid-through 60 days out
+  const places: Array<{
+    name: string; category: string; description: string; lat: number; lng: number;
+    address: string; rating: number; priceLevel: number; tags: string[];
+    website?: string; phone?: string; goldenTier?: string;
+  }> = [
+    { name: "Saltwater Beach Club", category: "nightlife", description: "Sunset DJ sets, cocktails and a toes-in-the-sand dance floor right on Candolim beach.", lat: 15.5180, lng: 73.7620, address: "Candolim Beach Rd, Goa", rating: 4.7, priceLevel: 3, tags: ["rooftop", "sunset", "cocktails", "live music"], website: "https://example.com/saltwater", phone: "+918888100001", goldenTier: "elite" },
+    { name: "Verde Vegan Kitchen", category: "restaurant", description: "Plant-forward coastal plates, cold-pressed juices and a leafy courtyard.", lat: 15.5495, lng: 73.7550, address: "Fontainhas Lane, Calangute", rating: 4.6, priceLevel: 2, tags: ["vegan", "healthy", "family", "brunch"], website: "https://example.com/verde", phone: "+918888100002", goldenTier: "premium" },
+    { name: "Fort Aguada Lookout", category: "attraction", description: "17th-century Portuguese fort with sweeping Arabian Sea views and a lighthouse.", lat: 15.4925, lng: 73.7735, address: "Aguada, Goa", rating: 4.5, priceLevel: 1, tags: ["historic", "viewpoint", "photography", "family"], goldenTier: "spotlight" },
+    { name: "Brew & Bean Roastery", category: "cafe", description: "Single-origin pour-overs, house-baked croissants and fast Wi-Fi for remote work.", lat: 15.5440, lng: 73.7625, address: "Calangute Market Rd", rating: 4.4, priceLevel: 2, tags: ["coffee", "wifi", "breakfast", "work-friendly"] },
+    { name: "Anjuna Flea Market", category: "shopping", description: "Sprawling Wednesday market — boho fashion, spices, jewellery and street food.", lat: 15.5735, lng: 73.7440, address: "Anjuna, Goa", rating: 4.2, priceLevel: 1, tags: ["market", "souvenirs", "budget", "local"] },
+    { name: "Mandovi Sunset Cruise", category: "outdoors", description: "Two-hour river cruise with live folk music, dinner and a dolphin-spotting deck.", lat: 15.4990, lng: 73.8275, address: "Panjim Jetty", rating: 4.3, priceLevel: 3, tags: ["cruise", "sunset", "family", "dinner"] },
+    { name: "Spice Route Plantation", category: "attraction", description: "Guided walk through a working spice farm with a traditional Goan thali lunch.", lat: 15.4200, lng: 74.0100, address: "Ponda, Goa", rating: 4.6, priceLevel: 2, tags: ["nature", "tour", "lunch", "family"] },
+    { name: "Tide & Table Seafood", category: "restaurant", description: "Catch-of-the-day grills, butter-garlic crab and a breezy beachfront deck.", lat: 15.5210, lng: 73.7635, address: "Sinquerim Beach, Goa", rating: 4.5, priceLevel: 3, tags: ["seafood", "beachfront", "dinner", "fresh"] },
+    { name: "Calangute Surf Co.", category: "outdoors", description: "Beginner-friendly surf and SUP lessons, board hire and a chill shack café.", lat: 15.5400, lng: 73.7585, address: "Calangute Beach", rating: 4.4, priceLevel: 2, tags: ["surfing", "activity", "adventure", "lessons"] },
+    { name: "Casa Branca Boutique Stay", category: "hotel", description: "Whitewashed Portuguese villa with a plunge pool and complimentary scooters.", lat: 15.5470, lng: 73.7660, address: "Saunta Vaddo, Calangute", rating: 4.7, priceLevel: 3, tags: ["boutique", "pool", "quiet", "romantic"] },
+    { name: "Goa Wellness Ayurveda", category: "service", description: "Walk-in Ayurvedic massage, yoga drop-ins and physiotherapy by the beach.", lat: 15.5365, lng: 73.7700, address: "Gauravaddo, Calangute", rating: 4.3, priceLevel: 2, tags: ["spa", "wellness", "yoga", "relax"] },
+    { name: "Night Bazaar Arpora", category: "nightlife", description: "Saturday-night bazaar — global street food, live bands and craft stalls.", lat: 15.5790, lng: 73.7610, address: "Arpora Hill, Goa", rating: 4.1, priceLevel: 1, tags: ["market", "street food", "live music", "nightlife"] },
+  ];
+  for (const p of places) {
+    await prisma.place.create({
+      data: {
+        tenantId: hotel.id,
+        name: p.name,
+        category: p.category,
+        description: p.description,
+        lat: p.lat,
+        lng: p.lng,
+        address: p.address,
+        rating: p.rating,
+        priceLevel: p.priceLevel,
+        tags: p.tags,
+        website: p.website ?? null,
+        phone: p.phone ?? null,
+        goldenTier: p.goldenTier ?? null,
+        goldenUntil: p.goldenTier ? goldenSoon : null,
+      },
+    });
+  }
+  console.log(`✓ Seeded ${places.length} Discover places (${places.filter((p) => p.goldenTier).length} golden).`);
 
   console.log("✓ Seed complete — The Riviera hotel loaded with full demo data.");
 }

@@ -20,6 +20,8 @@ export const PERMISSIONS = {
   VIEW_RESEARCH:       "view_research",
   RUN_RESEARCH:        "run_research",
   MANAGE_RESEARCH:     "manage_research",
+  VIEW_PLACES:         "view_places",
+  MANAGE_PLACES:       "manage_places",
   IMPERSONATE_USERS:   "impersonate_users",
 } as const;
 
@@ -47,6 +49,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "view_research",
     "run_research",
     "manage_research",
+    "view_places",
+    "manage_places",
   ],
   supervisor: [
     "view_reports",
@@ -61,9 +65,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "view_research",
     "run_research",
     "manage_research",
+    "view_places",
+    "manage_places",
   ],
-  agent:  ["view_requests", "manage_requests", "view_guests", "view_crm", "manage_crm", "view_research", "run_research"],
-  viewer: ["view_reports",  "view_requests",   "view_guests", "view_crm", "view_research"],
+  agent:  ["view_requests", "manage_requests", "view_guests", "view_crm", "manage_crm", "view_research", "run_research", "view_places"],
+  viewer: ["view_reports",  "view_requests",   "view_guests", "view_crm", "view_research", "view_places"],
 };
 
 // Old UserRole → new Role.key (for loading permissions from legacy JWT role)
