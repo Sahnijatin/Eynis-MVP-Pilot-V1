@@ -217,6 +217,42 @@ test("busy-export: rejected until accepted, then returns a CSV voucher at the se
   }
 });
 
+test("quotes/parse: no AI configured returns a clear note, not a crash", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const res = await fetch(base + "/quotes/parse", { method: "POST", headers: H, body: JSON.stringify({ text: "6-seater dining table, 1800x900mm sheesham top, 4 legs" }) });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { ok: boolean; lines: unknown[]; note?: string };
+    assert.equal(data.ok, true);
+    assert.equal(data.lines.length, 0);
+    assert.match(data.note ?? "", /not configured/i);
+  } finally {
+    await close();
+  }
+});
+
+test("quotes/parse provider selection: an OpenAI-only tenant chooses OpenAI (not Claude)", async () => {
+  // This is the fix's core: the route resolves per-tenant credentials and picks the
+  // provider via chooseProvider — so a tenant with only an OpenAI key (via Integrations)
+  // uses OpenAI, instead of the old code wrongly preferring Claude when any Anthropic
+  // key exists. Asserted at the credential layer (no network).
+  const { tenantId, close } = await setup();
+  try {
+    const { resolveAiCredentials, chooseProvider, providerKey } = await import("../research/ai-credentials");
+    await prisma.connectorConfig.create({
+      data: { tenantId, connectorKey: "ai_openai", enabled: true, configJson: JSON.stringify({ apiKey: "sk-test-openai-only" }) },
+    });
+    const creds = await resolveAiCredentials(tenantId);
+    assert.equal(creds.openaiKey, "sk-test-openai-only");
+    assert.equal(creds.anthropicKey, null); // no anthropic env/connector in the test env
+    const provider = chooseProvider(creds);
+    assert.equal(provider, "openai");
+    assert.equal(providerKey(creds, provider), "sk-test-openai-only");
+  } finally {
+    await close();
+  }
+});
+
 test("quotes are tenant-isolated", async () => {
   const a = await setup();
   const b = await setup();

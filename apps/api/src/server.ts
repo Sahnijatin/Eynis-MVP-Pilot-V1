@@ -54,7 +54,7 @@ import { listTemplates, getTemplateDetail, loadTemplateForRun } from "./core/res
 import { validateTemplateDef, RESEARCH_SOURCE_CATALOG, SUBJECT_TYPES, SECTION_OUTPUTS, type SubjectType } from "./core/research/types";
 import { isBuiltinId } from "./core/research/templates";
 import { searchProvidersAvailable } from "./core/research/sources/search";
-import { resolveAiCredentials, aiConfigured } from "./core/research/ai-credentials";
+import { resolveAiCredentials, aiConfigured, chooseProvider, providerKey } from "./core/research/ai-credentials";
 import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
@@ -4219,14 +4219,21 @@ const handleRequest = async (
       const body = (await parseBody(req)) as Record<string, unknown>;
       const text = asTrimmedString(body.text);
       if (!text) { json(res, 400, { ok: false, error: "text is required" }); return; }
-      if (!AI_AVAILABLE) { json(res, 200, { ok: true, lines: [], note: "AI is not configured; enter line items manually." }); return; }
+      // Resolve the tenant's AI credentials (Integrations key → env fallback) and pick
+      // the provider the same way Research Studio does — so this works OpenAI-only and
+      // honours RESEARCH_AI_PROVIDER, instead of wrongly preferring Claude whenever any
+      // Anthropic key is present (which surfaced as a misleading "Could not parse").
+      const creds = await resolveAiCredentials(auth.context.tenantId);
+      if (!aiConfigured(creds)) { json(res, 200, { ok: true, lines: [], note: "AI is not configured; add an OpenAI or Anthropic key under Integrations, or enter line items manually." }); return; }
+      const provider = chooseProvider(creds);
+      const apiKey = providerKey(creds, provider) ?? undefined;
       const system = "You extract furniture/manufacturing quote line items from a free-text description. " +
         "Return ONLY JSON: {\"lines\":[{\"groupName\":string,\"name\":string,\"kind\":\"material|labor|hardware|finish|other\"," +
         "\"costBasis\":\"area|length|perimeter|volume|fixed|hours\",\"lengthMm\":number|null,\"widthMm\":number|null," +
         "\"heightMm\":number|null,\"quantity\":number,\"materialUnit\":string}]}. Convert any dimensions to millimetres. " +
         "A flat panel/top is costBasis \"area\"; a leg/rail is \"length\"; hardware/fixed items are \"fixed\". Do not invent prices.";
       try {
-        const raw = await aiCompleteTiered(text, { tier: "cheap", maxTokens: 1200, system, provider: CLAUDE_AVAILABLE ? "claude" : "openai" });
+        const raw = await aiCompleteTiered(text, { tier: "cheap", maxTokens: 1200, system, provider, apiKey });
         const parsed = extractJson(raw) as { lines?: unknown[] } | null;
         const out = Array.isArray(parsed?.lines) ? parsed!.lines : [];
         // Clamp everything server-side — never trust AI numbers directly.
@@ -4245,9 +4252,14 @@ const handleRequest = async (
             unitRatePaise: 0,
           };
         });
-        json(res, 200, { ok: true, lines });
-      } catch {
-        json(res, 200, { ok: true, lines: [], note: "Could not parse; enter line items manually." });
+        // Distinguish "the model replied but we couldn't extract items" from a hard failure.
+        const note = lines.length === 0 ? "The AI could not extract line items from that description — try adding dimensions, or enter them manually." : undefined;
+        json(res, 200, { ok: true, lines, ...(note ? { note } : {}) });
+      } catch (err) {
+        // Log the real reason server-side (key invalid, model access, network) — never
+        // leak provider error text to the client.
+        console.warn(`[quotes/parse] AI request failed (provider=${provider}):`, err instanceof Error ? err.message : err);
+        json(res, 200, { ok: true, lines: [], note: `AI request failed (${provider}). Check the ${provider === "openai" ? "OpenAI" : "Anthropic"} key in Integrations, or enter line items manually.` });
       }
       return;
     }
