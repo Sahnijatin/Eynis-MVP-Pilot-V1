@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
+import { Prisma } from "@prisma/client";
 import type { UserRole, SystemRoleKey } from "@eynis/shared";
 import { isValidConsentSource, CONNECTOR_CATALOG, CONNECTOR_CATEGORY_LABELS, connectorEnvFlag } from "@eynis/shared";
 import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured } from "./core/auth";
@@ -17,6 +18,8 @@ import {
   generateSmartInsights,
   generateRevenueInsights,
   generateNightAuditReport,
+  aiCompleteTiered,
+  extractJson,
   AiResponseError,
   type NightAuditData
 } from "./core/ai/intelligence";
@@ -24,6 +27,7 @@ import { startAutomationWorker } from "./core/automations/engine";
 import { computeSentimentAnalytics } from "./core/analytics/sentiment";
 import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
+import * as quotes from "./core/quotes/service";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -153,6 +157,22 @@ const asSafeOffset = (value: string | null) => {
     return 0;
   }
   return parsed;
+};
+// Coerce a JSON body value to a finite integer (mm/paise) or null; and to an
+// optional finite number (undefined = "leave default"). Used by the quote routes.
+const numOrNull = (v: unknown): number | null => {
+  const n = Number(v);
+  return v !== null && v !== undefined && v !== "" && Number.isFinite(n) ? Math.round(n) : null;
+};
+const numUndef = (v: unknown): number | undefined => {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+const dateOrNull = (v: unknown): Date | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const d = new Date(v as string);
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
 // Parse a from/to reporting window from the query string (E-15). Returns null
@@ -664,6 +684,28 @@ const permissionMap: Record<string, Permission | null> = {
   "GET /deals/suggestions":               "view_crm",
   "POST /deals/suggestions/:id/accept":   "manage_crm",
   "POST /deals/suggestions/:id/dismiss":  "manage_crm",
+  // Quoting + component-based costing (furniture/manufacturing). Reuses CRM perms.
+  "GET /quote-templates":                 "view_crm",
+  "POST /quote-templates":                "manage_crm",
+  "GET /quote-templates/:id":             "view_crm",
+  "PATCH /quote-templates/:id":           "manage_crm",
+  "DELETE /quote-templates/:id":          "manage_crm",
+  "GET /quotes":                          "view_crm",
+  "POST /quotes":                         "manage_crm",
+  "POST /quotes/calc":                    "view_crm",
+  "POST /quotes/parse":                   "view_crm",
+  "GET /quotes/:id":                      "view_crm",
+  "PATCH /quotes/:id":                    "manage_crm",
+  "DELETE /quotes/:id":                   "manage_crm",
+  "POST /quotes/:id/lines":               "manage_crm",
+  "PATCH /quotes/:id/lines/:lineId":      "manage_crm",
+  "DELETE /quotes/:id/lines/:lineId":     "manage_crm",
+  "POST /quotes/:id/send":                "manage_crm",
+  "POST /quotes/:id/accept":              "manage_crm",
+  "POST /quotes/:id/reject":              "manage_crm",
+  "POST /quotes/:id/expire":              "manage_crm",
+  "GET /quotes/:id/pdf":                  "view_crm",
+  "GET /quotes/:id/busy-export":          "manage_crm",
 };
 
 const canAccess = (permissions: string[], key: string): boolean => {
@@ -4084,6 +4126,347 @@ const handleRequest = async (
       if (!removed) { json(res, 404, { ok: false, error: "Item not found" }); return; }
       json(res, 200, { ok: true });
       return;
+    }
+
+    // ── Quoting + component-based costing (furniture/manufacturing) ───────────
+    // A quote is a bill of materials: line items (components) costed by dimension ×
+    // rate + labor, rolled up with overhead + margin. Sent quotes are immutable
+    // (rates snapshotted at add-time; edits rejected once status leaves "draft").
+
+    // Quote templates (reusable presets, e.g. "Dining Table").
+    if (req.url === "/quote-templates" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /quote-templates");
+      if (!auth.ok) return;
+      json(res, 200, { ok: true, items: await quotes.listTemplates(auth.context.tenantId) });
+      return;
+    }
+    if (req.url === "/quote-templates" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /quote-templates");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const name = asTrimmedString(body.name);
+      if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+      try {
+        const tpl = await quotes.createTemplate(auth.context.tenantId, { ...body, name } as unknown as quotes.TemplatePayload);
+        json(res, 200, { ok: true, template: tpl });
+      } catch (e) {
+        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid template" });
+      }
+      return;
+    }
+    const tplMatch = /^\/quote-templates\/([^/]+)$/.exec(req.url ?? "");
+    if (tplMatch && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /quote-templates/:id");
+      if (!auth.ok) return;
+      const tpl = await quotes.getTemplate(auth.context.tenantId, tplMatch[1]);
+      if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+      json(res, 200, { ok: true, template: tpl });
+      return;
+    }
+    if (tplMatch && req.method === "PATCH") {
+      const auth = await authorize(req, res, "PATCH /quote-templates/:id");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const tpl = await quotes.updateTemplate(auth.context.tenantId, tplMatch[1], body as unknown as quotes.TemplatePayload);
+      if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+      json(res, 200, { ok: true, template: tpl });
+      return;
+    }
+    if (tplMatch && req.method === "DELETE") {
+      const auth = await authorize(req, res, "DELETE /quote-templates/:id");
+      if (!auth.ok) return;
+      const ok = await quotes.deleteTemplate(auth.context.tenantId, tplMatch[1]);
+      if (!ok) { json(res, 404, { ok: false, error: "Template not found" }); return; }
+      json(res, 200, { ok: true });
+      return;
+    }
+
+    // Live cost preview — no persistence. Powers the "as you type" builder totals.
+    if (req.url === "/quotes/calc" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /quotes/calc");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const lines = Array.isArray(body.lines) ? (body.lines as Record<string, unknown>[]) : [];
+      const costingMod = await import("./core/quotes/costing");
+      const preview = costingMod.priceQuote(
+        lines.map((l) => ({
+          costBasis: quotes.normalizeBasis(l.costBasis),
+          lengthMm: numOrNull(l.lengthMm),
+          widthMm: numOrNull(l.widthMm),
+          heightMm: numOrNull(l.heightMm),
+          quantity: Number(l.quantity) || 1,
+          unitRatePaise: Math.max(0, Math.round(Number(l.unitRatePaise) || 0)),
+          wastagePct: Math.max(0, Number(l.wastagePct) || 0),
+          laborHours: Math.max(0, Number(l.laborHours) || 0),
+          laborRatePaise: Math.max(0, Math.round(Number(l.laborRatePaise) || 0)),
+        })),
+        {
+          overheadPct: Number(body.overheadPct) || 0,
+          marginPct: Number(body.marginPct) || 0,
+          marginFloorPct: Number(body.marginFloorPct) || 0,
+          discountPaise: Math.max(0, Math.round(Number(body.discountPaise) || 0)),
+        },
+      );
+      json(res, 200, { ok: true, preview });
+      return;
+    }
+
+    // AI-assist: free text → draft line items (reviewed by a human before saving).
+    if (req.url === "/quotes/parse" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /quotes/parse");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const text = asTrimmedString(body.text);
+      if (!text) { json(res, 400, { ok: false, error: "text is required" }); return; }
+      if (!AI_AVAILABLE) { json(res, 200, { ok: true, lines: [], note: "AI is not configured; enter line items manually." }); return; }
+      const system = "You extract furniture/manufacturing quote line items from a free-text description. " +
+        "Return ONLY JSON: {\"lines\":[{\"groupName\":string,\"name\":string,\"kind\":\"material|labor|hardware|finish|other\"," +
+        "\"costBasis\":\"area|length|perimeter|volume|fixed|hours\",\"lengthMm\":number|null,\"widthMm\":number|null," +
+        "\"heightMm\":number|null,\"quantity\":number,\"materialUnit\":string}]}. Convert any dimensions to millimetres. " +
+        "A flat panel/top is costBasis \"area\"; a leg/rail is \"length\"; hardware/fixed items are \"fixed\". Do not invent prices.";
+      try {
+        const raw = await aiCompleteTiered(text, { tier: "cheap", maxTokens: 1200, system, provider: CLAUDE_AVAILABLE ? "claude" : "openai" });
+        const parsed = extractJson(raw) as { lines?: unknown[] } | null;
+        const out = Array.isArray(parsed?.lines) ? parsed!.lines : [];
+        // Clamp everything server-side — never trust AI numbers directly.
+        const lines = out.slice(0, 40).map((l) => {
+          const o = (l ?? {}) as Record<string, unknown>;
+          return {
+            groupName: asTrimmedString(o.groupName) ?? "General",
+            name: asTrimmedString(o.name) ?? "Component",
+            kind: quotes.normalizeKind(o.kind),
+            costBasis: quotes.normalizeBasis(o.costBasis),
+            lengthMm: numOrNull(o.lengthMm),
+            widthMm: numOrNull(o.widthMm),
+            heightMm: numOrNull(o.heightMm),
+            quantity: Math.max(0, Number(o.quantity) || 1),
+            materialUnit: asTrimmedString(o.materialUnit) ?? "sqft",
+            unitRatePaise: 0,
+          };
+        });
+        json(res, 200, { ok: true, lines });
+      } catch {
+        json(res, 200, { ok: true, lines: [], note: "Could not parse; enter line items manually." });
+      }
+      return;
+    }
+
+    if (req.url?.startsWith("/quotes") && parseUrl(req.url).pathname === "/quotes" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /quotes");
+      if (!auth.ok) return;
+      const qs = parseUrl(req.url).searchParams;
+      const limit = asSafeLimit(qs.get("limit"), 50, 200);
+      const offset = asSafeOffset(qs.get("offset"));
+      const { items, total } = await quotes.listQuotes(auth.context.tenantId, {
+        status: asTrimmedString(qs.get("status")) ?? undefined,
+        contactId: asTrimmedString(qs.get("contactId")) ?? undefined,
+        dealId: asTrimmedString(qs.get("dealId")) ?? undefined,
+        limit, offset,
+      });
+      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
+      return;
+    }
+    if (req.url === "/quotes" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /quotes");
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const title = asTrimmedString(body.title);
+      if (!title) { json(res, 400, { ok: false, error: "title is required" }); return; }
+      try {
+        const quote = await quotes.createQuote(auth.context.tenantId, {
+          title,
+          contactId: asTrimmedString(body.contactId),
+          companyId: asTrimmedString(body.companyId),
+          dealId: asTrimmedString(body.dealId),
+          templateId: asTrimmedString(body.templateId),
+          overheadPct: numUndef(body.overheadPct),
+          marginPct: numUndef(body.marginPct),
+          marginFloorPct: numUndef(body.marginFloorPct),
+          discountPaise: numUndef(body.discountPaise),
+          validUntil: dateOrNull(body.validUntil),
+          notes: asTrimmedString(body.notes),
+          terms: asTrimmedString(body.terms),
+          createdById: auth.context.userId,
+          lines: Array.isArray(body.lines) ? (body.lines as quotes.LineInputPayload[]) : undefined,
+        });
+        json(res, 200, { ok: true, quote });
+      } catch (e) {
+        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid quote" });
+      }
+      return;
+    }
+
+    // Sub-routes: /quotes/:id[/lines[/:lineId]|/send|/accept|/reject|/expire|/pdf|/busy-export]
+    const quoteMatch = /^\/quotes\/([^/]+)(?:\/(lines|send|accept|reject|expire|pdf|busy-export))?(?:\/([^/]+))?$/.exec(
+      parseUrl(req.url ?? "").pathname,
+    );
+    if (quoteMatch) {
+      const quoteId = quoteMatch[1];
+      const sub = quoteMatch[2];
+      const subId = quoteMatch[3];
+
+      // GET /quotes/:id
+      if (!sub && req.method === "GET") {
+        const auth = await authorize(req, res, "GET /quotes/:id");
+        if (!auth.ok) return;
+        const quote = await quotes.getQuote(auth.context.tenantId, quoteId);
+        if (!quote) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // PATCH /quotes/:id (draft only)
+      if (!sub && req.method === "PATCH") {
+        const auth = await authorize(req, res, "PATCH /quotes/:id");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const fields: Record<string, unknown> = {};
+        const t = asTrimmedString(body.title); if (t) fields.title = t;
+        if (body.contactId !== undefined) fields.contactId = asTrimmedString(body.contactId);
+        if (body.companyId !== undefined) fields.companyId = asTrimmedString(body.companyId);
+        if (body.dealId !== undefined) fields.dealId = asTrimmedString(body.dealId);
+        if (body.overheadPct !== undefined) fields.overheadPct = Number(body.overheadPct) || 0;
+        if (body.marginPct !== undefined) fields.marginPct = Number(body.marginPct) || 0;
+        if (body.marginFloorPct !== undefined) fields.marginFloorPct = Number(body.marginFloorPct) || 0;
+        if (body.discountPaise !== undefined) fields.discountPaise = Math.max(0, Math.round(Number(body.discountPaise) || 0));
+        if (body.validUntil !== undefined) fields.validUntil = dateOrNull(body.validUntil);
+        if (body.notes !== undefined) fields.notes = asTrimmedString(body.notes);
+        if (body.terms !== undefined) fields.terms = asTrimmedString(body.terms);
+        const quote = await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // DELETE /quotes/:id (draft only)
+      if (!sub && req.method === "DELETE") {
+        const auth = await authorize(req, res, "DELETE /quotes/:id");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be deleted" }); return; }
+        await quotes.deleteQuote(auth.context.tenantId, quoteId);
+        json(res, 200, { ok: true });
+        return;
+      }
+      // POST /quotes/:id/lines (draft only)
+      if (sub === "lines" && !subId && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /quotes/:id/lines");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const name = asTrimmedString(body.name);
+        if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
+        const quote = await quotes.addLine(auth.context.tenantId, quoteId, { ...body, name } as unknown as quotes.LineInputPayload);
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // PATCH /quotes/:id/lines/:lineId (draft only)
+      if (sub === "lines" && subId && req.method === "PATCH") {
+        const auth = await authorize(req, res, "PATCH /quotes/:id/lines/:lineId");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const quote = await quotes.updateLine(auth.context.tenantId, quoteId, subId, body as unknown as quotes.LineInputPayload);
+        if (!quote) { json(res, 404, { ok: false, error: "Line not found" }); return; }
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // DELETE /quotes/:id/lines/:lineId (draft only)
+      if (sub === "lines" && subId && req.method === "DELETE") {
+        const auth = await authorize(req, res, "DELETE /quotes/:id/lines/:lineId");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
+        const quote = await quotes.deleteLine(auth.context.tenantId, quoteId, subId);
+        if (!quote) { json(res, 404, { ok: false, error: "Line not found" }); return; }
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // POST /quotes/:id/send — enforce margin floor, freeze, then follow-up (M3).
+      if (sub === "send" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /quotes/:id/send");
+        if (!auth.ok) return;
+        const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
+        if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (floor.status !== "draft") { json(res, 409, { ok: false, error: `Quote is already ${floor.status}` }); return; }
+        if (!floor.hasLines) { json(res, 422, { ok: false, error: "Quote has no line items" }); return; }
+        if (floor.floorViolation) {
+          json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
+          return;
+        }
+        const quote = await quotes.markSent(auth.context.tenantId, quoteId);
+        // M3 hook (follow-up enrollment) is wired here in the next milestone.
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // POST /quotes/:id/accept — enforce floor, commit price to the linked Deal.
+      if (sub === "accept" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /quotes/:id/accept");
+        if (!auth.ok) return;
+        const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
+        if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (floor.status === "accepted") { json(res, 409, { ok: false, error: "Quote is already accepted" }); return; }
+        if (floor.floorViolation) {
+          json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
+          return;
+        }
+        const quote = await quotes.markAccepted(auth.context.tenantId, quoteId);
+        // Commit the accepted total to the linked Deal (paise → Decimal rupees).
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (raw?.dealId) {
+          const deal = await prisma.deal.findFirst({ where: { id: raw.dealId, tenantId: auth.context.tenantId }, select: { id: true } });
+          if (deal) {
+            await prisma.deal.update({ where: { id: deal.id }, data: { value: new Prisma.Decimal((raw.totalPaise / 100).toFixed(2)) } });
+          }
+        }
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // POST /quotes/:id/reject
+      if (sub === "reject" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /quotes/:id/reject");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        const body = (await parseBody(req)) as Record<string, unknown>;
+        const quote = await quotes.markRejected(auth.context.tenantId, quoteId, asTrimmedString(body.reason));
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // POST /quotes/:id/expire
+      if (sub === "expire" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /quotes/:id/expire");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        const quote = await quotes.markExpired(auth.context.tenantId, quoteId);
+        json(res, 200, { ok: true, quote });
+        return;
+      }
+      // GET /quotes/:id/pdf — branded quote PDF (reuses renderBrandedReportPdf).
+      if (sub === "pdf" && req.method === "GET") {
+        const auth = await authorize(req, res, "GET /quotes/:id/pdf");
+        if (!auth.ok) return;
+        const quote = await quotes.getQuote(auth.context.tenantId, quoteId);
+        if (!quote) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        const brand = await loadReportBrand(auth.context.tenantId);
+        const blocks = quotes.quotePdfBlocks(quote);
+        const pdf = await renderBrandedReportPdf(brand, {
+          title: `Quote ${String(quote.number)}`,
+          subtitle: String(quote.title),
+          generatedAt: new Date(),
+          blocks,
+        });
+        sendBinary(res, "application/pdf", pdf, `quote-${quote.number}.pdf`);
+        return;
+      }
+      // GET /quotes/:id/busy-export — wired in M4.
     }
 
     // ── AI: Provider Status ─────────────────────────────────────────────────
