@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, Download, Send, CheckCircle, Sparkles, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Download, Send, CheckCircle, Sparkles, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { Button, Modal, Field, Input, Select, Badge, PageHeader, Card, useToast } from "../ds";
 import type { Quote, QuoteTemplate, InventoryItem } from "../../lib/data";
 
@@ -113,7 +113,12 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
                       <Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /></Button>
                     </a>{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "send")}><Send className="w-3.5 h-3.5" /> Send</Button>}{" "}
-                    {(q.status === "sent" || q.status === "draft") && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}
+                    {(q.status === "sent" || q.status === "draft") && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}{" "}
+                    {q.status === "accepted" && (
+                      <a href={`/api/quotes/${q.id}/busy-export?format=csv`} target="_blank" rel="noreferrer" title="Export a BUSY-ready sales voucher (import via Administration → Import Voucher)">
+                        <Button variant="secondary" size="sm"><FileSpreadsheet className="w-3.5 h-3.5" /> Busy</Button>
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))}

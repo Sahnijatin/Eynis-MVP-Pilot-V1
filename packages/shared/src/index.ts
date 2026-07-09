@@ -97,7 +97,7 @@ export const isValidConsentSource = (source: string): source is ConsentSource =>
 // when the per-tenant status call is unavailable; the API overlays env flags and
 // per-tenant config/status at request time.
 
-export type ConnectorCategory = "communication" | "email" | "voice" | "pms" | "pos" | "payments" | "search" | "ai";
+export type ConnectorCategory = "communication" | "email" | "voice" | "pms" | "pos" | "payments" | "search" | "ai" | "accounting";
 
 export interface ConnectorField {
   key: string;
@@ -127,6 +127,7 @@ export const CONNECTOR_CATEGORY_LABELS: Record<ConnectorCategory, string> = {
   payments: "Payments",
   search: "Search",
   ai: "AI",
+  accounting: "Accounting",
 };
 
 // The env flag that gates a connector's default availability, derived from its key
@@ -207,5 +208,15 @@ export const CONNECTOR_CATALOG: ConnectorCatalogItem[] = [
     description: "Use your own Anthropic (Claude) key for AI features. Falls back to the platform key if unset.",
     icon: "🧠", brandColor: "#d97757", planned: false, ingestModes: ["api"],
     requiredFields: [{ key: "apiKey", label: "Anthropic API Key", secret: true, placeholder: "sk-ant-..." }],
+  },
+  {
+    key: "accounting_busy", category: "accounting", name: "BUSY Accounting",
+    description: "Export accepted quotes as a BUSY-ready sales voucher (Excel/XML) to import in Administration → Import Voucher. Set your GST + voucher defaults here.",
+    icon: "🧾", brandColor: "#1e3a8a", planned: false, ingestModes: ["file_export"],
+    requiredFields: [
+      { key: "voucherSeries", label: "Voucher Series", placeholder: "Main" },
+      { key: "salesLedger", label: "Sales Ledger Name", placeholder: "Sales" },
+      { key: "gstPercent", label: "GST %", placeholder: "18" },
+    ],
   },
 ];

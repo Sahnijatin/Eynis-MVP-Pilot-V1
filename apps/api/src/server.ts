@@ -4477,7 +4477,34 @@ const handleRequest = async (
         sendBinary(res, "application/pdf", pdf, `quote-${quote.number}.pdf`);
         return;
       }
-      // GET /quotes/:id/busy-export — wired in M4.
+      // GET /quotes/:id/busy-export?format=csv|xml — BUSY-ready sales voucher for an
+      // accepted quote (Administration → Import Voucher). File export, no live sync.
+      if (sub === "busy-export" && req.method === "GET") {
+        const auth = await authorize(req, res, "GET /quotes/:id/busy-export");
+        if (!auth.ok) return;
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (raw.status !== "accepted") { json(res, 409, { ok: false, error: "Only accepted quotes can be exported to BUSY" }); return; }
+        const format = (parseUrl(req.url).searchParams.get("format") ?? "csv").toLowerCase();
+        const busy = await import("./core/connectors/busy");
+        const config = await busy.resolveBusyConfig(auth.context.tenantId);
+        // Party name: linked company, else contact, else the quote title.
+        let partyName = raw.title;
+        if (raw.companyId) {
+          const c = await prisma.company.findFirst({ where: { id: raw.companyId, tenantId: auth.context.tenantId }, select: { name: true } });
+          if (c) partyName = c.name;
+        } else if (raw.contactId) {
+          const c = await prisma.contact.findFirst({ where: { id: raw.contactId, tenantId: auth.context.tenantId }, select: { fullName: true } });
+          if (c) partyName = c.fullName;
+        }
+        const q = { number: raw.number, title: raw.title, acceptedAt: raw.acceptedAt, totalPaise: raw.totalPaise, lineItems: raw.lineItems.map((l) => ({ groupName: l.groupName, lineCostPaise: l.lineCostPaise })) };
+        if (format === "xml") {
+          sendDoc(res, "application/xml; charset=utf-8", busy.buildBusyXml(q, config, partyName), `busy-voucher-${raw.number}.xml`);
+        } else {
+          sendDoc(res, "text/csv; charset=utf-8", busy.buildBusyCsv(q, config, partyName), `busy-voucher-${raw.number}.csv`);
+        }
+        return;
+      }
     }
 
     // ── AI: Provider Status ─────────────────────────────────────────────────

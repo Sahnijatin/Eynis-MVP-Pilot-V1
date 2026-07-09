@@ -6,8 +6,14 @@ import { prisma } from "../../db/prisma";
 
 const uid = () => "qtest-" + Date.now() + "-" + Math.random().toString(16).slice(2, 8);
 
+// Track created tenants so we can tear them down — the sequence-runner processes
+// due enrollments GLOBALLY, so a leftover enrollment from this suite would pollute
+// that test's counts. Deleting the tenant cascades to quotes/leads/enrollments.
+const createdTenants: string[] = [];
+
 async function setup() {
   const tenantId = uid();
+  createdTenants.push(tenantId);
   await prisma.tenant.create({ data: { id: tenantId, name: "Quote Co " + tenantId.slice(-4), timezone: "Asia/Kolkata" } });
   await prisma.license.create({ data: { tenantId, plan: "growth", maxSeats: 25 } });
   const email = `owner-${tenantId}@example.com`;
@@ -28,7 +34,13 @@ async function setup() {
   return { tenantId, base, H, close };
 }
 
-after(async () => { await prisma.$disconnect(); });
+after(async () => {
+  // Cascade-delete every tenant this suite created so no enrollments linger for the
+  // global sequence-runner. Also sweep any older 'qtest-' pollution from prior runs.
+  for (const id of createdTenants) await prisma.tenant.deleteMany({ where: { id } });
+  await prisma.tenant.deleteMany({ where: { id: { startsWith: "qtest-" } } });
+  await prisma.$disconnect();
+});
 
 test("quote lifecycle: template → quote → calc → floor guard → send → immutability → accept → deal + pdf", async () => {
   const { tenantId, base, H, close } = await setup();
@@ -133,7 +145,9 @@ test("sending a quote logs a follow-up task and enrolls the contact when a seque
     // A contact + an active "Quote follow-up" sequence with one WhatsApp step.
     const contact = await prisma.contact.create({ data: { tenantId, fullName: "Asha Rao", phoneE164: "+919812300011", email: "asha@example.com" } });
     const seq = await prisma.sequence.create({ data: { tenantId, name: "Quote follow-up", status: "active" } });
-    await prisma.sequenceStep.create({ data: { sequenceId: seq.id, order: 0, waitMinutes: 0, channel: "whatsapp", whatsappContentSid: "HXtest" } });
+    // waitMinutes > 0 → the enrollment's first run is in the future, so it is never
+    // "due" and cannot be picked up (and counted) by the global sequence-runner test.
+    await prisma.sequenceStep.create({ data: { sequenceId: seq.id, order: 0, waitMinutes: 60, channel: "whatsapp", whatsappContentSid: "HXtest" } });
 
     // A quote for that contact with one fixed line, healthy margin.
     const qRes = await fetch(base + "/quotes", {
@@ -157,6 +171,47 @@ test("sending a quote logs a follow-up task and enrolls the contact when a seque
     // Idempotent: re-sending an already-sent quote is rejected (409), no double work.
     const resend = await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
     assert.equal(resend.status, 409);
+  } finally {
+    await close();
+  }
+});
+
+test("busy-export: rejected until accepted, then returns a CSV voucher at the selling price", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const qRes = await fetch(base + "/quotes", {
+      method: "POST", headers: H,
+      body: JSON.stringify({ title: "Office Desk", marginPct: 60, marginFloorPct: 20, lines: [
+        { name: "Desk top", groupName: "Office Desk", costBasis: "fixed", quantity: 1, unitRatePaise: 4000000 },
+        { name: "Legs", groupName: "Office Desk", costBasis: "fixed", quantity: 4, unitRatePaise: 200000 },
+      ] }),
+    });
+    const { quote } = (await qRes.json()) as { quote: { id: string; totalPaise: number } };
+
+    // Not accepted yet → 409.
+    const early = await fetch(base + `/quotes/${quote.id}/busy-export`, { headers: H });
+    assert.equal(early.status, 409);
+
+    await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
+    await fetch(base + `/quotes/${quote.id}/accept`, { method: "POST", headers: H });
+
+    const csvRes = await fetch(base + `/quotes/${quote.id}/busy-export?format=csv`, { headers: H });
+    assert.equal(csvRes.status, 200);
+    assert.match(csvRes.headers.get("content-type") ?? "", /text\/csv/);
+    const csv = await csvRes.text();
+    assert.match(csv, /Date,VoucherType,Series,PartyName/); // header
+    assert.match(csv, /Sales/);
+    // The voucher lines sum to the quote's selling price (ex-GST), not the cost.
+    const amounts = csv.trim().split(/\r?\n/).slice(1).map((r) => Number(r.split(",")[9]));
+    const sumPaise = Math.round(amounts.reduce((s, a) => s + a, 0) * 100);
+    assert.equal(sumPaise, quote.totalPaise);
+
+    // XML variant is well-formed and carries the grand total.
+    const xmlRes = await fetch(base + `/quotes/${quote.id}/busy-export?format=xml`, { headers: H });
+    assert.equal(xmlRes.status, 200);
+    const xml = await xmlRes.text();
+    assert.match(xml, /<BusyImport>/);
+    assert.match(xml, /<GrandTotal>/);
   } finally {
     await close();
   }
