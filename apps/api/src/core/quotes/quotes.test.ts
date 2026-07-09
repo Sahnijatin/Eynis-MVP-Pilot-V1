@@ -127,6 +127,41 @@ test("quote lifecycle: template → quote → calc → floor guard → send → 
   }
 });
 
+test("sending a quote logs a follow-up task and enrolls the contact when a sequence exists", async () => {
+  const { tenantId, base, H, close } = await setup();
+  try {
+    // A contact + an active "Quote follow-up" sequence with one WhatsApp step.
+    const contact = await prisma.contact.create({ data: { tenantId, fullName: "Asha Rao", phoneE164: "+919812300011", email: "asha@example.com" } });
+    const seq = await prisma.sequence.create({ data: { tenantId, name: "Quote follow-up", status: "active" } });
+    await prisma.sequenceStep.create({ data: { sequenceId: seq.id, order: 0, waitMinutes: 0, channel: "whatsapp", whatsappContentSid: "HXtest" } });
+
+    // A quote for that contact with one fixed line, healthy margin.
+    const qRes = await fetch(base + "/quotes", {
+      method: "POST", headers: H,
+      body: JSON.stringify({ title: "Wardrobe", contactId: contact.id, marginPct: 60, marginFloorPct: 20, lines: [{ name: "Cabinet", costBasis: "fixed", quantity: 1, unitRatePaise: 5000000 }] }),
+    });
+    const { quote } = (await qRes.json()) as { quote: { id: string } };
+
+    const sendRes = await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
+    assert.equal(sendRes.status, 200);
+    const sent = (await sendRes.json()) as { ok: boolean; followup?: { activityLogged: boolean; enrolled: boolean } };
+    assert.ok(sent.followup?.activityLogged, "a follow-up task is logged");
+    assert.ok(sent.followup?.enrolled, "the contact is enrolled into the sequence");
+
+    // Verify persistence: a task activity + a sequence enrollment exist.
+    const task = await prisma.activity.findFirst({ where: { tenantId, contactId: contact.id, type: "task" } });
+    assert.ok(task, "follow-up task persisted");
+    const enrollment = await prisma.sequenceEnrollment.findFirst({ where: { tenantId, sequenceId: seq.id } });
+    assert.ok(enrollment, "enrollment persisted");
+
+    // Idempotent: re-sending an already-sent quote is rejected (409), no double work.
+    const resend = await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
+    assert.equal(resend.status, 409);
+  } finally {
+    await close();
+  }
+});
+
 test("quotes are tenant-isolated", async () => {
   const a = await setup();
   const b = await setup();

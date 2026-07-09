@@ -28,6 +28,7 @@ import { computeSentimentAnalytics } from "./core/analytics/sentiment";
 import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
+import type { FollowupResult } from "./core/quotes/followup";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -4401,8 +4402,18 @@ const handleRequest = async (
           return;
         }
         const quote = await quotes.markSent(auth.context.tenantId, quoteId);
-        // M3 hook (follow-up enrollment) is wired here in the next milestone.
-        json(res, 200, { ok: true, quote });
+        // Fire the multi-channel follow-up: log a CRM task and (if configured)
+        // enroll the contact into the drip sequence. Best-effort — never blocks send.
+        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        let followup: FollowupResult | undefined;
+        if (raw) {
+          const { runQuoteFollowup } = await import("./core/quotes/followup");
+          followup = await runQuoteFollowup(auth.context.tenantId, {
+            id: raw.id, number: raw.number, title: raw.title,
+            contactId: raw.contactId, dealId: raw.dealId, createdById: raw.createdById,
+          });
+        }
+        json(res, 200, { ok: true, quote, followup });
         return;
       }
       // POST /quotes/:id/accept — enforce floor, commit price to the linked Deal.
