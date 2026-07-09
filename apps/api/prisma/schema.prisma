@@ -69,6 +69,8 @@ model Tenant {
   researchRuns          ResearchRun[]
   researchSourceCaches  ResearchSourceCache[]
   researchSchedules     ResearchSchedule[]
+  quotes                Quote[]
+  quoteTemplates        QuoteTemplate[]
 
   @@map("Hotel")
 }
@@ -129,8 +131,8 @@ model TenantBranding {
   customCss     String? // sanitised custom CSS (E-9); white_label tier only
   supportEmail  String?
   hidePoweredBy Boolean  @default(false) // white_label tier only (see whitelabelTier)
-  brandEmails   Boolean  @default(true)  // artifact flag (E-9): brand outbound emails
-  brandReports  Boolean  @default(true)  // artifact flag (E-9): brand reports/exports
+  brandEmails   Boolean  @default(true) // artifact flag (E-9): brand outbound emails
+  brandReports  Boolean  @default(true) // artifact flag (E-9): brand reports/exports
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -143,47 +145,47 @@ model TenantBranding {
 // only uses this identity once `status = "verified"` (else it falls back to the
 // platform/connector identity so we never send from an unverified domain).
 model SendingDomain {
-  id             String   @id @default(cuid())
-  tenantId       String   @unique @map("hotelId")
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  tenantId       String    @unique @map("hotelId")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   domain         String // e.g. "mail.acme.com"
-  fromLocalPart  String   @default("notifications") // local part: <localPart>@<domain>
+  fromLocalPart  String    @default("notifications") // local part: <localPart>@<domain>
   fromName       String? // display name; falls back to brand/tenant name
   resendDomainId String? // provider (Resend) Domains API id
-  status         String   @default("pending") // pending | verified | failed
+  status         String    @default("pending") // pending | verified | failed
   dnsRecords     String? // JSON array of { type, name, value, priority? } to publish
   lastCheckedAt  DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([tenantId])
 }
 
 model User {
-  id                 String                     @id @default(cuid())
-  tenantId           String                     @map("hotelId")
-  fullName           String
+  id                     String                     @id @default(cuid())
+  tenantId               String                     @map("hotelId")
+  fullName               String
   // An email is unique *within* a tenant, not globally — one identity (email /
   // Clerk account) can be a member of many workspaces, each with its own role.
-  email              String
-  role               String
-  roleId             String?
-  isActive           Boolean                    @default(true)
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
-  tenant             Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  systemRole         Role?                      @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  assignedRequests   ServiceRequest[]           @relation("assigned_requests")
-  changedTransitions ServiceRequestTransition[] @relation("transition_actor")
-  ownedDeals         Deal[]                     @relation("deal_owner")
-  changedDealTransitions DealTransition[]       @relation("deal_transition_actor")
-  ownedContacts      Contact[]                  @relation("contact_owner")
-  ownedCompanies     Company[]                  @relation("company_owner")
-  activities         Activity[]                 @relation("activity_actor")
-  reports            Report[]                   @relation("report_creator")
-  researchTemplates  ResearchTemplate[]         @relation("research_template_creator")
-  researchRuns       ResearchRun[]              @relation("research_run_creator")
-  researchSchedules  ResearchSchedule[]         @relation("research_schedule_creator")
+  email                  String
+  role                   String
+  roleId                 String?
+  isActive               Boolean                    @default(true)
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  tenant                 Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  systemRole             Role?                      @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  assignedRequests       ServiceRequest[]           @relation("assigned_requests")
+  changedTransitions     ServiceRequestTransition[] @relation("transition_actor")
+  ownedDeals             Deal[]                     @relation("deal_owner")
+  changedDealTransitions DealTransition[]           @relation("deal_transition_actor")
+  ownedContacts          Contact[]                  @relation("contact_owner")
+  ownedCompanies         Company[]                  @relation("company_owner")
+  activities             Activity[]                 @relation("activity_actor")
+  reports                Report[]                   @relation("report_creator")
+  researchTemplates      ResearchTemplate[]         @relation("research_template_creator")
+  researchRuns           ResearchRun[]              @relation("research_run_creator")
+  researchSchedules      ResearchSchedule[]         @relation("research_schedule_creator")
 
   @@unique([tenantId, email])
 }
@@ -219,6 +221,7 @@ model Contact {
   deals           Deal[]
   campaignLeads   CampaignLead[]
   activities      Activity[]
+  quotes          Quote[]
 
   @@index([tenantId])
   @@index([companyId])
@@ -228,23 +231,24 @@ model Contact {
 // A company / account (B2B). Optional: B2C tenants simply never create one.
 // New table — physical column is `tenantId` directly (no legacy @@map).
 model Company {
-  id           String    @id @default(cuid())
+  id           String     @id @default(cuid())
   tenantId     String
   name         String
   domain       String?
   industry     String?
   size         String? // e.g. "1-10", "11-50", "51-200", "200+"
   ownerId      String?
-  tags         String[]  @default([])
+  tags         String[]   @default([])
   customFields Json?
   notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  owner        User?     @relation("company_owner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner        User?      @relation("company_owner", fields: [ownerId], references: [id], onDelete: SetNull)
   contacts     Contact[]
   deals        Deal[]
   activities   Activity[]
+  quotes       Quote[]
 
   @@index([tenantId])
 }
@@ -966,6 +970,7 @@ model Deal {
   transitions     DealTransition[]
   activities      Activity[]
   suggestions     DealSuggestion[]
+  quotes          Quote[]
 
   @@index([tenantId])
   @@index([pipelineId])
@@ -998,18 +1003,18 @@ model DealTransition {
 // tenant-scoped data at run time. `shared=false` → visible only to the creator;
 // `shared=true` → visible to any tenant member with the reports permission.
 model Report {
-  id             String   @id @default(cuid())
-  tenantId       String   @map("hotelId")
+  id             String        @id @default(cuid())
+  tenantId       String        @map("hotelId")
   name           String
   description    String?
   source         String // data-source key: service_requests | deals | contacts
   definitionJson String // JSON: { columns, filters, dateField, from, to, groupBy, sort, visualization }
-  shared         Boolean  @default(false)
+  shared         Boolean       @default(false)
   createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy      User?    @relation("report_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy      User?         @relation("report_creator", fields: [createdById], references: [id], onDelete: SetNull)
   shares         ReportShare[]
 
   @@index([tenantId])
@@ -1136,26 +1141,157 @@ model ResearchShare {
 // (advances nextRunAt) before enqueueing, so a crash or overlapping cycle can
 // never double-run it.
 model ResearchSchedule {
-  id               String       @id @default(cuid())
-  tenantId         String       @map("hotelId")
+  id               String    @id @default(cuid())
+  tenantId         String    @map("hotelId")
   templateId       String? // null for built-in or deleted templates
   templateName     String
   templateSnapshot String // JSON snapshot of the template def to run
-  subjectType      String       @default("freeform")
+  subjectType      String    @default("freeform")
   subjectId        String?
   subjectLabel     String?
   inputsJson       String // JSON of resolved input values
-  cadence          String       @default("weekly") // daily | weekly | monthly
-  isActive         Boolean      @default(true)
+  cadence          String    @default("weekly") // daily | weekly | monthly
+  isActive         Boolean   @default(true)
   nextRunAt        DateTime
   lastRunAt        DateTime?
   lastRunId        String?
   createdById      String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy        User?        @relation("research_schedule_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?     @relation("research_schedule_creator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([isActive, nextRunAt])
+}
+
+// ── Quoting + component-based costing engine (furniture & general manufacturing) ─
+// Industry-neutral: a quote decomposes into line items (components), each costed by
+// dimension × material rate + labor, then rolled up with overhead + margin. New
+// tables use a physical `tenantId` column (no legacy @@map). All money is stored as
+// integer paise so dimension×rate math never drifts; convert to rupees only at the
+// Deal.value boundary. A sent quote is immutable: line rates are snapshotted at
+// add-time (never re-read from InventoryItem) and edits are rejected once status
+// leaves `draft`. See docs/project-review + the Tempus quoting plan.
+
+// A reusable preset ("Dining Table", "Office Desk") that seeds a quote with its
+// default components and pricing knobs.
+model QuoteTemplate {
+  id             String              @id @default(cuid())
+  tenantId       String
+  name           String
+  category       String              @default("Furniture")
+  description    String?
+  isActive       Boolean             @default(true)
+  overheadPct    Float               @default(15) // % of direct cost
+  marginPct      Float               @default(40) // target markup on loaded cost
+  marginFloorPct Float               @default(30) // enforced gross-margin floor
+  laborRatePaise Int                 @default(0) // default labor rate per hour
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  components     TemplateComponent[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+// A default component of a template. `inventoryItemId` is provenance only — it is
+// resolved to a frozen rate snapshot when a quote line is created from it.
+model TemplateComponent {
+  id               String        @id @default(cuid())
+  templateId       String
+  tenantId         String
+  name             String // "Table top", "Leg", "Apron", "Hardware kit"
+  kind             String        @default("material") // material | labor | hardware | finish | other
+  costBasis        String        @default("area") // area | length | perimeter | volume | fixed | hours
+  inventoryItemId  String? // provenance; rate is snapshotted, not linked at cost time
+  materialUnit     String        @default("sqft") // sqft | rft | cft | unit | hour (display)
+  defaultRatePaise Int           @default(0) // used when no inventory link
+  defaultLengthMm  Int?
+  defaultWidthMm   Int?
+  defaultHeightMm  Int?
+  defaultQuantity  Float         @default(1)
+  wastagePct       Float         @default(0)
+  laborHours       Float         @default(0)
+  sortOrder        Int           @default(0)
+  template         QuoteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+// A quote. Rollup totals are STORED (recomputed by core/quotes/costing on each draft
+// write) so reads and the PDF are a pure read of frozen integers.
+model Quote {
+  id                String          @id @default(cuid())
+  tenantId          String
+  number            String // "Q-2026-0001", unique per tenant
+  title             String
+  status            String          @default("draft") // draft | sent | accepted | rejected | expired
+  contactId         String?
+  companyId         String?
+  dealId            String?
+  templateId        String? // provenance of the preset that seeded it
+  currency          String          @default("INR")
+  overheadPct       Float           @default(15)
+  marginPct         Float           @default(40)
+  marginFloorPct    Float           @default(30)
+  discountPaise     Int             @default(0)
+  materialCostPaise Int             @default(0)
+  laborCostPaise    Int             @default(0)
+  overheadPaise     Int             @default(0)
+  subtotalCostPaise Int             @default(0) // material + labor + overhead (loaded cost)
+  marginPaise       Int             @default(0)
+  totalPaise        Int             @default(0) // selling price
+  marginPctActual   Float           @default(0) // margin / total * 100 (gross margin)
+  notes             String?
+  terms             String?
+  validUntil        DateTime?
+  sentAt            DateTime?
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  rejectedReason    String?
+  createdById       String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact           Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company           Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deal              Deal?           @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  lineItems         QuoteLineItem[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@index([dealId])
+  @@index([contactId])
+}
+
+// One component line, grouped by `groupName` (the piece it rolls up to). Rate fields
+// are a frozen snapshot; `inventoryItemId` is drill-back provenance only.
+model QuoteLineItem {
+  id                String  @id @default(cuid())
+  quoteId           String
+  tenantId          String
+  groupName         String  @default("General") // the piece this component belongs to
+  name              String // "Table top"
+  kind              String  @default("material") // material | labor | hardware | finish | other
+  costBasis         String  @default("area")
+  lengthMm          Int?
+  widthMm           Int?
+  heightMm          Int?
+  quantity          Float   @default(1)
+  inventoryItemId   String? // provenance/drill-back only
+  materialUnit      String  @default("sqft")
+  unitRatePaise     Int     @default(0) // frozen material rate at add-time
+  wastagePct        Float   @default(0)
+  laborHours        Float   @default(0)
+  laborRatePaise    Int     @default(0)
+  computedQty       Float   @default(0) // derived from costBasis + dims
+  materialCostPaise Int     @default(0)
+  laborCostPaise    Int     @default(0)
+  lineCostPaise     Int     @default(0) // material + labor (pre overhead/margin)
+  sortOrder         Int     @default(0)
+  quote             Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
 }

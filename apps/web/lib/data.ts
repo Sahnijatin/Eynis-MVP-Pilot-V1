@@ -594,6 +594,111 @@ export async function fetchInventory() {
   return (await res.json()) as InventoryResponse;
 }
 
+// ── Quotes (component-based costing) ──────────────────────────────────────────
+export interface QuoteLineItem {
+  id: string;
+  groupName: string;
+  name: string;
+  kind: string;
+  costBasis: string;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  quantity: number;
+  inventoryItemId: string | null;
+  materialUnit: string;
+  unitRatePaise: number;
+  unitRateInr: number;
+  wastagePct: number;
+  laborHours: number;
+  laborRatePaise: number;
+  computedQty: number;
+  materialCostPaise: number;
+  laborCostPaise: number;
+  lineCostPaise: number;
+  lineCostInr: number;
+  sortOrder: number;
+}
+export interface Quote {
+  id: string;
+  number: string;
+  title: string;
+  status: "draft" | "sent" | "accepted" | "rejected" | "expired";
+  contactId: string | null;
+  companyId: string | null;
+  dealId: string | null;
+  templateId: string | null;
+  currency: string;
+  overheadPct: number;
+  marginPct: number;
+  marginFloorPct: number;
+  discountPaise: number;
+  materialCostPaise: number;
+  laborCostPaise: number;
+  overheadPaise: number;
+  subtotalCostPaise: number;
+  marginPaise: number;
+  totalPaise: number;
+  totalInr: number;
+  marginPctActual: number;
+  notes: string | null;
+  terms: string | null;
+  validUntil: string | null;
+  sentAt: string | null;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lineItems: QuoteLineItem[];
+}
+export interface QuoteTemplateComponent {
+  id: string;
+  name: string;
+  kind: string;
+  costBasis: string;
+  inventoryItemId: string | null;
+  materialUnit: string;
+  defaultRatePaise: number;
+  defaultLengthMm: number | null;
+  defaultWidthMm: number | null;
+  defaultHeightMm: number | null;
+  defaultQuantity: number;
+  wastagePct: number;
+  laborHours: number;
+  sortOrder: number;
+}
+export interface QuoteTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string | null;
+  isActive: boolean;
+  overheadPct: number;
+  marginPct: number;
+  marginFloorPct: number;
+  laborRatePaise: number;
+  components: QuoteTemplateComponent[];
+}
+
+export async function fetchQuotes(): Promise<{ ok: boolean; items: Quote[] }> {
+  try {
+    const res = await authedFetch("/quotes?limit=100");
+    if (!res.ok) return { ok: false, items: [] };
+    return (await res.json()) as { ok: boolean; items: Quote[] };
+  } catch {
+    return { ok: false, items: [] };
+  }
+}
+export async function fetchQuoteTemplates(): Promise<{ ok: boolean; items: QuoteTemplate[] }> {
+  try {
+    const res = await authedFetch("/quote-templates");
+    if (!res.ok) return { ok: false, items: [] };
+    return (await res.json()) as { ok: boolean; items: QuoteTemplate[] };
+  } catch {
+    return { ok: false, items: [] };
+  }
+}
+
 export interface AIProvidersResponse {
   ok: boolean;
   claude: boolean;

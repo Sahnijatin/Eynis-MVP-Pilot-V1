@@ -16,7 +16,7 @@ import { CheckCircle2, Loader2, Eye, EyeOff, Plug } from "lucide-react";
 import { Modal, Button, Badge, Input, Label, tokens as t } from "../ds";
 import type { ConnectorRegistryItem } from "../../lib/data";
 
-const CATEGORY_ORDER = ["communication", "email", "voice", "pms", "pos", "payments"];
+const CATEGORY_ORDER = ["communication", "email", "voice", "accounting", "pms", "pos", "payments"];
 
 const STATUS_TONE: Record<ConnectorRegistryItem["status"], { tone: "success" | "neutral" | "warning"; label: string }> = {
   connected: { tone: "success", label: "Connected" },
