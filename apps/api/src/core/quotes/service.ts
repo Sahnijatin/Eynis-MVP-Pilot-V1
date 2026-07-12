@@ -125,6 +125,11 @@ export function serializeQuote(q: QuoteWithLines) {
     totalPaise: q.totalPaise,
     totalInr: toRupees(Number(q.totalPaise) || 0),
     marginPctActual: q.marginPctActual,
+    // GST is display-only on top of the taxable total (does not affect costing/margin).
+    gstPercent: q.gstPercent ?? 0,
+    gstPaise: gstOf(q),
+    grandTotalPaise: (Number(q.totalPaise) || 0) + gstOf(q),
+    grandTotalInr: toRupees((Number(q.totalPaise) || 0) + gstOf(q)),
     notes: q.notes,
     terms: q.terms,
     validUntil: q.validUntil,
@@ -134,11 +139,27 @@ export function serializeQuote(q: QuoteWithLines) {
     rejectedReason: q.rejectedReason,
     createdAt: q.createdAt,
     updatedAt: q.updatedAt,
+    // Linked customer (if any) — surfaced so the list/PDF can show who the quote is for.
+    contactName: contactField(q, "fullName"),
+    contactPhone: contactField(q, "phoneE164"),
+    contactEmail: contactField(q, "email"),
     lineItems: (q.lineItems ?? []).map(serializeLine),
   };
 }
 
-const withLines = { lineItems: { orderBy: [{ sortOrder: "asc" as const }, { name: "asc" as const }] } };
+const gstOf = (q: QuoteWithLines): number =>
+  Math.round((Number(q.totalPaise) || 0) * (Number(q.gstPercent) || 0) / 100);
+
+const contactField = (q: QuoteWithLines, key: string): string | null => {
+  const c = (q as Record<string, unknown>).contact as Record<string, unknown> | null | undefined;
+  const v = c?.[key];
+  return typeof v === "string" ? v : null;
+};
+
+const withLines = {
+  lineItems: { orderBy: [{ sortOrder: "asc" as const }, { name: "asc" as const }] },
+  contact: { select: { fullName: true, phoneE164: true, email: true } },
+};
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 export async function listQuotes(
@@ -251,6 +272,7 @@ export interface CreateQuoteInput {
   marginPct?: number;
   marginFloorPct?: number;
   discountPaise?: number;
+  gstPercent?: number;
   validUntil?: Date | null;
   notes?: string | null;
   terms?: string | null;
@@ -305,6 +327,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
       marginPct: input.marginPct ?? knobs.marginPct,
       marginFloorPct: input.marginFloorPct ?? knobs.marginFloorPct,
       discountPaise: Math.max(0, Math.round(input.discountPaise ?? 0)),
+      gstPercent: Math.max(0, input.gstPercent ?? 0),
       validUntil: input.validUntil ?? null,
       notes: input.notes ?? null,
       terms: input.terms ?? null,
@@ -362,11 +385,22 @@ export async function updateQuoteFields(
   fields: Partial<{
     title: string; contactId: string | null; companyId: string | null; dealId: string | null;
     overheadPct: number; marginPct: number; marginFloorPct: number; discountPaise: number;
-    validUntil: Date | null; notes: string | null; terms: string | null;
+    gstPercent: number; validUntil: Date | null; notes: string | null; terms: string | null;
   }>,
 ) {
   await prisma.quote.update({ where: { id }, data: fields });
   return recomputeQuote(tenantId, id);
+}
+
+// Replace all line items on a draft quote (used by the builder's Edit flow). Deletes
+// existing lines and re-creates them with fresh rate snapshots, then recomputes.
+export async function replaceQuoteLines(tenantId: string, quoteId: string, lines: LineInputPayload[], defaultLaborRatePaise = 0) {
+  await prisma.quoteLineItem.deleteMany({ where: { quoteId, tenantId } });
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]?.name?.trim()) continue;
+    await addLineRaw(tenantId, quoteId, lines[i], i, defaultLaborRatePaise);
+  }
+  return recomputeQuote(tenantId, quoteId);
 }
 
 export async function addLine(tenantId: string, quoteId: string, line: LineInputPayload) {
@@ -598,42 +632,48 @@ export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
     | { kind: "section"; heading: string; body: string }
     | { kind: "table"; heading?: string; header: string[]; rows: Array<Array<string | number>> }
   > = [];
-  blocks.push({ kind: "headline", text: `${String(q.title)} — ${money(Number(q.totalPaise))}` });
+  const total = Number(q.totalPaise) || 0;
+  const gstPct = Number(q.gstPercent) || 0;
+  const gst = Math.round((total * gstPct) / 100);
+  blocks.push({ kind: "headline", text: `${String(q.title)} — ${money(total + gst)}` });
 
-  // Group lines by piece.
+  // "Prepared for" — the linked customer, if any.
+  if (q.contactName) {
+    const contact = q.contactPhone ? `${q.contactName} · ${q.contactPhone}` : String(q.contactName);
+    blocks.push({ kind: "section", heading: "Prepared for", body: contact });
+  }
+
+  // Customer-facing line items: one row per PIECE at its selling price (the total
+  // allocated across pieces by cost share) — the customer never sees the internal
+  // material/labor/overhead/margin breakdown. Components are listed as a spec only.
   const groups = new Map<string, ReturnType<typeof serializeLine>[]>();
   for (const l of q.lineItems) {
     const arr = groups.get(l.groupName) ?? [];
     arr.push(l);
     groups.set(l.groupName, arr);
   }
-  for (const [group, lines] of groups) {
-    blocks.push({
-      kind: "table",
-      heading: group,
-      header: ["Component", "Dimensions", "Qty", "Unit", "Rate", "Amount"],
-      rows: lines.map((l) => [
-        l.name,
-        dims(l),
-        l.computedQty,
-        l.materialUnit,
-        money(l.unitRatePaise),
-        money(l.lineCostPaise),
-      ]),
-    });
-  }
+  const entries = [...groups.entries()];
+  const costByGroup = entries.map(([, lines]) => lines.reduce((s, l) => s + l.lineCostPaise, 0));
+  const totalCost = costByGroup.reduce((s, c) => s + c, 0);
+  let allocated = 0;
+  const rows: Array<Array<string | number>> = entries.map(([group, lines], i) => {
+    const selling = i === entries.length - 1 || totalCost <= 0
+      ? total - allocated
+      : Math.round((total * costByGroup[i]) / totalCost);
+    allocated += selling;
+    const spec = lines.map((l) => (dims(l) !== "—" ? `${l.name} (${dims(l)})` : l.name)).join(", ");
+    return [group, spec, money(selling)];
+  });
+  blocks.push({ kind: "table", heading: "Quotation", header: ["Item", "Specification", "Amount"], rows });
 
   blocks.push({
     kind: "table",
     heading: "Summary",
-    header: ["Item", "Amount"],
+    header: ["", "Amount"],
     rows: [
-      ["Material", money(Number(q.materialCostPaise))],
-      ["Labor", money(Number(q.laborCostPaise))],
-      ["Overhead", money(Number(q.overheadPaise))],
-      ["Margin", money(Number(q.marginPaise))],
-      ...(Number(q.discountPaise) > 0 ? [["Discount", `- ${money(Number(q.discountPaise))}`] as [string, string]] : []),
-      ["Total", money(Number(q.totalPaise))],
+      ["Subtotal", money(total)],
+      ...(gstPct > 0 ? [[`GST @ ${gstPct}%`, money(gst)] as [string, string]] : []),
+      ["Grand Total", money(total + gst)],
     ],
   });
 

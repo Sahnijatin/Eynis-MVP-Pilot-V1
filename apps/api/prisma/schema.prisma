@@ -1243,8 +1243,9 @@ model Quote {
   overheadPaise     Int             @default(0)
   subtotalCostPaise Int             @default(0) // material + labor + overhead (loaded cost)
   marginPaise       Int             @default(0)
-  totalPaise        Int             @default(0) // selling price
+  totalPaise        Int             @default(0) // selling price (taxable value, ex-GST)
   marginPctActual   Float           @default(0) // margin / total * 100 (gross margin)
+  gstPercent        Float           @default(0) // GST applied on the taxable total (display + Busy voucher)
   notes             String?
   terms             String?
   validUntil        DateTime?

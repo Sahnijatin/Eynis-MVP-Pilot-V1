@@ -7,6 +7,7 @@
 // PageSpeed still run). This is the single entry point gather.ts calls.
 
 import { prisma } from "../../../db/prisma";
+import { decryptConfigValues } from "../../crypto/secrets";
 import { webSearch as searxngSearch, SEARXNG_AVAILABLE, type SearchHit } from "./searxng";
 import { tavilySearch } from "./tavily";
 
@@ -22,7 +23,7 @@ async function resolveTavilyKey(tenantId: string): Promise<string | null> {
     .catch(() => null);
   if (cfg?.enabled) {
     try {
-      const parsed = JSON.parse(cfg.configJson) as Record<string, unknown>;
+      const parsed = decryptConfigValues(JSON.parse(cfg.configJson) as Record<string, unknown>);
       const key = asStr(parsed.apiKey);
       if (key) return key;
     } catch { /* fall through to env */ }

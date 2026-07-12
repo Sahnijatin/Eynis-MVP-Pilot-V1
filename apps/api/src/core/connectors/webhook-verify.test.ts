@@ -1,6 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { verifySharedWebhookSecret } from "./webhook-verify";
+import { createHmac } from "node:crypto";
+import { verifySharedWebhookSecret, verifyTwilioSignature } from "./webhook-verify";
+
+test("verifyTwilioSignature matches Twilio's algorithm (url + sorted params, HMAC-SHA1)", () => {
+  const authToken = "test_auth_token";
+  const url = "https://api.eynis.app/connectors/webhook";
+  const params = { To: "whatsapp:+14155238886", From: "whatsapp:+919812300099", Body: "Hi" };
+  // Twilio: sort params by key, concat url + key+value pairs, HMAC-SHA1, base64.
+  const sorted = Object.entries(params).sort(([a], [b]) => a.localeCompare(b));
+  const expected = createHmac("sha1", authToken).update(url + sorted.map(([k, v]) => k + v).join("")).digest("base64");
+  assert.equal(verifyTwilioSignature(url, params, authToken, expected), true, "valid signature accepted");
+  assert.equal(verifyTwilioSignature(url, params, authToken, "wrongsig"), false, "forged signature rejected");
+  // Param order in the object must not matter (verifier sorts).
+  const reordered = { Body: "Hi", From: "whatsapp:+919812300099", To: "whatsapp:+14155238886" };
+  assert.equal(verifyTwilioSignature(url, reordered, authToken, expected), true);
+  // A tampered body param must fail.
+  assert.equal(verifyTwilioSignature(url, { ...params, Body: "evil" }, authToken, expected), false);
+});
 
 // F-2: the PMS webhook writes data for a body-supplied tenantId, so it must be
 // authenticated with a shared secret. These tests lock the fail-closed posture.

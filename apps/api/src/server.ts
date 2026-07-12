@@ -29,6 +29,7 @@ import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
+import { hashToken as hashInviteToken } from "./core/crypto/secrets";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -174,6 +175,18 @@ const dateOrNull = (v: unknown): Date | null => {
   if (v === null || v === undefined || v === "") return null;
   const d = new Date(v as string);
   return Number.isNaN(d.getTime()) ? null : d;
+};
+// Best-effort E.164 normalisation for customer phone entry: keep a leading +, strip
+// spaces/dashes, and default a bare 10-digit number to India (+91). Returns null for
+// anything that can't be a phone. Not a full libphonenumber — just enough for intake.
+const normalizePhoneE164 = (raw: string | null): string | null => {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[\s\-()]/g, "");
+  if (/^\+\d{7,15}$/.test(cleaned)) return cleaned;
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
+  return null;
 };
 
 // Parse a from/to reporting window from the query string (E-15). Returns null
@@ -1785,6 +1798,15 @@ const handleRequest = async (
     }
 
     if (req.url === "/public/requests" && req.method === "POST") {
+      // Throttle per client IP — this is an unauthenticated write (creates a Contact +
+      // ServiceRequest). Without a cap it can be scripted to flood a tenant's queue and
+      // create unbounded Contact rows (F-…). A public intake form is low-frequency.
+      const pfwd = req.headers["x-forwarded-for"];
+      const pip = (typeof pfwd === "string" ? pfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(`public-req:${pip}`, 10, 60_000)) {
+        json(res, 429, { ok: false, error: "Too many requests. Please try again shortly." });
+        return;
+      }
       const body = (await parseBody(req)) as {
         tenantId?: unknown;
         hotelId?: unknown;
@@ -1892,8 +1914,20 @@ const handleRequest = async (
         json(res, 401, { ok: false, error: "Missing webhook signature" }); return;
       }
       if (twilioSig !== null) {
-        const fullUrl = `http://${req.headers.host ?? "localhost"}${req.url}`;
-        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: {}, enforce });
+        // Twilio's HMAC covers the exact public URL it POSTed to PLUS the sorted form
+        // params — the old call passed params:{} and a spoofable Host-header URL, so
+        // verification could never pass (decorative). Use the configured public URL
+        // (TWILIO_WEBHOOK_URL / EYNIS_PUBLIC_URL, never the request Host which a caller
+        // controls) and the real form params parsed from the body. Enforcement stays
+        // opt-in (VERIFY_WEBHOOKS) so a URL mismatch can't break the default deploy;
+        // operators should validate against a live Twilio number before enforcing.
+        const configuredBase = (process.env.TWILIO_WEBHOOK_URL ?? process.env.EYNIS_PUBLIC_URL ?? "").trim();
+        const fullUrl = configuredBase
+          ? configuredBase
+          : `https://${req.headers.host ?? "localhost"}${req.url}`;
+        const isForm = (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
+        const twilioParams = isForm ? Object.fromEntries(new URLSearchParams(rawBody)) : {};
+        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: twilioParams, enforce });
         if (!check.ok) { json(res, 401, { ok: false, error: check.reason ?? "Twilio signature verification failed" }); return; }
       }
 
@@ -2751,6 +2785,13 @@ const handleRequest = async (
       for (const [k, v] of Object.entries(incoming)) {
         if (isSecretKey(k) && (v === "" || v === SECRET_MASK || v == null)) continue; // keep stored secret
         merged[k] = v;
+      }
+      // Encrypt secret field values at rest (F-… H6). No-op when SECRETS_ENC_KEY is
+      // unset (values stay plaintext, unchanged behaviour) and idempotent for values
+      // already encrypted (the kept-from-existing case).
+      const { encryptSecret } = await import("./core/crypto/secrets");
+      for (const k of Object.keys(merged)) {
+        if (isSecretKey(k) && typeof merged[k] === "string" && merged[k]) merged[k] = encryptSecret(merged[k] as string);
       }
       const configJson = JSON.stringify(merged);
       const saved = await prisma.connectorConfig.upsert({
@@ -4298,10 +4339,37 @@ const handleRequest = async (
       const body = (await parseBody(req)) as Record<string, unknown>;
       const title = asTrimmedString(body.title);
       if (!title) { json(res, 400, { ok: false, error: "title is required" }); return; }
+      // Resolve the customer: an explicit contactId, else a new-customer object
+      // {fullName, phoneE164, email} which we find-or-create by phone. Linking a
+      // contact is what lets Send start the follow-up drip (a quote with no contact
+      // can only log a task — the drip has no channel to reach).
+      let contactId = asTrimmedString(body.contactId);
+      if (!contactId && body.customer && typeof body.customer === "object") {
+        const cust = body.customer as Record<string, unknown>;
+        const phone = normalizePhoneE164(asTrimmedString(cust.phoneE164));
+        if (phone) {
+          const existing = await prisma.contact.findFirst({ where: { tenantId: auth.context.tenantId, phoneE164: phone }, select: { id: true } });
+          if (existing) {
+            contactId = existing.id;
+          } else {
+            const c = await prisma.contact.create({
+              data: {
+                tenantId: auth.context.tenantId,
+                fullName: asTrimmedString(cust.fullName) ?? "Customer",
+                phoneE164: phone,
+                email: asTrimmedString(cust.email),
+                source: "quote",
+              },
+              select: { id: true },
+            });
+            contactId = c.id;
+          }
+        }
+      }
       try {
         const quote = await quotes.createQuote(auth.context.tenantId, {
           title,
-          contactId: asTrimmedString(body.contactId),
+          contactId,
           companyId: asTrimmedString(body.companyId),
           dealId: asTrimmedString(body.dealId),
           templateId: asTrimmedString(body.templateId),
@@ -4309,6 +4377,7 @@ const handleRequest = async (
           marginPct: numUndef(body.marginPct),
           marginFloorPct: numUndef(body.marginFloorPct),
           discountPaise: numUndef(body.discountPaise),
+          gstPercent: numUndef(body.gstPercent),
           validUntil: dateOrNull(body.validUntil),
           notes: asTrimmedString(body.notes),
           terms: asTrimmedString(body.terms),
@@ -4357,10 +4426,15 @@ const handleRequest = async (
         if (body.marginPct !== undefined) fields.marginPct = Number(body.marginPct) || 0;
         if (body.marginFloorPct !== undefined) fields.marginFloorPct = Number(body.marginFloorPct) || 0;
         if (body.discountPaise !== undefined) fields.discountPaise = Math.max(0, Math.round(Number(body.discountPaise) || 0));
+        if (body.gstPercent !== undefined) fields.gstPercent = Math.max(0, Number(body.gstPercent) || 0);
         if (body.validUntil !== undefined) fields.validUntil = dateOrNull(body.validUntil);
         if (body.notes !== undefined) fields.notes = asTrimmedString(body.notes);
         if (body.terms !== undefined) fields.terms = asTrimmedString(body.terms);
-        const quote = await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
+        await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
+        // Optional full line-replace (the builder's Edit flow saves all lines at once).
+        const quote = Array.isArray(body.lines)
+          ? await quotes.replaceQuoteLines(auth.context.tenantId, quoteId, body.lines as quotes.LineInputPayload[])
+          : await quotes.getQuote(auth.context.tenantId, quoteId);
         json(res, 200, { ok: true, quote });
         return;
       }
@@ -4513,6 +4587,9 @@ const handleRequest = async (
         const format = (parseUrl(req.url).searchParams.get("format") ?? "csv").toLowerCase();
         const busy = await import("./core/connectors/busy");
         const config = await busy.resolveBusyConfig(auth.context.tenantId);
+        // The quote's own GST rate (if set) wins over the connector default so the
+        // voucher matches what the customer was quoted.
+        if (raw.gstPercent > 0) config.gstPercent = raw.gstPercent;
         // Party name: linked company, else contact, else the quote title.
         let partyName = raw.title;
         if (raw.companyId) {
@@ -5049,13 +5126,15 @@ const handleRequest = async (
         where: { tenantId: auth.context.tenantId, email, acceptedAt: null },
         data: { expiresAt: new Date() }
       });
+      // The raw token goes ONLY in the invite URL; we store its SHA-256 hash so a DB
+      // read can't accept invites (F-… H6). Lookups hash the provided token to match.
       const token = randomBytes(32).toString("hex");
       const inv = await prisma.invitation.create({
         data: {
           tenantId: auth.context.tenantId,
           email,
           roleId: role.id,
-          token,
+          token: hashInviteToken(token),
           expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
           invitedById: auth.context.userId
         }
@@ -5074,7 +5153,7 @@ const handleRequest = async (
     if (parseInviteToken(req.url) && req.method === "GET") {
       const token = parseInviteToken(req.url)!;
       const inv = await prisma.invitation.findUnique({
-        where: { token },
+        where: { token: hashInviteToken(token) },
         include: {
           role: { select: { displayName: true, key: true } },
           tenant: { select: { name: true } }
@@ -5097,7 +5176,7 @@ const handleRequest = async (
     if (parseInviteAccept(req.url) && req.method === "POST") {
       const token = parseInviteAccept(req.url)!;
       const inv = await prisma.invitation.findUnique({
-        where: { token },
+        where: { token: hashInviteToken(token) },
         include: { role: { select: { id: true, key: true, permissions: true } } }
       });
       if (!inv)         { json(res, 404, { ok: false, error: "Invitation not found" }); return; }
@@ -5142,7 +5221,7 @@ const handleRequest = async (
         userId = newUser.id;
       }
       await prisma.invitation.update({
-        where: { token },
+        where: { token: hashInviteToken(token) },
         data: { acceptedAt: new Date() }
       });
       // Issue a JWT so the invitee is immediately logged in

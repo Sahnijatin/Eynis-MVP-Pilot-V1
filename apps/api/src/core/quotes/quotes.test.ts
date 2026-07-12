@@ -253,6 +253,83 @@ test("quotes/parse provider selection: an OpenAI-only tenant chooses OpenAI (not
   }
 });
 
+test("creating a quote with a new-customer object find-or-creates the Contact and links it", async () => {
+  const { tenantId, base, H, close } = await setup();
+  try {
+    // First quote creates the contact.
+    const r1 = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Table A", customer: { fullName: "Ravi Kumar", phoneE164: "9812300099", email: "ravi@example.com" },
+      lines: [{ name: "Top", costBasis: "fixed", quantity: 1, unitRatePaise: 1000000 }],
+    }) });
+    const q1 = ((await r1.json()) as { quote: { contactId: string; contactName: string } }).quote;
+    assert.ok(q1.contactId, "contact linked");
+    assert.equal(q1.contactName, "Ravi Kumar");
+    // A bare 10-digit number is normalised to +91.
+    const contact = await prisma.contact.findFirst({ where: { tenantId, id: q1.contactId } });
+    assert.equal(contact!.phoneE164, "+919812300099");
+
+    // Second quote with the same phone reuses the same contact (no duplicate).
+    const r2 = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Table B", customer: { fullName: "Ravi K", phoneE164: "+919812300099" },
+      lines: [{ name: "Top", costBasis: "fixed", quantity: 1, unitRatePaise: 1000000 }],
+    }) });
+    const q2 = ((await r2.json()) as { quote: { contactId: string } }).quote;
+    assert.equal(q2.contactId, q1.contactId, "same phone → same contact");
+  } finally {
+    await close();
+  }
+});
+
+test("GST is applied on top of the taxable total (display only, not in the margin math)", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const r = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Desk", marginPct: 50, marginFloorPct: 10, gstPercent: 18,
+      lines: [{ name: "Body", costBasis: "fixed", quantity: 1, unitRatePaise: 10000000 }],
+    }) });
+    const q = ((await r.json()) as { quote: { totalPaise: number; gstPercent: number; gstPaise: number; grandTotalPaise: number } }).quote;
+    assert.equal(q.gstPercent, 18);
+    assert.equal(q.gstPaise, Math.round(q.totalPaise * 0.18));
+    assert.equal(q.grandTotalPaise, q.totalPaise + q.gstPaise);
+  } finally {
+    await close();
+  }
+});
+
+test("editing a draft replaces its line items and re-prices; the PDF hides cost/margin", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const created = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Wardrobe", marginPct: 50, marginFloorPct: 10,
+      lines: [{ name: "Old", costBasis: "fixed", quantity: 1, unitRatePaise: 500000 }],
+    }) });
+    const q = ((await created.json()) as { quote: { id: string; totalPaise: number } }).quote;
+    const before = q.totalPaise;
+
+    // Edit: replace the line with a pricier one via PATCH.
+    const patched = await fetch(base + `/quotes/${q.id}`, { method: "PATCH", headers: H, body: JSON.stringify({
+      title: "Wardrobe (2-door)", gstPercent: 12,
+      lines: [{ name: "Carcass", costBasis: "fixed", quantity: 1, unitRatePaise: 900000 }, { name: "Doors", costBasis: "fixed", quantity: 2, unitRatePaise: 300000 }],
+    }) });
+    const q2 = ((await patched.json()) as { quote: { title: string; totalPaise: number; lineItems: unknown[]; gstPercent: number } }).quote;
+    assert.equal(q2.title, "Wardrobe (2-door)");
+    assert.equal(q2.lineItems.length, 2);
+    assert.equal(q2.gstPercent, 12);
+    assert.ok(q2.totalPaise > before, "re-priced upward");
+
+    // The customer PDF must NOT leak the internal cost breakdown. Assert on the
+    // structured blocks (PDF byte text is compressed and not reliably searchable).
+    const { quotePdfBlocks } = await import("./service");
+    const full = ((await (await fetch(base + `/quotes/${q.id}`, { headers: H })).json()) as { quote: Parameters<typeof quotePdfBlocks>[0] }).quote;
+    const blocks = quotePdfBlocks(full);
+    const flat = JSON.stringify(blocks);
+    assert.ok(!/Overhead|Margin/.test(flat), "PDF blocks omit Overhead/Margin");
+    assert.ok(/Grand Total/.test(flat), "PDF blocks show Grand Total");
+  } finally {
+    await close();
+  }
+});
+
 test("quotes are tenant-isolated", async () => {
   const a = await setup();
   const b = await setup();

@@ -70,9 +70,12 @@ test("accepting an invite for an email that already belongs to another workspace
   await prisma.user.create({ data: { tenantId: tA, fullName: "Existing", email, role: "owner", roleId: await roleId(tA, "admin"), isActive: true } });
   // Inviter in tenant C.
   const inviter = await prisma.user.create({ data: { tenantId: tC, fullName: "Inviter", email: `inviter+${uid()}@test.local`, role: "owner", roleId: await roleId(tC, "admin"), isActive: true } });
+  // Invitation tokens are stored hashed (H6); accept by the raw token which the API
+  // hashes to look up.
   const token = randomBytes(16).toString("hex");
+  const { hashToken } = await import("./crypto/secrets");
   await prisma.invitation.create({
-    data: { tenantId: tC, email, roleId: await roleId(tC, "manager"), token, expiresAt: new Date(Date.now() + 3600_000), invitedById: inviter.id },
+    data: { tenantId: tC, email, roleId: await roleId(tC, "manager"), token: hashToken(token), expiresAt: new Date(Date.now() + 3600_000), invitedById: inviter.id },
   });
 
   const server = buildServer();

@@ -641,6 +641,10 @@ export interface Quote {
   totalPaise: number;
   totalInr: number;
   marginPctActual: number;
+  gstPercent: number;
+  gstPaise: number;
+  grandTotalPaise: number;
+  grandTotalInr: number;
   notes: string | null;
   terms: string | null;
   validUntil: string | null;
@@ -649,6 +653,9 @@ export interface Quote {
   rejectedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
   lineItems: QuoteLineItem[];
 }
 export interface QuoteTemplateComponent {

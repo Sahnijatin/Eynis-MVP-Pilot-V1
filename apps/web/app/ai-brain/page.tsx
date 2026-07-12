@@ -83,10 +83,14 @@ export default function AIBrainPage() {
                   ? { background: "#1d4ed8", color: "#fff", borderBottomRightRadius: 4 }
                   : { background: "#f8fafc", color: "#1e293b", border: "1px solid #e2e8f0", borderBottomLeftRadius: 4 }}
               >
-                {m.text.split("\n").map((line, j) => {
-                  const bold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                  return <p key={j} className="mb-1 last:mb-0" dangerouslySetInnerHTML={{ __html: bold }} />;
-                })}
+                {m.text.split("\n").map((line, j) => (
+                  // Render **bold** as React nodes (never dangerouslySetInnerHTML) — the
+                  // text will include contact/order/AI content once wired to live data,
+                  // and raw HTML injection would be stored XSS (F-…).
+                  <p key={j} className="mb-1 last:mb-0">
+                    {line.split(/\*\*(.*?)\*\*/g).map((seg, k) => (k % 2 === 1 ? <strong key={k}>{seg}</strong> : seg))}
+                  </p>
+                ))}
               </div>
             </div>
           ))}

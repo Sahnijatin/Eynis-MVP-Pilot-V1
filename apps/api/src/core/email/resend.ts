@@ -10,6 +10,7 @@
 
 import { prisma } from "../../db/prisma";
 import { wrapBrandedEmail, type EmailBrand } from "./branding";
+import { decryptConfigValues } from "../crypto/secrets";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -17,7 +18,7 @@ const asStr = (v: unknown): string | null =>
   typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 
 const parseConfig = (json: string): Record<string, unknown> => {
-  try { return JSON.parse(json) as Record<string, unknown>; } catch { return {}; }
+  try { return decryptConfigValues(JSON.parse(json) as Record<string, unknown>); } catch { return {}; }
 };
 
 // ── Variable system ───────────────────────────────────────────────────────────
