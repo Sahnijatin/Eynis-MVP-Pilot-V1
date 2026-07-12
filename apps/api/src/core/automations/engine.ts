@@ -4,35 +4,32 @@ import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
 import { singleFlight } from "../single-flight";
 import { loadTemplateForRun } from "../research/store";
 
-async function hasExecution(ruleId: string, triggerEntityId: string): Promise<boolean> {
-  const existing = await prisma.automationExecution.findFirst({
-    where: { ruleId, triggerEntityId },
-    select: { id: true }
-  });
-  return Boolean(existing);
-}
+type ActionResult = "success" | "failed" | "skipped" | "pending";
 
-type ActionResult = "success" | "failed" | "skipped";
-
-async function recordExecution(data: {
-  tenantId: string;
-  ruleId: string;
-  ruleCode: string;
-  triggerType: string;
-  triggerEntityId?: string;
-  actionType: string;
-  actionResult: ActionResult;
-  resultDetail?: string;
-}) {
+// CLAIM-FIRST idempotency (F-… H5): reserve the execution BEFORE performing the side
+// effect, using the unique index on (ruleId, triggerEntityId) as an atomic lock. The
+// old pattern checked-then-acted-then-recorded, so a crash between act and record —
+// or two API instances evaluating the same entity — could fire the side effect twice
+// (a guest getting the welcome WhatsApp again). Now only one caller wins the create;
+// everyone else gets P2002 and skips. Trade-off: a crash after claim but before the
+// action leaves a "pending" row and the action is not retried (at-most-once) — the
+// right choice for outbound sends, where a duplicate is worse than a rare miss.
+async function claimExecution(data: {
+  tenantId: string; ruleId: string; ruleCode: string;
+  triggerType: string; triggerEntityId: string; actionType: string;
+}): Promise<boolean> {
   try {
-    await prisma.automationExecution.create({ data });
+    await prisma.automationExecution.create({ data: { ...data, actionResult: "pending" } });
+    return true;
   } catch (err) {
-    // A unique-violation on (ruleId, triggerEntityId) means another cycle already
-    // recorded this execution — the entity is handled, so swallow it (F-13). The
-    // DB constraint is the backstop for the in-app hasExecution check.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return;
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return false; // already claimed
     throw err;
   }
+}
+
+// Finalise a claimed execution with its outcome. The row already exists (claimed).
+async function finalizeExecution(ruleId: string, triggerEntityId: string, actionResult: ActionResult, resultDetail?: string) {
+  await prisma.automationExecution.updateMany({ where: { ruleId, triggerEntityId }, data: { actionResult, resultDetail } });
 }
 
 // ── Rule 1: SLA breach → escalate service request ─────────────────────────────
@@ -57,7 +54,10 @@ export async function evaluateSlaBreachEscalate() {
     });
 
     for (const sr of breachedSRs) {
-      if (await hasExecution(rule.id, sr.id)) continue;
+      if (!(await claimExecution({
+        tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+        triggerType: "sla_breach", triggerEntityId: sr.id, actionType: "escalate_sr",
+      }))) continue;
 
       try {
         await prisma.serviceRequest.update({
@@ -74,19 +74,9 @@ export async function evaluateSlaBreachEscalate() {
             metadata: JSON.stringify({ rule: rule.code, summary: sr.summary.slice(0, 120) })
           }
         });
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "sla_breach", triggerEntityId: sr.id,
-          actionType: "escalate_sr", actionResult: "success",
-          resultDetail: `Escalated: ${sr.summary.slice(0, 80)}`
-        });
+        await finalizeExecution(rule.id, sr.id, "success", `Escalated: ${sr.summary.slice(0, 80)}`);
       } catch (err) {
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "sla_breach", triggerEntityId: sr.id,
-          actionType: "escalate_sr", actionResult: "failed",
-          resultDetail: err instanceof Error ? err.message : "Unknown error"
-        });
+        await finalizeExecution(rule.id, sr.id, "failed", err instanceof Error ? err.message : "Unknown error");
       }
     }
   }
@@ -108,7 +98,10 @@ export async function evaluateSentimentLowFlag() {
 
     for (const event of negativeEvents) {
       if (!event.guestId) continue;
-      if (await hasExecution(rule.id, event.id)) continue;
+      if (!(await claimExecution({
+        tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+        triggerType: "sentiment_low", triggerEntityId: event.id, actionType: "create_sr",
+      }))) continue;
 
       try {
         const sr = await prisma.serviceRequest.create({
@@ -123,19 +116,9 @@ export async function evaluateSentimentLowFlag() {
             slaDueAt: new Date(Date.now() + 30 * 60000)
           }
         });
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "sentiment_low", triggerEntityId: event.id,
-          actionType: "create_sr", actionResult: "success",
-          resultDetail: `Created SR ${sr.id} for ${event.guestName ?? event.guestId}`
-        });
+        await finalizeExecution(rule.id, event.id, "success", `Created SR ${sr.id} for ${event.guestName ?? event.guestId}`);
       } catch (err) {
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "sentiment_low", triggerEntityId: event.id,
-          actionType: "create_sr", actionResult: "failed",
-          resultDetail: err instanceof Error ? err.message : "Unknown error"
-        });
+        await finalizeExecution(rule.id, event.id, "failed", err instanceof Error ? err.message : "Unknown error");
       }
     }
   }
@@ -168,7 +151,11 @@ export async function evaluateCheckinWelcome() {
     });
 
     for (const stay of recentStays) {
-      if (await hasExecution(rule.id, stay.id)) continue;
+      // Claim BEFORE sending so a crash/two-instances can't send the welcome twice.
+      if (!(await claimExecution({
+        tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+        triggerType: "checkin_welcome", triggerEntityId: stay.id, actionType: "send_whatsapp",
+      }))) continue;
 
       const { guest } = stay;
       const firstName = guest.fullName.split(" ")[0] ?? guest.fullName;
@@ -176,20 +163,10 @@ export async function evaluateCheckinWelcome() {
 
       try {
         const result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "checkin_welcome", triggerEntityId: stay.id,
-          actionType: "send_whatsapp",
-          actionResult: result.sent ? "success" : "failed",
-          resultDetail: result.sent ? `Welcome sent to ${guest.phoneE164}` : (result.error ?? "Send failed")
-        });
+        await finalizeExecution(rule.id, stay.id, result.sent ? "success" : "failed",
+          result.sent ? `Welcome sent to ${guest.phoneE164}` : (result.error ?? "Send failed"));
       } catch (err) {
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "checkin_welcome", triggerEntityId: stay.id,
-          actionType: "send_whatsapp", actionResult: "failed",
-          resultDetail: err instanceof Error ? err.message : "Unknown error"
-        });
+        await finalizeExecution(rule.id, stay.id, "failed", err instanceof Error ? err.message : "Unknown error");
       }
     }
   }
@@ -218,7 +195,10 @@ export async function evaluateUpsellFollowup() {
 
     for (const sr of recentResolved) {
       if (!sr.guestId) continue;
-      if (await hasExecution(rule.id, sr.id)) continue;
+      if (!(await claimExecution({
+        tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+        triggerType: "upsell_followup", triggerEntityId: sr.id, actionType: "queue_offer",
+      }))) continue;
 
       const offerType =
         sr.category === "fnb" ? "fnb_offer" :
@@ -236,19 +216,9 @@ export async function evaluateUpsellFollowup() {
             contextJson: JSON.stringify({ sourceRequestId: sr.id, automationRule: rule.code })
           }
         });
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "upsell_followup", triggerEntityId: sr.id,
-          actionType: "queue_offer", actionResult: "success",
-          resultDetail: `Queued ${offerType} offer`
-        });
+        await finalizeExecution(rule.id, sr.id, "success", `Queued ${offerType} offer`);
       } catch (err) {
-        await recordExecution({
-          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-          triggerType: "upsell_followup", triggerEntityId: sr.id,
-          actionType: "queue_offer", actionResult: "failed",
-          resultDetail: err instanceof Error ? err.message : "Unknown error"
-        });
+        await finalizeExecution(rule.id, sr.id, "failed", err instanceof Error ? err.message : "Unknown error");
       }
     }
   }
@@ -287,15 +257,13 @@ export async function evaluateResearchOnStage() {
 
       for (const deal of deals) {
         const triggerEntityId = `${trig.stageId}:${deal.id}`;
-        if (await hasExecution(rule.id, triggerEntityId)) continue;
+        if (!(await claimExecution({
+          tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
+          triggerType: "deal_stage", triggerEntityId, actionType: "enqueue_research",
+        }))) continue;
 
         if (!tpl) {
-          await recordExecution({
-            tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-            triggerType: "deal_stage", triggerEntityId,
-            actionType: "enqueue_research", actionResult: "skipped",
-            resultDetail: `Template ${trig.templateId} not found`
-          });
+          await finalizeExecution(rule.id, triggerEntityId, "skipped", `Template ${trig.templateId} not found`);
           continue;
         }
 
@@ -317,19 +285,9 @@ export async function evaluateResearchOnStage() {
               status: "queued"
             }
           });
-          await recordExecution({
-            tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-            triggerType: "deal_stage", triggerEntityId,
-            actionType: "enqueue_research", actionResult: "success",
-            resultDetail: `Queued research for "${deal.title}"`
-          });
+          await finalizeExecution(rule.id, triggerEntityId, "success", `Queued research for "${deal.title}"`);
         } catch (err) {
-          await recordExecution({
-            tenantId: rule.tenantId, ruleId: rule.id, ruleCode: rule.code,
-            triggerType: "deal_stage", triggerEntityId,
-            actionType: "enqueue_research", actionResult: "failed",
-            resultDetail: err instanceof Error ? err.message : "Unknown error"
-          });
+          await finalizeExecution(rule.id, triggerEntityId, "failed", err instanceof Error ? err.message : "Unknown error");
         }
       }
     }

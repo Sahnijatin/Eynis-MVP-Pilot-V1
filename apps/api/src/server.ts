@@ -1787,6 +1787,15 @@ const handleRequest = async (
     }
 
     if (req.url === "/public/requests" && req.method === "POST") {
+      // Throttle per client IP — this is an unauthenticated write (creates a Contact +
+      // ServiceRequest). Without a cap it can be scripted to flood a tenant's queue and
+      // create unbounded Contact rows (F-…). A public intake form is low-frequency.
+      const pfwd = req.headers["x-forwarded-for"];
+      const pip = (typeof pfwd === "string" ? pfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(`public-req:${pip}`, 10, 60_000)) {
+        json(res, 429, { ok: false, error: "Too many requests. Please try again shortly." });
+        return;
+      }
       const body = (await parseBody(req)) as {
         tenantId?: unknown;
         hotelId?: unknown;

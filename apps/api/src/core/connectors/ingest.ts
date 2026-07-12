@@ -69,6 +69,29 @@ export function keywordClassify(text: string): ClassificationResult {
   return { category, priority, summary, sentiment: "neutral", routingHint: category, slaMinutes };
 }
 
+const VALID_PRIORITIES = new Set(["low", "normal", "medium", "high", "urgent"]);
+const VALID_SENTIMENTS = new Set(["positive", "neutral", "negative"]);
+const SLA_MIN = 5;              // never less than 5 minutes
+const SLA_MAX = 7 * 24 * 60;    // never more than 7 days
+
+// Clamp a (possibly AI-produced, injection-influenced) classification into safe,
+// well-typed values before it drives an SLA deadline and downstream filtering.
+export function sanitizeClassification(c: ClassificationResult): ClassificationResult {
+  const cleanStr = (v: unknown, max: number, dflt: string) => {
+    const s = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim() : "";
+    return s ? s.slice(0, max) : dflt;
+  };
+  const sla = Number(c.slaMinutes);
+  return {
+    category: cleanStr(c.category, 40, "front_desk").toLowerCase(),
+    priority: VALID_PRIORITIES.has(String(c.priority).toLowerCase()) ? String(c.priority).toLowerCase() : "normal",
+    summary: cleanStr(c.summary, 500, "Request received"),
+    sentiment: VALID_SENTIMENTS.has(String(c.sentiment).toLowerCase()) ? String(c.sentiment).toLowerCase() : "neutral",
+    routingHint: cleanStr(c.routingHint, 40, "front_desk").toLowerCase(),
+    slaMinutes: Number.isFinite(sla) ? Math.min(SLA_MAX, Math.max(SLA_MIN, Math.round(sla))) : 45,
+  };
+}
+
 export async function ingestConnectorEvent(input: IngestInput): Promise<IngestResult> {
   const {
     tenantId,
@@ -125,6 +148,12 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
     } else {
       classification = keywordClassify(messageText);
     }
+
+    // 3b. Clamp/validate the classification — the AI output is derived from an
+    // untrusted inbound message, so never trust its shape. An unbounded slaMinutes
+    // could push the SLA centuries out (never breaches); a non-enum priority/sentiment
+    // breaks downstream filters; a NaN slaMinutes makes `new Date(NaN)` throw (F-…).
+    classification = sanitizeClassification(classification);
 
     // 4. Create service request
     if (guestId) {

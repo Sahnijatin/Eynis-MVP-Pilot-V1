@@ -176,9 +176,16 @@ export async function sendWhatsAppTemplate(
 // White-label: the sign-off carries the tenant's own brand, never a hardcoded
 // "The Riviera" (F-20). `brandName` is the tenant's branding override or name;
 // falls back to a neutral sign-off when unknown.
-export function buildReplyMessage(guestName: string, summary: string, requestId: string, brandName?: string | null): string {
-  const firstName = guestName.split(" ")[0] ?? guestName;
+//
+// SECURITY (F-…): this reply is sent back to the customer through the tenant's own
+// WhatsApp number, so it must NOT echo any model-derived / customer-derived text.
+// The inbound message is fed to the classifier, and a prompt-injected message could
+// steer the AI `summary` to contain a phishing link — relaying that from the brand's
+// number is a trust/phishing vector. We send a fixed acknowledgment only; the AI
+// summary is still stored on the ServiceRequest for staff, never sent outbound.
+export function buildReplyMessage(guestName: string, _summary: string, requestId: string, brandName?: string | null): string {
+  const firstName = (guestName.split(" ")[0] ?? guestName).replace(/[^\p{L}\p{N}\s'.-]/gu, "").slice(0, 40).trim() || "there";
   const shortId = requestId.slice(-6).toUpperCase();
   const signOff = brandName?.trim() ? ` — ${brandName.trim()}` : "";
-  return `Hi ${firstName}! We've received your request and our team is on it.\n\n"${summary}"\n\nRef: #${shortId}${signOff}`;
+  return `Hi ${firstName}! We've received your request and our team is on it. We'll be in touch shortly.\n\nRef: #${shortId}${signOff}`;
 }
