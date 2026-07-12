@@ -651,6 +651,7 @@ export interface Quote {
   sentAt: string | null;
   acceptedAt: string | null;
   rejectedAt: string | null;
+  rejectedReason: string | null;
   createdAt: string;
   updatedAt: string;
   contactName: string | null;

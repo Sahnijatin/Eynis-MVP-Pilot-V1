@@ -330,6 +330,122 @@ test("editing a draft replaces its line items and re-prices; the PDF hides cost/
   }
 });
 
+test("lifecycle guards: accept/reject/expire only from sent; a committed deal value survives a reject attempt", async () => {
+  const { tenantId, base, H, close } = await setup();
+  try {
+    const created = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Bookshelf", marginPct: 50, marginFloorPct: 10,
+      lines: [{ name: "Frame", costBasis: "fixed", quantity: 1, unitRatePaise: 2000000 }],
+    }) });
+    const { quote } = (await created.json()) as { quote: { id: string; totalPaise: number } };
+
+    // Decisions on a draft are rejected — send is the only door out of draft.
+    for (const action of ["accept", "reject", "expire"] as const) {
+      const r = await fetch(base + `/quotes/${quote.id}/${action}`, { method: "POST", headers: H, body: "{}" });
+      assert.equal(r.status, 409, `${action} on a draft must 409`);
+    }
+
+    // An empty draft cannot be sent (and therefore can never be accepted at value 0).
+    const empty = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({ title: "Empty" }) });
+    const emptyQuote = ((await empty.json()) as { quote: { id: string } }).quote;
+    assert.equal((await fetch(base + `/quotes/${emptyQuote.id}/send`, { method: "POST", headers: H })).status, 422);
+    assert.equal((await fetch(base + `/quotes/${emptyQuote.id}/accept`, { method: "POST", headers: H })).status, 409);
+
+    // Send, link a deal, accept → the deal value is committed.
+    await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
+    const pipeline = await prisma.pipeline.create({ data: { tenantId, name: "Sales", isDefault: true } });
+    const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: "New", order: 0, probability: 10 } });
+    const deal = await prisma.deal.create({ data: { tenantId, title: "Bookshelf deal", pipelineId: pipeline.id, stageId: stage.id } });
+    await prisma.quote.update({ where: { id: quote.id }, data: { dealId: deal.id } });
+    assert.equal((await fetch(base + `/quotes/${quote.id}/accept`, { method: "POST", headers: H })).status, 200);
+    const committed = Number((await prisma.deal.findUnique({ where: { id: deal.id } }))!.value);
+    assert.ok(committed > 0, "deal value committed on accept");
+
+    // Accepted is terminal: reject and expire must 409, and the deal value must not move.
+    const rej = await fetch(base + `/quotes/${quote.id}/reject`, { method: "POST", headers: H, body: JSON.stringify({ reason: "changed mind" }) });
+    assert.equal(rej.status, 409);
+    assert.equal((await fetch(base + `/quotes/${quote.id}/expire`, { method: "POST", headers: H })).status, 409);
+    const after = await prisma.quote.findUnique({ where: { id: quote.id }, select: { status: true } });
+    assert.equal(after!.status, "accepted", "status unchanged by rejected transition attempts");
+    assert.equal(Number((await prisma.deal.findUnique({ where: { id: deal.id } }))!.value), committed, "deal value untouched");
+  } finally {
+    await close();
+  }
+});
+
+test("quote numbers are max+1: deleting a quote never makes the next create collide", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const mk = async (title: string) => {
+      const r = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({ title }) });
+      assert.equal(r.status, 200, `create "${title}" succeeds`);
+      return ((await r.json()) as { quote: { id: string; number: string } }).quote;
+    };
+    const q1 = await mk("One");
+    await mk("Two");
+    const q3 = await mk("Three");
+    assert.match(q3.number, /-0003$/);
+
+    // Delete the FIRST quote — under count+1 the next number would be 0003 (taken).
+    assert.equal((await fetch(base + `/quotes/${q1.id}`, { method: "DELETE", headers: H })).status, 200);
+    const q4 = await mk("Four");
+    assert.match(q4.number, /-0004$/, "max+1 steps past the surviving 0003");
+  } finally {
+    await close();
+  }
+});
+
+test("concurrent quote creates allocate distinct numbers", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({ title: `Race ${i}` }) }),
+      ),
+    );
+    const numbers: string[] = [];
+    for (const r of results) {
+      assert.equal(r.status, 200);
+      numbers.push(((await r.json()) as { quote: { number: string } }).quote.number);
+    }
+    assert.equal(new Set(numbers).size, 5, `all numbers distinct, got ${numbers.join(", ")}`);
+  } finally {
+    await close();
+  }
+});
+
+test("expiry sweep: a sent quote past validUntil flips to expired; others are untouched", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const mk = async (title: string, validUntil?: string) => {
+      const r = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+        title, marginPct: 50, marginFloorPct: 10, ...(validUntil ? { validUntil } : {}),
+        lines: [{ name: "Body", costBasis: "fixed", quantity: 1, unitRatePaise: 1000000 }],
+      }) });
+      return ((await r.json()) as { quote: { id: string } }).quote;
+    };
+    const overdue = await mk("Overdue", new Date(Date.now() - 24 * 3600_000).toISOString());
+    const current = await mk("Current", new Date(Date.now() + 24 * 3600_000).toISOString());
+    const draft = await mk("Draft overdue", new Date(Date.now() - 24 * 3600_000).toISOString());
+    await fetch(base + `/quotes/${overdue.id}/send`, { method: "POST", headers: H });
+    await fetch(base + `/quotes/${current.id}/send`, { method: "POST", headers: H });
+
+    const { expireOverdueQuotes } = await import("./service");
+    await expireOverdueQuotes();
+
+    const status = async (id: string) => (await prisma.quote.findUnique({ where: { id }, select: { status: true } }))!.status;
+    assert.equal(await status(overdue.id), "expired", "overdue sent quote expired");
+    assert.equal(await status(current.id), "sent", "future-dated quote untouched");
+    assert.equal(await status(draft.id), "draft", "drafts are never expired by the sweep");
+
+    // Idempotent: a second sweep changes nothing for this tenant's quotes.
+    await expireOverdueQuotes();
+    assert.equal(await status(overdue.id), "expired");
+  } finally {
+    await close();
+  }
+});
+
 test("quotes are tenant-isolated", async () => {
   const a = await setup();
   const b = await setup();

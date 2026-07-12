@@ -4494,7 +4494,7 @@ const handleRequest = async (
         if (!auth.ok) return;
         const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
         if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (floor.status !== "draft") { json(res, 409, { ok: false, error: `Quote is already ${floor.status}` }); return; }
+        if (!quotes.canTransition(floor.status, "sent")) { json(res, 409, { ok: false, error: `Quote is already ${floor.status}` }); return; }
         if (!floor.hasLines) { json(res, 422, { ok: false, error: "Quote has no line items" }); return; }
         if (floor.floorViolation) {
           json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
@@ -4521,7 +4521,11 @@ const handleRequest = async (
         if (!auth.ok) return;
         const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
         if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (floor.status === "accepted") { json(res, 409, { ok: false, error: "Quote is already accepted" }); return; }
+        // Only a sent quote can be accepted: send is the sole door and it enforces
+        // lines + the margin floor, so a draft (possibly empty) quote can never
+        // commit a deal value directly.
+        if (!quotes.canTransition(floor.status, "accepted")) { json(res, 409, { ok: false, error: `Only sent quotes can be accepted (this quote is ${floor.status})` }); return; }
+        if (!floor.hasLines) { json(res, 422, { ok: false, error: "Quote has no line items" }); return; }
         if (floor.floorViolation) {
           json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
           return;
@@ -4544,6 +4548,9 @@ const handleRequest = async (
         if (!auth.ok) return;
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
         if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        // An accepted quote cannot be rejected — its total is already committed to
+        // the linked deal. Decided states are terminal; re-quote instead.
+        if (!quotes.canTransition(raw.status, "rejected")) { json(res, 409, { ok: false, error: `Only sent quotes can be rejected (this quote is ${raw.status})` }); return; }
         const body = (await parseBody(req)) as Record<string, unknown>;
         const quote = await quotes.markRejected(auth.context.tenantId, quoteId, asTrimmedString(body.reason));
         json(res, 200, { ok: true, quote });
@@ -4555,6 +4562,7 @@ const handleRequest = async (
         if (!auth.ok) return;
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
         if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
+        if (!quotes.canTransition(raw.status, "expired")) { json(res, 409, { ok: false, error: `Only sent quotes can be expired (this quote is ${raw.status})` }); return; }
         const quote = await quotes.markExpired(auth.context.tenantId, quoteId);
         json(res, 200, { ok: true, quote });
         return;

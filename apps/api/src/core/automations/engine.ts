@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
+import { expireOverdueQuotes } from "../quotes/service";
 import { singleFlight } from "../single-flight";
 import { loadTemplateForRun } from "../research/store";
 
@@ -294,6 +295,16 @@ export async function evaluateResearchOnStage() {
   }
 }
 
+// ── Sweep: sent quotes past validUntil → expired ──────────────────────────────
+
+// Not rule-table driven: expiry is an intrinsic property of a quote (its
+// validUntil), not an opt-in automation, and the status-filtered updateMany is
+// idempotent — so no per-tenant rules and no claim records are needed.
+export async function evaluateQuoteExpiry() {
+  const count = await expireOverdueQuotes();
+  if (count > 0) console.log(`[AutomationEngine] Expired ${count} overdue quote(s)`);
+}
+
 // ── Public: start worker ──────────────────────────────────────────────────────
 
 // Wrapped in singleFlight so a cycle that overruns the 60s interval can't overlap
@@ -306,7 +317,8 @@ export const runAutomationCycle = singleFlight(async (): Promise<void> => {
       evaluateSentimentLowFlag(),
       evaluateCheckinWelcome(),
       evaluateUpsellFollowup(),
-      evaluateResearchOnStage()
+      evaluateResearchOnStage(),
+      evaluateQuoteExpiry()
     ]);
   } catch (err) {
     console.error("[AutomationEngine] Cycle error:", err);

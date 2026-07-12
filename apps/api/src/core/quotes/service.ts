@@ -6,6 +6,7 @@
 // on non-draft quotes. On every draft write we recompute each line + the quote and
 // persist the frozen integers, so reads and the PDF are a pure read.
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import {
   computeLine,
@@ -16,6 +17,24 @@ import {
 } from "./costing";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
+
+// One source of truth for the quote state machine, enforced by every lifecycle
+// route. A draft can only be sent (send is the sole door that checks lines + the
+// margin floor); a decision — accepted/rejected/expired — is only valid on a sent
+// quote; decided states are terminal. Reopening a decided quote is deliberately
+// impossible (re-quote instead) so an accept's committed deal value can never be
+// silently unwound by a later reject.
+const TRANSITIONS: Record<QuoteStatus, readonly QuoteStatus[]> = {
+  draft: ["sent"],
+  sent: ["accepted", "rejected", "expired"],
+  accepted: [],
+  rejected: [],
+  expired: [],
+};
+
+export function canTransition(from: string, to: QuoteStatus): boolean {
+  return (TRANSITIONS[from as QuoteStatus] ?? []).includes(to);
+}
 const KINDS = ["material", "labor", "hardware", "finish", "other"] as const;
 const BASES: CostBasis[] = ["area", "length", "perimeter", "volume", "fixed", "hours"];
 
@@ -188,10 +207,23 @@ export async function getQuoteRaw(tenantId: string, id: string) {
 }
 
 // ── Number generation ──────────────────────────────────────────────────────────
-async function nextQuoteNumber(tenantId: string, year: number): Promise<string> {
-  const count = await prisma.quote.count({ where: { tenantId } });
-  return `Q-${year}-${String(count + 1).padStart(4, "0")}`;
+// max+1 over the tenant's numbers for the year — NOT count+1, which collides as
+// soon as a quote is deleted. The zero-padded fixed width makes the lexical max
+// the numeric max (up to 9999 quotes/tenant/year); the unique (tenantId, number)
+// index plus the caller's retry loop close the concurrent-create race.
+async function nextQuoteNumber(tenantId: string, year: number, bump = 0): Promise<string> {
+  const prefix = `Q-${year}-`;
+  const last = await prisma.quote.findFirst({
+    where: { tenantId, number: { startsWith: prefix } },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  const lastSeq = last ? parseInt(last.number.slice(prefix.length), 10) || 0 : 0;
+  return `${prefix}${String(lastSeq + 1 + bump).padStart(4, "0")}`;
 }
+
+const isUniqueViolation = (err: unknown): boolean =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
 
 // Resolve the frozen material rate for a line: an inventory link snapshots the
 // current InventoryItem.unitCostInr (rupees → paise); otherwise the caller's rate.
@@ -312,28 +344,40 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
   }
   const lines = input.lines && input.lines.length > 0 ? input.lines : seededLines;
 
-  const number = await nextQuoteNumber(tenantId, year);
-  const quote = await prisma.quote.create({
-    data: {
-      tenantId,
-      number,
-      title: input.title,
-      status: "draft",
-      contactId: input.contactId ?? null,
-      companyId: input.companyId ?? null,
-      dealId: input.dealId ?? null,
-      templateId: input.templateId ?? null,
-      overheadPct: input.overheadPct ?? knobs.overheadPct,
-      marginPct: input.marginPct ?? knobs.marginPct,
-      marginFloorPct: input.marginFloorPct ?? knobs.marginFloorPct,
-      discountPaise: Math.max(0, Math.round(input.discountPaise ?? 0)),
-      gstPercent: Math.max(0, input.gstPercent ?? 0),
-      validUntil: input.validUntil ?? null,
-      notes: input.notes ?? null,
-      terms: input.terms ?? null,
-      createdById: input.createdById ?? null,
-    },
-  });
+  // Number allocation with a collision-retry: two concurrent creates can compute
+  // the same max+1; the unique (tenantId, number) index rejects the loser, who
+  // re-reads the max (bumped by the attempt count to step past a winner whose
+  // commit it may not see yet) and tries again.
+  let quote: { id: string } | null = null;
+  for (let attempt = 0; attempt < 5 && !quote; attempt++) {
+    const number = await nextQuoteNumber(tenantId, year, attempt);
+    try {
+      quote = await prisma.quote.create({
+        data: {
+          tenantId,
+          number,
+          title: input.title,
+          status: "draft",
+          contactId: input.contactId ?? null,
+          companyId: input.companyId ?? null,
+          dealId: input.dealId ?? null,
+          templateId: input.templateId ?? null,
+          overheadPct: input.overheadPct ?? knobs.overheadPct,
+          marginPct: input.marginPct ?? knobs.marginPct,
+          marginFloorPct: input.marginFloorPct ?? knobs.marginFloorPct,
+          discountPaise: Math.max(0, Math.round(input.discountPaise ?? 0)),
+          gstPercent: Math.max(0, input.gstPercent ?? 0),
+          validUntil: input.validUntil ?? null,
+          notes: input.notes ?? null,
+          terms: input.terms ?? null,
+          createdById: input.createdById ?? null,
+        },
+      });
+    } catch (err) {
+      if (!isUniqueViolation(err) || attempt === 4) throw err;
+    }
+  }
+  if (!quote) throw new Error("Could not allocate a quote number");
 
   // Snapshot each line's rate and create it.
   for (let i = 0; i < lines.length; i++) {
@@ -495,6 +539,19 @@ export async function markRejected(tenantId: string, id: string, reason: string 
 export async function markExpired(tenantId: string, id: string) {
   await prisma.quote.update({ where: { id }, data: { status: "expired" } });
   return getQuote(tenantId, id);
+}
+
+// ── Expiry sweep ─────────────────────────────────────────────────────────────
+// Flip sent quotes past their validUntil to expired. Naturally idempotent (the
+// status filter means each quote transitions at most once), so the automation
+// cycle can call it every tick without claim records. Deliberately global: the
+// where clause only touches rows that are due, whatever their tenant.
+export async function expireOverdueQuotes(now = new Date()): Promise<number> {
+  const r = await prisma.quote.updateMany({
+    where: { status: "sent", validUntil: { lt: now } },
+    data: { status: "expired" },
+  });
+  return r.count;
 }
 
 // ── Templates ──────────────────────────────────────────────────────────────────

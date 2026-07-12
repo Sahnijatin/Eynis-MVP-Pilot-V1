@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, Download, Send, CheckCircle, Sparkles, AlertTriangle, FileSpreadsheet, Pencil } from "lucide-react";
+import { Plus, Trash2, Download, Send, CheckCircle, XCircle, Clock3, Eye, Sparkles, AlertTriangle, FileSpreadsheet, Pencil } from "lucide-react";
 import { Button, Modal, Field, Input, Select, Badge, PageHeader, Card, useToast } from "../ds";
 import type { Quote, QuoteTemplate, InventoryItem } from "../../lib/data";
 
@@ -60,6 +60,7 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
   const [quotes, setQuotes] = useState<Quote[]>(initialQuotes);
   const [building, setBuilding] = useState(false);
   const [editing, setEditing] = useState<Quote | null>(null);
+  const [viewing, setViewing] = useState<Quote | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/quotes?limit=100", { cache: "no-store" });
@@ -68,14 +69,20 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
   }, []);
 
   const act = useCallback(async (id: string, action: "send" | "accept" | "reject" | "expire") => {
-    const res = await fetch(`/api/quotes/${id}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    let body: Record<string, unknown> = {};
+    if (action === "reject") {
+      const reason = window.prompt("Reason for rejection (optional):", "");
+      if (reason === null) return; // cancelled
+      if (reason.trim()) body = { reason: reason.trim() };
+    }
+    const res = await fetch(`/api/quotes/${id}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const data = (await res.json()) as { ok: boolean; error?: string; minTotalPaise?: number; followup?: { enrolled: boolean } };
     if (!data.ok) {
       toast.push(data.minTotalPaise ? `${data.error}. Minimum price to clear the floor: ${rupees(data.minTotalPaise)}` : (data.error ?? "Action failed"), "error");
       return;
     }
     if (action === "send") toast.push(data.followup?.enrolled ? "Quote sent — follow-up started" : "Quote sent (no customer linked, so no follow-up)", data.followup?.enrolled ? "success" : "info");
-    else toast.push(`Quote ${action}ed`, "success");
+    else toast.push(`Quote ${{ accept: "accepted", reject: "rejected", expire: "expired" }[action]}`, "success");
     refresh();
   }, [toast, refresh]);
 
@@ -115,9 +122,12 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
                     <a href={`/api/quotes/${q.id}/pdf`} target="_blank" rel="noreferrer" title="Download PDF">
                       <Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /></Button>
                     </a>{" "}
+                    {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => setViewing(q)} title="View quote"><Eye className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => setEditing(q)} title="Edit draft"><Pencil className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "send")}><Send className="w-3.5 h-3.5" /> Send</Button>}{" "}
-                    {(q.status === "sent" || q.status === "draft") && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}{" "}
+                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}{" "}
+                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "reject")} title="Mark rejected"><XCircle className="w-3.5 h-3.5" /> Reject</Button>}{" "}
+                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "expire")} title="Mark expired"><Clock3 className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "accepted" && (
                       <a href={`/api/quotes/${q.id}/busy-export?format=csv`} target="_blank" rel="noreferrer" title="Export a BUSY-ready sales voucher (import via Administration → Import Voucher)">
                         <Button variant="secondary" size="sm"><FileSpreadsheet className="w-3.5 h-3.5" /> Busy</Button>
@@ -140,7 +150,81 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
           onSaved={() => { setBuilding(false); setEditing(null); refresh(); }}
         />
       )}
+
+      {viewing && <QuoteView quote={viewing} onClose={() => setViewing(null)} />}
     </div>
+  );
+}
+
+// Read-only detail for a quote that has left draft (sent/accepted/rejected/expired) —
+// non-drafts are immutable, so this shows the frozen lines + internal totals.
+function QuoteView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
+  const dims = (l: Quote["lineItems"][number]) => {
+    const parts = [l.lengthMm, l.widthMm, l.heightMm].filter((v): v is number => typeof v === "number" && v > 0);
+    return parts.length ? parts.join(" × ") + " mm" : "—";
+  };
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null);
+  const timeline = [
+    quote.sentAt && `Sent ${when(quote.sentAt)}`,
+    quote.acceptedAt && `Accepted ${when(quote.acceptedAt)}`,
+    quote.rejectedAt && `Rejected ${when(quote.rejectedAt)}${quote.rejectedReason ? ` — ${quote.rejectedReason}` : ""}`,
+    quote.status === "expired" && quote.validUntil && `Expired (was valid until ${when(quote.validUntil)})`,
+  ].filter(Boolean);
+  return (
+    <Modal title={`${quote.number} — ${quote.title}`} onClose={onClose} width={760} footer={
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+        <Badge tone={statusTone(quote.status)}>{quote.status}</Badge>
+        <Button variant="secondary" onClick={onClose}>Close</Button>
+      </div>
+    }>
+      <div style={{ display: "grid", gap: 12 }}>
+        {(quote.contactName || timeline.length > 0) && (
+          <div style={{ fontSize: 13, color: "#475569", display: "grid", gap: 2 }}>
+            {quote.contactName && <div>Customer: <strong>{quote.contactName}</strong>{quote.contactPhone ? ` · ${quote.contactPhone}` : ""}</div>}
+            {timeline.map((t) => <div key={String(t)}>{t}</div>)}
+          </div>
+        )}
+        <div style={{ overflowX: "auto" }}>
+          <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "#64748b" }}>
+                <th style={{ padding: "6px 8px" }}>Component</th>
+                <th style={{ padding: "6px 8px" }}>Piece</th>
+                <th style={{ padding: "6px 8px" }}>Dimensions</th>
+                <th style={{ padding: "6px 8px", textAlign: "right" }}>Qty</th>
+                <th style={{ padding: "6px 8px", textAlign: "right" }}>Rate</th>
+                <th style={{ padding: "6px 8px", textAlign: "right" }}>Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quote.lineItems.map((l) => (
+                <tr key={l.id} style={{ borderTop: "1px solid #e2e8f0" }}>
+                  <td style={{ padding: "6px 8px" }}>{l.name}</td>
+                  <td style={{ padding: "6px 8px", color: "#64748b" }}>{l.groupName}</td>
+                  <td style={{ padding: "6px 8px", color: "#64748b" }}>{dims(l)}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{l.computedQty} {l.materialUnit}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{rupees(l.unitRatePaise)}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{rupees(l.lineCostPaise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, display: "grid", gap: 4, fontSize: 14 }}>
+          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 2 }}>Internal cost breakdown (not shown on the customer quote)</div>
+          <Row label="Material" value={rupees(quote.materialCostPaise)} />
+          <Row label="Labor" value={rupees(quote.laborCostPaise)} />
+          <Row label="Overhead" value={rupees(quote.overheadPaise)} />
+          <Row label="Margin" value={rupees(quote.marginPaise)} />
+          <div style={{ borderTop: "1px solid #cbd5e1", margin: "4px 0" }} />
+          <Row label="Subtotal (taxable)" value={rupees(quote.totalPaise)} />
+          {quote.gstPercent > 0 && <Row label={`GST @ ${quote.gstPercent}%`} value={rupees(quote.gstPaise)} />}
+          <Row label={<strong>Grand total</strong>} value={<strong>{rupees(quote.grandTotalPaise)}</strong>} />
+        </div>
+        {quote.terms && <div style={{ fontSize: 13, color: "#475569" }}><strong>Terms:</strong> {quote.terms}</div>}
+        {quote.notes && <div style={{ fontSize: 13, color: "#475569" }}><strong>Notes:</strong> {quote.notes}</div>}
+      </div>
+    </Modal>
   );
 }
 
