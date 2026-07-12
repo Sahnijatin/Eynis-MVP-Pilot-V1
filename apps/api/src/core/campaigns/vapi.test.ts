@@ -120,9 +120,16 @@ test("verifyWebhook rejects a mismatching secret when enforced", () => {
   assert.equal(r.ok, false);
 });
 
-test("verifyWebhook skips verification in dev when not enforced", () => {
+test("verifyWebhook skips verification only when NO secret is configured and not enforced", () => {
   assert.deepEqual(verifyWebhook({ provided: null, expected: null, enforce: false }), { ok: true });
-  assert.deepEqual(verifyWebhook({ provided: null, expected: "s", enforce: false }), { ok: true });
+});
+
+test("verifyWebhook fails closed whenever a secret is configured, even if not enforced", () => {
+  // A configured secret is an explicit intent to verify — a missing or mismatched
+  // header must be rejected regardless of VERIFY_WEBHOOKS (prevents forged reports).
+  assert.equal(verifyWebhook({ provided: null, expected: "s", enforce: false }).ok, false);
+  assert.equal(verifyWebhook({ provided: "wrong", expected: "s", enforce: false }).ok, false);
+  assert.equal(verifyWebhook({ provided: "s", expected: "s", enforce: false }).ok, true);
 });
 
 test("verifyWebhook fails closed when enforced but secret missing", () => {

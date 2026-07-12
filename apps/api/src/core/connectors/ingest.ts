@@ -38,11 +38,14 @@ function asTrimmedString(v: unknown): string | null {
 }
 
 async function upsertGuest(tenantId: string, guestName: string, phoneE164: string): Promise<string> {
-  const existing = await prisma.contact.findFirst({ where: { tenantId, phoneE164 }, select: { id: true } });
-  if (existing) return existing.id;
-  const g = await prisma.contact.create({
-    data: { tenantId, fullName: guestName, phoneE164 },
-    select: { id: true }
+  // Atomic upsert on the (tenantId, phoneE164) unique — the previous find-then-create
+  // raced under concurrent inbound messages from a new number (provider retries /
+  // bursts), creating duplicate Contacts that split history and CRM data (F-…).
+  const g = await prisma.contact.upsert({
+    where: { tenantId_phoneE164: { tenantId, phoneE164 } },
+    update: {}, // keep the existing contact's fields on a repeat message
+    create: { tenantId, fullName: guestName, phoneE164 },
+    select: { id: true },
   });
   return g.id;
 }
@@ -229,7 +232,10 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
     });
 
   } catch (err) {
-    // Partial failure — update event with error state
+    // Partial failure — record the error state AND log it. Previously this was
+    // swallowed silently, so a transient outbound-send outage left SRs with no event
+    // linkage or audit trail and no operator signal (F-… half-processed ingest).
+    console.warn(`[ingest] pipeline failed for connectorEvent=${event.id} tenant=${tenantId}:`, err instanceof Error ? err.message : err);
     await prisma.connectorEvent.update({
       where: { id: event.id },
       data: { replyStatus: `error: ${err instanceof Error ? err.message : "unknown"}` }

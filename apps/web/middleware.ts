@@ -9,8 +9,10 @@ const isPublicRoute = createRouteMatcher([
   "/invite(.*)",
   "/api/invitations(.*)",
   "/api/public/(.*)",
-  "/api/connectors/(.*)",
-  "/api/sse(.*)",
+  // NOTE: /api/connectors/* (connector-config writes) and /api/sse (live tenant
+  // feed) are intentionally NOT public — they proxy authenticated backend calls, so
+  // Clerk must gate them. Signed-in requests carry the Clerk cookie and pass; only
+  // anonymous callers are blocked. (Previously public: F-… tenant-data exposure.)
   // Internal Eynis-staff provisioning console (E-8). It is NOT a Clerk surface —
   // staff authenticate with the platform-admin secret, gated server-side.
   "/admin(.*)",
