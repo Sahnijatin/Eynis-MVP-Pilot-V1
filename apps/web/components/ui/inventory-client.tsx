@@ -13,7 +13,7 @@ type TxType = typeof TX_TYPES[number];
 type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
 const EMPTY_FORM = { name: "", category: "Dairy", txType: "received" as TxType, qty: "", unit: "" };
 
-export function InventoryClient({ initialItems }: { initialItems: InventoryItem[] }) {
+export function InventoryClient({ initialItems, heading }: { initialItems: InventoryItem[]; heading?: { title: string; subtitle: string } }) {
   const [items, setItems] = useState<InventoryItem[]>(initialItems);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -111,8 +111,8 @@ export function InventoryClient({ initialItems }: { initialItems: InventoryItem[
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Inventory Management</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Real-time stock levels · reorder alerts · waste tracking</p>
+          <h1 className="text-xl font-bold text-slate-800">{heading?.title ?? "Inventory Management"}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{heading?.subtitle ?? "Real-time stock levels · reorder alerts · waste tracking"}</p>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
