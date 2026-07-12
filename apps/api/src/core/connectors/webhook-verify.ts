@@ -70,6 +70,22 @@ export function verifyVapiSecret(provided: string, expected: string): boolean {
   return safeCompare(provided, expected);
 }
 
+// Enforce-when-configured (H3 follow-up): signatures are verified whenever the
+// operator has configured what verification needs — a dedicated Interakt webhook
+// secret, or Twilio's auth token PLUS the public URL its HMAC covers (the token
+// alone also serves outbound sends, so it doesn't signal inbound-verification
+// intent; the URL does). VERIFY_WEBHOOKS remains an explicit override: "true"
+// forces enforcement even when half-configured, "false" is the dev escape hatch
+// that restores opt-out. Unset → auto.
+export function webhookEnforcement(env: NodeJS.ProcessEnv = process.env): { twilio: boolean; interakt: boolean; any: boolean } {
+  const flag = String(env.VERIFY_WEBHOOKS ?? "").toLowerCase();
+  const twilioConfigured = Boolean(env.TWILIO_AUTH_TOKEN && (env.TWILIO_WEBHOOK_URL ?? env.EYNIS_PUBLIC_URL));
+  const interaktConfigured = Boolean(env.INTERAKT_WEBHOOK_SECRET);
+  const twilio = flag === "true" || (flag !== "false" && twilioConfigured);
+  const interakt = flag === "true" || (flag !== "false" && interaktConfigured);
+  return { twilio, interakt, any: twilio || interakt };
+}
+
 // Returns true if verification passes or is skipped (no signature header present + not enforced)
 export function checkWebhookSignature(opts: {
   provider: "twilio" | "interakt";

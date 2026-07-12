@@ -139,7 +139,8 @@ Twelve connectors defined in `CONNECTOR_CATALOG` (`packages/shared/src/index.ts`
 | `RESEARCH_AI_PROVIDER` | auto | API: force Research Studio synthesis to `claude` or `openai`. Default auto-selects: Claude if `ANTHROPIC_API_KEY` is set, else OpenAI. Set `openai` if you only have an OpenAI key (or to prefer it when both are set). |
 | `RESEARCH_PLAYWRIGHT_ENABLED` | `false` | API: enable the **optional** headless-browser crawl fallback for JS-heavy pages. Off by default and `playwright` is not a declared dependency — to use it, self-host with `npm i playwright && npx playwright install chromium`, then set `true`. When on, a page whose static HTML is thinner than `RESEARCH_JS_MIN_CHARS` is re-fetched via Chromium and the richer result is cached. Unset/false → static-fetch-only (unchanged). |
 | `RESEARCH_JS_MIN_CHARS` | `250` | API: static-text length below which a page is treated as a JS shell and (when the fallback is enabled) retried via Playwright. |
-| `VERIFY_WEBHOOKS` | `false` | Enforce Twilio/Interakt webhook signatures |
+| `VERIFY_WEBHOOKS` | auto | Twilio/Interakt webhook signatures are enforced automatically once the provider's verification config exists (`INTERAKT_WEBHOOK_SECRET`, or `TWILIO_AUTH_TOKEN` + `TWILIO_WEBHOOK_URL`/`EYNIS_PUBLIC_URL`). `true` forces on, `false` explicitly disables (dev escape hatch) |
+| `SECRETS_ENC_KEY` | — | AES-256 key for connector secrets at rest. **Required in production** (startup fails without it); unset in dev → plaintext no-op |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | — | Twilio WhatsApp outbound |
 | `INTERAKT_API_KEY` | — | Interakt WhatsApp outbound |
 | `EYNIS_API_BASE_URL` | `http://localhost:4000` | Web → API base URL |

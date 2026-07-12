@@ -36,6 +36,8 @@ services:
         sync: false
       - key: JWT_SECRET            # JWT signing key
         sync: false
+      - key: SECRETS_ENC_KEY       # required in prod — AES key for connector secrets at rest (startup fails if unset)
+        sync: false
       - key: EYNIS_WEB_BASE_URL    # web origin, used to build invite links (e.g. https://demo.eynis.com)
         sync: false
       - key: API_PUBLIC_URL        # this API's public origin, used for the Vapi webhook callback

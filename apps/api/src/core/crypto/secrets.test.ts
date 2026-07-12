@@ -49,3 +49,14 @@ test("hashToken is deterministic 64-hex and hides the token", async () => {
   assert.equal(h, hashToken("invite-token-xyz"));
   assert.ok(!h.includes("invite-token-xyz"));
 });
+
+test("assertSecretsEncryptionConfigured fails prod-without-key, passes everything else", async () => {
+  const { assertSecretsEncryptionConfigured } = await import("./secrets");
+  // Production without a key must refuse to boot.
+  assert.throws(() => assertSecretsEncryptionConfigured({ isProduction: true, keyConfigured: false }), /SECRETS_ENC_KEY/);
+  // Production with a key, and dev with or without one, all pass.
+  assert.doesNotThrow(() => assertSecretsEncryptionConfigured({ isProduction: true, keyConfigured: true }));
+  assert.doesNotThrow(() => assertSecretsEncryptionConfigured({ isProduction: false, keyConfigured: false }));
+  // Defaults resolve from the real env (key IS set in this suite → passes).
+  assert.doesNotThrow(() => assertSecretsEncryptionConfigured());
+});

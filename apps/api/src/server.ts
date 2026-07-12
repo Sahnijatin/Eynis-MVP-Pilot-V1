@@ -29,13 +29,13 @@ import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
-import { hashToken as hashInviteToken } from "./core/crypto/secrets";
+import { hashToken as hashInviteToken, assertSecretsEncryptionConfigured } from "./core/crypto/secrets";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
-import { checkWebhookSignature, verifySharedWebhookSecret } from "./core/connectors/webhook-verify";
+import { checkWebhookSignature, verifySharedWebhookSecret, webhookEnforcement } from "./core/connectors/webhook-verify";
 import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, hasPermission, isWithinSeatLimit, legacyRoleFor, seedDefaultRolesForHotel, seedLicenseForHotel, syncSystemRolePermissions } from "./core/rbac";
@@ -1361,7 +1361,7 @@ const handleRequest = async (
       // so without a limit it's an email-enumeration oracle (F-24).
       const fwd = req.headers["x-forwarded-for"];
       const ip = (typeof fwd === "string" ? fwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
-      if (!rateLimit(`identify:${ip}`, 20, 60_000)) {
+      if (!(await rateLimit(`identify:${ip}`, 20, 60_000))) {
         json(res, 429, { ok: false, error: "Too many requests" });
         return;
       }
@@ -1472,7 +1472,7 @@ const handleRequest = async (
       // is a rare action, so a tight cap is safe.
       const rfwd = req.headers["x-forwarded-for"];
       const rip = (typeof rfwd === "string" ? rfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
-      if (!rateLimit(`register:${rip}`, 5, 60 * 60_000)) {
+      if (!(await rateLimit(`register:${rip}`, 5, 60 * 60_000))) {
         json(res, 429, { ok: false, error: "Too many registration attempts. Please try again later." });
         return;
       }
@@ -1803,7 +1803,7 @@ const handleRequest = async (
       // create unbounded Contact rows (F-…). A public intake form is low-frequency.
       const pfwd = req.headers["x-forwarded-for"];
       const pip = (typeof pfwd === "string" ? pfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
-      if (!rateLimit(`public-req:${pip}`, 10, 60_000)) {
+      if (!(await rateLimit(`public-req:${pip}`, 10, 60_000))) {
         json(res, 429, { ok: false, error: "Too many requests. Please try again shortly." });
         return;
       }
@@ -1904,30 +1904,35 @@ const handleRequest = async (
       if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
 
       const rawBody = await parseRawBody(req);
-      const enforce = process.env.VERIFY_WEBHOOKS === "true";
+      // Enforce-when-configured: verification turns on automatically as soon as
+      // the operator has configured what it needs (Interakt secret, or Twilio
+      // token + public URL). VERIFY_WEBHOOKS=true forces it on; =false is the
+      // explicit dev escape hatch. See webhookEnforcement().
+      const enforcement = webhookEnforcement();
 
       const twilioSig = typeof req.headers["x-twilio-signature"] === "string" ? req.headers["x-twilio-signature"] : null;
       const interaktSigPresent = typeof req.headers["x-hub-signature-256"] === "string" || typeof req.headers["x-interakt-signature"] === "string";
-      // Close the omission bypass: when enforcing, a request with no provider
-      // signature at all must be rejected rather than silently accepted (F-9).
-      if (enforce && twilioSig === null && !interaktSigPresent) {
+      // Close the omission bypass: when any provider is enforced, a request with
+      // no provider signature at all must be rejected rather than silently
+      // accepted (F-9) — otherwise forging "the other provider's" payload
+      // unsigned would bypass verification entirely.
+      if (enforcement.any && twilioSig === null && !interaktSigPresent) {
         json(res, 401, { ok: false, error: "Missing webhook signature" }); return;
       }
       if (twilioSig !== null) {
         // Twilio's HMAC covers the exact public URL it POSTed to PLUS the sorted form
-        // params — the old call passed params:{} and a spoofable Host-header URL, so
-        // verification could never pass (decorative). Use the configured public URL
-        // (TWILIO_WEBHOOK_URL / EYNIS_PUBLIC_URL, never the request Host which a caller
-        // controls) and the real form params parsed from the body. Enforcement stays
-        // opt-in (VERIFY_WEBHOOKS) so a URL mismatch can't break the default deploy;
-        // operators should validate against a live Twilio number before enforcing.
+        // params. Use the configured public URL (TWILIO_WEBHOOK_URL / EYNIS_PUBLIC_URL,
+        // never the request Host which a caller controls) and the real form params
+        // parsed from the body. Enforcement is automatic once that URL + the auth
+        // token are configured — operators should validate against a live Twilio
+        // number when setting them.
         const configuredBase = (process.env.TWILIO_WEBHOOK_URL ?? process.env.EYNIS_PUBLIC_URL ?? "").trim();
         const fullUrl = configuredBase
           ? configuredBase
           : `https://${req.headers.host ?? "localhost"}${req.url}`;
         const isForm = (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
         const twilioParams = isForm ? Object.fromEntries(new URLSearchParams(rawBody)) : {};
-        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: twilioParams, enforce });
+        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: twilioParams, enforce: enforcement.twilio });
         if (!check.ok) { json(res, 401, { ok: false, error: check.reason ?? "Twilio signature verification failed" }); return; }
       }
 
@@ -1937,7 +1942,7 @@ const handleRequest = async (
         ? req.headers["x-interakt-signature"]
         : null;
       if (interaktSig !== null) {
-        const check = checkWebhookSignature({ provider: "interakt", signature: interaktSig, url: req.url ?? "", rawBody, enforce });
+        const check = checkWebhookSignature({ provider: "interakt", signature: interaktSig, url: req.url ?? "", rawBody, enforce: enforcement.interakt });
         if (!check.ok) { json(res, 401, { ok: false, error: check.reason ?? "Interakt signature verification failed" }); return; }
       }
 
@@ -6878,6 +6883,15 @@ export const buildServer = () =>
 
 export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
   assertJwtSecretConfigured(); // refuse to boot prod with the default/blank JWT secret (F-22)
+  assertSecretsEncryptionConfigured(); // refuse to boot prod that would store connector secrets in plaintext (H6)
+  // Not fatal (inbound WhatsApp may legitimately be unused), but loud: a prod
+  // deploy accepting unsigned provider webhooks should be a conscious choice.
+  if (process.env.NODE_ENV === "production" && !webhookEnforcement().any) {
+    console.warn(
+      "[Startup] WhatsApp webhook signature verification is OFF — configure INTERAKT_WEBHOOK_SECRET " +
+      "or TWILIO_AUTH_TOKEN + TWILIO_WEBHOOK_URL/EYNIS_PUBLIC_URL (or set VERIFY_WEBHOOKS=true) to enforce it",
+    );
+  }
   const server = buildServer();
   server.listen(port, () => {
     console.log("Eynis API listening on port " + port);

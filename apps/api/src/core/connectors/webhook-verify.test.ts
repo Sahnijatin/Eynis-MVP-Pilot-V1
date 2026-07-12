@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { verifySharedWebhookSecret, verifyTwilioSignature } from "./webhook-verify";
+import { verifySharedWebhookSecret, verifyTwilioSignature, webhookEnforcement } from "./webhook-verify";
 
 test("verifyTwilioSignature matches Twilio's algorithm (url + sorted params, HMAC-SHA1)", () => {
   const authToken = "test_auth_token";
@@ -49,4 +49,26 @@ test("verifySharedWebhookSecret: open in development when no secret is configure
   const r = verifySharedWebhookSecret({ expected: "", provided: null, isProduction: false });
   assert.equal(r.ok, true);
   assert.equal(r.status, 200);
+});
+
+// Enforce-when-configured (H3 follow-up): verification turns on by itself once
+// the operator has configured what it needs; VERIFY_WEBHOOKS only overrides.
+test("webhookEnforcement: auto-enforces per provider from its config", () => {
+  // Nothing configured → nothing enforced.
+  assert.deepEqual(webhookEnforcement({}), { twilio: false, interakt: false, any: false });
+  // Interakt secret alone enforces Interakt only.
+  assert.deepEqual(webhookEnforcement({ INTERAKT_WEBHOOK_SECRET: "s" }), { twilio: false, interakt: true, any: true });
+  // Twilio token alone (outbound-only config) does NOT enforce — the URL its HMAC covers is missing.
+  assert.equal(webhookEnforcement({ TWILIO_AUTH_TOKEN: "t" }).twilio, false);
+  // Token + configured public URL enforces Twilio.
+  assert.equal(webhookEnforcement({ TWILIO_AUTH_TOKEN: "t", TWILIO_WEBHOOK_URL: "https://api.example.com/hook" }).twilio, true);
+  assert.equal(webhookEnforcement({ TWILIO_AUTH_TOKEN: "t", EYNIS_PUBLIC_URL: "https://api.example.com" }).twilio, true);
+});
+
+test("webhookEnforcement: VERIFY_WEBHOOKS overrides in both directions", () => {
+  // "true" forces enforcement even with nothing configured.
+  assert.deepEqual(webhookEnforcement({ VERIFY_WEBHOOKS: "true" }), { twilio: true, interakt: true, any: true });
+  // "false" is the dev escape hatch even when fully configured.
+  const off = webhookEnforcement({ VERIFY_WEBHOOKS: "false", INTERAKT_WEBHOOK_SECRET: "s", TWILIO_AUTH_TOKEN: "t", TWILIO_WEBHOOK_URL: "u" });
+  assert.deepEqual(off, { twilio: false, interakt: false, any: false });
 });

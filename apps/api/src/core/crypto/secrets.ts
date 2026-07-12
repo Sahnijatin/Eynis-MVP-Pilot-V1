@@ -34,6 +34,18 @@ const KEY = resolveKey();
 
 export const secretsEncryptionEnabled = (): boolean => KEY !== null;
 
+// Fail fast at startup if a production deploy would write tenant secrets in
+// plaintext (mirrors assertJwtSecretConfigured, F-22): the no-key no-op mode is
+// a dev/test convenience, not an acceptable production posture. The overrides
+// exist for tests only — production callers pass nothing.
+export const assertSecretsEncryptionConfigured = (opts: { isProduction?: boolean; keyConfigured?: boolean } = {}): void => {
+  const isProduction = opts.isProduction ?? process.env.NODE_ENV === "production";
+  const keyConfigured = opts.keyConfigured ?? KEY !== null;
+  if (isProduction && !keyConfigured) {
+    throw new Error("SECRETS_ENC_KEY must be set in production — without it, tenant connector credentials are stored in plaintext");
+  }
+};
+
 // Encrypt a plaintext secret. No-op when encryption is disabled, the value is empty,
 // or the value is already encrypted (idempotent).
 export function encryptSecret(plain: string): string {
