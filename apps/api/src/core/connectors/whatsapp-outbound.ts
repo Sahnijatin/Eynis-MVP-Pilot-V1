@@ -33,14 +33,21 @@ async function sendViaTwilio(config: Record<string, unknown>, toPhone: string, m
   const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
   const credentials = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: body.toString()
-  });
+  // A DNS/socket/timeout error must NOT throw — the ingest pipeline calls this and an
+  // unhandled throw would skip event linkage + the audit write (F-… half-processed SR).
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: body.toString()
+    });
+  } catch (e) {
+    return { sent: false, provider: "twilio", error: `Twilio request failed: ${e instanceof Error ? e.message : "network error"}` };
+  }
 
   if (!res.ok) {
     const err = await res.text().catch(() => res.statusText);
@@ -74,14 +81,19 @@ async function sendViaInterakt(config: Record<string, unknown>, toPhone: string,
   };
 
   const credentials = Buffer.from(apiKey).toString("base64");
-  const res = await fetch("https://api.interakt.ai/v1/public/message/", {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${credentials}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  let res: Response;
+  try {
+    res = await fetch("https://api.interakt.ai/v1/public/message/", {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${credentials}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    return { sent: false, provider: "interakt", error: `Interakt request failed: ${e instanceof Error ? e.message : "network error"}` };
+  }
 
   if (!res.ok) {
     const err = await res.text().catch(() => res.statusText);

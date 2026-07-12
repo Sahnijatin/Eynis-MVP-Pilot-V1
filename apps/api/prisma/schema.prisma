@@ -223,6 +223,7 @@ model Contact {
   activities      Activity[]
   quotes          Quote[]
 
+  @@unique([tenantId, phoneE164])
   @@index([tenantId])
   @@index([companyId])
   @@map("Guest")

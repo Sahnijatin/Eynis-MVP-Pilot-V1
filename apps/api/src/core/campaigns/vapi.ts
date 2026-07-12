@@ -238,8 +238,13 @@ export async function deleteAssistant(
 // ── Webhook verification ──────────────────────────────────────────────────────
 
 // Verifies the x-vapi-secret header against the configured webhook secret.
-// When VERIFY_WEBHOOKS is not enforced and no secret is configured, verification
-// is skipped (returns ok) — matching checkWebhookSignature's dev-friendly stance.
+//
+// Fail-closed policy: **if a secret is configured, it is always enforced** — a
+// missing or mismatched header is rejected regardless of VERIFY_WEBHOOKS. Configuring
+// a secret is an explicit intent to verify; the previous behaviour accepted forged
+// end-of-call reports (overwriting transcripts/outcomes) whenever VERIFY_WEBHOOKS was
+// unset, even with a secret set (F-…). The `enforce` flag only governs the case where
+// NO secret is configured (whether to require one at all — prod should).
 export function verifyWebhook(opts: {
   provided: string | null;
   expected: string | null;
@@ -248,15 +253,10 @@ export function verifyWebhook(opts: {
   const { provided, expected, enforce } = opts;
   if (!expected) {
     if (enforce) return { ok: false, reason: "Vapi webhook secret not configured — set VAPI_WEBHOOK_SECRET" };
-    return { ok: true };
+    return { ok: true }; // dev-friendly only when no secret exists
   }
-  if (!provided) {
-    if (enforce) return { ok: false, reason: "Missing x-vapi-secret header" };
-    return { ok: true };
-  }
-  if (!verifyVapiSecret(provided, expected)) {
-    if (enforce) return { ok: false, reason: "Vapi webhook secret mismatch" };
-    console.warn("[Vapi] webhook secret mismatch — set VERIFY_WEBHOOKS=false to silence");
-  }
+  // A secret is configured — verify unconditionally (fail closed).
+  if (!provided) return { ok: false, reason: "Missing x-vapi-secret header" };
+  if (!verifyVapiSecret(provided, expected)) return { ok: false, reason: "Vapi webhook secret mismatch" };
   return { ok: true };
 }

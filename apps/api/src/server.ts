@@ -1453,6 +1453,16 @@ const handleRequest = async (
 
     // ── POST /hotels/register — public: create hotel, seed roles/license, issue JWT ─
     if (req.url === "/hotels/register" && req.method === "POST") {
+      // Throttle per client IP — this is an unauthenticated endpoint that mints a
+      // tenant + a live admin token, so without a limit it can be scripted to create
+      // thousands of tenants / admin tokens for arbitrary emails (F-…). Registration
+      // is a rare action, so a tight cap is safe.
+      const rfwd = req.headers["x-forwarded-for"];
+      const rip = (typeof rfwd === "string" ? rfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(`register:${rip}`, 5, 60 * 60_000)) {
+        json(res, 429, { ok: false, error: "Too many registration attempts. Please try again later." });
+        return;
+      }
       const body = (await parseBody(req)) as {
         propertyName?: unknown;
         ownerEmail?: unknown;
@@ -1985,8 +1995,11 @@ const handleRequest = async (
       if (!auth.ok) return;
 
       const qs = parseUrl(req.url).searchParams;
-      const limit = Math.min(Number(qs.get("limit") ?? 20), 100);
-      const offset = Math.max(Number(qs.get("offset") ?? 0), 0);
+      // Use the hardened helpers — a raw Number("abc") here yielded take: NaN, which
+      // made Prisma throw and surfaced as an opaque 500 (F-…). Every other list route
+      // already uses these.
+      const limit = asSafeLimit(qs.get("limit"), 20, 100);
+      const offset = asSafeOffset(qs.get("offset"));
       const connectorKey = qs.get("connectorKey") ?? undefined;
 
       const [items, total] = await Promise.all([
