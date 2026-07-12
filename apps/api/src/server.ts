@@ -175,6 +175,18 @@ const dateOrNull = (v: unknown): Date | null => {
   const d = new Date(v as string);
   return Number.isNaN(d.getTime()) ? null : d;
 };
+// Best-effort E.164 normalisation for customer phone entry: keep a leading +, strip
+// spaces/dashes, and default a bare 10-digit number to India (+91). Returns null for
+// anything that can't be a phone. Not a full libphonenumber — just enough for intake.
+const normalizePhoneE164 = (raw: string | null): string | null => {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[\s\-()]/g, "");
+  if (/^\+\d{7,15}$/.test(cleaned)) return cleaned;
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
+  return null;
+};
 
 // Parse a from/to reporting window from the query string (E-15). Returns null
 // when NEITHER param is present so each endpoint keeps its own default window
@@ -4285,10 +4297,37 @@ const handleRequest = async (
       const body = (await parseBody(req)) as Record<string, unknown>;
       const title = asTrimmedString(body.title);
       if (!title) { json(res, 400, { ok: false, error: "title is required" }); return; }
+      // Resolve the customer: an explicit contactId, else a new-customer object
+      // {fullName, phoneE164, email} which we find-or-create by phone. Linking a
+      // contact is what lets Send start the follow-up drip (a quote with no contact
+      // can only log a task — the drip has no channel to reach).
+      let contactId = asTrimmedString(body.contactId);
+      if (!contactId && body.customer && typeof body.customer === "object") {
+        const cust = body.customer as Record<string, unknown>;
+        const phone = normalizePhoneE164(asTrimmedString(cust.phoneE164));
+        if (phone) {
+          const existing = await prisma.contact.findFirst({ where: { tenantId: auth.context.tenantId, phoneE164: phone }, select: { id: true } });
+          if (existing) {
+            contactId = existing.id;
+          } else {
+            const c = await prisma.contact.create({
+              data: {
+                tenantId: auth.context.tenantId,
+                fullName: asTrimmedString(cust.fullName) ?? "Customer",
+                phoneE164: phone,
+                email: asTrimmedString(cust.email),
+                source: "quote",
+              },
+              select: { id: true },
+            });
+            contactId = c.id;
+          }
+        }
+      }
       try {
         const quote = await quotes.createQuote(auth.context.tenantId, {
           title,
-          contactId: asTrimmedString(body.contactId),
+          contactId,
           companyId: asTrimmedString(body.companyId),
           dealId: asTrimmedString(body.dealId),
           templateId: asTrimmedString(body.templateId),
@@ -4296,6 +4335,7 @@ const handleRequest = async (
           marginPct: numUndef(body.marginPct),
           marginFloorPct: numUndef(body.marginFloorPct),
           discountPaise: numUndef(body.discountPaise),
+          gstPercent: numUndef(body.gstPercent),
           validUntil: dateOrNull(body.validUntil),
           notes: asTrimmedString(body.notes),
           terms: asTrimmedString(body.terms),
@@ -4344,10 +4384,15 @@ const handleRequest = async (
         if (body.marginPct !== undefined) fields.marginPct = Number(body.marginPct) || 0;
         if (body.marginFloorPct !== undefined) fields.marginFloorPct = Number(body.marginFloorPct) || 0;
         if (body.discountPaise !== undefined) fields.discountPaise = Math.max(0, Math.round(Number(body.discountPaise) || 0));
+        if (body.gstPercent !== undefined) fields.gstPercent = Math.max(0, Number(body.gstPercent) || 0);
         if (body.validUntil !== undefined) fields.validUntil = dateOrNull(body.validUntil);
         if (body.notes !== undefined) fields.notes = asTrimmedString(body.notes);
         if (body.terms !== undefined) fields.terms = asTrimmedString(body.terms);
-        const quote = await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
+        await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
+        // Optional full line-replace (the builder's Edit flow saves all lines at once).
+        const quote = Array.isArray(body.lines)
+          ? await quotes.replaceQuoteLines(auth.context.tenantId, quoteId, body.lines as quotes.LineInputPayload[])
+          : await quotes.getQuote(auth.context.tenantId, quoteId);
         json(res, 200, { ok: true, quote });
         return;
       }
@@ -4500,6 +4545,9 @@ const handleRequest = async (
         const format = (parseUrl(req.url).searchParams.get("format") ?? "csv").toLowerCase();
         const busy = await import("./core/connectors/busy");
         const config = await busy.resolveBusyConfig(auth.context.tenantId);
+        // The quote's own GST rate (if set) wins over the connector default so the
+        // voucher matches what the customer was quoted.
+        if (raw.gstPercent > 0) config.gstPercent = raw.gstPercent;
         // Party name: linked company, else contact, else the quote title.
         let partyName = raw.title;
         if (raw.companyId) {
