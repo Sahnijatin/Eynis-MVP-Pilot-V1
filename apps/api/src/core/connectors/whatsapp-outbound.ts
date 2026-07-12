@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma";
+import { decryptConfigValues } from "../crypto/secrets";
 
 interface OutboundResult {
   sent: boolean;
@@ -7,8 +8,9 @@ interface OutboundResult {
   error?: string;
 }
 
+// Parse a stored ConnectorConfig blob and decrypt any encrypted secret values (H6).
 function parseConfig(json: string): Record<string, unknown> {
-  try { return JSON.parse(json) as Record<string, unknown>; } catch { return {}; }
+  try { return decryptConfigValues(JSON.parse(json) as Record<string, unknown>); } catch { return {}; }
 }
 
 function asStr(v: unknown): string | null {

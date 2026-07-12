@@ -13,6 +13,7 @@
 import { prisma } from "../../db/prisma";
 import { ensureDisclosure } from "./compliance";
 import { verifyVapiSecret } from "../connectors/webhook-verify";
+import { decryptConfigValues } from "../crypto/secrets";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
@@ -63,7 +64,7 @@ const asStr = (v: unknown): string | null =>
   typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 
 const parseConfig = (json: string): Record<string, unknown> => {
-  try { return JSON.parse(json) as Record<string, unknown>; } catch { return {}; }
+  try { return decryptConfigValues(JSON.parse(json) as Record<string, unknown>); } catch { return {}; }
 };
 
 // ── Credential resolution (per-hotel ConnectorConfig → env fallback) ─────────

@@ -29,6 +29,7 @@ import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
+import { hashToken as hashInviteToken } from "./core/crypto/secrets";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -1903,8 +1904,20 @@ const handleRequest = async (
         json(res, 401, { ok: false, error: "Missing webhook signature" }); return;
       }
       if (twilioSig !== null) {
-        const fullUrl = `http://${req.headers.host ?? "localhost"}${req.url}`;
-        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: {}, enforce });
+        // Twilio's HMAC covers the exact public URL it POSTed to PLUS the sorted form
+        // params — the old call passed params:{} and a spoofable Host-header URL, so
+        // verification could never pass (decorative). Use the configured public URL
+        // (TWILIO_WEBHOOK_URL / EYNIS_PUBLIC_URL, never the request Host which a caller
+        // controls) and the real form params parsed from the body. Enforcement stays
+        // opt-in (VERIFY_WEBHOOKS) so a URL mismatch can't break the default deploy;
+        // operators should validate against a live Twilio number before enforcing.
+        const configuredBase = (process.env.TWILIO_WEBHOOK_URL ?? process.env.EYNIS_PUBLIC_URL ?? "").trim();
+        const fullUrl = configuredBase
+          ? configuredBase
+          : `https://${req.headers.host ?? "localhost"}${req.url}`;
+        const isForm = (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
+        const twilioParams = isForm ? Object.fromEntries(new URLSearchParams(rawBody)) : {};
+        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: twilioParams, enforce });
         if (!check.ok) { json(res, 401, { ok: false, error: check.reason ?? "Twilio signature verification failed" }); return; }
       }
 
@@ -2759,6 +2772,13 @@ const handleRequest = async (
       for (const [k, v] of Object.entries(incoming)) {
         if (isSecretKey(k) && (v === "" || v === SECRET_MASK || v == null)) continue; // keep stored secret
         merged[k] = v;
+      }
+      // Encrypt secret field values at rest (F-… H6). No-op when SECRETS_ENC_KEY is
+      // unset (values stay plaintext, unchanged behaviour) and idempotent for values
+      // already encrypted (the kept-from-existing case).
+      const { encryptSecret } = await import("./core/crypto/secrets");
+      for (const k of Object.keys(merged)) {
+        if (isSecretKey(k) && typeof merged[k] === "string" && merged[k]) merged[k] = encryptSecret(merged[k] as string);
       }
       const configJson = JSON.stringify(merged);
       const saved = await prisma.connectorConfig.upsert({
@@ -5093,13 +5113,15 @@ const handleRequest = async (
         where: { tenantId: auth.context.tenantId, email, acceptedAt: null },
         data: { expiresAt: new Date() }
       });
+      // The raw token goes ONLY in the invite URL; we store its SHA-256 hash so a DB
+      // read can't accept invites (F-… H6). Lookups hash the provided token to match.
       const token = randomBytes(32).toString("hex");
       const inv = await prisma.invitation.create({
         data: {
           tenantId: auth.context.tenantId,
           email,
           roleId: role.id,
-          token,
+          token: hashInviteToken(token),
           expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
           invitedById: auth.context.userId
         }
@@ -5118,7 +5140,7 @@ const handleRequest = async (
     if (parseInviteToken(req.url) && req.method === "GET") {
       const token = parseInviteToken(req.url)!;
       const inv = await prisma.invitation.findUnique({
-        where: { token },
+        where: { token: hashInviteToken(token) },
         include: {
           role: { select: { displayName: true, key: true } },
           tenant: { select: { name: true } }
@@ -5141,7 +5163,7 @@ const handleRequest = async (
     if (parseInviteAccept(req.url) && req.method === "POST") {
       const token = parseInviteAccept(req.url)!;
       const inv = await prisma.invitation.findUnique({
-        where: { token },
+        where: { token: hashInviteToken(token) },
         include: { role: { select: { id: true, key: true, permissions: true } } }
       });
       if (!inv)         { json(res, 404, { ok: false, error: "Invitation not found" }); return; }
@@ -5186,7 +5208,7 @@ const handleRequest = async (
         userId = newUser.id;
       }
       await prisma.invitation.update({
-        where: { token },
+        where: { token: hashInviteToken(token) },
         data: { acceptedAt: new Date() }
       });
       // Issue a JWT so the invitee is immediately logged in

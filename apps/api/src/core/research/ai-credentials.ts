@@ -5,6 +5,7 @@
 
 import { prisma } from "../../db/prisma";
 import type { AIProvider } from "../ai/intelligence";
+import { decryptConfigValues } from "../crypto/secrets";
 
 export interface AiCredentials {
   openaiKey: string | null;
@@ -35,7 +36,7 @@ async function connectorKey(tenantId: string, connectorKey: string): Promise<str
     .catch(() => null);
   if (!cfg?.enabled) return null;
   try {
-    const parsed = JSON.parse(cfg.configJson) as Record<string, unknown>;
+    const parsed = decryptConfigValues(JSON.parse(cfg.configJson) as Record<string, unknown>);
     return asStr(parsed.apiKey);
   } catch {
     return null;
