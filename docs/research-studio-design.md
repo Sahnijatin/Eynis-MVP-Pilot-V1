@@ -1,8 +1,11 @@
 # Research Studio — Design & Build Plan
 
-> Status: **Proposal / design doc** (June 2026). No feature code yet — this is the plan we
-> review before building. Read alongside `docs/crm-design.md`, `docs/enhancements-roadmap.md`,
-> `docs/design-system.md`, and `CLAUDE.md` (Product Principles).
+> Status: **Shipped** (July 2026). RS-1 → RS-4 are implemented and merged: the research
+> engine, source gathering, synthesis, worker, agentic multi-round search, scheduled
+> re-research, per-run share ACL, and the optional Playwright crawl fallback all live in
+> `apps/api/src/core/research/` with the UI at `apps/web/app/research/`. This document is
+> retained as the design reference. Read alongside `docs/crm-design.md`,
+> `docs/enhancements-roadmap.md`, `docs/design-system.md`, and `CLAUDE.md` (Product Principles).
 >
 > **Branch:** `claude/repo-review-planning-yLhwg` · **Phase IDs:** `RS-1` … `RS-4`
 > **Convention:** mirrors the `E-NN` enhancement series — each phase maps to a GitHub issue;

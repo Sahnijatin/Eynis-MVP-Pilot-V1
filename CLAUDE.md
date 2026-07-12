@@ -64,7 +64,7 @@ npm run build
 `@eynis/shared` is a build-time dependency of both `apps/api` and `apps/web`. Its `dist/` must exist before either can compile.
 
 ### API Server (`apps/api/src/server.ts`)
-The entire API is one ~2400-line file with all routes as an `if/else` chain matching on `req.url` and `req.method`. There is no Express/Fastify — only `node:http`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
+The entire API is one ~6900-line file with all routes as an `if/else` chain matching on `req.url` and `req.method`. There is no Express/Fastify — only `node:http`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
 
 **Route authorization pattern:**
 1. `getAuthenticatedContext(req)` → verifies JWT, loads user + live permissions from DB
@@ -123,7 +123,7 @@ PostgreSQL via Prisma. Key models and relationships:
 - `NightAuditReport` — unique per `(tenantId, reportDate)`; stores AI-generated JSON report
 
 ### Connectors Registry
-Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twilio`, `pms_hotelogix`, `pms_ezee`, `pos_petpooja`, `payments_razorpay`. Each has an env flag (e.g. `CONNECTOR_WHATSAPP_TWILIO_ENABLED=true`) that controls default availability. Hotels can override via `PUT /connectors/configs/:key`.
+Twelve connectors defined in `CONNECTOR_CATALOG` (`packages/shared/src/index.ts`): `whatsapp_interakt`, `whatsapp_twilio`, `pms_hotelogix`, `pms_ezee`, `pos_petpooja`, `payments_razorpay`, `voice_vapi`, `email_resend`, `search_tavily`, `ai_openai`, `ai_anthropic`, `accounting_busy`. Each has an env flag (e.g. `CONNECTOR_WHATSAPP_TWILIO_ENABLED=true`) that controls default availability. Tenants can override via `PUT /connectors/configs/:key`.
 
 ## Key Environment Variables
 
