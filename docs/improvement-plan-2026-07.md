@@ -18,12 +18,12 @@ shippable and keeps the suite green.
 
 Cheap, zero-risk, and stops the docs from actively misleading contributors.
 
-- ☐ **0.1** Update stale "not yet built" headers on shipped designs:
+- ✅ **0.1** Update stale "not yet built" headers on shipped designs:
   `docs/research-studio-design.md`, `docs/email-deliverability-design.md` (suppression,
   sending domains, Resend webhook all exist), `docs/industry-agnostic-and-white-label-plan.md`.
-- ☐ **0.2** Fix `CLAUDE.md` drift: `server.ts` is ~6,900 lines (not ~2,400); connector list
+- ✅ **0.2** Fix `CLAUDE.md` drift: `server.ts` is ~6,900 lines (not ~2,400); connector list
   is larger than six (BUSY, Tavily search, etc.).
-- ☐ **0.3** Mark `docs/daily-context/` as historical (banner in `index.md`); it ends at
+- ✅ **0.3** Mark `docs/daily-context/` as historical (banner in `index.md`); it ends at
   day-19 (2026-05-13) and every "pending item" there has since shipped.
 
 **Acceptance:** no doc claims a shipped feature is unbuilt; CLAUDE.md figures match reality.
@@ -35,27 +35,27 @@ Cheap, zero-risk, and stops the docs from actively misleading contributors.
 The costing math is solid; the state machine around it is not. These are the only known
 defects that can silently corrupt money-bearing records.
 
-- ☐ **1.1 Formal state machine.** One transition table for `draft → sent → accepted |
+- ✅ **1.1 Formal state machine.** One transition table for `draft → sent → accepted |
   rejected | expired`, enforced in `core/quotes/service.ts` and used by every route
   (`server.ts:4491–4560`) instead of each route hand-checking a subset. Specifically block:
   accept from `draft` (never sent), accept from `rejected`/`expired`, reject after `accepted`.
-- ☐ **1.2 Accept guards.** Require `hasLines` (and total > 0) on accept, mirroring the
+- ✅ **1.2 Accept guards.** Require `hasLines` (and total > 0) on accept, mirroring the
   existing send guard — today an empty quote passes the margin floor vacuously and commits
   `deal.value = 0`.
-- ☐ **1.3 Deal-value integrity.** If a reject-after-accept path is ever allowed (e.g. an
+- ✅ **1.3 Deal-value integrity.** If a reject-after-accept path is ever allowed (e.g. an
   explicit "revert acceptance" action), it must revert the `deal.value` that accept
   committed. With 1.1 blocking the transition, add a regression test proving the deal value
   survives a rejected reject attempt.
-- ☐ **1.4 Quote numbering.** Replace `count + 1` (`service.ts:191–194`) with
+- ✅ **1.4 Quote numbering.** Replace `count + 1` (`service.ts:191–194`) with
   `max(number) + 1` per tenant inside a retry-on-`P2002` loop (or a per-tenant sequence).
   Fixes delete-then-create collisions and concurrent-create races; surface a clear error
   instead of a generic 400.
-- ☐ **1.5 Automated expiry.** Sweep `validUntil < now()` quotes in `sent` to `expired` from
+- ✅ **1.5 Automated expiry.** Sweep `validUntil < now()` quotes in `sent` to `expired` from
   the automation engine tick (record-first idempotency like the other rules).
-- ☐ **1.6 UI alignment.** Quotes client: remove "Accept" from drafts, add reject/expire
+- ✅ **1.6 UI alignment.** Quotes client: remove "Accept" from drafts, add reject/expire
   actions, and add a read-only detail view for sent/accepted quotes
   (`apps/web/components/ui/quotes-client.tsx`).
-- ☐ **1.7 Tests** for every guard above: accept-from-draft 409, accept-empty 422,
+- ✅ **1.7 Tests** for every guard above: accept-from-draft 409, accept-empty 422,
   reject-accepted 409, numbering collision after delete, concurrent create, expiry sweep.
 
 **Acceptance:** no reachable transition outside the table; deal values cannot be zeroed or
@@ -68,18 +68,18 @@ orphaned by quote actions; numbering survives delete + concurrency; suite green.
 The primitives (AES-GCM secrets, HMAC webhook verification, invite-token hashing) are built
 and tested — but a default production deploy can silently run without them.
 
-- ☐ **2.1 Startup assertions in production** (mirror the existing `JWT_SECRET` assertion in
+- ✅ **2.1 Startup assertions in production** (mirror the existing `JWT_SECRET` assertion in
   `core/auth.ts:32`): fail startup when `NODE_ENV=production` and `SECRETS_ENC_KEY` is unset;
   loudly warn (or fail, config-gated) when webhook verification is off.
-- ☐ **2.2 Enforce-when-configured webhooks.** Verify Twilio/Interakt signatures whenever the
+- ✅ **2.2 Enforce-when-configured webhooks.** Verify Twilio/Interakt signatures whenever the
   corresponding secret/config exists, regardless of `VERIFY_WEBHOOKS`; keep the flag only as
   a dev escape hatch. (This was the original H3 recommendation; the crypto is already
   functional in `core/connectors/webhook-verify.ts`.)
-- ☐ **2.3 Defensive tenant scoping in workers.** Add `tenantId` to the `where` of
+- ✅ **2.3 Defensive tenant scoping in workers.** Add `tenantId` to the `where` of
   by-ID lookups on worker paths (`core/research/engine.ts:53`,
   `core/campaigns/worker.ts:122/158`, `whatsapp-agent.ts:136`, `quotes/followup.ts:29–35`)
   so a stray ID from an untrusted boundary can never read cross-tenant.
-- ☐ **2.4 Rate limiter honesty.** Document the single-process limitation at the deploy
+- ✅ **2.4 Rate limiter honesty.** Document the single-process limitation at the deploy
   layer; add a pluggable store interface so a Redis adapter can drop in before any
   multi-instance deployment (adapter itself can wait until scaling is real).
 
