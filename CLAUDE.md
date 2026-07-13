@@ -64,14 +64,14 @@ npm run build
 `@eynis/shared` is a build-time dependency of both `apps/api` and `apps/web`. Its `dist/` must exist before either can compile.
 
 ### API Server (`apps/api/src/server.ts`)
-The entire API is one ~6900-line file with all routes as an `if/else` chain matching on `req.url` and `req.method`. There is no Express/Fastify — only `node:http`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
+The API has no framework — only `node:http`. `server.ts` (~3,700 lines) is the bootstrap + dispatcher: auth/tenant/team/AI/night-audit/connector handlers inline, plus calls into **extracted domain routers** (`core/<domain>/routes.ts` for quotes, inventory, reports, research, CRM, marketing, campaigns — each exports `handleXRoutes(req, res): Promise<boolean>` returning true when it handled the request). Shared HTTP helpers live in `src/http/helpers.ts`; the authorization kernel (`authorize`, `permissionMap`, `canAccess`, `getAuthenticatedContext`) in `src/core/authz.ts`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
 
 **Route authorization pattern:**
 1. `getAuthenticatedContext(req)` → verifies JWT, loads user + live permissions from DB
 2. `canAccess(permissions, "METHOD /path")` → looks up the route's required permission in `policyMap` and checks the user has it
 3. `ensureTenantAccess(tenantId)` → verifies the tenant exists
 
-`policyMap` at the top of `server.ts` maps every route to the **permission** it requires (`null` = any authenticated user). RBAC is permission-based: generic system roles (`admin`/`manager`/`supervisor`/`agent`/`viewer`) carry permission sets in the `Role` table. The legacy hospitality role union (`owner`/`front_desk`/…) in `@eynis/shared` is **deprecated** and used only as a backward-compat fallback.
+`permissionMap` (`src/core/authz.ts`) maps every JWT route to the **permission** it requires (`null` = any authenticated user); `src/authz-matrix.test.ts` walks the map and enforces 401/403 behaviour for the whole surface. RBAC is permission-based: generic system roles (`admin`/`manager`/`supervisor`/`agent`/`viewer`) carry permission sets in the `Role` table. The legacy hospitality role union (`owner`/`front_desk`/…) in `@eynis/shared` is **deprecated** and used only as a backward-compat fallback.
 
 **All API responses follow:** `{ ok: boolean, ...data }` on success or `{ ok: false, error: string }` on failure. Paginated endpoints return `{ items, page: { limit, offset, total, hasMore } }`.
 
