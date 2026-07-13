@@ -6,8 +6,10 @@
 // on non-draft quotes. On every draft write we recompute each line + the quote and
 // persist the frozen integers, so reads and the PDF are a pure read.
 
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { hashToken } from "../crypto/secrets";
 import {
   computeLine,
   computeQuote,
@@ -543,6 +545,110 @@ export async function markExpired(tenantId: string, id: string) {
   return getQuote(tenantId, id);
 }
 
+// ── Decision core (Phase 6) ───────────────────────────────────────────────────
+// One implementation of accept/reject shared by the staff routes and the public
+// customer link, so both paths enforce the same state machine, commit the deal
+// value identically, and leave an audit trail that names the actor.
+
+export type DecisionResult =
+  | { ok: true; quote: Awaited<ReturnType<typeof getQuote>> }
+  | { ok: false; status: number; error: string; minTotalPaise?: number; marginFloorPct?: number };
+
+export interface DecisionActor {
+  actorRole: string; // "staff" (authorized route) | "customer" (public link)
+  actorId?: string | null;
+}
+
+export async function acceptQuote(tenantId: string, quoteId: string, actor: DecisionActor): Promise<DecisionResult> {
+  const floor = await quoteFloorStatus(tenantId, quoteId);
+  if (!floor) return { ok: false, status: 404, error: "Quote not found" };
+  // Only a sent quote can be accepted: send is the sole door and it enforces
+  // lines + the margin floor, so a draft (possibly empty) quote can never
+  // commit a deal value directly.
+  if (!canTransition(floor.status, "accepted")) {
+    return { ok: false, status: 409, error: `Only sent quotes can be accepted (this quote is ${floor.status})` };
+  }
+  if (!floor.hasLines) return { ok: false, status: 422, error: "Quote has no line items" };
+  if (floor.floorViolation) {
+    return { ok: false, status: 422, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct };
+  }
+  const quote = await markAccepted(tenantId, quoteId);
+  // Commit the accepted total to the linked Deal (paise → Decimal rupees).
+  const raw = await getQuoteRaw(tenantId, quoteId);
+  if (raw?.dealId) {
+    const deal = await prisma.deal.findFirst({ where: { id: raw.dealId, tenantId }, select: { id: true } });
+    if (deal) {
+      await prisma.deal.update({ where: { id: deal.id }, data: { value: new Prisma.Decimal((raw.totalPaise / 100).toFixed(2)) } });
+    }
+  }
+  await prisma.auditLog.create({
+    data: {
+      tenantId, actorRole: actor.actorRole, action: "quote_accepted", entityType: "quote", entityId: quoteId,
+      metadata: JSON.stringify({ number: raw?.number, totalPaise: raw?.totalPaise, actorId: actor.actorId ?? null }),
+    },
+  });
+  return { ok: true, quote };
+}
+
+export async function rejectQuote(tenantId: string, quoteId: string, reason: string | null, actor: DecisionActor): Promise<DecisionResult> {
+  const raw = await getQuoteRaw(tenantId, quoteId);
+  if (!raw) return { ok: false, status: 404, error: "Quote not found" };
+  // An accepted quote cannot be rejected — its total is already committed to
+  // the linked deal. Decided states are terminal; re-quote instead.
+  if (!canTransition(raw.status, "rejected")) {
+    return { ok: false, status: 409, error: `Only sent quotes can be rejected (this quote is ${raw.status})` };
+  }
+  const quote = await markRejected(tenantId, quoteId, reason);
+  await prisma.auditLog.create({
+    data: {
+      tenantId, actorRole: actor.actorRole, action: "quote_rejected", entityType: "quote", entityId: quoteId,
+      metadata: JSON.stringify({ number: raw.number, reason, actorId: actor.actorId ?? null }),
+    },
+  });
+  return { ok: true, quote };
+}
+
+// ── Public customer link (Phase 6) ───────────────────────────────────────────
+// The raw token exists only in the link we hand out; the DB stores its SHA-256.
+// Re-issuing replaces the hash, which atomically invalidates any older link.
+
+export async function issuePublicToken(tenantId: string, quoteId: string): Promise<string | null> {
+  const raw = randomBytes(24).toString("base64url");
+  const r = await prisma.quote.updateMany({ where: { id: quoteId, tenantId }, data: { publicTokenHash: hashToken(raw) } });
+  return r.count > 0 ? raw : null;
+}
+
+export function publicQuoteUrl(token: string): string {
+  const base = (process.env.EYNIS_WEB_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  return `${base}/q/${token}`;
+}
+
+export async function getQuoteByPublicToken(rawToken: string) {
+  if (!rawToken || rawToken.length < 16 || rawToken.length > 128) return null;
+  return prisma.quote.findUnique({ where: { publicTokenHash: hashToken(rawToken) }, include: withLines });
+}
+
+// The customer-facing payload: the same piece allocation the PDF uses (selling
+// total spread across pieces by cost share) — NEVER cost/overhead/margin.
+export function publicQuoteView(q: ReturnType<typeof serializeQuote>) {
+  return {
+    number: q.number,
+    title: q.title,
+    status: q.status,
+    validUntil: q.validUntil,
+    items: allocateSellingByPiece(q),
+    totalPaise: Number(q.totalPaise) || 0,
+    gstPercent: q.gstPercent,
+    gstPaise: q.gstPaise,
+    grandTotalPaise: q.grandTotalPaise,
+    terms: q.terms,
+    contactName: q.contactName,
+    sentAt: q.sentAt,
+    acceptedAt: q.acceptedAt,
+    rejectedAt: q.rejectedAt,
+  };
+}
+
 // ── Expiry sweep ─────────────────────────────────────────────────────────────
 // Flip sent quotes past their validUntil to expired. Naturally idempotent (the
 // status filter means each quote transitions at most once), so the automation
@@ -676,16 +782,44 @@ export async function deleteTemplate(tenantId: string, id: string) {
   return r.count > 0;
 }
 
+// ── Customer-safe piece allocation ───────────────────────────────────────────
+// One row per PIECE at its selling price: the quote total allocated across
+// pieces (groupName) proportional to cost, remainder fixed on the last group so
+// rows always sum to the total. The customer never sees the internal
+// material/labor/overhead/margin breakdown — components appear as a spec only.
+// Shared by the PDF and the public customer link.
+export function allocateSellingByPiece(q: ReturnType<typeof serializeQuote>): Array<{ piece: string; spec: string; amountPaise: number }> {
+  const dims = (l: ReturnType<typeof serializeLine>) => {
+    const parts = [l.lengthMm, l.widthMm, l.heightMm].filter((v): v is number => typeof v === "number" && v > 0);
+    return parts.length ? parts.join(" × ") + " mm" : "—";
+  };
+  const total = Number(q.totalPaise) || 0;
+  const groups = new Map<string, ReturnType<typeof serializeLine>[]>();
+  for (const l of q.lineItems) {
+    const arr = groups.get(l.groupName) ?? [];
+    arr.push(l);
+    groups.set(l.groupName, arr);
+  }
+  const entries = [...groups.entries()];
+  const costByGroup = entries.map(([, lines]) => lines.reduce((s, l) => s + l.lineCostPaise, 0));
+  const totalCost = costByGroup.reduce((s, c) => s + c, 0);
+  let allocated = 0;
+  return entries.map(([group, lines], i) => {
+    const selling = i === entries.length - 1 || totalCost <= 0
+      ? total - allocated
+      : Math.round((total * costByGroup[i]) / totalCost);
+    allocated += selling;
+    const spec = lines.map((l) => (dims(l) !== "—" ? `${l.name} (${dims(l)})` : l.name)).join(", ");
+    return { piece: group, spec, amountPaise: selling };
+  });
+}
+
 // ── PDF blocks ───────────────────────────────────────────────────────────────
 // Build ReportBlock[] (report-html/report-pdf schema) for a quote. One table per
 // piece (groupName) + a totals table. Money is rendered as "Rs. x,xx,xxx" (pdfSafe
 // maps ₹→Rs.). Returns blocks; the route wraps them with renderBrandedReportPdf.
 export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
   const money = (paise: number) => `Rs. ${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
-  const dims = (l: ReturnType<typeof serializeLine>) => {
-    const parts = [l.lengthMm, l.widthMm, l.heightMm].filter((v): v is number => typeof v === "number" && v > 0);
-    return parts.length ? parts.join(" × ") + " mm" : "—";
-  };
   const blocks: Array<
     | { kind: "headline"; text: string }
     | { kind: "section"; heading: string; body: string }
@@ -702,27 +836,9 @@ export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
     blocks.push({ kind: "section", heading: "Prepared for", body: contact });
   }
 
-  // Customer-facing line items: one row per PIECE at its selling price (the total
-  // allocated across pieces by cost share) — the customer never sees the internal
-  // material/labor/overhead/margin breakdown. Components are listed as a spec only.
-  const groups = new Map<string, ReturnType<typeof serializeLine>[]>();
-  for (const l of q.lineItems) {
-    const arr = groups.get(l.groupName) ?? [];
-    arr.push(l);
-    groups.set(l.groupName, arr);
-  }
-  const entries = [...groups.entries()];
-  const costByGroup = entries.map(([, lines]) => lines.reduce((s, l) => s + l.lineCostPaise, 0));
-  const totalCost = costByGroup.reduce((s, c) => s + c, 0);
-  let allocated = 0;
-  const rows: Array<Array<string | number>> = entries.map(([group, lines], i) => {
-    const selling = i === entries.length - 1 || totalCost <= 0
-      ? total - allocated
-      : Math.round((total * costByGroup[i]) / totalCost);
-    allocated += selling;
-    const spec = lines.map((l) => (dims(l) !== "—" ? `${l.name} (${dims(l)})` : l.name)).join(", ");
-    return [group, spec, money(selling)];
-  });
+  // Customer-facing line items via the shared piece allocation (see
+  // allocateSellingByPiece) — the customer never sees cost/overhead/margin.
+  const rows: Array<Array<string | number>> = allocateSellingByPiece(q).map((r) => [r.piece, r.spec, money(r.amountPaise)]);
   blocks.push({ kind: "table", heading: "Quotation", header: ["Item", "Specification", "Amount"], rows });
 
   blocks.push({

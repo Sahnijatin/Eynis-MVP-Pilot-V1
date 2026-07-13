@@ -78,7 +78,7 @@ async function findOrCreateLead(tenantId: string, contact: { id: string; fullNam
 
 export async function runQuoteFollowup(
   tenantId: string,
-  quote: { id: string; number: string; title: string; contactId: string | null; dealId: string | null; createdById: string | null },
+  quote: { id: string; number: string; title: string; contactId: string | null; dealId: string | null; createdById: string | null; publicUrl?: string | null },
 ): Promise<FollowupResult> {
   const result: FollowupResult = { activityLogged: false, enrolled: false };
 
@@ -92,7 +92,8 @@ export async function runQuoteFollowup(
         userId: quote.createdById,
         type: "task",
         title: `Follow up on quote ${quote.number}`,
-        body: `Quote "${quote.title}" was sent. Follow up if the customer hasn't responded.`,
+        body: `Quote "${quote.title}" was sent. Follow up if the customer hasn't responded.`
+          + (quote.publicUrl ? ` Customer link: ${quote.publicUrl}` : ""),
         status: "open",
         dueAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // +2 days
       },

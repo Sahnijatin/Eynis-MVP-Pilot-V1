@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, Download, Send, CheckCircle, XCircle, Clock3, Eye, Sparkles, AlertTriangle, FileSpreadsheet, Pencil } from "lucide-react";
+import { Plus, Trash2, Download, Send, CheckCircle, XCircle, Clock3, Eye, Link2, Sparkles, AlertTriangle, FileSpreadsheet, Pencil } from "lucide-react";
 import { Button, Modal, Field, Input, Select, Badge, PageHeader, Card, useToast } from "../ds";
 import type { Quote, QuoteTemplate, InventoryItem } from "../../lib/data";
 
@@ -86,6 +86,21 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
     refresh();
   }, [toast, refresh]);
 
+  // Copy the customer's self-serve link. Re-mints the token (only its hash is
+  // stored, so the raw link can't be re-read) — any previously shared link stops
+  // working, which is also how you revoke one.
+  const copyLink = useCallback(async (id: string) => {
+    const res = await fetch(`/api/quotes/${id}/public-link`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
+    if (!data.ok || !data.url) { toast.push(data.error ?? "Could not create the link", "error"); return; }
+    try {
+      await navigator.clipboard.writeText(data.url);
+      toast.push("Customer link copied — sharing it replaces any earlier link", "success");
+    } catch {
+      window.prompt("Copy the customer link:", data.url);
+    }
+  }, [toast]);
+
   return (
     <div>
       <PageHeader
@@ -123,6 +138,7 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
                       <Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /></Button>
                     </a>{" "}
                     {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => setViewing(q)} title="View quote"><Eye className="w-3.5 h-3.5" /></Button>}{" "}
+                    {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => copyLink(q.id)} title="Copy customer link (replaces any earlier link)"><Link2 className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => setEditing(q)} title="Edit draft"><Pencil className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "send")}><Send className="w-3.5 h-3.5" /> Send</Button>}{" "}
                     {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}{" "}

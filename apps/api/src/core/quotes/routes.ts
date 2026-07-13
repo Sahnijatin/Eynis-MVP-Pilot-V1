@@ -227,8 +227,8 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
       return true;
     }
 
-    // Sub-routes: /quotes/:id[/lines[/:lineId]|/send|/accept|/reject|/expire|/pdf|/busy-export]
-    const quoteMatch = /^\/quotes\/([^/]+)(?:\/(lines|send|accept|reject|expire|pdf|busy-export))?(?:\/([^/]+))?$/.exec(
+    // Sub-routes: /quotes/:id[/lines[/:lineId]|/send|/accept|/reject|/expire|/pdf|/busy-export|/public-link]
+    const quoteMatch = /^\/quotes\/([^/]+)(?:\/(lines|send|accept|reject|expire|pdf|busy-export|public-link))?(?:\/([^/]+))?$/.exec(
       parseUrl(req.url ?? "").pathname,
     );
     if (quoteMatch) {
@@ -337,6 +337,10 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           return true;
         }
         const quote = await quotes.markSent(auth.context.tenantId, quoteId);
+        // Self-serve link (Phase 6): mint the public token at send so the customer
+        // can view + decide the quote themselves. Only the hash is stored.
+        const token = await quotes.issuePublicToken(auth.context.tenantId, quoteId);
+        const publicUrl = token ? quotes.publicQuoteUrl(token) : null;
         // Fire the multi-channel follow-up: log a CRM task and (if configured)
         // enroll the contact into the drip sequence. Best-effort — never blocks send.
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
@@ -346,50 +350,44 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           followup = await runQuoteFollowup(auth.context.tenantId, {
             id: raw.id, number: raw.number, title: raw.title,
             contactId: raw.contactId, dealId: raw.dealId, createdById: raw.createdById,
+            publicUrl,
           });
         }
-        json(res, 200, { ok: true, quote, followup });
+        json(res, 200, { ok: true, quote, followup, publicUrl });
         return true;
       }
-      // POST /quotes/:id/accept — enforce floor, commit price to the linked Deal.
+      // POST /quotes/:id/public-link — (re)issue the customer link. The raw token
+      // is derivable only at mint time (hash at rest), so "copy link" re-mints —
+      // and re-issuing atomically invalidates any previously shared link.
+      if (sub === "public-link" && req.method === "POST") {
+        const auth = await authorize(req, res, "POST /quotes/:id/public-link");
+        if (!auth.ok) return true;
+        const linkQuote = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
+        if (!linkQuote) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
+        if (linkQuote.status === "draft") { json(res, 409, { ok: false, error: "Send the quote first — drafts have no customer link" }); return true; }
+        const linkToken = await quotes.issuePublicToken(auth.context.tenantId, quoteId);
+        if (!linkToken) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
+        json(res, 200, { ok: true, url: quotes.publicQuoteUrl(linkToken) });
+        return true;
+      }
+      // POST /quotes/:id/accept — via the shared decision core (same state machine,
+      // deal commit, and audit trail the public customer link uses).
       if (sub === "accept" && req.method === "POST") {
         const auth = await authorize(req, res, "POST /quotes/:id/accept");
         if (!auth.ok) return true;
-        const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
-        if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
-        // Only a sent quote can be accepted: send is the sole door and it enforces
-        // lines + the margin floor, so a draft (possibly empty) quote can never
-        // commit a deal value directly.
-        if (!quotes.canTransition(floor.status, "accepted")) { json(res, 409, { ok: false, error: `Only sent quotes can be accepted (this quote is ${floor.status})` }); return true; }
-        if (!floor.hasLines) { json(res, 422, { ok: false, error: "Quote has no line items" }); return true; }
-        if (floor.floorViolation) {
-          json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
-          return true;
-        }
-        const quote = await quotes.markAccepted(auth.context.tenantId, quoteId);
-        // Commit the accepted total to the linked Deal (paise → Decimal rupees).
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (raw?.dealId) {
-          const deal = await prisma.deal.findFirst({ where: { id: raw.dealId, tenantId: auth.context.tenantId }, select: { id: true } });
-          if (deal) {
-            await prisma.deal.update({ where: { id: deal.id }, data: { value: new Prisma.Decimal((raw.totalPaise / 100).toFixed(2)) } });
-          }
-        }
-        json(res, 200, { ok: true, quote });
+        const result = await quotes.acceptQuote(auth.context.tenantId, quoteId, { actorRole: "staff", actorId: auth.context.userId });
+        if (!result.ok) { json(res, result.status, { ok: false, error: result.error, ...(result.minTotalPaise != null ? { minTotalPaise: result.minTotalPaise, marginFloorPct: result.marginFloorPct } : {}) }); return true; }
+        json(res, 200, { ok: true, quote: result.quote });
         return true;
       }
-      // POST /quotes/:id/reject
+      // POST /quotes/:id/reject — same shared decision core.
       if (sub === "reject" && req.method === "POST") {
         const auth = await authorize(req, res, "POST /quotes/:id/reject");
         if (!auth.ok) return true;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
-        // An accepted quote cannot be rejected — its total is already committed to
-        // the linked deal. Decided states are terminal; re-quote instead.
-        if (!quotes.canTransition(raw.status, "rejected")) { json(res, 409, { ok: false, error: `Only sent quotes can be rejected (this quote is ${raw.status})` }); return true; }
         const body = await parseObjectBody(req);
-        const quote = await quotes.markRejected(auth.context.tenantId, quoteId, asTrimmedString(body.reason));
-        json(res, 200, { ok: true, quote });
+        const result = await quotes.rejectQuote(auth.context.tenantId, quoteId, asTrimmedString(body.reason), { actorRole: "staff", actorId: auth.context.userId });
+        if (!result.ok) { json(res, result.status, { ok: false, error: result.error }); return true; }
+        json(res, 200, { ok: true, quote: result.quote });
         return true;
       }
       // POST /quotes/:id/expire

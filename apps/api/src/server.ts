@@ -65,6 +65,7 @@ import { authorize, getAuthenticatedContext, canAccess, type RouteContext } from
 import { upsertContactByPhone } from "./core/crm/upsert-contact";
 import { handleInventoryRoutes } from "./core/inventory/routes";
 import { handleQuoteRoutes } from "./core/quotes/routes";
+import { handlePublicQuoteRoutes } from "./core/quotes/public-routes";
 import { handleReportRoutes } from "./core/reports/routes";
 import { handleResearchRoutes } from "./core/research/routes";
 import { handleMarketingRoutes } from "./core/campaigns/marketing-routes";
@@ -2837,6 +2838,7 @@ const handleRequest = async (
     if (await handleReportRoutes(req, res)) return;
     if (await handleResearchRoutes(req, res)) return;
 
+    if (await handlePublicQuoteRoutes(req, res)) return;
     if (await handleInventoryRoutes(req, res)) return;
     if (await handleQuoteRoutes(req, res)) return;
 

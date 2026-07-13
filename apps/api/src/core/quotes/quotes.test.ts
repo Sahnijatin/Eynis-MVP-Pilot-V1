@@ -532,3 +532,100 @@ interface QuoteShape {
   marginPctActual: number;
   lineItems: Array<{ id: string; name: string; unitRatePaise: number }>;
 }
+
+test("public quote link: view is customer-safe, decisions drive the state machine + deal + audit", async () => {
+  const { tenantId, base, H, close } = await setup();
+  try {
+    const created = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Console", marginPct: 50, marginFloorPct: 10, gstPercent: 18,
+      customer: { fullName: "Meera Iyer", phoneE164: "+919812300777" },
+      lines: [{ name: "Body", groupName: "Console", costBasis: "fixed", quantity: 1, unitRatePaise: 3000000 }],
+    }) });
+    const { quote } = (await created.json()) as { quote: { id: string; totalPaise: number } };
+
+    // Link a deal so accept-via-link commits the value.
+    const pipeline = await prisma.pipeline.create({ data: { tenantId, name: "Sales", isDefault: true } });
+    const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: "New", order: 0, probability: 10 } });
+    const deal = await prisma.deal.create({ data: { tenantId, title: "Console deal", pipelineId: pipeline.id, stageId: stage.id } });
+    await prisma.quote.update({ where: { id: quote.id }, data: { dealId: deal.id } });
+
+    // Send mints the public link.
+    const sendRes = await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
+    const sent = (await sendRes.json()) as { ok: boolean; publicUrl?: string };
+    assert.ok(sent.publicUrl, "send returns the customer link");
+    const token = sent.publicUrl!.split("/q/")[1];
+    assert.ok(token && token.length >= 16);
+    // Only the hash is stored.
+    const row = await prisma.quote.findUnique({ where: { id: quote.id }, select: { publicTokenHash: true } });
+    assert.ok(row!.publicTokenHash && !sent.publicUrl!.includes(row!.publicTokenHash!), "raw token never stored");
+
+    // Public view: customer-safe fields only — no cost/margin anywhere.
+    const viewRes = await fetch(base + `/public/quotes/${token}`);
+    assert.equal(viewRes.status, 200);
+    const view = (await viewRes.json()) as { ok: boolean; quote: Record<string, unknown>; brand: { name: string } };
+    assert.equal(view.ok, true);
+    assert.ok(view.brand.name, "tenant brand present");
+    const flat = JSON.stringify(view);
+    for (const secret of ["materialCostPaise", "laborCostPaise", "overheadPaise", "marginPaise", "marginPct", "subtotalCostPaise", "unitRatePaise"]) {
+      assert.ok(!flat.includes(secret), `public payload must not leak ${secret}`);
+    }
+    assert.ok(flat.includes("grandTotalPaise"));
+
+    // Bad token → uniform 404.
+    assert.equal((await fetch(base + "/public/quotes/definitely-not-a-real-token")).status, 404);
+
+    // Customer accepts → status, deal value, audit actor.
+    const acceptRes = await fetch(base + `/public/quotes/${token}/accept`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.equal(acceptRes.status, 200);
+    assert.equal(((await acceptRes.json()) as { status: string }).status, "accepted");
+    const updatedDeal = await prisma.deal.findUnique({ where: { id: deal.id } });
+    assert.ok(Number(updatedDeal!.value) > 0, "deal value committed by customer accept");
+    const audit = await prisma.auditLog.findFirst({ where: { tenantId, action: "quote_accepted", entityId: quote.id } });
+    assert.equal(audit!.actorRole, "customer");
+
+    // Idempotent: deciding again reports the final state, no error, no change.
+    const again = await fetch(base + `/public/quotes/${token}/decline`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const againBody = (await again.json()) as { ok: boolean; alreadyDecided?: boolean; status?: string };
+    assert.equal(again.status, 200);
+    assert.equal(againBody.alreadyDecided, true);
+    assert.equal(againBody.status, "accepted");
+  } finally {
+    await close();
+  }
+});
+
+test("public quote link: decline path and link regeneration invalidates the old token", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const created = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Shelf", marginPct: 50, marginFloorPct: 10,
+      lines: [{ name: "Board", costBasis: "fixed", quantity: 1, unitRatePaise: 500000 }],
+    }) });
+    const { quote } = (await created.json()) as { quote: { id: string } };
+    const sent = (await (await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H })).json()) as { publicUrl?: string };
+    const oldToken = sent.publicUrl!.split("/q/")[1];
+
+    // Regenerate: the old link must die, the new one must work.
+    const regen = await fetch(base + `/quotes/${quote.id}/public-link`, { method: "POST", headers: H, body: "{}" });
+    assert.equal(regen.status, 200);
+    const { url } = (await regen.json()) as { url: string };
+    const newToken = url.split("/q/")[1];
+    assert.notEqual(newToken, oldToken);
+    assert.equal((await fetch(base + `/public/quotes/${oldToken}`)).status, 404, "old link invalidated");
+    assert.equal((await fetch(base + `/public/quotes/${newToken}`)).status, 200, "new link works");
+
+    // Customer declines via the new link.
+    const decline = await fetch(base + `/public/quotes/${newToken}/decline`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: "over budget" }) });
+    assert.equal(((await decline.json()) as { status: string }).status, "rejected");
+    const rejected = await prisma.quote.findUnique({ where: { id: quote.id }, select: { status: true, rejectedReason: true } });
+    assert.equal(rejected!.status, "rejected");
+    assert.equal(rejected!.rejectedReason, "over budget");
+
+    // Drafts never expose a link.
+    const draft = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({ title: "Draft only" }) });
+    const draftQuote = ((await draft.json()) as { quote: { id: string } }).quote;
+    assert.equal((await fetch(base + `/quotes/${draftQuote.id}/public-link`, { method: "POST", headers: H, body: "{}" })).status, 409);
+  } finally {
+    await close();
+  }
+});

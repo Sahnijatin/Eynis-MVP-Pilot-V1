@@ -1255,6 +1255,9 @@ model Quote {
   number            String // "Q-2026-0001", unique per tenant
   title             String
   status            String          @default("draft") // draft | sent | accepted | rejected | expired
+  // Self-serve customer link (Phase 6): only the SHA-256 of the public token is
+  // stored — a DB read never yields a usable link. Regenerating replaces it.
+  publicTokenHash   String?         @unique
   contactId         String?
   companyId         String?
   dealId            String?

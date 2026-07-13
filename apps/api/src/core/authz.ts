@@ -142,6 +142,7 @@ export const permissionMap: Record<string, Permission | null> = {
   "POST /quotes/:id/expire":              "manage_crm",
   "GET /quotes/:id/pdf":                  "view_crm",
   "GET /quotes/:id/busy-export":          "manage_crm",
+  "POST /quotes/:id/public-link":         "manage_crm",
   // Reports (E-16). Base permission here; per-source access + creator-only
   // rules stay contextual in the handlers.
   "GET /reports/sources":                 "view_reports",
