@@ -92,28 +92,28 @@ webhooks are enforced wherever a secret exists; worker queries are tenant-pinned
 
 Everything a pilot customer can see and lose trust over.
 
-- ☐ **3.1 Kill fabricated dashboard fallbacks.** `app/dashboard/page.tsx:49–57` substitutes
+- ✅ **3.1 Kill fabricated dashboard fallbacks.** `app/dashboard/page.tsx:49–57` substitutes
   fake KPIs (`openCount ?? 4`, hardcoded chart dates) on empty/error — replace with honest
   zeroed/empty states like the analytics helpers already do.
-- ☐ **3.2 Fix white-label leaks:** "Eynis Does" label on the tenant-facing automations page
+- ✅ **3.2 Fix white-label leaks:** "Eynis Does" label on the tenant-facing automations page
   (`app/automations/page.tsx:100`), "Eynis AI Brain" wordmark (`app/ai-brain/page.tsx:63`),
   and first-paint `metadata.title: "Eynis Platform"` (`app/layout.tsx:15`) — all must resolve
   from tenant branding with the standard fallback chain.
-- ☐ **3.3 Badge demo surfaces.** The non-hospitality vertical pages (`orders`, `menu`,
+- ✅ **3.3 Badge demo surfaces.** The non-hospitality vertical pages (`orders`, `menu`,
   `bookings`, `patients`, `appointments`, mock dashboards/analytics, customers intelligence)
   render hardcoded data with no signposting. Add the same "Preview" treatment AI Brain has,
   driven by one shared component, until each vertical is wired for real.
-- ☐ **3.4 Consistent fetch degradation.** Bring the bare `res.json()` fetchers in
+- ✅ **3.4 Consistent fetch degradation.** Bring the bare `res.json()` fetchers in
   `apps/web/lib/data.ts` (`fetchGuests`, `fetchAutomations`, `fetchConnectorRegistry`,
   `fetchInventory`, `fetchTeamUsers/Roles/License`, `fetchCampaigns`, `fetchSegments`,
   `fetchSequences`, `fetchTemplates`, `fetchPipelines`, `fetchDeals`, `fetchForecast`) up to
   the graceful-empty pattern (check `res.ok`, catch, return typed empty shape) so a 500
   shows an empty state, not an error boundary.
-- ☐ **3.5 Server-side route gating.** Industry- and RBAC-gating is client-nav-only; add a
+- ✅ **3.5 Server-side route gating.** Industry- and RBAC-gating is client-nav-only; add a
   server-side industry/permission check on vertical-specific routes (`night-audit`,
   `guest-database`, `revenue-intelligence`, `queue`, vertical ops pages) that redirects or
   404s instead of rendering wrong-industry content to a typed URL.
-- ☐ **3.6 Neutralize public intake.** `app/request/page.tsx` is hotel-hardcoded
+- ✅ **3.6 Neutralize public intake.** `app/request/page.tsx` is hotel-hardcoded
   (`guestName`, "room 204" placeholder, `?hotelId=`); parameterize copy/fields from
   `industry-config` terminology.
 
