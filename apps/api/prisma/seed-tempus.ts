@@ -70,8 +70,8 @@ async function main() {
   for (const [name, category, unit, cost] of MATERIALS) {
     const item = await prisma.inventoryItem.upsert({
       where: { tenantId_name: { tenantId: TENANT_ID, name } },
-      update: { category, unit, unitCostInr: cost },
-      create: { tenantId: TENANT_ID, name, category, unit, stock: 500, reorderLevel: 50, unitCostInr: cost },
+      update: { category, unit, unitCostPaise: cost * 100 },
+      create: { tenantId: TENANT_ID, name, category, unit, stock: 500, reorderLevel: 50, unitCostPaise: cost * 100 },
     });
     invByName[name] = item.id;
   }

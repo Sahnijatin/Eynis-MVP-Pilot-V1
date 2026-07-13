@@ -57,6 +57,7 @@ model Tenant {
   sendingDomain         SendingDomain?
   emailSuppressions     EmailSuppression[]
   inventoryItems        InventoryItem[]
+  stockMovements        StockMovement[]
   pipelines             Pipeline[]
   pipelineStages        Stage[]
   deals                 Deal[]
@@ -79,20 +80,45 @@ model Tenant {
 // persistence, not a frontend mock). Industry-neutral: an "item" works for F&B
 // stock, manufacturing materials, retail SKUs, etc.
 model InventoryItem {
-  id           String   @id @default(cuid())
-  tenantId     String   @map("hotelId")
-  name         String
-  category     String   @default("Other")
-  stock        Float    @default(0)
-  unit         String   @default("units")
-  reorderLevel Float    @default(5)
-  unitCostInr  Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id            String          @id @default(cuid())
+  tenantId      String          @map("hotelId")
+  name          String
+  category      String          @default("Other")
+  stock         Float           @default(0)
+  unit          String          @default("units")
+  reorderLevel  Float           @default(5)
+  // Paise integer (4.1) — replaced whole-rupee unitCostInr so sub-rupee material
+  // rates survive into the quote engine's paise math without loss.
+  unitCostPaise Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  movements     StockMovement[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
+}
+
+// Immutable stock ledger (4.2): every stock change is a row — received, used,
+// waste, or adjustment — so the current stock is auditable/reconstructable and
+// yield (used vs waste) is computable. `delta` is the signed stock change;
+// InventoryItem.stock remains the derived running balance so list reads stay
+// a single query.
+model StockMovement {
+  id        String        @id @default(cuid())
+  tenantId  String        @map("hotelId")
+  itemId    String
+  kind      String // received | used | waste | adjustment
+  delta     Float // signed stock change (+receive, -use/-waste, ± adjustment)
+  ref       String? // free-form reference (quote number, PO, batch…)
+  note      String?
+  actorId   String?
+  createdAt DateTime      @default(now())
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, itemId, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 // Per-tenant email suppression list. Populated by the Resend webhook on hard

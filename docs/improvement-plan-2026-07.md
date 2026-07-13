@@ -124,18 +124,18 @@ tenant; every mock surface is visibly a preview; wrong-industry URLs don't rende
 
 ## Phase 4 — Inventory precision + ledger (unblocks real material costing)
 
-- ☐ **4.1 Paise-precision costs.** Migrate `InventoryItem.unitCostInr` (Int, whole rupees —
+- ✅ **4.1 Paise-precision costs.** Migrate `InventoryItem.unitCostInr` (Int, whole rupees —
   `schema.prisma:86–89`) to a paise integer (`unitCostPaise`), aligning with the quote
   engine; keep a compatibility read path during migration. Fixes the sub-rupee rate gap in
   `snapshotRatePaise` (`quotes/service.ts:205`).
-- ☐ **4.2 Stock-movement ledger.** Add a `StockMovement` table (tenantId, itemId, kind
+- ✅ **4.2 Stock-movement ledger.** Add a `StockMovement` table (tenantId, itemId, kind
   `received|used|waste|adjustment`, qty, ref, actor, timestamp); `applyMovement` writes the
   ledger row and derives `stock` — today `used` and `waste` are indistinguishable and stock
   history is unreconstructable.
-- ☐ **4.3 Real yield analytics.** Make "Material Yield" earn its name: material consumed per
+- ✅ **4.3 Real yield analytics.** Make "Material Yield" earn its name: material consumed per
   accepted quote (join ledger → quote lines), waste ratio, reorder forecasting. Until then
   the page is a relabeled inventory table.
-- ☐ **4.4 DRY the GST formula** (same computation in `quotes/service.ts:150`, `:637`, and
+- ✅ **4.4 DRY the GST formula** (same computation in `quotes/service.ts:150`, `:637`, and
   `connectors/busy.ts:111`) into one helper; add the missing test asserting BUSY XML
   `GSTAmount`/`GrandTotal`, and emit a computed GST column in the BUSY CSV.
 

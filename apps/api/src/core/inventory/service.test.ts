@@ -64,3 +64,49 @@ test("updateItem and deleteItem respect tenant ownership", async () => {
   assert.equal(await deleteItem(tenantId, item.id), true);
   assert.equal((await listInventory(tenantId)).length, 0);
 });
+
+test("every stock change writes a ledger row; deltas reconstruct the balance (4.2)", async () => {
+  const { listMovements } = await import("./service");
+  const tenantId = await makeTenant();
+  const item = await applyMovement(tenantId, { name: "Teak Plank", txType: "received", qty: 20, ref: "PO-77" });
+  await applyMovement(tenantId, { name: "Teak Plank", txType: "used", qty: 6, ref: "Q-2026-0001" });
+  await applyMovement(tenantId, { name: "Teak Plank", txType: "waste", qty: 2 });
+  // Direct stock edit records an adjustment.
+  await updateItem(tenantId, item.id, { stock: 15 });
+
+  const moves = await listMovements(tenantId, { itemId: item.id });
+  assert.equal(moves.length, 4);
+  const kinds = moves.map((m) => m.kind).sort();
+  assert.deepEqual(kinds, ["adjustment", "received", "used", "waste"]);
+  // Sum of signed deltas equals the stored balance.
+  const sum = moves.reduce((s, m) => s + m.delta, 0);
+  const current = (await listInventory(tenantId)).find((i) => i.id === item.id)!;
+  assert.equal(Math.round(sum * 1000) / 1000, current.stock);
+  assert.equal(current.stock, 15);
+  // Refs are preserved.
+  assert.ok(moves.some((m) => m.ref === "Q-2026-0001"));
+
+  // The zero floor is reflected in the ledger: over-consuming 99 from 15
+  // records an effective delta of -15, keeping the ledger reconstructable.
+  await applyMovement(tenantId, { name: "Teak Plank", txType: "waste", qty: 99 });
+  const after = await listMovements(tenantId, { itemId: item.id });
+  const sum2 = after.reduce((s, m) => s + m.delta, 0);
+  assert.equal(Math.round(sum2 * 1000) / 1000, 0);
+});
+
+test("yieldSummary aggregates ledger movement and waste ratio (4.3)", async () => {
+  const { yieldSummary } = await import("./service");
+  const tenantId = await makeTenant();
+  await applyMovement(tenantId, { name: "Marine Ply", txType: "received", qty: 100 });
+  await applyMovement(tenantId, { name: "Marine Ply", txType: "used", qty: 30 });
+  await applyMovement(tenantId, { name: "Marine Ply", txType: "waste", qty: 10 });
+
+  const rows = await yieldSummary(tenantId);
+  const ply = rows.find((r) => r.name === "Marine Ply")!;
+  assert.equal(ply.receivedQty, 100);
+  assert.equal(ply.usedQty, 30);
+  assert.equal(ply.wasteQty, 10);
+  assert.equal(ply.wasteRatioPct, 25); // 10 / (30 + 10)
+  assert.equal(ply.stock, 60);
+  assert.equal(ply.committedQty, 0); // no accepted quotes reference it
+});

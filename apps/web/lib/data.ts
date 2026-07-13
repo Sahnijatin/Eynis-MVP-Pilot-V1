@@ -589,9 +589,26 @@ export interface InventoryItem {
   stock: number;
   unit: string;
   reorderLevel: number;
-  unitCostInr: number;
+  unitCostPaise: number;
+  unitCostInr: number; // rupees (may be fractional) — derived from paise
   status: "ok" | "warning" | "critical";
   updatedAt: string;
+}
+
+export interface InventoryYieldRow {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  stock: number;
+  reorderLevel: number;
+  unitCostPaise: number;
+  status: "ok" | "warning" | "critical";
+  receivedQty: number;
+  usedQty: number;
+  wasteQty: number;
+  wasteRatioPct: number;
+  committedQty: number;
 }
 export interface InventoryResponse {
   ok: boolean;
@@ -600,6 +617,13 @@ export interface InventoryResponse {
 
 export async function fetchInventory() {
   return fetchOr<InventoryResponse>("/inventory/items", { ok: false, items: [] });
+}
+
+export async function fetchInventoryYield(days = 90) {
+  return fetchOr<{ ok: boolean; windowDays: number; items: InventoryYieldRow[] }>(
+    `/inventory/yield?days=${days}`,
+    { ok: false, windowDays: days, items: [] },
+  );
 }
 
 // ── Quotes (component-based costing) ──────────────────────────────────────────

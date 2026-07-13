@@ -47,7 +47,7 @@ test("quote lifecycle: template → quote → calc → floor guard → send → 
   try {
     // A material the table top references (₹250/sqft).
     const topMaterial = await prisma.inventoryItem.create({
-      data: { tenantId, name: "Sheesham Top " + tenantId.slice(-4), category: "Wood", stock: 100, unit: "sqft", unitCostInr: 250 },
+      data: { tenantId, name: "Sheesham Top " + tenantId.slice(-4), category: "Wood", stock: 100, unit: "sqft", unitCostPaise: 25000 },
     });
 
     // Create a template: top (area, linked to inventory) + 4 legs (length). margin 50/floor 30 clears.
@@ -126,6 +126,14 @@ test("quote lifecycle: template → quote → calc → floor guard → send → 
     assert.equal(accepted.status, "accepted");
     const updatedDeal = await prisma.deal.findUnique({ where: { id: deal.id } });
     assert.equal(Number(updatedDeal!.value), Math.round(accepted.totalPaise / 100 * 100) / 100);
+
+    // Yield (4.3): the accepted quote's inventory-linked line shows up as
+    // committed demand for that material.
+    const yieldRes = await fetch(base + "/inventory/yield", { headers: H });
+    assert.equal(yieldRes.status, 200);
+    const yieldBody = (await yieldRes.json()) as { ok: boolean; items: Array<{ id: string; committedQty: number }> };
+    const topYield = yieldBody.items.find((i) => i.id === topMaterial.id)!;
+    assert.ok(topYield.committedQty > 0, `accepted quote commits material demand, got ${topYield.committedQty}`);
 
     // PDF renders real bytes.
     const pdfRes = await fetch(base + `/quotes/${quote.id}/pdf`, { headers: H });
@@ -325,6 +333,60 @@ test("editing a draft replaces its line items and re-prices; the PDF hides cost/
     const flat = JSON.stringify(blocks);
     assert.ok(!/Overhead|Margin/.test(flat), "PDF blocks omit Overhead/Margin");
     assert.ok(/Grand Total/.test(flat), "PDF blocks show Grand Total");
+  } finally {
+    await close();
+  }
+});
+
+test("sub-rupee material rates survive into the quote (paise-precise inventory, 4.1)", async () => {
+  const { tenantId, base, H, close } = await setup();
+  try {
+    // ₹250.50/sqft — impossible under the old whole-rupee Int column.
+    const item = await prisma.inventoryItem.create({
+      data: { tenantId, name: "Fine Veneer " + tenantId.slice(-4), category: "Wood", stock: 50, unit: "sqft", unitCostPaise: 25050 },
+    });
+    const r = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Veneer panel", marginPct: 50, marginFloorPct: 10,
+      lines: [{ name: "Panel", costBasis: "fixed", quantity: 1, inventoryItemId: item.id }],
+    }) });
+    const { quote } = (await r.json()) as { quote: { lineItems: Array<{ unitRatePaise: number }> } };
+    assert.equal(quote.lineItems[0].unitRatePaise, 25050, "paise-precise rate snapshotted");
+
+    // The API also accepts fractional rupees on writes (unitCostInr: 99.99 → 9999 paise).
+    const put = await fetch(base + `/inventory/items/${item.id}`, { method: "PUT", headers: H, body: JSON.stringify({ unitCostInr: 99.99 }) });
+    const updated = ((await put.json()) as { item: { unitCostPaise: number; unitCostInr: number } }).item;
+    assert.equal(updated.unitCostPaise, 9999);
+    assert.equal(updated.unitCostInr, 99.99);
+  } finally {
+    await close();
+  }
+});
+
+test("BUSY export carries the shared GST formula: XML GSTAmount and CSV GSTAmount columns", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const r = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Console Table", marginPct: 50, marginFloorPct: 10, gstPercent: 18,
+      lines: [{ name: "Body", costBasis: "fixed", quantity: 1, unitRatePaise: 1000000 }],
+    }) });
+    const { quote } = (await r.json()) as { quote: { id: string; totalPaise: number } };
+    await fetch(base + `/quotes/${quote.id}/send`, { method: "POST", headers: H });
+    await fetch(base + `/quotes/${quote.id}/accept`, { method: "POST", headers: H });
+
+    const expectedGst = Math.round((quote.totalPaise * 18) / 100);
+
+    const xml = await (await fetch(base + `/quotes/${quote.id}/busy-export?format=xml`, { headers: H })).text();
+    assert.match(xml, new RegExp(`<GSTAmount>${(expectedGst / 100).toFixed(2)}</GSTAmount>`), "XML GST amount matches the quote's formula");
+    assert.match(xml, new RegExp(`<GrandTotal>${((quote.totalPaise + expectedGst) / 100).toFixed(2)}</GrandTotal>`));
+
+    const csv = await (await fetch(base + `/quotes/${quote.id}/busy-export?format=csv`, { headers: H })).text();
+    const header = csv.trim().split(/\r?\n/)[0].split(",");
+    const gstIdx = header.indexOf("GSTAmount");
+    const totalIdx = header.indexOf("TotalAmount");
+    assert.ok(gstIdx > 0 && totalIdx > 0, "CSV carries computed GSTAmount + TotalAmount columns");
+    const lines = csv.trim().split(/\r?\n/).slice(1);
+    const gstSum = Math.round(lines.reduce((s, l) => s + Number(l.split(",")[gstIdx]), 0) * 100);
+    assert.equal(gstSum, expectedGst, "CSV GST amounts sum to the quote's GST");
   } finally {
     await close();
   }

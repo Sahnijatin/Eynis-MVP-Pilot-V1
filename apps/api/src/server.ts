@@ -26,7 +26,7 @@ import {
 import { startAutomationWorker } from "./core/automations/engine";
 import { computeSentimentAnalytics } from "./core/analytics/sentiment";
 import { computeUpsellAnalytics } from "./core/analytics/upsell";
-import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
+import { listInventory, applyMovement, updateItem, deleteItem, listMovements, yieldSummary, toPaise, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
 import { hashToken as hashInviteToken, assertSecretsEncryptionConfigured } from "./core/crypto/secrets";
@@ -625,6 +625,8 @@ const permissionMap: Record<string, Permission | null> = {
   "POST /inventory/items":                "manage_inventory",
   "PUT /inventory/items/:id":             "manage_inventory",
   "DELETE /inventory/items/:id":          "manage_inventory",
+  "GET /inventory/movements":             "view_reports",
+  "GET /inventory/yield":                 "view_reports",
   "GET /automations":                     "manage_automations",
   "GET /automations/executions":          "manage_automations",
   "GET /connectors/registry":             "manage_connectors",
@@ -4153,7 +4155,10 @@ const handleRequest = async (
           category: asTrimmedString(body.category) ?? undefined,
           unit: asTrimmedString(body.unit) ?? undefined,
           reorderLevel: body.reorderLevel != null ? Number(body.reorderLevel) : undefined,
-          unitCostInr: body.unitCostInr != null ? Math.round(Number(body.unitCostInr)) : undefined,
+          unitCostPaise: toPaise({ unitCostPaise: body.unitCostPaise as number | undefined, unitCostInr: body.unitCostInr as number | undefined }),
+          ref: asTrimmedString(body.ref),
+          note: asTrimmedString(body.note),
+          actorId: auth.context.userId,
         });
         json(res, 200, { ok: true, item });
       } catch (e) {
@@ -4162,19 +4167,44 @@ const handleRequest = async (
       return;
     }
 
+    // GET /inventory/movements[?itemId=&limit=] — the immutable stock ledger (4.2).
+    if (req.url?.startsWith("/inventory/movements") && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /inventory/movements");
+      if (!auth.ok) return;
+      const sp = parseUrl(req.url).searchParams;
+      const items = await listMovements(auth.context.tenantId, {
+        itemId: sp.get("itemId") ?? undefined,
+        limit: sp.get("limit") ? Number(sp.get("limit")) : undefined,
+      });
+      json(res, 200, { ok: true, items });
+      return;
+    }
+
+    // GET /inventory/yield[?days=90] — per-material consumption/waste + accepted-quote demand (4.3).
+    if (req.url?.startsWith("/inventory/yield") && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /inventory/yield");
+      if (!auth.ok) return;
+      const daysRaw = Number(parseUrl(req.url).searchParams.get("days"));
+      const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 90;
+      const items = await yieldSummary(auth.context.tenantId, days);
+      json(res, 200, { ok: true, windowDays: days, items });
+      return;
+    }
+
     const invItemMatch = /^\/inventory\/items\/([^/]+)$/.exec(req.url ?? "");
     if (invItemMatch && req.method === "PUT") {
       const auth = await authorize(req, res, "PUT /inventory/items/:id");
       if (!auth.ok) return;
       const body = (await parseBody(req)) as Record<string, unknown>;
-      const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostInr: number }> = {};
+      const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostPaise: number }> = {};
       const nm = asTrimmedString(body.name); if (nm) fields.name = nm;
       const cat = asTrimmedString(body.category); if (cat) fields.category = cat;
       const un = asTrimmedString(body.unit); if (un) fields.unit = un;
       if (body.stock != null && Number.isFinite(Number(body.stock))) fields.stock = Math.max(0, Number(body.stock));
       if (body.reorderLevel != null && Number.isFinite(Number(body.reorderLevel))) fields.reorderLevel = Math.max(0, Number(body.reorderLevel));
-      if (body.unitCostInr != null && Number.isFinite(Number(body.unitCostInr))) fields.unitCostInr = Math.round(Number(body.unitCostInr));
-      const item = await updateItem(auth.context.tenantId, invItemMatch[1], fields);
+      const paise = toPaise({ unitCostPaise: body.unitCostPaise as number | undefined, unitCostInr: body.unitCostInr as number | undefined });
+      if (paise != null) fields.unitCostPaise = paise;
+      const item = await updateItem(auth.context.tenantId, invItemMatch[1], fields, auth.context.userId);
       if (!item) { json(res, 404, { ok: false, error: "Item not found" }); return; }
       json(res, 200, { ok: true, item });
       return;

@@ -11,6 +11,7 @@ import { prisma } from "../../db/prisma";
 import {
   computeLine,
   computeQuote,
+  gstAmountPaise,
   type CostBasis,
   type LineResult,
   type QuoteResult,
@@ -167,7 +168,7 @@ export function serializeQuote(q: QuoteWithLines) {
 }
 
 const gstOf = (q: QuoteWithLines): number =>
-  Math.round((Number(q.totalPaise) || 0) * (Number(q.gstPercent) || 0) / 100);
+  gstAmountPaise(Number(q.totalPaise) || 0, Number(q.gstPercent) || 0);
 
 const contactField = (q: QuoteWithLines, key: string): string | null => {
   const c = (q as Record<string, unknown>).contact as Record<string, unknown> | null | undefined;
@@ -226,15 +227,16 @@ const isUniqueViolation = (err: unknown): boolean =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
 
 // Resolve the frozen material rate for a line: an inventory link snapshots the
-// current InventoryItem.unitCostInr (rupees → paise); otherwise the caller's rate.
+// current InventoryItem.unitCostPaise (paise-precise, 4.1); otherwise the
+// caller's rate.
 async function snapshotRatePaise(
   tenantId: string,
   inventoryItemId: string | null | undefined,
   fallbackPaise: number,
 ): Promise<number> {
   if (inventoryItemId) {
-    const item = await prisma.inventoryItem.findFirst({ where: { id: inventoryItemId, tenantId }, select: { unitCostInr: true } });
-    if (item) return Math.max(0, Math.round(item.unitCostInr)) * 100;
+    const item = await prisma.inventoryItem.findFirst({ where: { id: inventoryItemId, tenantId }, select: { unitCostPaise: true } });
+    if (item) return Math.max(0, Math.round(item.unitCostPaise));
   }
   return Math.max(0, Math.round(fallbackPaise || 0));
 }
@@ -691,7 +693,7 @@ export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
   > = [];
   const total = Number(q.totalPaise) || 0;
   const gstPct = Number(q.gstPercent) || 0;
-  const gst = Math.round((total * gstPct) / 100);
+  const gst = gstAmountPaise(total, gstPct);
   blocks.push({ kind: "headline", text: `${String(q.title)} — ${money(total + gst)}` });
 
   // "Prepared for" — the linked customer, if any.

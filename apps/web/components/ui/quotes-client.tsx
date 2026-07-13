@@ -292,7 +292,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   };
 
   const ratePaiseFor = useCallback((l: DraftLine): number => {
-    if (l.inventoryItemId && invMap[l.inventoryItemId]) return Math.round(invMap[l.inventoryItemId].unitCostInr) * 100;
+    if (l.inventoryItemId && invMap[l.inventoryItemId]) return Math.round(invMap[l.inventoryItemId].unitCostPaise);
     return Math.round(num(l.unitRateInr) * 100);
   }, [invMap]);
 
