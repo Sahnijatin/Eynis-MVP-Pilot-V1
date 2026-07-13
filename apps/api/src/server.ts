@@ -60,6 +60,14 @@ import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
 import { startResearchScheduleWorker, isCadence, advanceCadence, type Cadence } from "./core/research/schedule";
+import { json, sendDoc, sendBinary, parseRawBody, parseBody, hasString, asTrimmedString, asPositiveInt, parseUrl, asSafeLimit, asSafeOffset, numOrNull, numUndef, dateOrNull, normalizePhoneE164, clientIp, PayloadTooLargeError } from "./http/helpers";
+import { authorize, getAuthenticatedContext, canAccess, type RouteContext } from "./core/authz";
+import { upsertContactByPhone } from "./core/crm/upsert-contact";
+import { handleInventoryRoutes } from "./core/inventory/routes";
+import { handleQuoteRoutes } from "./core/quotes/routes";
+// Compat re-exports: tests (authz-matrix) and any older imports keep working.
+export { permissionMap } from "./core/authz";
+export type { RouteContext } from "./core/authz";
 
 const eventBus = new InMemoryEventBus();
 
@@ -68,30 +76,6 @@ eventBus.subscribe("service_request.created", (event) => {
   void event;
 });
 
-const json = (res: ServerResponse, status: number, payload: unknown) => {
-  res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify(payload));
-};
-
-// Sends a generated document (E-9 exports). `download` sets Content-Disposition so
-// the browser saves the file (CSV); omit it for inline render (printable HTML).
-const sendDoc = (res: ServerResponse, contentType: string, body: string, download?: string) => {
-  const headers: Record<string, string> = { "content-type": contentType };
-  if (download) headers["content-disposition"] = `attachment; filename="${download.replace(/[^\w.\-]/g, "_")}"`;
-  res.writeHead(200, headers);
-  res.end(body);
-};
-
-// Binary variant for real PDF bytes (E-9). Always an attachment download.
-const sendBinary = (res: ServerResponse, contentType: string, body: Uint8Array, download: string) => {
-  res.writeHead(200, {
-    "content-type": contentType,
-    "content-length": String(body.byteLength),
-    "content-disposition": `attachment; filename="${download.replace(/[^\w.\-]/g, "_")}"`
-  });
-  res.end(Buffer.from(body));
-};
-
 // Turns an AI provider/parse failure into a clean 502 instead of letting it bubble
 // to the generic 500 with the cause swallowed (F-12). AiResponseError carries a safe,
 // specific message (bad shape); any other error is reported generically.
@@ -99,94 +83,6 @@ const aiError = (res: ServerResponse, label: string, e: unknown) => {
   const message = e instanceof Error ? e.message : String(e);
   console.error(`[AI] ${label} failed:`, message);
   json(res, 502, { ok: false, error: e instanceof AiResponseError ? `AI response error: ${message}` : "AI provider request failed" });
-};
-
-// Cap request bodies so an unauthenticated endpoint (public intake, webhooks,
-// registration) can't be used to exhaust memory with a huge payload (F-34).
-const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 1_048_576); // 1 MiB default
-
-class PayloadTooLargeError extends Error {
-  constructor() { super("Request body too large"); this.name = "PayloadTooLargeError"; }
-}
-
-const parseRawBody = async (req: IncomingMessage): Promise<string> => {
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-    total += buf.length;
-    if (total > MAX_BODY_BYTES) {
-      req.destroy();
-      throw new PayloadTooLargeError();
-    }
-    chunks.push(buf);
-  }
-  return Buffer.concat(chunks).toString("utf8").trim();
-};
-
-const parseBody = async (req: IncomingMessage): Promise<unknown> => {
-  const raw = await parseRawBody(req);
-  if (!raw) return {};
-  return JSON.parse(raw);
-};
-
-const hasString = (value: unknown) => typeof value === "string" && value.trim().length > 0;
-const asTrimmedString = (value: unknown): string | null =>
-  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-const asPositiveInt = (value: unknown): number | null => {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return null;
-};
-const parseUrl = (url: string | undefined) => new URL(url ?? "/", "http://localhost");
-const asSafeLimit = (value: string | null, fallback: number, max: number) => {
-  const parsed = asPositiveInt(value);
-  if (!parsed) {
-    return fallback;
-  }
-  return Math.min(parsed, max);
-};
-const asSafeOffset = (value: string | null) => {
-  const parsed = Number(value ?? 0);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    return 0;
-  }
-  return parsed;
-};
-// Coerce a JSON body value to a finite integer (mm/paise) or null; and to an
-// optional finite number (undefined = "leave default"). Used by the quote routes.
-const numOrNull = (v: unknown): number | null => {
-  const n = Number(v);
-  return v !== null && v !== undefined && v !== "" && Number.isFinite(n) ? Math.round(n) : null;
-};
-const numUndef = (v: unknown): number | undefined => {
-  if (v === null || v === undefined || v === "") return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-};
-const dateOrNull = (v: unknown): Date | null => {
-  if (v === null || v === undefined || v === "") return null;
-  const d = new Date(v as string);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-// Best-effort E.164 normalisation for customer phone entry: keep a leading +, strip
-// spaces/dashes, and default a bare 10-digit number to India (+91). Returns null for
-// anything that can't be a phone. Not a full libphonenumber — just enough for intake.
-const normalizePhoneE164 = (raw: string | null): string | null => {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[\s\-()]/g, "");
-  if (/^\+\d{7,15}$/.test(cleaned)) return cleaned;
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.length === 10) return `+91${digits}`;
-  if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
-  return null;
 };
 
 // Parse a from/to reporting window from the query string (E-15). Returns null
@@ -260,21 +156,6 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
 
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
-const upsertContactByPhone = async (tenantId: string, fullName: string, phoneE164: string) => {
-  const existing = await prisma.contact.findFirst({
-    where: { tenantId, phoneE164 },
-    select: { id: true }
-  });
-  if (existing) {
-    return existing.id;
-  }
-  const guest = await prisma.contact.create({
-    data: { tenantId, fullName, phoneE164 },
-    select: { id: true }
-  });
-  return guest.id;
-};
-
 const createServiceRequestForHotel = async (input: {
   tenantId: string;
   guestId: string;
@@ -316,100 +197,6 @@ const createServiceRequestForHotel = async (input: {
     }
   });
 };
-
-const authError = "Missing or invalid bearer token";
-
-const getAuthenticatedContext = async (req: IncomingMessage) => {
-  const token = parseBearerToken(req);
-  if (!token) {
-    return { ok: false as const, status: 401, error: authError };
-  }
-  const claims = await verifyAuthToken(token);
-  if (!claims) {
-    return { ok: false as const, status: 401, error: authError };
-  }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      id: claims.sub,
-      tenantId: claims.tenantId,
-      email: claims.email,
-      // Legacy tokens pin the hospitality role for a consistency check; modern
-      // roleKey-only tokens identify by sub+hotel+email (permissions come from
-      // the live systemRole below, so dropping the role pin is not a downgrade).
-      ...(claims.role ? { role: claims.role } : {}),
-      isActive: true
-    },
-    select: {
-      id: true,
-      tenantId: true,
-      email: true,
-      role: true,
-      fullName: true,
-      roleId: true,
-      systemRole: { select: { permissions: true, key: true, tenantId: true } }
-    }
-  });
-
-  if (!user) {
-    return { ok: false as const, status: 401, error: "User not found or role mismatch" };
-  }
-
-  // Load permissions from the Role record if assigned AND that role belongs to the
-  // same hotel as the user. The hotel check is defense-in-depth: a User must never
-  // inherit permissions from a Role that belongs to a different tenant, even if a
-  // stale/cross-hotel roleId was somehow persisted. Fall back to the legacy mapping.
-  const roleBelongsToHotel = user.systemRole?.tenantId === user.tenantId;
-  const permissions: string[] = user.systemRole && roleBelongsToHotel
-    ? parsePermissions(user.systemRole.permissions)
-    : getPermissionsForLegacyRole(user.role);
-
-  return {
-    ok: true as const,
-    context: {
-      tenantId: user.tenantId,
-      role: user.role as UserRole, // legacy; retained for audit/domain compat
-      roleKey: user.systemRole?.key ?? claims.roleKey ?? null, // canonical generic role
-      email: user.email,
-      userId: user.id,
-      fullName: user.fullName,
-      sub: user.id,
-      permissions,
-      // Impersonation (E-6): null on a normal session. When set, the request is
-      // acting as `user` but was initiated by this admin — used for audit + the UI banner.
-      impersonatorUserId: claims.impersonatorUserId ?? null,
-      impersonatorEmail: claims.impersonatorEmail ?? null
-    }
-  };
-};
-
-// The authenticated request context (the ok-branch of getAuthenticatedContext).
-type AuthOk = Extract<Awaited<ReturnType<typeof getAuthenticatedContext>>, { ok: true }>;
-export type RouteContext = AuthOk["context"];
-
-// Shared route guard (F-32). Collapses the auth → permission preamble that ~60
-// route handlers repeated inline (with two drifting formatting styles and an
-// inconsistent 401/403 ordering) into one call. It writes the 401/403 response
-// itself and returns { ok: false } so the caller just does `if (!auth.ok) return;`.
-// The success result keeps the same `.context` shape, so existing downstream
-// `auth.context.*` references are unchanged. Pass `permission: null` for routes
-// that only require authentication.
-async function authorize(
-  req: IncomingMessage,
-  res: ServerResponse,
-  permission: string | null,
-): Promise<{ ok: true; context: RouteContext } | { ok: false }> {
-  const auth = await getAuthenticatedContext(req);
-  if (!auth.ok) {
-    json(res, auth.status, { ok: false, error: auth.error });
-    return { ok: false };
-  }
-  if (permission && !canAccess(auth.context.permissions, permission)) {
-    json(res, 403, { ok: false, error: "Insufficient permissions" });
-    return { ok: false };
-  }
-  return { ok: true, context: auth.context };
-}
 
 // Gate for the internal provisioning console (E-8). This is the platform-staff
 // boundary — completely separate from tenant RBAC above. Writes its own response
@@ -592,141 +379,6 @@ const parseCampaignLeadsPath = (
   if (!match || !match[1]) return null;
   const sub = match[2] ? decodeURIComponent(match[2]) : null;
   return { campaignId: decodeURIComponent(match[1]), leadId: sub === "import" ? null : sub, isImport: sub === "import" };
-};
-
-const permissionMap: Record<string, Permission | null> = {
-  "GET /context":                          null,
-  "POST /auth/impersonate":                "impersonate_users",
-  "POST /auth/impersonate/stop":           null,
-  "GET /auth/impersonations/recent":       "impersonate_users",
-  "GET /tenant/branding":                  "manage_settings",
-  "PUT /tenant/branding":                  "manage_settings",
-  "GET /tenant/domains":                   "manage_settings",
-  "PUT /tenant/domains":                   "manage_settings",
-  "POST /tenant/domains/request":          "manage_settings",
-  "POST /events/service-request-created":  "manage_requests",
-  "POST /service-requests":               "manage_requests",
-  "GET /service-requests":                "view_requests",
-  "PATCH /service-requests/:id/status":   "manage_requests",
-  "PATCH /service-requests/:id/assign":   "manage_requests",
-  "POST /service-requests/sla/refresh":   "manage_requests",
-  "GET /audit":                           "view_reports",
-  "GET /dashboard/overview":              "view_requests",
-  "GET /dashboard/queue-summary":         "view_requests",
-  "GET /dashboard/live-feed":             "view_requests",
-  "GET /users":                           "manage_users",
-  "GET /guests":                          "view_guests",
-  "GET /guests/:id":                      "view_guests",
-  "GET /analytics/revenue-intelligence":  "view_reports",
-  "GET /analytics/staff-performance":     "view_reports",
-  "GET /analytics/sentiment":             "view_reports",
-  "GET /analytics/upsell-campaigns":      "manage_campaigns",
-  "GET /inventory/items":                 "view_reports",
-  "POST /inventory/items":                "manage_inventory",
-  "PUT /inventory/items/:id":             "manage_inventory",
-  "DELETE /inventory/items/:id":          "manage_inventory",
-  "GET /inventory/movements":             "view_reports",
-  "GET /inventory/yield":                 "view_reports",
-  "GET /automations":                     "manage_automations",
-  "GET /automations/executions":          "manage_automations",
-  "GET /connectors/registry":             "manage_connectors",
-  "GET /connectors/configs":              "manage_connectors",
-  "PUT /connectors/configs/:key":         "manage_connectors",
-  "DELETE /connectors/configs/:key":      "manage_connectors",
-  "POST /connectors/events/ingest":       "manage_requests",
-  "GET /connectors/events":              "view_requests",
-  "POST /connectors/whatsapp/send":       "manage_connectors",
-  "GET /ai/providers":                    null,
-  "GET /ai/smart-insights":               "view_reports",
-  "POST /ai/classify-event":              "manage_requests",
-  "GET /ai/guest-intelligence/:guestId":  "view_guests",
-  "GET /ai/revenue-insights":             "view_reports",
-  "POST /night-audit/generate":           "night_audit",
-  "GET /night-audit/latest":              "view_reports",
-  "GET /night-audit/history":             "view_reports",
-  "GET /night-audit/report":              "view_reports",
-  "GET /night-audit/export":              "view_reports",
-  "GET /service-requests/export":         "view_requests",
-  "POST /connectors/pms/webhook":         "manage_connectors",
-  "POST /connectors/pms/simulate":        "manage_connectors",
-  "GET /team/users":                      "manage_users",
-  "POST /team/invitations":               "invite_users",
-  "PUT /team/users/:id":                  "manage_users",
-  "GET /team/license":                    "manage_billing",
-  "GET /team/roles":                      "manage_roles",
-  "PUT /team/roles/:id":                  "manage_roles",
-  "POST /team/roles":                     "create_custom_roles",
-  "POST /campaigns":                      "manage_campaigns",
-  "GET /campaigns":                       "manage_campaigns",
-  "GET /campaigns/:id":                   "manage_campaigns",
-  "PATCH /campaigns/:id":                 "manage_campaigns",
-  "DELETE /campaigns/:id":                "manage_campaigns",
-  "POST /campaigns/:id/activate":         "manage_campaigns",
-  "POST /campaigns/:id/pause":            "manage_campaigns",
-  "POST /campaigns/:id/complete":         "manage_campaigns",
-  "POST /campaigns/:id/leads/import":     "manage_campaigns",
-  "GET /campaigns/:id/leads":             "manage_campaigns",
-  "DELETE /campaigns/:id/leads/:leadId":  "manage_campaigns",
-  "GET /campaigns/:id/calls":             "manage_campaigns",
-  "GET /campaigns/:id/calls/:callId":     "manage_campaigns",
-  "GET /campaigns/:id/analytics":         "manage_campaigns",
-  "GET /campaigns/:id/deliveries":        "manage_campaigns",
-  "GET /pipelines":                       "view_crm",
-  "GET /deals":                           "view_crm",
-  "GET /deals/forecast":                  "view_crm",
-  "GET /deals/:id":                       "view_crm",
-  "POST /deals":                          "manage_crm",
-  "PATCH /deals/:id":                     "manage_crm",
-  "DELETE /deals/:id":                    "manage_crm",
-  "POST /deals/:id/move":                 "manage_crm",
-  "GET /contacts":                        "view_crm",
-  "POST /contacts":                       "manage_crm",
-  "GET /contacts/:id":                    "view_crm",
-  "PATCH /contacts/:id":                  "manage_crm",
-  "DELETE /contacts/:id":                 "manage_crm",
-  "GET /companies":                       "view_crm",
-  "POST /companies":                      "manage_crm",
-  "GET /companies/:id":                   "view_crm",
-  "PATCH /companies/:id":                 "manage_crm",
-  "DELETE /companies/:id":                "manage_crm",
-  "GET /contacts/:id/timeline":           "view_crm",
-  "POST /contacts/:id/activities":        "manage_crm",
-  "POST /contacts/:id/score":             "manage_crm",
-  "GET /tasks":                           "view_crm",
-  "PATCH /activities/:id":                "manage_crm",
-  "DELETE /activities/:id":               "manage_crm",
-  "GET /deals/:id/timeline":              "view_crm",
-  "POST /deals/:id/suggest":              "manage_crm",
-  "GET /deals/suggestions":               "view_crm",
-  "POST /deals/suggestions/:id/accept":   "manage_crm",
-  "POST /deals/suggestions/:id/dismiss":  "manage_crm",
-  // Quoting + component-based costing (furniture/manufacturing). Reuses CRM perms.
-  "GET /quote-templates":                 "view_crm",
-  "POST /quote-templates":                "manage_crm",
-  "GET /quote-templates/:id":             "view_crm",
-  "PATCH /quote-templates/:id":           "manage_crm",
-  "DELETE /quote-templates/:id":          "manage_crm",
-  "GET /quotes":                          "view_crm",
-  "POST /quotes":                         "manage_crm",
-  "POST /quotes/calc":                    "view_crm",
-  "POST /quotes/parse":                   "view_crm",
-  "GET /quotes/:id":                      "view_crm",
-  "PATCH /quotes/:id":                    "manage_crm",
-  "DELETE /quotes/:id":                   "manage_crm",
-  "POST /quotes/:id/lines":               "manage_crm",
-  "PATCH /quotes/:id/lines/:lineId":      "manage_crm",
-  "DELETE /quotes/:id/lines/:lineId":     "manage_crm",
-  "POST /quotes/:id/send":                "manage_crm",
-  "POST /quotes/:id/accept":              "manage_crm",
-  "POST /quotes/:id/reject":              "manage_crm",
-  "POST /quotes/:id/expire":              "manage_crm",
-  "GET /quotes/:id/pdf":                  "view_crm",
-  "GET /quotes/:id/busy-export":          "manage_crm",
-};
-
-const canAccess = (permissions: string[], key: string): boolean => {
-  const req = permissionMap[key];
-  return req === null || hasPermission(permissions, req);
 };
 
 // Connector registry. The static catalog (name, description, what it needs,
@@ -1361,8 +1013,7 @@ const handleRequest = async (
     if (req.url?.startsWith("/auth/identify") && req.method === "GET") {
       // Throttle per client IP — this is an unauthenticated email→tenant lookup,
       // so without a limit it's an email-enumeration oracle (F-24).
-      const fwd = req.headers["x-forwarded-for"];
-      const ip = (typeof fwd === "string" ? fwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      const ip = clientIp(req);
       if (!(await rateLimit(`identify:${ip}`, 20, 60_000))) {
         json(res, 429, { ok: false, error: "Too many requests" });
         return;
@@ -1472,8 +1123,7 @@ const handleRequest = async (
       // tenant + a live admin token, so without a limit it can be scripted to create
       // thousands of tenants / admin tokens for arbitrary emails (F-…). Registration
       // is a rare action, so a tight cap is safe.
-      const rfwd = req.headers["x-forwarded-for"];
-      const rip = (typeof rfwd === "string" ? rfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      const rip = clientIp(req);
       if (!(await rateLimit(`register:${rip}`, 5, 60 * 60_000))) {
         json(res, 429, { ok: false, error: "Too many registration attempts. Please try again later." });
         return;
@@ -1803,8 +1453,7 @@ const handleRequest = async (
       // Throttle per client IP — this is an unauthenticated write (creates a Contact +
       // ServiceRequest). Without a cap it can be scripted to flood a tenant's queue and
       // create unbounded Contact rows (F-…). A public intake form is low-frequency.
-      const pfwd = req.headers["x-forwarded-for"];
-      const pip = (typeof pfwd === "string" ? pfwd.split(",")[0]?.trim() : undefined) || req.socket.remoteAddress || "unknown";
+      const pip = clientIp(req);
       if (!(await rateLimit(`public-req:${pip}`, 10, 60_000))) {
         json(res, 429, { ok: false, error: "Too many requests. Please try again shortly." });
         return;
@@ -3338,17 +2987,15 @@ const handleRequest = async (
       };
 
       if (rpath === "/reports/sources" && req.method === "GET") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
-        if (!hasPermission(auth.context.permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
+        const auth = await authorize(req, res, "GET /reports/sources"); if (!auth.ok) return;
         json(res, 200, { ok: true, sources: REPORT_SOURCES });
         return;
       }
 
       // POST /reports/run — execute an ad-hoc definition (builder live preview).
       if (rpath === "/reports/run" && req.method === "POST") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "POST /reports/run"); if (!auth.ok) return;
         const { permissions, tenantId } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const body = (await parseBody(req)) as { definition?: ReportDefinition };
         const def = body.definition;
         if (!def || typeof def !== "object") { json(res, 400, { ok: false, error: "definition is required" }); return; }
@@ -3362,9 +3009,8 @@ const handleRequest = async (
 
       // GET /reports — list saved reports the user can see (own + shared).
       if (rpath === "/reports" && req.method === "GET") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "GET /reports"); if (!auth.ok) return;
         const { permissions, tenantId, userId, roleKey } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const rows = await prisma.report.findMany({
           where: {
             tenantId,
@@ -3383,9 +3029,8 @@ const handleRequest = async (
 
       // POST /reports — save a new report.
       if (rpath === "/reports" && req.method === "POST") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "POST /reports"); if (!auth.ok) return;
         const { permissions, tenantId, userId } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const body = (await parseBody(req)) as { name?: unknown; description?: unknown; shared?: unknown; definition?: ReportDefinition };
         const name = asTrimmedString(body.name);
         if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
@@ -3413,9 +3058,8 @@ const handleRequest = async (
 
       // GET /reports/:id/run — run a saved report.
       if (runMatch && req.method === "GET") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "GET /reports/:id/run"); if (!auth.ok) return;
         const { permissions, tenantId, userId, roleKey } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(runMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId } });
         if (!report || !(await canViewReport(report, id, tenantId, userId, roleKey))) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3431,9 +3075,8 @@ const handleRequest = async (
 
       // GET /reports/:id/export?format=csv — branded CSV of a saved report.
       if (exportMatch && req.method === "GET") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "GET /reports/:id/export"); if (!auth.ok) return;
         const { permissions, tenantId, userId, roleKey } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(exportMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId } });
         if (!report || !(await canViewReport(report, id, tenantId, userId, roleKey))) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3477,9 +3120,8 @@ const handleRequest = async (
 
       // GET /reports/:id — fetch a saved report's definition.
       if (idMatch && req.method === "GET") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "GET /reports/:id"); if (!auth.ok) return;
         const { permissions, tenantId, userId, roleKey } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(idMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId } });
         if (!report || !(await canViewReport(report, id, tenantId, userId, roleKey))) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3496,9 +3138,8 @@ const handleRequest = async (
       // GET /reports/:id/shares — current grants + pickable users/roles. Creator
       // only: sharing is a management action, not something a viewer can inspect.
       if (sharesMatch && req.method === "GET") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "GET /reports/:id/shares"); if (!auth.ok) return;
         const { permissions, tenantId, userId } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(sharesMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
         if (!report) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3516,9 +3157,8 @@ const handleRequest = async (
       // PUT /reports/:id/shares — replace the full grant set (creator only).
       // Body: { shares: [{ principalType: "user"|"role", principalId }] }.
       if (sharesMatch && req.method === "PUT") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "PUT /reports/:id/shares"); if (!auth.ok) return;
         const { permissions, tenantId, userId } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(sharesMatch[1] as string);
         const report = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
         if (!report) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3557,9 +3197,8 @@ const handleRequest = async (
 
       // PUT /reports/:id — update (creator only).
       if (idMatch && req.method === "PUT") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "PUT /reports/:id"); if (!auth.ok) return;
         const { permissions, tenantId, userId } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(idMatch[1] as string);
         const existing = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
         if (!existing) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3584,9 +3223,8 @@ const handleRequest = async (
 
       // DELETE /reports/:id — delete (creator only).
       if (idMatch && req.method === "DELETE") {
-        const auth = await authorize(req, res, null); if (!auth.ok) return;
+        const auth = await authorize(req, res, "DELETE /reports/:id"); if (!auth.ok) return;
         const { permissions, tenantId, userId } = auth.context;
-        if (!hasPermission(permissions, "view_reports")) { json(res, 403, { ok: false, error: "Insufficient permissions" }); return; }
         const id = decodeURIComponent(idMatch[1] as string);
         const existing = await prisma.report.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
         if (!existing) { json(res, 404, { ok: false, error: "Report not found" }); return; }
@@ -3605,7 +3243,6 @@ const handleRequest = async (
     {
       const rpath = parseUrl(req.url).pathname;
       if (rpath === "/research" || rpath.startsWith("/research/")) {
-        const denyPerm = () => json(res, 403, { ok: false, error: "Insufficient permissions" });
         const ensureResearchLicense = async (tenantId: string): Promise<boolean> => {
           const lic = await enforceLicenseFeature(tenantId, "research_studio");
           if (!lic.ok) { json(res, 402, lic); return false; }
@@ -3636,8 +3273,7 @@ const handleRequest = async (
 
         // GET /research/sources — source catalog + enums for the builder UI.
         if (rpath === "/research/sources" && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
-          if (!hasPermission(auth.context.permissions, "view_research")) { denyPerm(); return; }
+          const auth = await authorize(req, res, "GET /research/sources"); if (!auth.ok) return;
           const [searchProviders, aiCreds] = await Promise.all([
             searchProvidersAvailable(auth.context.tenantId),
             resolveAiCredentials(auth.context.tenantId),
@@ -3652,9 +3288,8 @@ const handleRequest = async (
 
         // GET /research/templates — built-ins + tenant templates.
         if (rpath === "/research/templates" && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/templates"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           if (!(await ensureResearchLicense(tenantId))) return;
           const items = await listTemplates(tenantId);
           json(res, 200, { ok: true, items: items.map((t) => ({ ...t, isOwner: t.createdById === userId })) });
@@ -3663,9 +3298,8 @@ const handleRequest = async (
 
         // POST /research/templates — create a saved template.
         if (rpath === "/research/templates" && req.method === "POST") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "POST /research/templates"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
           if (!(await ensureResearchLicense(tenantId))) return;
           const body = (await parseBody(req)) as Record<string, unknown>;
           const valid = validateTemplateDef(body);
@@ -3696,18 +3330,16 @@ const handleRequest = async (
         };
 
         if (rpath === "/research/triggers" && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/triggers"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const rule = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
           json(res, 200, { ok: true, triggers: rule ? readTriggers(rule.configJson) : [], isActive: rule?.isActive ?? false });
           return;
         }
 
         if (rpath === "/research/triggers" && req.method === "POST") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "POST /research/triggers"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
           if (!(await ensureResearchLicense(tenantId))) return;
           const body = (await parseBody(req)) as { stageId?: unknown; templateId?: unknown; fast?: unknown };
           const stageId = asTrimmedString(body.stageId);
@@ -3731,9 +3363,8 @@ const handleRequest = async (
 
         const triggerDelMatch = /^\/research\/triggers\/([^/]+)$/.exec(rpath);
         if (triggerDelMatch && req.method === "DELETE") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "DELETE /research/triggers/:stageId"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
           const stageId = decodeURIComponent(triggerDelMatch[1] as string);
           const existing = await prisma.automationRule.findUnique({ where: { tenantId_code: { tenantId, code: RESEARCH_RULE_CODE } } });
           if (existing) {
@@ -3768,9 +3399,8 @@ const handleRequest = async (
 
         // GET /research/templates/:id — full definition for the editor.
         if (tplMatch && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/templates/:id"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const id = decodeURIComponent(tplMatch[1] as string);
           const detail = await getTemplateDetail(tenantId, id);
           if (!detail) { json(res, 404, { ok: false, error: "Template not found" }); return; }
@@ -3780,9 +3410,8 @@ const handleRequest = async (
 
         // PUT /research/templates/:id — update (built-ins are read-only; clone instead).
         if (tplMatch && req.method === "PUT") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "PUT /research/templates/:id"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
           const id = decodeURIComponent(tplMatch[1] as string);
           if (isBuiltinId(id)) { json(res, 400, { ok: false, error: "Built-in templates can't be edited — duplicate it first" }); return; }
           const existing = await prisma.researchTemplate.findFirst({ where: { id, tenantId }, select: { id: true } });
@@ -3804,9 +3433,8 @@ const handleRequest = async (
 
         // DELETE /research/templates/:id — delete (built-ins read-only).
         if (tplMatch && req.method === "DELETE") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "DELETE /research/templates/:id"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "manage_research")) { denyPerm(); return; }
           const id = decodeURIComponent(tplMatch[1] as string);
           if (isBuiltinId(id)) { json(res, 400, { ok: false, error: "Built-in templates can't be deleted" }); return; }
           const existing = await prisma.researchTemplate.findFirst({ where: { id, tenantId }, select: { id: true } });
@@ -3818,9 +3446,8 @@ const handleRequest = async (
 
         // POST /research/runs — enqueue a run against a template.
         if (rpath === "/research/runs" && req.method === "POST") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "POST /research/runs"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
           if (!(await ensureResearchLicense(tenantId))) return;
           const body = (await parseBody(req)) as {
             templateId?: unknown; inputs?: unknown; subjectType?: unknown; subjectId?: unknown; subjectLabel?: unknown; fast?: unknown;
@@ -3877,9 +3504,8 @@ const handleRequest = async (
         // POST /research/runs/:id/rerun — re-run with the same snapshot/inputs/subject (RS-4).
         const runRerunMatch = /^\/research\/runs\/([^/]+)\/rerun$/.exec(rpath);
         if (runRerunMatch && req.method === "POST") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "POST /research/runs/:id/rerun"); if (!auth.ok) return;
           const { permissions, tenantId, userId, roleKey } = auth.context;
-          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
           if (!(await ensureResearchLicense(tenantId))) return;
           const id = decodeURIComponent(runRerunMatch[1] as string);
           const prev = await prisma.researchRun.findFirst({ where: { id, tenantId } });
@@ -3907,9 +3533,8 @@ const handleRequest = async (
         // GET /research/runs — list recent runs the requester can see (own + shared
         // tenant-wide + explicitly granted). Managers (manage_research) see all runs.
         if (rpath === "/research/runs" && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/runs"); if (!auth.ok) return;
           const { permissions, tenantId, userId, roleKey } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const limit = asSafeLimit(parseUrl(req.url).searchParams.get("limit"), 50, 200);
           const visibility = hasPermission(permissions, "manage_research")
             ? {}
@@ -3932,9 +3557,8 @@ const handleRequest = async (
 
         // GET /research/runs/:id/export?format=pdf|csv|html — branded export.
         if (runExportMatch && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/runs/:id/export"); if (!auth.ok) return;
           const { permissions, tenantId, userId, roleKey } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const id = decodeURIComponent(runExportMatch[1] as string);
           const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
           if (!run || !(await canViewRun(run, id, tenantId, userId, roleKey, permissions))) { json(res, 404, { ok: false, error: "Run not found" }); return; }
@@ -3962,9 +3586,8 @@ const handleRequest = async (
         // GET /research/runs/:id/schedule — the active recurring schedule (if any)
         // for this run's subject, so the run view can show its auto-refresh state.
         if (runScheduleMatch && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/runs/:id/schedule"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const id = decodeURIComponent(runScheduleMatch[1] as string);
           const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
           if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
@@ -3977,9 +3600,8 @@ const handleRequest = async (
         // re-research for this run's subject. Body: { cadence: daily|weekly|monthly }.
         // The clock-driven twin of /rerun: it snapshots the run's params.
         if (runScheduleMatch && req.method === "POST") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "POST /research/runs/:id/schedule"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
           if (!(await ensureResearchLicense(tenantId))) return;
           const id = decodeURIComponent(runScheduleMatch[1] as string);
           const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
@@ -4003,9 +3625,8 @@ const handleRequest = async (
 
         // GET /research/schedules — all recurring schedules in the tenant.
         if (rpath === "/research/schedules" && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/schedules"); if (!auth.ok) return;
           const { permissions, tenantId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const rows = await prisma.researchSchedule.findMany({ where: { tenantId }, orderBy: [{ isActive: "desc" }, { nextRunAt: "asc" }] });
           json(res, 200, { ok: true, items: rows.map(serializeSchedule) });
           return;
@@ -4014,9 +3635,8 @@ const handleRequest = async (
         // PATCH /research/schedules/:id — change cadence or pause/resume. Creator
         // or a manager (manage_research) only. DELETE removes it entirely.
         if (scheduleIdMatch && (req.method === "PATCH" || req.method === "DELETE")) {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, req.method === "PATCH" ? "PATCH /research/schedules/:id" : "DELETE /research/schedules/:id"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "run_research")) { denyPerm(); return; }
           const id = decodeURIComponent(scheduleIdMatch[1] as string);
           const sched = await prisma.researchSchedule.findFirst({ where: { id, tenantId } });
           if (!sched) { json(res, 404, { ok: false, error: "Schedule not found" }); return; }
@@ -4043,9 +3663,8 @@ const handleRequest = async (
         // GET /research/runs/:id/shares — current grants + pickable users/roles +
         // the tenant-wide `shared` flag. Creator only: sharing is a management action.
         if (runSharesMatch && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/runs/:id/shares"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const id = decodeURIComponent(runSharesMatch[1] as string);
           const run = await prisma.researchRun.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true, shared: true } });
           if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
@@ -4062,9 +3681,8 @@ const handleRequest = async (
         // PUT /research/runs/:id/shares — replace the grant set + set tenant-wide
         // visibility (creator only). Body: { shared?: boolean, shares: [{ principalType, principalId }] }.
         if (runSharesMatch && req.method === "PUT") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "PUT /research/runs/:id/shares"); if (!auth.ok) return;
           const { permissions, tenantId, userId } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const id = decodeURIComponent(runSharesMatch[1] as string);
           const run = await prisma.researchRun.findFirst({ where: { id, tenantId }, select: { id: true, createdById: true } });
           if (!run) { json(res, 404, { ok: false, error: "Run not found" }); return; }
@@ -4105,9 +3723,8 @@ const handleRequest = async (
 
         // GET /research/runs/:id — run detail + result (for polling + preview).
         if (runIdMatch && req.method === "GET") {
-          const auth = await authorize(req, res, null); if (!auth.ok) return;
+          const auth = await authorize(req, res, "GET /research/runs/:id"); if (!auth.ok) return;
           const { permissions, tenantId, userId, roleKey } = auth.context;
-          if (!hasPermission(permissions, "view_research")) { denyPerm(); return; }
           const id = decodeURIComponent(runIdMatch[1] as string);
           const run = await prisma.researchRun.findFirst({ where: { id, tenantId } });
           if (!run || !(await canViewRun(run, id, tenantId, userId, roleKey, permissions))) { json(res, 404, { ok: false, error: "Run not found" }); return; }
@@ -4131,526 +3748,9 @@ const handleRequest = async (
       }
     }
 
-    // ── Inventory (vertical with real persistence) ───────────────────────────
-    if (req.url === "/inventory/items" && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /inventory/items");
-      if (!auth.ok) return;
-      const items = await listInventory(auth.context.tenantId);
-      json(res, 200, { ok: true, items });
-      return;
-    }
-
-    if (req.url === "/inventory/items" && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /inventory/items");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const name = asTrimmedString(body.name);
-      if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
-      const txType = (["received", "used", "waste"].includes(String(body.txType)) ? body.txType : "received") as MovementType;
-      const qty = Number(body.qty);
-      if (!Number.isFinite(qty) || qty < 0) { json(res, 400, { ok: false, error: "qty must be a non-negative number" }); return; }
-      try {
-        const item = await applyMovement(auth.context.tenantId, {
-          name, txType, qty,
-          category: asTrimmedString(body.category) ?? undefined,
-          unit: asTrimmedString(body.unit) ?? undefined,
-          reorderLevel: body.reorderLevel != null ? Number(body.reorderLevel) : undefined,
-          unitCostPaise: toPaise({ unitCostPaise: body.unitCostPaise as number | undefined, unitCostInr: body.unitCostInr as number | undefined }),
-          ref: asTrimmedString(body.ref),
-          note: asTrimmedString(body.note),
-          actorId: auth.context.userId,
-        });
-        json(res, 200, { ok: true, item });
-      } catch (e) {
-        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid request" });
-      }
-      return;
-    }
-
-    // GET /inventory/movements[?itemId=&limit=] — the immutable stock ledger (4.2).
-    if (req.url?.startsWith("/inventory/movements") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /inventory/movements");
-      if (!auth.ok) return;
-      const sp = parseUrl(req.url).searchParams;
-      const items = await listMovements(auth.context.tenantId, {
-        itemId: sp.get("itemId") ?? undefined,
-        limit: sp.get("limit") ? Number(sp.get("limit")) : undefined,
-      });
-      json(res, 200, { ok: true, items });
-      return;
-    }
-
-    // GET /inventory/yield[?days=90] — per-material consumption/waste + accepted-quote demand (4.3).
-    if (req.url?.startsWith("/inventory/yield") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /inventory/yield");
-      if (!auth.ok) return;
-      const daysRaw = Number(parseUrl(req.url).searchParams.get("days"));
-      const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 90;
-      const items = await yieldSummary(auth.context.tenantId, days);
-      json(res, 200, { ok: true, windowDays: days, items });
-      return;
-    }
-
-    const invItemMatch = /^\/inventory\/items\/([^/]+)$/.exec(req.url ?? "");
-    if (invItemMatch && req.method === "PUT") {
-      const auth = await authorize(req, res, "PUT /inventory/items/:id");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostPaise: number }> = {};
-      const nm = asTrimmedString(body.name); if (nm) fields.name = nm;
-      const cat = asTrimmedString(body.category); if (cat) fields.category = cat;
-      const un = asTrimmedString(body.unit); if (un) fields.unit = un;
-      if (body.stock != null && Number.isFinite(Number(body.stock))) fields.stock = Math.max(0, Number(body.stock));
-      if (body.reorderLevel != null && Number.isFinite(Number(body.reorderLevel))) fields.reorderLevel = Math.max(0, Number(body.reorderLevel));
-      const paise = toPaise({ unitCostPaise: body.unitCostPaise as number | undefined, unitCostInr: body.unitCostInr as number | undefined });
-      if (paise != null) fields.unitCostPaise = paise;
-      const item = await updateItem(auth.context.tenantId, invItemMatch[1], fields, auth.context.userId);
-      if (!item) { json(res, 404, { ok: false, error: "Item not found" }); return; }
-      json(res, 200, { ok: true, item });
-      return;
-    }
-    if (invItemMatch && req.method === "DELETE") {
-      const auth = await authorize(req, res, "DELETE /inventory/items/:id");
-      if (!auth.ok) return;
-      const removed = await deleteItem(auth.context.tenantId, invItemMatch[1]);
-      if (!removed) { json(res, 404, { ok: false, error: "Item not found" }); return; }
-      json(res, 200, { ok: true });
-      return;
-    }
-
-    // ── Quoting + component-based costing (furniture/manufacturing) ───────────
-    // A quote is a bill of materials: line items (components) costed by dimension ×
-    // rate + labor, rolled up with overhead + margin. Sent quotes are immutable
-    // (rates snapshotted at add-time; edits rejected once status leaves "draft").
-
-    // Quote templates (reusable presets, e.g. "Dining Table").
-    if (req.url === "/quote-templates" && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /quote-templates");
-      if (!auth.ok) return;
-      json(res, 200, { ok: true, items: await quotes.listTemplates(auth.context.tenantId) });
-      return;
-    }
-    if (req.url === "/quote-templates" && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /quote-templates");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const name = asTrimmedString(body.name);
-      if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
-      try {
-        const tpl = await quotes.createTemplate(auth.context.tenantId, { ...body, name } as unknown as quotes.TemplatePayload);
-        json(res, 200, { ok: true, template: tpl });
-      } catch (e) {
-        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid template" });
-      }
-      return;
-    }
-    const tplMatch = /^\/quote-templates\/([^/]+)$/.exec(req.url ?? "");
-    if (tplMatch && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /quote-templates/:id");
-      if (!auth.ok) return;
-      const tpl = await quotes.getTemplate(auth.context.tenantId, tplMatch[1]);
-      if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
-      json(res, 200, { ok: true, template: tpl });
-      return;
-    }
-    if (tplMatch && req.method === "PATCH") {
-      const auth = await authorize(req, res, "PATCH /quote-templates/:id");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const tpl = await quotes.updateTemplate(auth.context.tenantId, tplMatch[1], body as unknown as quotes.TemplatePayload);
-      if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return; }
-      json(res, 200, { ok: true, template: tpl });
-      return;
-    }
-    if (tplMatch && req.method === "DELETE") {
-      const auth = await authorize(req, res, "DELETE /quote-templates/:id");
-      if (!auth.ok) return;
-      const ok = await quotes.deleteTemplate(auth.context.tenantId, tplMatch[1]);
-      if (!ok) { json(res, 404, { ok: false, error: "Template not found" }); return; }
-      json(res, 200, { ok: true });
-      return;
-    }
-
-    // Live cost preview — no persistence. Powers the "as you type" builder totals.
-    if (req.url === "/quotes/calc" && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /quotes/calc");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const lines = Array.isArray(body.lines) ? (body.lines as Record<string, unknown>[]) : [];
-      const costingMod = await import("./core/quotes/costing");
-      const preview = costingMod.priceQuote(
-        lines.map((l) => ({
-          costBasis: quotes.normalizeBasis(l.costBasis),
-          lengthMm: numOrNull(l.lengthMm),
-          widthMm: numOrNull(l.widthMm),
-          heightMm: numOrNull(l.heightMm),
-          quantity: Number(l.quantity) || 1,
-          unitRatePaise: Math.max(0, Math.round(Number(l.unitRatePaise) || 0)),
-          wastagePct: Math.max(0, Number(l.wastagePct) || 0),
-          laborHours: Math.max(0, Number(l.laborHours) || 0),
-          laborRatePaise: Math.max(0, Math.round(Number(l.laborRatePaise) || 0)),
-        })),
-        {
-          overheadPct: Number(body.overheadPct) || 0,
-          marginPct: Number(body.marginPct) || 0,
-          marginFloorPct: Number(body.marginFloorPct) || 0,
-          discountPaise: Math.max(0, Math.round(Number(body.discountPaise) || 0)),
-        },
-      );
-      json(res, 200, { ok: true, preview });
-      return;
-    }
-
-    // AI-assist: free text → draft line items (reviewed by a human before saving).
-    if (req.url === "/quotes/parse" && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /quotes/parse");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const text = asTrimmedString(body.text);
-      if (!text) { json(res, 400, { ok: false, error: "text is required" }); return; }
-      // Resolve the tenant's AI credentials (Integrations key → env fallback) and pick
-      // the provider the same way Research Studio does — so this works OpenAI-only and
-      // honours RESEARCH_AI_PROVIDER, instead of wrongly preferring Claude whenever any
-      // Anthropic key is present (which surfaced as a misleading "Could not parse").
-      const creds = await resolveAiCredentials(auth.context.tenantId);
-      if (!aiConfigured(creds)) { json(res, 200, { ok: true, lines: [], note: "AI is not configured; add an OpenAI or Anthropic key under Integrations, or enter line items manually." }); return; }
-      const provider = chooseProvider(creds);
-      const apiKey = providerKey(creds, provider) ?? undefined;
-      const system = "You extract furniture/manufacturing quote line items from a free-text description. " +
-        "Return ONLY JSON: {\"lines\":[{\"groupName\":string,\"name\":string,\"kind\":\"material|labor|hardware|finish|other\"," +
-        "\"costBasis\":\"area|length|perimeter|volume|fixed|hours\",\"lengthMm\":number|null,\"widthMm\":number|null," +
-        "\"heightMm\":number|null,\"quantity\":number,\"materialUnit\":string}]}. Convert any dimensions to millimetres. " +
-        "A flat panel/top is costBasis \"area\"; a leg/rail is \"length\"; hardware/fixed items are \"fixed\". Do not invent prices.";
-      try {
-        const raw = await aiCompleteTiered(text, { tier: "cheap", maxTokens: 1200, system, provider, apiKey });
-        const parsed = extractJson(raw) as { lines?: unknown[] } | null;
-        const out = Array.isArray(parsed?.lines) ? parsed!.lines : [];
-        // Clamp everything server-side — never trust AI numbers directly.
-        const lines = out.slice(0, 40).map((l) => {
-          const o = (l ?? {}) as Record<string, unknown>;
-          return {
-            groupName: asTrimmedString(o.groupName) ?? "General",
-            name: asTrimmedString(o.name) ?? "Component",
-            kind: quotes.normalizeKind(o.kind),
-            costBasis: quotes.normalizeBasis(o.costBasis),
-            lengthMm: numOrNull(o.lengthMm),
-            widthMm: numOrNull(o.widthMm),
-            heightMm: numOrNull(o.heightMm),
-            quantity: Math.max(0, Number(o.quantity) || 1),
-            materialUnit: asTrimmedString(o.materialUnit) ?? "sqft",
-            unitRatePaise: 0,
-          };
-        });
-        // Distinguish "the model replied but we couldn't extract items" from a hard failure.
-        const note = lines.length === 0 ? "The AI could not extract line items from that description — try adding dimensions, or enter them manually." : undefined;
-        json(res, 200, { ok: true, lines, ...(note ? { note } : {}) });
-      } catch (err) {
-        // Log the real reason server-side (key invalid, model access, network) — never
-        // leak provider error text to the client.
-        console.warn(`[quotes/parse] AI request failed (provider=${provider}):`, err instanceof Error ? err.message : err);
-        json(res, 200, { ok: true, lines: [], note: `AI request failed (${provider}). Check the ${provider === "openai" ? "OpenAI" : "Anthropic"} key in Integrations, or enter line items manually.` });
-      }
-      return;
-    }
-
-    if (req.url?.startsWith("/quotes") && parseUrl(req.url).pathname === "/quotes" && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /quotes");
-      if (!auth.ok) return;
-      const qs = parseUrl(req.url).searchParams;
-      const limit = asSafeLimit(qs.get("limit"), 50, 200);
-      const offset = asSafeOffset(qs.get("offset"));
-      const { items, total } = await quotes.listQuotes(auth.context.tenantId, {
-        status: asTrimmedString(qs.get("status")) ?? undefined,
-        contactId: asTrimmedString(qs.get("contactId")) ?? undefined,
-        dealId: asTrimmedString(qs.get("dealId")) ?? undefined,
-        limit, offset,
-      });
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
-      return;
-    }
-    if (req.url === "/quotes" && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /quotes");
-      if (!auth.ok) return;
-      const body = (await parseBody(req)) as Record<string, unknown>;
-      const title = asTrimmedString(body.title);
-      if (!title) { json(res, 400, { ok: false, error: "title is required" }); return; }
-      // Resolve the customer: an explicit contactId, else a new-customer object
-      // {fullName, phoneE164, email} which we find-or-create by phone. Linking a
-      // contact is what lets Send start the follow-up drip (a quote with no contact
-      // can only log a task — the drip has no channel to reach).
-      let contactId = asTrimmedString(body.contactId);
-      if (!contactId && body.customer && typeof body.customer === "object") {
-        const cust = body.customer as Record<string, unknown>;
-        const phone = normalizePhoneE164(asTrimmedString(cust.phoneE164));
-        if (phone) {
-          const existing = await prisma.contact.findFirst({ where: { tenantId: auth.context.tenantId, phoneE164: phone }, select: { id: true } });
-          if (existing) {
-            contactId = existing.id;
-          } else {
-            const c = await prisma.contact.create({
-              data: {
-                tenantId: auth.context.tenantId,
-                fullName: asTrimmedString(cust.fullName) ?? "Customer",
-                phoneE164: phone,
-                email: asTrimmedString(cust.email),
-                source: "quote",
-              },
-              select: { id: true },
-            });
-            contactId = c.id;
-          }
-        }
-      }
-      try {
-        const quote = await quotes.createQuote(auth.context.tenantId, {
-          title,
-          contactId,
-          companyId: asTrimmedString(body.companyId),
-          dealId: asTrimmedString(body.dealId),
-          templateId: asTrimmedString(body.templateId),
-          overheadPct: numUndef(body.overheadPct),
-          marginPct: numUndef(body.marginPct),
-          marginFloorPct: numUndef(body.marginFloorPct),
-          discountPaise: numUndef(body.discountPaise),
-          gstPercent: numUndef(body.gstPercent),
-          validUntil: dateOrNull(body.validUntil),
-          notes: asTrimmedString(body.notes),
-          terms: asTrimmedString(body.terms),
-          createdById: auth.context.userId,
-          lines: Array.isArray(body.lines) ? (body.lines as quotes.LineInputPayload[]) : undefined,
-        });
-        json(res, 200, { ok: true, quote });
-      } catch (e) {
-        json(res, 400, { ok: false, error: e instanceof Error ? e.message : "Invalid quote" });
-      }
-      return;
-    }
-
-    // Sub-routes: /quotes/:id[/lines[/:lineId]|/send|/accept|/reject|/expire|/pdf|/busy-export]
-    const quoteMatch = /^\/quotes\/([^/]+)(?:\/(lines|send|accept|reject|expire|pdf|busy-export))?(?:\/([^/]+))?$/.exec(
-      parseUrl(req.url ?? "").pathname,
-    );
-    if (quoteMatch) {
-      const quoteId = quoteMatch[1];
-      const sub = quoteMatch[2];
-      const subId = quoteMatch[3];
-
-      // GET /quotes/:id
-      if (!sub && req.method === "GET") {
-        const auth = await authorize(req, res, "GET /quotes/:id");
-        if (!auth.ok) return;
-        const quote = await quotes.getQuote(auth.context.tenantId, quoteId);
-        if (!quote) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // PATCH /quotes/:id (draft only)
-      if (!sub && req.method === "PATCH") {
-        const auth = await authorize(req, res, "PATCH /quotes/:id");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
-        const fields: Record<string, unknown> = {};
-        const t = asTrimmedString(body.title); if (t) fields.title = t;
-        if (body.contactId !== undefined) fields.contactId = asTrimmedString(body.contactId);
-        if (body.companyId !== undefined) fields.companyId = asTrimmedString(body.companyId);
-        if (body.dealId !== undefined) fields.dealId = asTrimmedString(body.dealId);
-        if (body.overheadPct !== undefined) fields.overheadPct = Number(body.overheadPct) || 0;
-        if (body.marginPct !== undefined) fields.marginPct = Number(body.marginPct) || 0;
-        if (body.marginFloorPct !== undefined) fields.marginFloorPct = Number(body.marginFloorPct) || 0;
-        if (body.discountPaise !== undefined) fields.discountPaise = Math.max(0, Math.round(Number(body.discountPaise) || 0));
-        if (body.gstPercent !== undefined) fields.gstPercent = Math.max(0, Number(body.gstPercent) || 0);
-        if (body.validUntil !== undefined) fields.validUntil = dateOrNull(body.validUntil);
-        if (body.notes !== undefined) fields.notes = asTrimmedString(body.notes);
-        if (body.terms !== undefined) fields.terms = asTrimmedString(body.terms);
-        await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
-        // Optional full line-replace (the builder's Edit flow saves all lines at once).
-        const quote = Array.isArray(body.lines)
-          ? await quotes.replaceQuoteLines(auth.context.tenantId, quoteId, body.lines as quotes.LineInputPayload[])
-          : await quotes.getQuote(auth.context.tenantId, quoteId);
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // DELETE /quotes/:id (draft only)
-      if (!sub && req.method === "DELETE") {
-        const auth = await authorize(req, res, "DELETE /quotes/:id");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be deleted" }); return; }
-        await quotes.deleteQuote(auth.context.tenantId, quoteId);
-        json(res, 200, { ok: true });
-        return;
-      }
-      // POST /quotes/:id/lines (draft only)
-      if (sub === "lines" && !subId && req.method === "POST") {
-        const auth = await authorize(req, res, "POST /quotes/:id/lines");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
-        const name = asTrimmedString(body.name);
-        if (!name) { json(res, 400, { ok: false, error: "name is required" }); return; }
-        const quote = await quotes.addLine(auth.context.tenantId, quoteId, { ...body, name } as unknown as quotes.LineInputPayload);
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // PATCH /quotes/:id/lines/:lineId (draft only)
-      if (sub === "lines" && subId && req.method === "PATCH") {
-        const auth = await authorize(req, res, "PATCH /quotes/:id/lines/:lineId");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
-        const quote = await quotes.updateLine(auth.context.tenantId, quoteId, subId, body as unknown as quotes.LineInputPayload);
-        if (!quote) { json(res, 404, { ok: false, error: "Line not found" }); return; }
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // DELETE /quotes/:id/lines/:lineId (draft only)
-      if (sub === "lines" && subId && req.method === "DELETE") {
-        const auth = await authorize(req, res, "DELETE /quotes/:id/lines/:lineId");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return; }
-        const quote = await quotes.deleteLine(auth.context.tenantId, quoteId, subId);
-        if (!quote) { json(res, 404, { ok: false, error: "Line not found" }); return; }
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // POST /quotes/:id/send — enforce margin floor, freeze, then follow-up (M3).
-      if (sub === "send" && req.method === "POST") {
-        const auth = await authorize(req, res, "POST /quotes/:id/send");
-        if (!auth.ok) return;
-        const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
-        if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (!quotes.canTransition(floor.status, "sent")) { json(res, 409, { ok: false, error: `Quote is already ${floor.status}` }); return; }
-        if (!floor.hasLines) { json(res, 422, { ok: false, error: "Quote has no line items" }); return; }
-        if (floor.floorViolation) {
-          json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
-          return;
-        }
-        const quote = await quotes.markSent(auth.context.tenantId, quoteId);
-        // Fire the multi-channel follow-up: log a CRM task and (if configured)
-        // enroll the contact into the drip sequence. Best-effort — never blocks send.
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        let followup: FollowupResult | undefined;
-        if (raw) {
-          const { runQuoteFollowup } = await import("./core/quotes/followup");
-          followup = await runQuoteFollowup(auth.context.tenantId, {
-            id: raw.id, number: raw.number, title: raw.title,
-            contactId: raw.contactId, dealId: raw.dealId, createdById: raw.createdById,
-          });
-        }
-        json(res, 200, { ok: true, quote, followup });
-        return;
-      }
-      // POST /quotes/:id/accept — enforce floor, commit price to the linked Deal.
-      if (sub === "accept" && req.method === "POST") {
-        const auth = await authorize(req, res, "POST /quotes/:id/accept");
-        if (!auth.ok) return;
-        const floor = await quotes.quoteFloorStatus(auth.context.tenantId, quoteId);
-        if (!floor) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        // Only a sent quote can be accepted: send is the sole door and it enforces
-        // lines + the margin floor, so a draft (possibly empty) quote can never
-        // commit a deal value directly.
-        if (!quotes.canTransition(floor.status, "accepted")) { json(res, 409, { ok: false, error: `Only sent quotes can be accepted (this quote is ${floor.status})` }); return; }
-        if (!floor.hasLines) { json(res, 422, { ok: false, error: "Quote has no line items" }); return; }
-        if (floor.floorViolation) {
-          json(res, 422, { ok: false, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct });
-          return;
-        }
-        const quote = await quotes.markAccepted(auth.context.tenantId, quoteId);
-        // Commit the accepted total to the linked Deal (paise → Decimal rupees).
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (raw?.dealId) {
-          const deal = await prisma.deal.findFirst({ where: { id: raw.dealId, tenantId: auth.context.tenantId }, select: { id: true } });
-          if (deal) {
-            await prisma.deal.update({ where: { id: deal.id }, data: { value: new Prisma.Decimal((raw.totalPaise / 100).toFixed(2)) } });
-          }
-        }
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // POST /quotes/:id/reject
-      if (sub === "reject" && req.method === "POST") {
-        const auth = await authorize(req, res, "POST /quotes/:id/reject");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        // An accepted quote cannot be rejected — its total is already committed to
-        // the linked deal. Decided states are terminal; re-quote instead.
-        if (!quotes.canTransition(raw.status, "rejected")) { json(res, 409, { ok: false, error: `Only sent quotes can be rejected (this quote is ${raw.status})` }); return; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
-        const quote = await quotes.markRejected(auth.context.tenantId, quoteId, asTrimmedString(body.reason));
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // POST /quotes/:id/expire
-      if (sub === "expire" && req.method === "POST") {
-        const auth = await authorize(req, res, "POST /quotes/:id/expire");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (!quotes.canTransition(raw.status, "expired")) { json(res, 409, { ok: false, error: `Only sent quotes can be expired (this quote is ${raw.status})` }); return; }
-        const quote = await quotes.markExpired(auth.context.tenantId, quoteId);
-        json(res, 200, { ok: true, quote });
-        return;
-      }
-      // GET /quotes/:id/pdf — branded quote PDF (reuses renderBrandedReportPdf).
-      if (sub === "pdf" && req.method === "GET") {
-        const auth = await authorize(req, res, "GET /quotes/:id/pdf");
-        if (!auth.ok) return;
-        const quote = await quotes.getQuote(auth.context.tenantId, quoteId);
-        if (!quote) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        const brand = await loadReportBrand(auth.context.tenantId);
-        const blocks = quotes.quotePdfBlocks(quote);
-        const pdf = await renderBrandedReportPdf(brand, {
-          title: `Quote ${String(quote.number)}`,
-          subtitle: String(quote.title),
-          generatedAt: new Date(),
-          blocks,
-        });
-        sendBinary(res, "application/pdf", pdf, `quote-${quote.number}.pdf`);
-        return;
-      }
-      // GET /quotes/:id/busy-export?format=csv|xml — BUSY-ready sales voucher for an
-      // accepted quote (Administration → Import Voucher). File export, no live sync.
-      if (sub === "busy-export" && req.method === "GET") {
-        const auth = await authorize(req, res, "GET /quotes/:id/busy-export");
-        if (!auth.ok) return;
-        const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
-        if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
-        if (raw.status !== "accepted") { json(res, 409, { ok: false, error: "Only accepted quotes can be exported to BUSY" }); return; }
-        const format = (parseUrl(req.url).searchParams.get("format") ?? "csv").toLowerCase();
-        const busy = await import("./core/connectors/busy");
-        const config = await busy.resolveBusyConfig(auth.context.tenantId);
-        // The quote's own GST rate (if set) wins over the connector default so the
-        // voucher matches what the customer was quoted.
-        if (raw.gstPercent > 0) config.gstPercent = raw.gstPercent;
-        // Party name: linked company, else contact, else the quote title.
-        let partyName = raw.title;
-        if (raw.companyId) {
-          const c = await prisma.company.findFirst({ where: { id: raw.companyId, tenantId: auth.context.tenantId }, select: { name: true } });
-          if (c) partyName = c.name;
-        } else if (raw.contactId) {
-          const c = await prisma.contact.findFirst({ where: { id: raw.contactId, tenantId: auth.context.tenantId }, select: { fullName: true } });
-          if (c) partyName = c.fullName;
-        }
-        const q = { number: raw.number, title: raw.title, acceptedAt: raw.acceptedAt, totalPaise: raw.totalPaise, lineItems: raw.lineItems.map((l) => ({ groupName: l.groupName, lineCostPaise: l.lineCostPaise })) };
-        if (format === "xml") {
-          sendDoc(res, "application/xml; charset=utf-8", busy.buildBusyXml(q, config, partyName), `busy-voucher-${raw.number}.xml`);
-        } else {
-          sendDoc(res, "text/csv; charset=utf-8", busy.buildBusyCsv(q, config, partyName), `busy-voucher-${raw.number}.csv`);
-        }
-        return;
-      }
-    }
+    // ── Inventory + Quotes: extracted domain routers (5.1) ────────────────────
+    if (await handleInventoryRoutes(req, res)) return;
+    if (await handleQuoteRoutes(req, res)) return;
 
     // ── AI: Provider Status ─────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/providers") && req.method === "GET") {
@@ -6828,7 +5928,9 @@ const handleRequest = async (
     // ── Voice Campaign: calls list / detail (+ CSV export) ──────────────────
     const callsPath = parseCampaignCallsPath(req.url);
     if (callsPath && req.method === "GET") {
-      const auth = await authorize(req, res, null);
+      // Permission BEFORE the campaign lookup: an under-permissioned caller must
+      // get a uniform 403, never a 404 that confirms whether a campaign id exists.
+      const auth = await authorize(req, res, callsPath.callId ? "GET /campaigns/:id/calls/:callId" : "GET /campaigns/:id/calls");
       if (!auth.ok) return;
       const tenantId = auth.context.tenantId;
       const campaign = await prisma.voiceCampaign.findFirst({ where: { id: callsPath.campaignId, tenantId }, select: { id: true } });
@@ -6836,9 +5938,6 @@ const handleRequest = async (
 
       // Single call detail: + sentiment timeline + the lead's WhatsApp thread.
       if (callsPath.callId) {
-        if (!canAccess(auth.context.permissions, "GET /campaigns/:id/calls/:callId")) {
-          json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-        }
         const call = await prisma.callRecord.findFirst({
           where: { id: callsPath.callId, campaignId: callsPath.campaignId },
           include: { lead: { select: { id: true, firstName: true, lastName: true, company: true, phone: true } } },
@@ -6853,9 +5952,6 @@ const handleRequest = async (
       }
 
       // List
-      if (!canAccess(auth.context.permissions, "GET /campaigns/:id/calls")) {
-        json(res, 403, { ok: false, error: "Insufficient permissions" }); return;
-      }
       const qs = parseUrl(req.url).searchParams;
       const whereCalls = {
         campaignId: callsPath.campaignId,
