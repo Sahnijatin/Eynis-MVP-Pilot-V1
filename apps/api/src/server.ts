@@ -2295,6 +2295,21 @@ const handleRequest = async (
       return;
     }
 
+    // POST /connectors/configs/:key/test — live-key validation (Phase 8): cheap
+    // authenticated ping so a bad credential is caught before a campaign launch.
+    const connectorTestMatch = /^\/connectors\/configs\/([^/]+)\/test$/.exec(parseUrl(req.url).pathname);
+    if (connectorTestMatch && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /connectors/configs/:key/test");
+      if (!auth.ok) return;
+      const key = decodeURIComponent(connectorTestMatch[1]);
+      if (!envFlagByConnectorKey.has(key)) { json(res, 404, { ok: false, error: "Unknown connector key" }); return; }
+      const { testConnector } = await import("./core/connectors/test-connection");
+      const result = await testConnector(auth.context.tenantId, key);
+      if (!result) { json(res, 200, { ok: true, testable: false, detail: "This connector has no live test (file export / on-prem integration)" }); return; }
+      json(res, 200, { ok: true, testable: true, passed: result.ok, detail: result.detail });
+      return;
+    }
+
     const connectorConfigKey = parseConnectorConfigPath(req.url);
     if (connectorConfigKey && req.method === "PUT") {
       const auth = await authorize(req, res, "PUT /connectors/configs/:key");

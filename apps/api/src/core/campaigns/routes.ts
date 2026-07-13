@@ -63,6 +63,25 @@ export async function handleCampaignRoutes(req: IncomingMessage, res: ServerResp
   const routePath = parseUrl(req.url).pathname;
   if (!(routePath === "/campaigns" || routePath.startsWith("/campaigns/"))) return false;
 
+    // ── GDPR/DPDP erasure (Phase 8) ──────────────────────────────────────────
+    // Shreds a person's PII across every campaign surface (rows kept so
+    // aggregates stay truthful) and DNC-suppresses their phone first. Declared
+    // before the /campaigns/:id matchers so "erasure" is never read as an id.
+    if (routePath === "/campaigns/erasure" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /campaigns/erasure");
+      if (!auth.ok) return true;
+      const body = await parseObjectBody(req);
+      const { eraseCampaignLeadPII } = await import("./erasure");
+      const result = await eraseCampaignLeadPII(auth.context.tenantId, {
+        leadId: asTrimmedString(body.leadId),
+        phone: asTrimmedString(body.phone),
+        email: asTrimmedString(body.email),
+      }, auth.context.userId);
+      if (!result.ok) { json(res, result.status, { ok: false, error: result.error }); return true; }
+      json(res, 200, { ok: true, counts: result.counts });
+      return true;
+    }
+
     // ── Voice Campaigns: create + list ──────────────────────────────────────
     if (parseUrl(req.url).pathname === "/campaigns" && (req.method === "POST" || req.method === "GET")) {
       const auth = await authorize(req, res, null);

@@ -148,6 +148,9 @@ export const permissionMap: Record<string, Permission | null> = {
   "GET /orders/:id":                      "view_crm",
   "PATCH /orders/:id":                    "manage_crm",
   "GET /contacts/intel":                  "view_crm",
+  // Campaigns launch-hardening (Phase 8).
+  "POST /campaigns/erasure":              "manage_campaigns",
+  "POST /connectors/configs/:key/test":   "manage_connectors",
   // Reports (E-16). Base permission here; per-source access + creator-only
   // rules stay contextual in the handlers.
   "GET /reports/sources":                 "view_reports",

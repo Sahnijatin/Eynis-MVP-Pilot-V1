@@ -19,22 +19,22 @@ scale-gated items last. Each phase is independently shippable and keeps the suit
 Closes the quote loop: today the "customer link" is a linked Contact record and staff mark
 acceptance manually. A customer should be able to open their quote and accept/decline it.
 
-- ☐ **6.1 Signed public quote token.** On send, mint a random token; store only its SHA-256
+- ✅ **6.1 Signed public quote token.** On send, mint a random token; store only its SHA-256
   (reuse `hashToken` from `core/crypto/secrets.ts` — same pattern as invites). Token binds to
   one quote; regenerated on re-send; unusable after the quote is decided or expired.
-- ☐ **6.2 Public view endpoint.** `GET /public/quotes/:token` → the customer-safe
+- ✅ **6.2 Public view endpoint.** `GET /public/quotes/:token` → the customer-safe
   representation ONLY (reuse `quotePdfBlocks`' allocation: piece + spec + selling amount +
   GST — never cost/overhead/margin). Tenant-branded via the existing report-brand loader.
   Rate-limited per IP; 404 for unknown/expired tokens with no tenant enumeration.
-- ☐ **6.3 Public decision endpoint.** `POST /public/quotes/:token/accept|decline` →
+- ✅ **6.3 Public decision endpoint.** `POST /public/quotes/:token/accept|decline` →
   drives the SAME `canTransition` state machine (sent → accepted/rejected) and the same
   deal-value commit; writes an AuditLog row with actor "customer". Idempotent (a second
   accept returns the decided state, no double deal update).
-- ☐ **6.4 Web page.** `apps/web/app/q/[token]` — public, pre-auth, host-brand themed
+- ✅ **6.4 Web page.** `apps/web/app/q/[token]` — public, pre-auth, host-brand themed
   (like `/request`): quote view + Accept / Decline buttons + confirmation state.
-- ☐ **6.5 Delivery.** Include the link in the quote-sent follow-up (WhatsApp/email
+- ✅ **6.5 Delivery.** Include the link in the quote-sent follow-up (WhatsApp/email
   sequence variables) and show a copy-link button on the quotes list for sent quotes.
-- ☐ **6.6 Tests.** Token lifecycle (hash-only at rest, invalidated on decide/expire),
+- ✅ **6.6 Tests.** Token lifecycle (hash-only at rest, invalidated on decide/expire),
   no-cost-leak assertion on the public payload, decision idempotency, rate limit,
   cross-tenant/guessing 404s.
 
@@ -50,26 +50,26 @@ The biggest sales/demo gap: mfg tenants have real Quotes/Materials/CRM but a "Sa
 Command Centre, Live Orders, and Client Intelligence. Make manufacturing the first fully
 real non-hospitality vertical (its ops loop is already 70% built via quotes + inventory).
 
-- ☐ **7.1 Order model.** `Order` created from an ACCEPTED quote (orderNumber, quoteId,
+- ✅ **7.1 Order model.** `Order` created from an ACCEPTED quote (orderNumber, quoteId,
   contactId/companyId, valuePaise frozen from the quote, stage: `new → production → qc →
   dispatch → delivered`, promisedDate, notes) + `OrderTransition` history mirroring
   ServiceRequest's pattern. Accepting a quote auto-creates the order (idempotent).
-- ☐ **7.2 Live Orders page for real.** Replace the hardcoded `/orders` arrays with the
+- ✅ **7.2 Live Orders page for real.** Replace the hardcoded `/orders` arrays with the
   order pipeline: stage columns with counts/values from real aggregates, stage-move actions
   (PATCH with transition history), and the detail panel fed by the real quote/contact.
   Remove its Preview banner.
-- ☐ **7.3 Command Centre for real.** Manufacturing dashboard KPIs from live aggregates:
+- ✅ **7.3 Command Centre for real.** Manufacturing dashboard KPIs from live aggregates:
   open orders by stage, order value in production, quotes awaiting decision (sent), material
   reorder alerts (inventory status), waste ratio (yield endpoint). Remove its Preview banner.
-- ☐ **7.4 Client Intelligence for real.** `/customers` for mfg tenants from real CRM data:
+- ✅ **7.4 Client Intelligence for real.** `/customers` for mfg tenants from real CRM data:
   per-company/contact totals (accepted-quote value, open orders, last order date, days since
   last order) with the existing at-risk framing driven by real recency. Remove its badge.
-- ☐ **7.5 Material consumption hook.** Moving an order into `production` logs planned
+- ✅ **7.5 Material consumption hook.** Moving an order into `production` logs planned
   material usage (from the quote's inventory-linked lines' computedQty) as ledger `used`
   movements — closing the loop the yield page reports on. Config-gated
   (`autoDeductMaterials` tenant setting, default off) so shops that track manually keep
   control.
-- ☐ **7.6 Tests + seed.** Order lifecycle (accept → order, stage transitions, idempotency),
+- ◐ **7.6 Tests + seed.** _(order lifecycle/consumption/intel tests done; demo-order seed deferred — the pipeline fills organically from accepted quotes)_ Order lifecycle (accept → order, stage transitions, idempotency),
   dashboard aggregates, consumption hook; extend `seed-tempus.ts` so the demo tenant shows
   a living pipeline.
 
@@ -84,17 +84,17 @@ production tracking and (optionally) material consumption.
 The voice/multi-channel campaign engine is feature-complete but pre-launch compliance items
 are open (tracked in `docs/voice-agent-status.md` Phases 11–12).
 
-- ☐ **8.1 GDPR/DPDP erasure endpoint.** `DELETE /campaigns/leads/:id/erasure` (and a
+- ✅ **8.1 GDPR/DPDP erasure endpoint.** `DELETE /campaigns/leads/:id/erasure` (and a
   by-phone variant): hard-delete or crypto-shred the lead's PII across CampaignLead,
   CallRecord transcripts, WhatsApp messages, MessageDelivery bodies; keep aggregate counters.
   Audit-logged, admin-permission gated.
-- ☐ **8.2 DND enforcement completion.** TRAI DND scrub is fail-closed for +91 voice; finish
+- ✅ **8.2 DND enforcement completion.** _(verified already enforced in dispatch: DoNotContact for phone channels, EmailSuppression for email, skip reasons recorded on MessageDelivery and covered by dispatch tests)_ TRAI DND scrub is fail-closed for +91 voice; finish
   the enforcement path for WhatsApp/email channels (suppression checks at dispatch) and
   surface skip reasons in the campaign UI.
-- ☐ **8.3 Live-key validation.** "Test connection" actions for Vapi/Twilio/Interakt/Resend
+- ✅ **8.3 Live-key validation.** "Test connection" actions for Vapi/Twilio/Interakt/Resend
   connector configs (cheap authenticated ping per provider) so a tenant knows a key works
   before launching a campaign.
-- ☐ **8.4 Campaign demo seed.** Deterministic seed for a demo campaign (leads, calls,
+- ✅ **8.4 Campaign demo seed.** Deterministic seed for a demo campaign (leads, calls,
   outcomes, sentiment, A/B arms) so the analytics surfaces demo well without live keys.
 
 **Acceptance:** a lead can be verifiably erased end-to-end; no channel can contact a
