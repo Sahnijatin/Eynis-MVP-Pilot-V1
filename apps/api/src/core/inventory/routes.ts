@@ -4,7 +4,7 @@
 // permissionMap contract like every other route.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { authorize } from "../authz";
-import { json, parseBody, asTrimmedString, parseUrl } from "../../http/helpers";
+import { json, parseBody, parseObjectBody, asTrimmedString, parseUrl } from "../../http/helpers";
 import { listInventory, applyMovement, updateItem, deleteItem, listMovements, yieldSummary, toPaise, type MovementType } from "./service";
 
 export async function handleInventoryRoutes(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -23,7 +23,7 @@ export async function handleInventoryRoutes(req: IncomingMessage, res: ServerRes
     if (req.url === "/inventory/items" && req.method === "POST") {
       const auth = await authorize(req, res, "POST /inventory/items");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const name = asTrimmedString(body.name);
       if (!name) { json(res, 400, { ok: false, error: "name is required" }); return true; }
       const txType = (["received", "used", "waste"].includes(String(body.txType)) ? body.txType : "received") as MovementType;
@@ -75,7 +75,7 @@ export async function handleInventoryRoutes(req: IncomingMessage, res: ServerRes
     if (invItemMatch && req.method === "PUT") {
       const auth = await authorize(req, res, "PUT /inventory/items/:id");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const fields: Partial<{ name: string; category: string; stock: number; unit: string; reorderLevel: number; unitCostPaise: number }> = {};
       const nm = asTrimmedString(body.name); if (nm) fields.name = nm;
       const cat = asTrimmedString(body.category); if (cat) fields.category = cat;

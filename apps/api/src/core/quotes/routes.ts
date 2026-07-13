@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { authorize } from "../authz";
-import { json, parseBody, asTrimmedString, parseUrl, asSafeLimit, asSafeOffset, numOrNull, numUndef, dateOrNull, normalizePhoneE164, sendBinary, sendDoc } from "../../http/helpers";
+import { json, parseBody, parseObjectBody, asTrimmedString, parseUrl, asSafeLimit, asSafeOffset, numOrNull, numUndef, dateOrNull, normalizePhoneE164, sendBinary, sendDoc } from "../../http/helpers";
 import * as quotes from "./service";
 import type { FollowupResult } from "./followup";
 import { upsertContactByPhone } from "../crm/upsert-contact";
@@ -34,7 +34,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
     if (req.url === "/quote-templates" && req.method === "POST") {
       const auth = await authorize(req, res, "POST /quote-templates");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const name = asTrimmedString(body.name);
       if (!name) { json(res, 400, { ok: false, error: "name is required" }); return true; }
       try {
@@ -57,7 +57,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
     if (tplMatch && req.method === "PATCH") {
       const auth = await authorize(req, res, "PATCH /quote-templates/:id");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const tpl = await quotes.updateTemplate(auth.context.tenantId, tplMatch[1], body as unknown as quotes.TemplatePayload);
       if (!tpl) { json(res, 404, { ok: false, error: "Template not found" }); return true; }
       json(res, 200, { ok: true, template: tpl });
@@ -76,7 +76,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
     if (req.url === "/quotes/calc" && req.method === "POST") {
       const auth = await authorize(req, res, "POST /quotes/calc");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const lines = Array.isArray(body.lines) ? (body.lines as Record<string, unknown>[]) : [];
       const costingMod = await import("./costing");
       const preview = costingMod.priceQuote(
@@ -106,7 +106,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
     if (req.url === "/quotes/parse" && req.method === "POST") {
       const auth = await authorize(req, res, "POST /quotes/parse");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const text = asTrimmedString(body.text);
       if (!text) { json(res, 400, { ok: false, error: "text is required" }); return true; }
       // Resolve the tenant's AI credentials (Integrations key → env fallback) and pick
@@ -172,7 +172,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
     if (req.url === "/quotes" && req.method === "POST") {
       const auth = await authorize(req, res, "POST /quotes");
       if (!auth.ok) return true;
-      const body = (await parseBody(req)) as Record<string, unknown>;
+      const body = await parseObjectBody(req);
       const title = asTrimmedString(body.title);
       if (!title) { json(res, 400, { ok: false, error: "title is required" }); return true; }
       // Resolve the customer: an explicit contactId, else a new-customer object
@@ -252,7 +252,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
         if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
         if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return true; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
+        const body = await parseObjectBody(req);
         const fields: Record<string, unknown> = {};
         const t = asTrimmedString(body.title); if (t) fields.title = t;
         if (body.contactId !== undefined) fields.contactId = asTrimmedString(body.contactId);
@@ -292,7 +292,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
         if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
         if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return true; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
+        const body = await parseObjectBody(req);
         const name = asTrimmedString(body.name);
         if (!name) { json(res, 400, { ok: false, error: "name is required" }); return true; }
         const quote = await quotes.addLine(auth.context.tenantId, quoteId, { ...body, name } as unknown as quotes.LineInputPayload);
@@ -306,7 +306,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
         if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
         if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return true; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
+        const body = await parseObjectBody(req);
         const quote = await quotes.updateLine(auth.context.tenantId, quoteId, subId, body as unknown as quotes.LineInputPayload);
         if (!quote) { json(res, 404, { ok: false, error: "Line not found" }); return true; }
         json(res, 200, { ok: true, quote });
@@ -387,7 +387,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         // An accepted quote cannot be rejected — its total is already committed to
         // the linked deal. Decided states are terminal; re-quote instead.
         if (!quotes.canTransition(raw.status, "rejected")) { json(res, 409, { ok: false, error: `Only sent quotes can be rejected (this quote is ${raw.status})` }); return true; }
-        const body = (await parseBody(req)) as Record<string, unknown>;
+        const body = await parseObjectBody(req);
         const quote = await quotes.markRejected(auth.context.tenantId, quoteId, asTrimmedString(body.reason));
         json(res, 200, { ok: true, quote });
         return true;

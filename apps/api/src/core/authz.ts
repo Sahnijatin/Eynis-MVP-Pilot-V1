@@ -280,3 +280,10 @@ export async function authorize(
   return { ok: true, context: auth.context };
 }
 
+
+// Confirms the tenant exists. Used by public/webhook paths where tenantId
+// arrives in the request body rather than a verified JWT claim.
+export const ensureTenantAccess = async (tenantId: string) => {
+  const hotel = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  return Boolean(hotel);
+};

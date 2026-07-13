@@ -58,6 +58,17 @@ export const parseBody = async (req: IncomingMessage): Promise<unknown> => {
   return JSON.parse(raw);
 };
 
+// Typed body reader (5.4). JSON.parse legally returns arrays/strings/numbers/null,
+// which handlers blindly casting to Record<string, unknown> would then read
+// properties off — this validates the root is a plain object and returns {} for
+// anything else, so downstream field coercion always starts from a safe shape.
+export const parseObjectBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
+  const parsed = await parseBody(req);
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
+};
+
 export const hasString = (value: unknown) => typeof value === "string" && value.trim().length > 0;
 export const asTrimmedString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;

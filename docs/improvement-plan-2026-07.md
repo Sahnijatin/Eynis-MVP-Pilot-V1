@@ -148,7 +148,7 @@ row; yield page shows computed consumption, not a renamed list.
 
 Largest effort, no user-visible change — schedule after the pilot-facing phases.
 
-- ◐ **5.1 Extract per-domain routers** _(authz kernel + HTTP helpers extracted; quotes + inventory routers done as the pattern — remaining domains follow the same recipe)_ out of the 6,900-line `server.ts` if/else chain
+- ✅ **5.1 Extract per-domain routers** _(reports, research, marketing, CRM, campaigns, quotes, inventory all extracted to core/<domain>/routes.ts; server.ts is bootstrap + auth/tenant/team/AI/connectors + dispatch, ~3,700 lines from 6,895)_ out of the 6,900-line `server.ts` if/else chain
   (quotes, crm, research, reports, campaigns, connectors, auth/tenant, admin), keeping the
   no-framework `node:http` approach but with a small shared route-table dispatcher.
   Incremental: one domain per PR, `buildServer()` contract and tests unchanged.
@@ -159,7 +159,7 @@ Largest effort, no user-visible change — schedule after the pilot-facing phase
 - ✅ **5.3 Authorization-matrix test.** A generated test that walks `permissionMap` and
   asserts each route rejects unauthenticated and under-permissioned callers — turns the map
   into an enforced contract and closes the route-level coverage gap cheaply.
-- ☐ **5.4 Shrink the `as any` boundary** (~104 casts, mostly at `parseBody`): introduce a
+- ✅ **5.4 Shrink the `as any` boundary** _(parseObjectBody() validates the JSON root is an object; 33 blind Record casts replaced across all domain routers)_ (~104 casts, mostly at `parseBody`): introduce a
   tiny validation helper for request bodies on the money-bearing routes first (quotes, CRM).
 - ◐ **5.5 Redis rate-limit adapter** _(x-forwarded-for trust fixed via TRUST_PROXY-aware clientIp(); Redis adapter itself deferred until multi-instance is real)_ (interface from 2.4) — required before any
   multi-instance deploy; also stop trusting first-hop `x-forwarded-for` outside the known
