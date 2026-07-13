@@ -619,6 +619,44 @@ export async function fetchInventory() {
   return fetchOr<InventoryResponse>("/inventory/items", { ok: false, items: [] });
 }
 
+// ── Customer intelligence (Phase 7) ──────────────────────────────────────────
+export interface ContactIntelRow {
+  id: string;
+  fullName: string;
+  phoneE164: string;
+  email: string | null;
+  acceptedTotalPaise: number;
+  acceptedCount: number;
+  lastAcceptedAt: string | null;
+  pendingQuotes: number;
+  openOrders: number;
+}
+
+export async function fetchContactIntel(): Promise<{ ok: boolean; items: ContactIntelRow[] }> {
+  return fetchOr("/contacts/intel", { ok: false, items: [] });
+}
+
+// ── Orders (fulfillment pipeline, Phase 7) ────────────────────────────────────
+export interface OrderRow {
+  id: string;
+  number: string;
+  stage: "new" | "production" | "qc" | "dispatch" | "delivered";
+  valuePaise: number;
+  quoteNumber: string;
+  title: string;
+  contactName: string | null;
+  companyName: string | null;
+  promisedDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface OrderStageSummary { stage: OrderRow["stage"]; count: number; valuePaise: number }
+
+export async function fetchOrders(): Promise<{ ok: boolean; items: OrderRow[]; summary: OrderStageSummary[] }> {
+  return fetchOr("/orders?limit=200", { ok: false, items: [], summary: [] });
+}
+
 export async function fetchInventoryYield(days = 90) {
   return fetchOr<{ ok: boolean; windowDays: number; items: InventoryYieldRow[] }>(
     `/inventory/yield?days=${days}`,

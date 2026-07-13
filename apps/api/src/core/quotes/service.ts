@@ -587,6 +587,14 @@ export async function acceptQuote(tenantId: string, quoteId: string, actor: Deci
       metadata: JSON.stringify({ number: raw?.number, totalPaise: raw?.totalPaise, actorId: actor.actorId ?? null }),
     },
   });
+  // Fulfillment (Phase 7): an accepted quote becomes an order. Best-effort and
+  // idempotent (unique quoteId) — a fulfillment hiccup must never fail the accept.
+  try {
+    const { createOrderFromQuote } = await import("../orders/service");
+    await createOrderFromQuote(tenantId, quoteId, actor.actorId ?? null);
+  } catch (err) {
+    console.warn("[quotes] order creation after accept failed:", err instanceof Error ? err.message : err);
+  }
   return { ok: true, quote };
 }
 

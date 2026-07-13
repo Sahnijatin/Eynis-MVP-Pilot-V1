@@ -50,6 +50,53 @@ export async function handleCrmRoutes(req: IncomingMessage, res: ServerResponse)
   const routePath = parseUrl(req.url).pathname;
   if (!(["/pipelines", "/deals", "/contacts", "/companies", "/tasks", "/activities"].some((p) => routePath === p || routePath.startsWith(p + "/")))) return false;
 
+    // ── CRM: Customer intelligence (Phase 7) ─────────────────────────────────
+    // Per-contact commercial picture from REAL records: accepted-quote totals,
+    // last win, and open fulfillment orders. Declared before the /contacts/:id
+    // matchers so "intel" is never mistaken for a contact id.
+    if (routePath === "/contacts/intel" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /contacts/intel");
+      if (!auth.ok) return true;
+      const tenantId = auth.context.tenantId;
+      const [accepted, sent, openOrders] = await Promise.all([
+        prisma.quote.groupBy({
+          by: ["contactId"],
+          where: { tenantId, status: "accepted", contactId: { not: null } },
+          _sum: { totalPaise: true }, _count: { _all: true }, _max: { acceptedAt: true },
+        }),
+        prisma.quote.groupBy({
+          by: ["contactId"],
+          where: { tenantId, status: "sent", contactId: { not: null } },
+          _count: { _all: true },
+        }),
+        prisma.order.groupBy({
+          by: ["contactId"],
+          where: { tenantId, stage: { not: "delivered" }, contactId: { not: null } },
+          _count: { _all: true },
+        }),
+      ]);
+      const sentBy = new Map(sent.map((g) => [g.contactId as string, g._count._all]));
+      const ordersBy = new Map(openOrders.map((g) => [g.contactId as string, g._count._all]));
+      const ids = [...new Set([...accepted.map((g) => g.contactId as string), ...sentBy.keys(), ...ordersBy.keys()])];
+      const contacts = ids.length
+        ? await prisma.contact.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, fullName: true, phoneE164: true, email: true } })
+        : [];
+      const acceptedBy = new Map(accepted.map((g) => [g.contactId as string, g]));
+      const items = contacts.map((c) => {
+        const a = acceptedBy.get(c.id);
+        return {
+          id: c.id, fullName: c.fullName, phoneE164: c.phoneE164, email: c.email,
+          acceptedTotalPaise: a?._sum.totalPaise ?? 0,
+          acceptedCount: a?._count._all ?? 0,
+          lastAcceptedAt: a?._max.acceptedAt ?? null,
+          pendingQuotes: sentBy.get(c.id) ?? 0,
+          openOrders: ordersBy.get(c.id) ?? 0,
+        };
+      }).sort((x, y) => y.acceptedTotalPaise - x.acceptedTotalPaise);
+      json(res, 200, { ok: true, items });
+      return true;
+    }
+
     // ── CRM: Pipelines ──────────────────────────────────────────────────────
     // GET /pipelines — list the tenant's pipelines (lazily seeding the standard
     // default one on first use so the board always has stages).

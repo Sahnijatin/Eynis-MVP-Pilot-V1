@@ -66,6 +66,7 @@ import { upsertContactByPhone } from "./core/crm/upsert-contact";
 import { handleInventoryRoutes } from "./core/inventory/routes";
 import { handleQuoteRoutes } from "./core/quotes/routes";
 import { handlePublicQuoteRoutes } from "./core/quotes/public-routes";
+import { handleOrderRoutes } from "./core/orders/routes";
 import { handleReportRoutes } from "./core/reports/routes";
 import { handleResearchRoutes } from "./core/research/routes";
 import { handleMarketingRoutes } from "./core/campaigns/marketing-routes";
@@ -2841,6 +2842,7 @@ const handleRequest = async (
     if (await handlePublicQuoteRoutes(req, res)) return;
     if (await handleInventoryRoutes(req, res)) return;
     if (await handleQuoteRoutes(req, res)) return;
+    if (await handleOrderRoutes(req, res)) return;
 
     // ── AI: Provider Status ─────────────────────────────────────────────────
     if (req.url?.startsWith("/ai/providers") && req.method === "GET") {
