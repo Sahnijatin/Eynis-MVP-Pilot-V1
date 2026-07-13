@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Users, Bell, DollarSign, AlertCircle, AlertTriangle, ChevronRight, Zap
 } from "lucide-react";
 import { OccupancyChart } from "../../components/ui/charts";
+import { PreviewBadge } from "../../components/ui/preview-badge";
 import { SmartInsights } from "../../components/ui/smart-insights";
 import { InboundPipeline } from "../../components/ui/inbound-pipeline";
 import { LiveFeedSSE } from "../../components/ui/live-feed-sse";
@@ -42,32 +43,27 @@ export default async function DashboardPage() {
     error = err instanceof Error ? err.message : "Failed to load dashboard";
   }
 
+  // Honest numbers only (improvement plan 3.1): a metric we couldn't load shows
+  // as zero, never as a fabricated stand-in — a new tenant must see an empty
+  // operation, not someone else's invented one.
   const overview = data?.overview?.metrics;
   const trendSeries = data?.trends?.series ?? [];
   const feed = data?.liveFeed?.items ?? [];
-  const openCount = overview?.openCount ?? 4;
-  const escalated = overview?.escalatedOpenCount ?? 1;
-  const resolvedToday = overview?.resolvedTodayCount ?? 6;
+  const openCount = overview?.openCount ?? 0;
+  const escalated = overview?.escalatedOpenCount ?? 0;
+  const resolvedToday = overview?.resolvedTodayCount ?? 0;
 
   const chartData = trendSeries.slice(-14).map((p) => ({ date: p.date.slice(5), value: Math.max(55, 60 + p.created * 3) }));
-  if (chartData.length === 0) {
-    const days = ["11 Nov", "14 Nov", "17 Nov", "20 Nov", "23 Nov", "Today"];
-    const vals = [38, 52, 61, 54, 72, 68];
-    days.forEach((d, i) => chartData.push({ date: d, value: vals[i] }));
-  }
 
+  // Sample panels: occupancy/revenue/upsell/automation-activity/alerts have no
+  // backing endpoint yet, so they carry a Preview badge instead of posing as
+  // real numbers (3.3). Wire each to live data and drop its badge.
   const automationItems = [
     { label: "WELCOME MESSAGES", value: 12, pct: 82 },
     { label: "UPGRADE OFFERS", value: 8, pct: 54 },
     { label: "LATE CHECKOUTS", value: 6, pct: 45 },
     { label: "SENTIMENT CHECKS", value: 4, pct: 32 }
   ];
-
-  const upsellTotal = (resolvedToday + 8) * 700;
-  const upgrades = Math.round(upsellTotal * 0.49);
-  const lateCO = Math.round(upsellTotal * 0.19);
-  const fnb = Math.round(upsellTotal * 0.32);
-  const missedPotential = Math.round(upsellTotal * 0.37);
 
   return (
     <div>
@@ -79,7 +75,7 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <div className="kpi-label">Occupancy Today</div>
+              <div className="kpi-label flex items-center gap-2">Occupancy Today <PreviewBadge label="Sample" /></div>
               <div className="kpi-value mt-1.5">74%</div>
               <div className="kpi-delta up mt-2">↑ +6% vs yesterday</div>
             </div>
@@ -97,7 +93,7 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <div className="kpi-label">In-House Guests</div>
+              <div className="kpi-label flex items-center gap-2">In-House Guests <PreviewBadge label="Sample" /></div>
               <div className="kpi-value mt-1.5">52</div>
               <div className="kpi-delta neutral mt-2">● 8 check-ins remaining</div>
             </div>
@@ -131,7 +127,7 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <div className="kpi-label">Today&apos;s Revenue</div>
+              <div className="kpi-label flex items-center gap-2">Today&apos;s Revenue <PreviewBadge label="Sample" /></div>
               <div className="kpi-value mt-1.5">₹12,400</div>
               <div className="mt-2 flex items-center gap-1.5">
                 <span className="badge badge-teal text-xs">+₹4,200 UPSELLS</span>
@@ -151,22 +147,22 @@ export default async function DashboardPage() {
         </div>
         <div className="flex flex-col gap-4">
           <div className="card flex-1">
-            <h3 className="card-title">Upsell Performance</h3>
+            <h3 className="card-title flex items-center gap-2">Upsell Performance <PreviewBadge label="Sample" /></h3>
             <div className="flex items-center justify-center py-2 mb-3">
               <div className="w-24 h-24 rounded-xl border-4 flex flex-col items-center justify-center" style={{ borderColor: "#0f766e" }}>
                 <div className="text-xs text-slate-500">TOTAL</div>
-                <div className="text-lg font-bold text-slate-800">₹{Math.round(upsellTotal / 100) * 100 >= 1000 ? (Math.round(upsellTotal / 100) / 10).toFixed(1) + "k" : upsellTotal}</div>
+                <div className="text-lg font-bold text-slate-800">₹9.8k</div>
               </div>
             </div>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-700 inline-block" />Upgrades</span><span className="font-medium">₹{upgrades.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Late C/O</span><span className="font-medium">₹{lateCO.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />F&amp;B</span><span className="font-medium">₹{fnb.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-700 inline-block" />Upgrades</span><span className="font-medium">₹4,800</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Late C/O</span><span className="font-medium">₹1,860</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />F&amp;B</span><span className="font-medium">₹3,140</span></div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100">
               <div className="flex justify-between text-sm">
                 <span className="text-red-500 font-medium">Potential missed:</span>
-                <span className="text-red-600 font-bold">₹{missedPotential.toLocaleString()}</span>
+                <span className="text-red-600 font-bold">₹3,630</span>
               </div>
             </div>
           </div>
@@ -178,6 +174,7 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-4 h-4 text-teal-700" />
             <h3 className="card-title mb-0">Today&apos;s Automation Activity</h3>
+            <PreviewBadge label="Sample" />
           </div>
           <div className="space-y-3">
             {automationItems.map((a) => (
@@ -196,7 +193,7 @@ export default async function DashboardPage() {
 
         <div className="flex flex-col gap-3">
           <div className="card flex-1">
-            <h3 className="card-title">Critical Alerts</h3>
+            <h3 className="card-title flex items-center gap-2">Critical Alerts <PreviewBadge label="Sample" /></h3>
             <div className="space-y-2">
               <div className="alert-card error">
                 <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -240,7 +237,9 @@ export default async function DashboardPage() {
             <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />TARGET (70%)</span>
           </div>
         </div>
-        <OccupancyChart data={chartData} />
+        {chartData.length > 0
+          ? <OccupancyChart data={chartData} />
+          : <div className="py-10 text-center text-sm text-slate-400">No trend data yet — this chart fills in as requests come through.</div>}
       </div>
     </div>
   );

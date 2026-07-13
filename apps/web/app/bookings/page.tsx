@@ -5,6 +5,7 @@ import { Plane } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 import { Modal, TableEmpty } from "../../components/ds";
+import { PreviewBanner } from "../../components/ui/preview-badge";
 
 interface Booking {
   id: string;
@@ -104,6 +105,7 @@ export default function BookingsPage() {
 
   return (
     <div>
+      <PreviewBanner />
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Booking Pipeline</h1>

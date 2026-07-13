@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 import { Modal } from "../../components/ds";
+import { PreviewBanner } from "../../components/ui/preview-badge";
 
 const TODAY_SLOTS = [
   { time: "09:00 AM", patient: "Rahul Sharma", type: "Consultation", doctor: "Dr. Patel", status: "checked_in", duration: "30 min" },
@@ -48,6 +49,7 @@ export default function AppointmentsPage() {
 
   return (
     <div>
+      <PreviewBanner />
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Appointments</h1>

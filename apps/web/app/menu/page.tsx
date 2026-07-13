@@ -3,6 +3,7 @@ import { useState } from "react";
 import { TrendingUp, TrendingDown, AlertCircle, Star, Lightbulb, Flame, AlertTriangle } from "lucide-react";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 import { Modal, TableEmpty } from "../../components/ds";
+import { PreviewBanner } from "../../components/ui/preview-badge";
 
 const CATEGORIES = ["Starters", "Mains", "Desserts", "Beverages", "Other"];
 
@@ -53,6 +54,7 @@ export default function MenuPage() {
 
   return (
     <div>
+      <PreviewBanner />
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Menu & Pricing Intelligence</h1>

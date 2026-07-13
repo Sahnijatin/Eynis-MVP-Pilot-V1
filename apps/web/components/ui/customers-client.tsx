@@ -6,6 +6,7 @@ import type { IndustryTerminology } from "../../lib/industry-config";
 import { ClientDetailPanel, type ClientDetailData } from "./client-detail-panel";
 import { ImportExportButtons } from "./import-export-buttons";
 import { Modal, TableEmpty } from "../ds";
+import { PreviewBanner } from "./preview-badge";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MANUFACTURING — B2B Client Intelligence
@@ -390,6 +391,7 @@ export function CustomersClient({ terminology, industry }: Props) {
 
   return (
     <div>
+      <PreviewBanner />
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">

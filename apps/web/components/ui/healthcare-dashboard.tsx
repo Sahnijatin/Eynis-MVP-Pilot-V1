@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { CalendarDays, Users, TrendingUp, AlertCircle, ChevronRight } from "lucide-react";
 import { SmartInsights } from "./smart-insights";
+import { PreviewBanner } from "./preview-badge";
 
 export function HealthcareDashboard() {
   return (
     <div>
+      <PreviewBanner />
       <SmartInsights industry="healthcare" />
       <div className="kpi-grid mb-5">
         <div className="card">

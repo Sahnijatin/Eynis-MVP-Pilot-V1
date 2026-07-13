@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertCircle, AlertTriangle, ChevronRight, Brain, Zap, ClipboardList, Calculator } from "lucide-react";
 import { SmartInsights } from "./smart-insights";
+import { PreviewBanner } from "./preview-badge";
 
 const PIPELINE = [
   { label: "New Orders", count: 12, color: "#6366f1" },
@@ -18,6 +19,7 @@ const TOP_ORDERS = [
 export function ManufacturingDashboard() {
   return (
     <div>
+      <PreviewBanner />
       <SmartInsights industry="manufacturing" />
       {/* KPI row */}
       <div className="kpi-grid mb-5">

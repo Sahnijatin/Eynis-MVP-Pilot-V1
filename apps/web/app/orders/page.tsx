@@ -5,6 +5,7 @@ import { AlertTriangle, Truck, ChevronRight, TreePine, Wrench, Package } from "l
 import { ClientDetailPanel, type ClientDetailData } from "../../components/ui/client-detail-panel";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 import { TableEmpty } from "../../components/ds";
+import { PreviewBanner } from "../../components/ui/preview-badge";
 
 const PIPELINE_STAGES = [
   { id: "new", label: "New Order", color: "#6366f1", count: 12, value: "₹18.4L" },
@@ -87,6 +88,7 @@ export default function OrdersPage() {
 
   return (
     <div>
+      <PreviewBanner />
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
