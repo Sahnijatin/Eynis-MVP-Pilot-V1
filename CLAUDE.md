@@ -76,7 +76,7 @@ The API has no framework — only `node:http`. `server.ts` (~3,700 lines) is the
 **All API responses follow:** `{ ok: boolean, ...data }` on success or `{ ok: false, error: string }` on failure. Paginated endpoints return `{ items, page: { limit, offset, total, hasMore } }`.
 
 ### Authentication
-JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, tenantId, email, roleKey, role?, permissions }` (`hotelId` also emitted as a deprecated alias). `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential). The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
+JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, tenantId, email, roleKey, role?, permissions }` (`hotelId` also emitted as a deprecated alias). `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential), gated by the `EYNIS_TOKEN_EXCHANGE_SECRET` header so in production only the Clerk-authenticated web tier can mint tokens. The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
 
 ### Multi-tenancy
 Every DB query is scoped to `tenantId` from the JWT. The JWT's `tenantId` is verified against the `User` record on every request — a user cannot impersonate a different tenant by forging claims.
@@ -141,6 +141,7 @@ Twelve connectors defined in `CONNECTOR_CATALOG` (`packages/shared/src/index.ts`
 | `RESEARCH_JS_MIN_CHARS` | `250` | API: static-text length below which a page is treated as a JS shell and (when the fallback is enabled) retried via Playwright. |
 | `VERIFY_WEBHOOKS` | auto | Twilio/Interakt webhook signatures are enforced automatically once the provider's verification config exists (`INTERAKT_WEBHOOK_SECRET`, or `TWILIO_AUTH_TOKEN` + `TWILIO_WEBHOOK_URL`/`EYNIS_PUBLIC_URL`). `true` forces on, `false` explicitly disables (dev escape hatch) |
 | `SECRETS_ENC_KEY` | — | AES-256 key for connector secrets at rest. **Required in production** (startup fails without it); unset in dev → plaintext no-op |
+| `EYNIS_TOKEN_EXCHANGE_SECRET` | — | Shared web↔API secret gating `POST /auth/token` + `GET /auth/identify` (C1). **Required in production**; unset in dev → endpoints stay open. Set the same value on the web deploy |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | — | Twilio WhatsApp outbound |
 | `INTERAKT_API_KEY` | — | Interakt WhatsApp outbound |
 | `EYNIS_API_BASE_URL` | `http://localhost:4000` | Web → API base URL |

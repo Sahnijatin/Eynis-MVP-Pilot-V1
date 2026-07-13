@@ -8,6 +8,16 @@ const getDemoEnv = () => ({
   role: process.env.EYNIS_DEMO_OWNER_ROLE ?? "owner"
 });
 
+
+// Identity-boundary header (Phase 9 / C1): the API only exchanges an email for a
+// tenant JWT when the caller presents the shared web<->API secret — i.e. this
+// server-side tier, which has already verified the user via Clerk. Unset in dev
+// keeps local workflows open (the API enforces only when configured).
+export function tokenExchangeHeaders(): Record<string, string> {
+  const secret = process.env.EYNIS_TOKEN_EXCHANGE_SECRET?.trim();
+  return secret ? { "x-token-exchange-secret": secret } : {};
+}
+
 async function fetchToken(apiBaseUrl: string, tenantId: string, email: string, role: string): Promise<string | null> {
   // 3s timeout: if the API is unreachable we MUST NOT hang the server render.
   // Hanging here is what makes a logged-in user land on a blank shell.
@@ -16,7 +26,7 @@ async function fetchToken(apiBaseUrl: string, tenantId: string, email: string, r
   try {
     const response = await fetch(apiBaseUrl + "/auth/token", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...tokenExchangeHeaders() },
       body: JSON.stringify({ tenantId, email, role }),
       cache: "no-store",
       signal: ctrl.signal

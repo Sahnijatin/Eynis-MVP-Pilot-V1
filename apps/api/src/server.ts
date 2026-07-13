@@ -5,7 +5,7 @@ import { prisma } from "./db/prisma";
 import { Prisma } from "@prisma/client";
 import type { UserRole, SystemRoleKey } from "@eynis/shared";
 import { isValidConsentSource, CONNECTOR_CATALOG, CONNECTOR_CATEGORY_LABELS, connectorEnvFlag } from "@eynis/shared";
-import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured } from "./core/auth";
+import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured, assertTokenExchangeConfigured, verifyTokenExchangeSecret } from "./core/auth";
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
 import {
@@ -296,6 +296,13 @@ const handleRequest = async (
 ) => {
   try {
     if (req.url === "/auth/token" && req.method === "POST") {
+      // Identity boundary (Phase 9 / C1): only the Clerk-authenticated web tier
+      // may exchange an email for a tenant JWT. Enforced whenever the shared
+      // secret is configured; production requires it at startup.
+      if (!verifyTokenExchangeSecret(req)) {
+        json(res, 401, { ok: false, error: "Invalid token exchange secret" });
+        return;
+      }
       const body = (await parseBody(req)) as { tenantId?: unknown; hotelId?: unknown; email?: unknown; role?: unknown; roleKey?: unknown };
       const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId during transition
       const email = asTrimmedString(body.email)?.toLowerCase();
@@ -899,6 +906,12 @@ const handleRequest = async (
       const ip = clientIp(req);
       if (!(await rateLimit(`identify:${ip}`, 20, 60_000))) {
         json(res, 429, { ok: false, error: "Too many requests" });
+        return;
+      }
+      // Same identity boundary as /auth/token (Phase 9 / C1): with the shared
+      // secret configured this stops being a public tenantId/roleKey oracle.
+      if (!verifyTokenExchangeSecret(req)) {
+        json(res, 401, { ok: false, error: "Invalid token exchange secret" });
         return;
       }
       const email = parseUrl(req.url).searchParams.get("email")?.toLowerCase().trim();
@@ -3688,6 +3701,7 @@ export const buildServer = () =>
 export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
   assertJwtSecretConfigured(); // refuse to boot prod with the default/blank JWT secret (F-22)
   assertSecretsEncryptionConfigured(); // refuse to boot prod that would store connector secrets in plaintext (H6)
+  assertTokenExchangeConfigured(); // refuse to boot prod with a publicly mintable /auth/token (C1)
   // Not fatal (inbound WhatsApp may legitimately be unused), but loud: a prod
   // deploy accepting unsigned provider webhooks should be a conscious choice.
   if (process.env.NODE_ENV === "production" && !webhookEnforcement().any) {

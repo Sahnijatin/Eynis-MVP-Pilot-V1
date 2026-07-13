@@ -108,13 +108,13 @@ Parked by explicit decision, listed here so it has a home in the sequence. The w
 already authenticates users with Clerk; the API's `/auth/token` should stop accepting
 bare email+role.
 
-- ☐ **9.1 Service-secret binding.** Require `EYNIS_TOKEN_EXCHANGE_SECRET` (shared web↔API
+- ✅ **9.1 Service-secret binding.** Require `EYNIS_TOKEN_EXCHANGE_SECRET` (shared web↔API
   secret header) on `POST /auth/token` in production — only the web tier, which has already
   verified the user via Clerk, can mint tenant JWTs. Startup-asserted like the other prod
   secrets; dev unchanged.
-- ☐ **9.2 Trim `/auth/identify`.** Return only what the web tier needs post-Clerk-auth;
+- ✅ **9.2 Trim `/auth/identify`.** Return only what the web tier needs post-Clerk-auth;
   move it behind the same service secret so it stops being a public tenantId/roleKey oracle.
-- ☐ **9.3 Matrix coverage.** Extend the authz-matrix test to prove both endpoints reject
+- ✅ **9.3 Matrix coverage.** _(dedicated token-exchange test: 401 without/with-wrong secret, 200 with it, dev-open, prod startup assertion)_ Extend the authz-matrix test to prove both endpoints reject
   callers without the service secret in production mode.
 
 **Acceptance:** possessing an email address no longer yields a tenant JWT from the public
