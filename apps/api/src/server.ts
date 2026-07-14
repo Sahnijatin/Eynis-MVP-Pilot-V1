@@ -29,7 +29,7 @@ import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
-import { seedIndustryDefaults } from "./core/quotes/provision";
+import { seedIndustryDefaults, backfillIndustryDefaults } from "./core/quotes/provision";
 import { hashToken as hashInviteToken } from "./core/crypto/secrets";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
@@ -6887,6 +6887,11 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     void syncSystemRolePermissions()
       .then(() => console.log("Eynis system-role permissions synced"))
       .catch((err) => console.error("system-role permission sync failed", err));
+    // Back-fill industry quote templates for tenants created before auto-provisioning
+    // existed (their "Start from template" dropdown would otherwise be empty).
+    void backfillIndustryDefaults()
+      .then((n) => { if (n) console.log(`Eynis provisioned quote templates for ${n} existing tenant(s)`); })
+      .catch((err) => console.error("industry defaults backfill failed", err));
     startAutomationWorker(60_000);
     console.log("Eynis AutomationEngine started — 60s cycle");
     startCampaignDispatchWorker();

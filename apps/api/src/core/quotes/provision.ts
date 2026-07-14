@@ -155,3 +155,24 @@ export async function seedIndustryDefaults(
 
   return result;
 }
+
+// Boot-time self-heal: provision the industry starter kit for any tenant that has no
+// quote templates yet — the ones created before auto-provisioning existed. Each tenant
+// is seeded from ITS OWN industry (a null/unknown industry falls back to the furniture
+// default). Idempotent: only tenants with ZERO templates are touched, so it runs once
+// per tenant and is a no-op on every subsequent boot. Mirrors syncSystemRolePermissions.
+export async function backfillIndustryDefaults(): Promise<number> {
+  const tenants = await prisma.tenant.findMany({ select: { id: true, name: true, industry: true } });
+  let seeded = 0;
+  for (const t of tenants) {
+    const count = await prisma.quoteTemplate.count({ where: { tenantId: t.id } });
+    if (count > 0) continue;
+    try {
+      await seedIndustryDefaults(t.id, t.industry, t.name);
+      seeded++;
+    } catch (err) {
+      console.warn("[backfillIndustryDefaults] failed for tenant", t.id, err instanceof Error ? err.message : err);
+    }
+  }
+  return seeded;
+}
