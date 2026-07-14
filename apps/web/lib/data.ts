@@ -729,6 +729,7 @@ export interface Quote {
   contactEmail: string | null;
   seller: QuoteSeller;
   billTo: QuoteBillTo;
+  lineImages: Record<string, string[]>; // per-piece image data URLs, keyed by groupName
   lineItems: QuoteLineItem[];
 }
 

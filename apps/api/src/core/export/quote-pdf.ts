@@ -6,7 +6,7 @@
 // The layout mirrors a standard Indian GST quotation. The accent colour comes from the
 // tenant brand (white-label), so it themes per tenant. All money is integer paise.
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 import type { SellerDetails, BillTo, QuotationView } from "../quotes/quotation";
 
 const A4: [number, number] = [595.28, 841.89];
@@ -65,13 +65,41 @@ export interface QuotationPdfData {
 }
 
 // Item table column layout (fractions of content width). Numeric columns are right-aligned.
-const COLS = { item: 0.42, qty: 0.13, price: 0.17, tax: 0.16, amount: 0.12 };
+// The Image(s) column sits right after Quantity; rows carrying images grow taller.
+const COLS = { item: 0.30, qty: 0.10, images: 0.18, price: 0.16, tax: 0.14, amount: 0.12 };
+
+// Decode a data:image/(png|jpeg) URL and embed it once. Returns null on anything the
+// renderer can't handle so a bad image never breaks the whole PDF.
+async function embedDataUrl(doc: PDFDocument, src: string): Promise<PDFImage | null> {
+  try {
+    const m = /^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=]+)$/.exec(src.trim());
+    if (!m) return null;
+    const bytes = Uint8Array.from(Buffer.from(m[2], "base64"));
+    if (!bytes.byteLength) return null;
+    return /png/i.test(m[1]) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+  } catch { return null; }
+}
+
+// Pre-embed every unique image up front (embedding is async; the row loop draws
+// synchronously). Cache by the data-URL string so a reused image embeds once.
+async function embedItemImages(doc: PDFDocument, view: QuotationView): Promise<Map<string, PDFImage>> {
+  const cache = new Map<string, PDFImage>();
+  for (const it of view.items) {
+    for (const src of it.images ?? []) {
+      if (cache.has(src)) continue;
+      const img = await embedDataUrl(doc, src);
+      if (img) cache.set(src, img);
+    }
+  }
+  return cache;
+}
 
 export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const accent = hexToRgb(data.accentColor);
+  const imgCache = await embedItemImages(doc, data.view);
 
   let page: PDFPage = doc.addPage(A4);
   const top = A4[1] - MARGIN;
@@ -84,10 +112,11 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     page.drawText(safe(s), { x: xRight - w, y: yy, size, font: f, color });
   };
 
-  // Column x-edges for the items table.
+  // Column x-edges for the items table (Image(s) column inserted after Quantity).
   const cItem = LEFT;
   const cQty = LEFT + CONTENT_W * COLS.item;
-  const cPrice = cQty + CONTENT_W * COLS.qty;
+  const cImg = cQty + CONTENT_W * COLS.qty;
+  const cPrice = cImg + CONTENT_W * COLS.images;
   const cTax = cPrice + CONTENT_W * COLS.price;
   const cAmount = cTax + CONTENT_W * COLS.tax; // amount col right edge = RIGHT
 
@@ -145,23 +174,40 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     const hy = y - 15;
     T("Items", cItem + 8, hy, 9, bold, WHITE);
     T("Quantity", cQty + 6, hy, 9, bold, WHITE);
-    T("Price per Unit", cPrice + 4, hy, 9, bold, WHITE);
-    T("Tax per Unit", cTax + 4, hy, 9, bold, WHITE);
+    T("Image(s)", cImg + 4, hy, 9, bold, WHITE);
+    T("Price/Unit", cPrice + 4, hy, 9, bold, WHITE);
+    T("Tax/Unit", cTax + 4, hy, 9, bold, WHITE);
     TR("Amount", RIGHT - 8, hy, 9, bold, WHITE);
     y -= headerH;
   };
   drawTableHeader();
 
+  // Draw up to 3 thumbnails in the Image(s) cell for a row, centred within its box.
+  const drawRowImages = (imgs: PDFImage[], rowTopY: number, rowH: number) => {
+    const cellX = cImg + 4, cellW = cPrice - cImg - 8, maxH = rowH - 10;
+    const gap = 4;
+    const slotW = (cellW - gap * (imgs.length - 1)) / imgs.length;
+    let ix = cellX;
+    for (const img of imgs) {
+      const scale = Math.min(slotW / img.width, maxH / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      page.drawImage(img, { x: ix + (slotW - w) / 2, y: rowTopY - rowH + (rowH - h) / 2, width: w, height: h });
+      ix += slotW + gap;
+    }
+  };
+
   const bottomLimit = MARGIN + 150; // reserve room for the summary + signatures
   for (const it of data.view.items) {
-    const rowH = it.spec ? 30 : 22;
+    const imgs = (it.images ?? []).map((s) => imgCache.get(s)).filter((x): x is PDFImage => !!x).slice(0, 3);
+    const rowH = imgs.length ? 52 : it.spec ? 30 : 22;
     if (y - rowH < bottomLimit) { page = doc.addPage(A4); y = A4[1] - MARGIN; drawTableHeader(); }
     const ty = y - 15;
     T(truncate(it.name, bold, 10, (cQty - cItem) - 12), cItem + 8, ty, 10, bold, INK);
     if (it.spec) T(truncate(it.spec, font, 8, (cQty - cItem) - 12), cItem + 8, ty - 11, 8, font, MUTED);
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
+    if (imgs.length) drawRowImages(imgs, y, rowH);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
-    T(`${money(it.taxPaise)} (${it.taxPct}%)`, cTax + 4, ty, 8.5, font, INK);
+    T(`${money(it.taxPaise)} (${it.taxPct}%)`, cTax + 4, ty, 8, font, INK);
     TR(money(it.amountPaise), RIGHT - 8, ty, 9, font, INK);
     page.drawLine({ start: { x: LEFT, y: y - rowH }, end: { x: RIGHT, y: y - rowH }, thickness: 0.5, color: LINE });
     y -= rowH;

@@ -12,7 +12,7 @@ import type { FollowupResult } from "./followup";
 import { upsertContactByPhone } from "../crm/upsert-contact";
 import { loadReportBrand } from "../export/brand";
 import { renderBrandedReportPdf } from "../export/report-pdf";
-import { buildQuotationView, serializeSeller, serializeBillTo } from "./quotation";
+import { buildQuotationView, serializeSeller, serializeBillTo, serializeLineImages } from "./quotation";
 import { renderQuotationPdf } from "../export/quote-pdf";
 import { resolveAiCredentials, aiConfigured, chooseProvider, providerKey } from "../research/ai-credentials";
 import { aiCompleteTiered, extractJson } from "../ai/intelligence";
@@ -222,6 +222,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           createdById: auth.context.userId,
           seller: body.seller !== undefined ? body.seller : undefined,
           billTo: body.billTo !== undefined ? body.billTo : undefined,
+          lineImages: body.lineImages !== undefined ? body.lineImages : undefined,
           lines: Array.isArray(body.lines) ? (body.lines as quotes.LineInputPayload[]) : undefined,
         });
         json(res, 200, { ok: true, quote });
@@ -272,6 +273,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         if (body.terms !== undefined) fields.terms = asTrimmedString(body.terms);
         if (body.seller !== undefined) fields.sellerJson = serializeSeller(body.seller);
         if (body.billTo !== undefined) fields.billToJson = serializeBillTo(body.billTo);
+        if (body.lineImages !== undefined) fields.lineImagesJson = serializeLineImages(body.lineImages);
         await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
         // Optional full line-replace (the builder's Edit flow saves all lines at once).
         const quote = Array.isArray(body.lines)
@@ -424,6 +426,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           totalPaise: Number(quote.totalPaise) || 0,
           discountPaise: Number(quote.discountPaise) || 0,
           gstPercent: Number(quote.gstPercent) || 0,
+          images: quote.lineImages,
         });
         const pdf = await renderQuotationPdf({
           number: `${String(quote.number)} — ${String(quote.title)}`,

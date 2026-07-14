@@ -18,7 +18,7 @@ import {
   type LineResult,
   type QuoteResult,
 } from "./costing";
-import { parseSeller, parseBillTo, serializeSeller, serializeBillTo } from "./quotation";
+import { parseSeller, parseBillTo, serializeSeller, serializeBillTo, parseLineImages, serializeLineImages } from "./quotation";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 
@@ -169,6 +169,7 @@ export function serializeQuote(q: QuoteWithLines) {
     // Quotation letterhead snapshot (parsed from the stored JSON).
     seller: parseSeller(q.sellerJson as string | null | undefined),
     billTo: parseBillTo(q.billToJson as string | null | undefined),
+    lineImages: parseLineImages(q.lineImagesJson as string | null | undefined),
     lineItems: (q.lineItems ?? []).map(serializeLine),
   };
 }
@@ -319,6 +320,7 @@ export interface CreateQuoteInput {
   createdById?: string | null;
   seller?: unknown; // letterhead seller details (sanitized + serialized here)
   billTo?: unknown; // customer bill-to block
+  lineImages?: unknown; // per-piece images { groupName: dataUrl[] }
   lines?: LineInputPayload[]; // explicit lines (overrides template seeding when provided)
 }
 
@@ -374,6 +376,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
   // not provided; bill-to is per-customer, never carried forward.
   const sellerJson = input.seller !== undefined ? serializeSeller(input.seller) : await inheritSellerJson(tenantId);
   const billToJson = input.billTo !== undefined ? serializeBillTo(input.billTo) : null;
+  const lineImagesJson = input.lineImages !== undefined ? serializeLineImages(input.lineImages) : null;
   let quote: { id: string } | null = null;
   for (let attempt = 0; attempt < 5 && !quote; attempt++) {
     const number = await nextQuoteNumber(tenantId, year, attempt);
@@ -399,6 +402,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
           createdById: input.createdById ?? null,
           sellerJson,
           billToJson,
+          lineImagesJson,
         },
       });
     } catch (err) {
@@ -458,7 +462,7 @@ export async function updateQuoteFields(
     title: string; contactId: string | null; companyId: string | null; dealId: string | null;
     overheadPct: number; marginPct: number; marginFloorPct: number; discountPaise: number;
     gstPercent: number; validUntil: Date | null; notes: string | null; terms: string | null;
-    sellerJson: string | null; billToJson: string | null;
+    sellerJson: string | null; billToJson: string | null; lineImagesJson: string | null;
   }>,
 ) {
   await prisma.quote.update({ where: { id }, data: fields });
