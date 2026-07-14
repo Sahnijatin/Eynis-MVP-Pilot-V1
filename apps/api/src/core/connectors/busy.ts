@@ -12,6 +12,7 @@
 // component costs leaks into the accounting system.
 
 import { prisma } from "../../db/prisma";
+import { gstAmountPaise } from "../quotes/costing";
 
 export interface BusyConfig {
   voucherSeries: string;
@@ -93,12 +94,16 @@ const voucherDate = (d: Date | null) => (d ?? new Date()).toISOString().slice(0,
 // BUSY "Import Voucher from Excel" reads a tabular sheet; a CSV maps 1:1 (the operator
 // maps columns once). Columns follow BUSY's sales-voucher import layout.
 export function buildBusyCsv(quote: QuoteForVoucher, config: BusyConfig, partyName: string): string {
-  const header = ["Date", "VoucherType", "Series", "PartyName", "SalesLedger", "ItemName", "Quantity", "Unit", "Rate", "Amount", "GSTPercent"];
+  const header = ["Date", "VoucherType", "Series", "PartyName", "SalesLedger", "ItemName", "Quantity", "Unit", "Rate", "Amount", "GSTPercent", "GSTAmount", "TotalAmount"];
   const date = voucherDate(quote.acceptedAt);
-  const rows = buildVoucherLines(quote).map((l) => [
-    date, "Sales", config.voucherSeries, partyName, config.salesLedger,
-    l.itemName, l.quantity, l.unit, rupees(l.ratePaise), rupees(l.amountPaise), config.gstPercent,
-  ]);
+  const rows = buildVoucherLines(quote).map((l) => {
+    const gst = gstAmountPaise(l.amountPaise, config.gstPercent);
+    return [
+      date, "Sales", config.voucherSeries, partyName, config.salesLedger,
+      l.itemName, l.quantity, l.unit, rupees(l.ratePaise), rupees(l.amountPaise), config.gstPercent,
+      rupees(gst), rupees(l.amountPaise + gst),
+    ];
+  });
   return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
@@ -108,7 +113,7 @@ export function buildBusyXml(quote: QuoteForVoucher, config: BusyConfig, partyNa
   const date = voucherDate(quote.acceptedAt);
   const lines = buildVoucherLines(quote);
   const taxable = lines.reduce((s, l) => s + l.amountPaise, 0);
-  const gst = Math.round((taxable * config.gstPercent) / 100);
+  const gst = gstAmountPaise(taxable, config.gstPercent);
   const items = lines
     .map(
       (l) =>

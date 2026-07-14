@@ -151,6 +151,13 @@ export function priceQuote(lines: LineInput[], knobs: QuoteKnobs): { lines: Line
   return { lines: costed, quote: computeQuote(costed, knobs) };
 }
 
+// The ONE GST formula (4.4): display-only tax on top of the taxable selling
+// total — it never enters the costing/margin math. The serializer, the PDF and
+// the BUSY export all call this, so a voucher can never disagree with the quote.
+export function gstAmountPaise(taxablePaise: number, gstPercent: number): number {
+  return Math.round((Math.max(0, Math.round(taxablePaise)) * Math.max(0, nn(gstPercent))) / 100);
+}
+
 function clampPct(v: number): number {
   const n = nn(v);
   if (n < 0) return 0;

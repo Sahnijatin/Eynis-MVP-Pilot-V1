@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { BarChart3 } from "lucide-react";
+import { PreviewBanner } from "./preview-badge";
 
 type Range = "24h" | "7d" | "custom";
 
@@ -52,6 +53,7 @@ export default function AnalyticsClient({ terminology }: Props) {
 
   return (
     <div>
+      <PreviewBanner />
       <div className="mb-5">
         <h1 className="text-xl font-bold text-slate-800">Revenue Analytics</h1>
         <p className="text-sm text-slate-500 mt-0.5">

@@ -74,8 +74,8 @@ export async function seedIndustryDefaults(
   for (const m of catalog.materials) {
     const item = await prisma.inventoryItem.upsert({
       where: { tenantId_name: { tenantId, name: m.name } },
-      update: { category: m.category, unit: m.unit, unitCostInr: m.rateInr },
-      create: { tenantId, name: m.name, category: m.category, unit: m.unit, stock: 0, reorderLevel: 5, unitCostInr: m.rateInr },
+      update: { category: m.category, unit: m.unit, unitCostPaise: Math.round(m.rateInr * 100) },
+      create: { tenantId, name: m.name, category: m.category, unit: m.unit, stock: 0, reorderLevel: 5, unitCostPaise: Math.round(m.rateInr * 100) },
     });
     invByName[m.name] = item.id;
     result.materials++;

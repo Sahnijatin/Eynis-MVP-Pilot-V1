@@ -254,6 +254,8 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   // ── Route guard ──────────────────────────────────────────────────────────
   const isPublicRoute =
     pathname.startsWith("/request") ||
+    // Public customer quote link (Phase 6): pre-auth, tenant-brand-only surface.
+    pathname.startsWith("/q/") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
     pathname.startsWith("/onboarding") ||

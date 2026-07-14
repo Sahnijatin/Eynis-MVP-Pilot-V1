@@ -1,12 +1,15 @@
 # Email Sending & Deliverability — Design
 
-_Status: **proposal / not yet built** · Author note: written after the first live
+_Status: **partially built** (July 2026) · Author note: written after the first live
 Resend send (Jun 2026), prompted by Resend's "use a subdomain" insight and the
 question of how to handle email **at scale** (thousands of sends, many tenants)._
 
-> This is a design doc, not a build log. It exists so we agree on the model
-> **before** writing code. Nothing here is implemented yet except where the
-> "Today" sections note current behaviour.
+> Phases 1 & 3 are substantially implemented: suppression handling
+> (`EmailSuppression` model + `core/email/resend-webhook.ts` consuming
+> `/webhooks/resend`), per-tenant sending domains (`SendingDomain` model +
+> `core/email/domains.ts`), and tenant email branding (`core/email/branding.ts`).
+> Phase 2 (marketing/transactional stream split) is **not yet built**. "Today"
+> sections describe behaviour at authoring time and may lag the code.
 
 ---
 

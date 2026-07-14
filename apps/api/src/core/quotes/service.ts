@@ -6,10 +6,14 @@
 // on non-draft quotes. On every draft write we recompute each line + the quote and
 // persist the frozen integers, so reads and the PDF are a pure read.
 
+import { randomBytes } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { hashToken } from "../crypto/secrets";
 import {
   computeLine,
   computeQuote,
+  gstAmountPaise,
   type CostBasis,
   type LineResult,
   type QuoteResult,
@@ -17,6 +21,24 @@ import {
 import { parseSeller, parseBillTo, serializeSeller, serializeBillTo } from "./quotation";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
+
+// One source of truth for the quote state machine, enforced by every lifecycle
+// route. A draft can only be sent (send is the sole door that checks lines + the
+// margin floor); a decision — accepted/rejected/expired — is only valid on a sent
+// quote; decided states are terminal. Reopening a decided quote is deliberately
+// impossible (re-quote instead) so an accept's committed deal value can never be
+// silently unwound by a later reject.
+const TRANSITIONS: Record<QuoteStatus, readonly QuoteStatus[]> = {
+  draft: ["sent"],
+  sent: ["accepted", "rejected", "expired"],
+  accepted: [],
+  rejected: [],
+  expired: [],
+};
+
+export function canTransition(from: string, to: QuoteStatus): boolean {
+  return (TRANSITIONS[from as QuoteStatus] ?? []).includes(to);
+}
 const KINDS = ["material", "labor", "hardware", "finish", "other"] as const;
 const BASES: CostBasis[] = ["area", "length", "perimeter", "volume", "fixed", "hours"];
 
@@ -152,7 +174,7 @@ export function serializeQuote(q: QuoteWithLines) {
 }
 
 const gstOf = (q: QuoteWithLines): number =>
-  Math.round((Number(q.totalPaise) || 0) * (Number(q.gstPercent) || 0) / 100);
+  gstAmountPaise(Number(q.totalPaise) || 0, Number(q.gstPercent) || 0);
 
 const contactField = (q: QuoteWithLines, key: string): string | null => {
   const c = (q as Record<string, unknown>).contact as Record<string, unknown> | null | undefined;
@@ -192,21 +214,35 @@ export async function getQuoteRaw(tenantId: string, id: string) {
 }
 
 // ── Number generation ──────────────────────────────────────────────────────────
-async function nextQuoteNumber(tenantId: string, year: number): Promise<string> {
-  const count = await prisma.quote.count({ where: { tenantId } });
-  return `Q-${year}-${String(count + 1).padStart(4, "0")}`;
+// max+1 over the tenant's numbers for the year — NOT count+1, which collides as
+// soon as a quote is deleted. The zero-padded fixed width makes the lexical max
+// the numeric max (up to 9999 quotes/tenant/year); the unique (tenantId, number)
+// index plus the caller's retry loop close the concurrent-create race.
+async function nextQuoteNumber(tenantId: string, year: number, bump = 0): Promise<string> {
+  const prefix = `Q-${year}-`;
+  const last = await prisma.quote.findFirst({
+    where: { tenantId, number: { startsWith: prefix } },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  const lastSeq = last ? parseInt(last.number.slice(prefix.length), 10) || 0 : 0;
+  return `${prefix}${String(lastSeq + 1 + bump).padStart(4, "0")}`;
 }
 
+const isUniqueViolation = (err: unknown): boolean =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+
 // Resolve the frozen material rate for a line: an inventory link snapshots the
-// current InventoryItem.unitCostInr (rupees → paise); otherwise the caller's rate.
+// current InventoryItem.unitCostPaise (paise-precise, 4.1); otherwise the
+// caller's rate.
 async function snapshotRatePaise(
   tenantId: string,
   inventoryItemId: string | null | undefined,
   fallbackPaise: number,
 ): Promise<number> {
   if (inventoryItemId) {
-    const item = await prisma.inventoryItem.findFirst({ where: { id: inventoryItemId, tenantId }, select: { unitCostInr: true } });
-    if (item) return Math.max(0, Math.round(item.unitCostInr)) * 100;
+    const item = await prisma.inventoryItem.findFirst({ where: { id: inventoryItemId, tenantId }, select: { unitCostPaise: true } });
+    if (item) return Math.max(0, Math.round(item.unitCostPaise));
   }
   return Math.max(0, Math.round(fallbackPaise || 0));
 }
@@ -330,30 +366,46 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
   }
   const lines = input.lines && input.lines.length > 0 ? input.lines : seededLines;
 
-  const number = await nextQuoteNumber(tenantId, year);
-  const quote = await prisma.quote.create({
-    data: {
-      tenantId,
-      number,
-      title: input.title,
-      status: "draft",
-      contactId: input.contactId ?? null,
-      companyId: input.companyId ?? null,
-      dealId: input.dealId ?? null,
-      templateId: input.templateId ?? null,
-      overheadPct: input.overheadPct ?? knobs.overheadPct,
-      marginPct: input.marginPct ?? knobs.marginPct,
-      marginFloorPct: input.marginFloorPct ?? knobs.marginFloorPct,
-      discountPaise: Math.max(0, Math.round(input.discountPaise ?? 0)),
-      gstPercent: Math.max(0, input.gstPercent ?? 0),
-      validUntil: input.validUntil ?? null,
-      notes: input.notes ?? null,
-      terms: input.terms ?? null,
-      createdById: input.createdById ?? null,
-      sellerJson: input.seller !== undefined ? serializeSeller(input.seller) : await inheritSellerJson(tenantId),
-      billToJson: input.billTo !== undefined ? serializeBillTo(input.billTo) : null,
-    },
-  });
+  // Number allocation with a collision-retry: two concurrent creates can compute
+  // the same max+1; the unique (tenantId, number) index rejects the loser, who
+  // re-reads the max (bumped by the attempt count to step past a winner whose
+  // commit it may not see yet) and tries again. sellerJson/billToJson carry the
+  // quotation letterhead (#183): the seller is inherited from the last quote when
+  // not provided; bill-to is per-customer, never carried forward.
+  const sellerJson = input.seller !== undefined ? serializeSeller(input.seller) : await inheritSellerJson(tenantId);
+  const billToJson = input.billTo !== undefined ? serializeBillTo(input.billTo) : null;
+  let quote: { id: string } | null = null;
+  for (let attempt = 0; attempt < 5 && !quote; attempt++) {
+    const number = await nextQuoteNumber(tenantId, year, attempt);
+    try {
+      quote = await prisma.quote.create({
+        data: {
+          tenantId,
+          number,
+          title: input.title,
+          status: "draft",
+          contactId: input.contactId ?? null,
+          companyId: input.companyId ?? null,
+          dealId: input.dealId ?? null,
+          templateId: input.templateId ?? null,
+          overheadPct: input.overheadPct ?? knobs.overheadPct,
+          marginPct: input.marginPct ?? knobs.marginPct,
+          marginFloorPct: input.marginFloorPct ?? knobs.marginFloorPct,
+          discountPaise: Math.max(0, Math.round(input.discountPaise ?? 0)),
+          gstPercent: Math.max(0, input.gstPercent ?? 0),
+          validUntil: input.validUntil ?? null,
+          notes: input.notes ?? null,
+          terms: input.terms ?? null,
+          createdById: input.createdById ?? null,
+          sellerJson,
+          billToJson,
+        },
+      });
+    } catch (err) {
+      if (!isUniqueViolation(err) || attempt === 4) throw err;
+    }
+  }
+  if (!quote) throw new Error("Could not allocate a quote number");
 
   // Snapshot each line's rate and create it.
   for (let i = 0; i < lines.length; i++) {
@@ -518,6 +570,131 @@ export async function markExpired(tenantId: string, id: string) {
   return getQuote(tenantId, id);
 }
 
+// ── Decision core (Phase 6) ───────────────────────────────────────────────────
+// One implementation of accept/reject shared by the staff routes and the public
+// customer link, so both paths enforce the same state machine, commit the deal
+// value identically, and leave an audit trail that names the actor.
+
+export type DecisionResult =
+  | { ok: true; quote: Awaited<ReturnType<typeof getQuote>> }
+  | { ok: false; status: number; error: string; minTotalPaise?: number; marginFloorPct?: number };
+
+export interface DecisionActor {
+  actorRole: string; // "staff" (authorized route) | "customer" (public link)
+  actorId?: string | null;
+}
+
+export async function acceptQuote(tenantId: string, quoteId: string, actor: DecisionActor): Promise<DecisionResult> {
+  const floor = await quoteFloorStatus(tenantId, quoteId);
+  if (!floor) return { ok: false, status: 404, error: "Quote not found" };
+  // Only a sent quote can be accepted: send is the sole door and it enforces
+  // lines + the margin floor, so a draft (possibly empty) quote can never
+  // commit a deal value directly.
+  if (!canTransition(floor.status, "accepted")) {
+    return { ok: false, status: 409, error: `Only sent quotes can be accepted (this quote is ${floor.status})` };
+  }
+  if (!floor.hasLines) return { ok: false, status: 422, error: "Quote has no line items" };
+  if (floor.floorViolation) {
+    return { ok: false, status: 422, error: "Quote margin is below the configured floor", minTotalPaise: floor.minTotalPaise, marginFloorPct: floor.marginFloorPct };
+  }
+  const quote = await markAccepted(tenantId, quoteId);
+  // Commit the accepted total to the linked Deal (paise → Decimal rupees).
+  const raw = await getQuoteRaw(tenantId, quoteId);
+  if (raw?.dealId) {
+    const deal = await prisma.deal.findFirst({ where: { id: raw.dealId, tenantId }, select: { id: true } });
+    if (deal) {
+      await prisma.deal.update({ where: { id: deal.id }, data: { value: new Prisma.Decimal((raw.totalPaise / 100).toFixed(2)) } });
+    }
+  }
+  await prisma.auditLog.create({
+    data: {
+      tenantId, actorRole: actor.actorRole, action: "quote_accepted", entityType: "quote", entityId: quoteId,
+      metadata: JSON.stringify({ number: raw?.number, totalPaise: raw?.totalPaise, actorId: actor.actorId ?? null }),
+    },
+  });
+  // Fulfillment (Phase 7): an accepted quote becomes an order. Best-effort and
+  // idempotent (unique quoteId) — a fulfillment hiccup must never fail the accept.
+  try {
+    const { createOrderFromQuote } = await import("../orders/service");
+    await createOrderFromQuote(tenantId, quoteId, actor.actorId ?? null);
+  } catch (err) {
+    console.warn("[quotes] order creation after accept failed:", err instanceof Error ? err.message : err);
+  }
+  return { ok: true, quote };
+}
+
+export async function rejectQuote(tenantId: string, quoteId: string, reason: string | null, actor: DecisionActor): Promise<DecisionResult> {
+  const raw = await getQuoteRaw(tenantId, quoteId);
+  if (!raw) return { ok: false, status: 404, error: "Quote not found" };
+  // An accepted quote cannot be rejected — its total is already committed to
+  // the linked deal. Decided states are terminal; re-quote instead.
+  if (!canTransition(raw.status, "rejected")) {
+    return { ok: false, status: 409, error: `Only sent quotes can be rejected (this quote is ${raw.status})` };
+  }
+  const quote = await markRejected(tenantId, quoteId, reason);
+  await prisma.auditLog.create({
+    data: {
+      tenantId, actorRole: actor.actorRole, action: "quote_rejected", entityType: "quote", entityId: quoteId,
+      metadata: JSON.stringify({ number: raw.number, reason, actorId: actor.actorId ?? null }),
+    },
+  });
+  return { ok: true, quote };
+}
+
+// ── Public customer link (Phase 6) ───────────────────────────────────────────
+// The raw token exists only in the link we hand out; the DB stores its SHA-256.
+// Re-issuing replaces the hash, which atomically invalidates any older link.
+
+export async function issuePublicToken(tenantId: string, quoteId: string): Promise<string | null> {
+  const raw = randomBytes(24).toString("base64url");
+  const r = await prisma.quote.updateMany({ where: { id: quoteId, tenantId }, data: { publicTokenHash: hashToken(raw) } });
+  return r.count > 0 ? raw : null;
+}
+
+export function publicQuoteUrl(token: string): string {
+  const base = (process.env.EYNIS_WEB_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  return `${base}/q/${token}`;
+}
+
+export async function getQuoteByPublicToken(rawToken: string) {
+  if (!rawToken || rawToken.length < 16 || rawToken.length > 128) return null;
+  return prisma.quote.findUnique({ where: { publicTokenHash: hashToken(rawToken) }, include: withLines });
+}
+
+// The customer-facing payload: the same piece allocation the PDF uses (selling
+// total spread across pieces by cost share) — NEVER cost/overhead/margin.
+export function publicQuoteView(q: ReturnType<typeof serializeQuote>) {
+  return {
+    number: q.number,
+    title: q.title,
+    status: q.status,
+    validUntil: q.validUntil,
+    items: allocateSellingByPiece(q),
+    totalPaise: Number(q.totalPaise) || 0,
+    gstPercent: q.gstPercent,
+    gstPaise: q.gstPaise,
+    grandTotalPaise: q.grandTotalPaise,
+    terms: q.terms,
+    contactName: q.contactName,
+    sentAt: q.sentAt,
+    acceptedAt: q.acceptedAt,
+    rejectedAt: q.rejectedAt,
+  };
+}
+
+// ── Expiry sweep ─────────────────────────────────────────────────────────────
+// Flip sent quotes past their validUntil to expired. Naturally idempotent (the
+// status filter means each quote transitions at most once), so the automation
+// cycle can call it every tick without claim records. Deliberately global: the
+// where clause only touches rows that are due, whatever their tenant.
+export async function expireOverdueQuotes(now = new Date()): Promise<number> {
+  const r = await prisma.quote.updateMany({
+    where: { status: "sent", validUntil: { lt: now } },
+    data: { status: "expired" },
+  });
+  return r.count;
+}
+
 // ── Templates ──────────────────────────────────────────────────────────────────
 export interface TemplateComponentPayload {
   name: string;
@@ -638,35 +815,18 @@ export async function deleteTemplate(tenantId: string, id: string) {
   return r.count > 0;
 }
 
-// ── PDF blocks ───────────────────────────────────────────────────────────────
-// Build ReportBlock[] (report-html/report-pdf schema) for a quote. One table per
-// piece (groupName) + a totals table. Money is rendered as "Rs. x,xx,xxx" (pdfSafe
-// maps ₹→Rs.). Returns blocks; the route wraps them with renderBrandedReportPdf.
-export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
-  const money = (paise: number) => `Rs. ${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+// ── Customer-safe piece allocation ───────────────────────────────────────────
+// One row per PIECE at its selling price: the quote total allocated across
+// pieces (groupName) proportional to cost, remainder fixed on the last group so
+// rows always sum to the total. The customer never sees the internal
+// material/labor/overhead/margin breakdown — components appear as a spec only.
+// Shared by the PDF and the public customer link.
+export function allocateSellingByPiece(q: ReturnType<typeof serializeQuote>): Array<{ piece: string; spec: string; amountPaise: number }> {
   const dims = (l: ReturnType<typeof serializeLine>) => {
     const parts = [l.lengthMm, l.widthMm, l.heightMm].filter((v): v is number => typeof v === "number" && v > 0);
     return parts.length ? parts.join(" × ") + " mm" : "—";
   };
-  const blocks: Array<
-    | { kind: "headline"; text: string }
-    | { kind: "section"; heading: string; body: string }
-    | { kind: "table"; heading?: string; header: string[]; rows: Array<Array<string | number>> }
-  > = [];
   const total = Number(q.totalPaise) || 0;
-  const gstPct = Number(q.gstPercent) || 0;
-  const gst = Math.round((total * gstPct) / 100);
-  blocks.push({ kind: "headline", text: `${String(q.title)} — ${money(total + gst)}` });
-
-  // "Prepared for" — the linked customer, if any.
-  if (q.contactName) {
-    const contact = q.contactPhone ? `${q.contactName} · ${q.contactPhone}` : String(q.contactName);
-    blocks.push({ kind: "section", heading: "Prepared for", body: contact });
-  }
-
-  // Customer-facing line items: one row per PIECE at its selling price (the total
-  // allocated across pieces by cost share) — the customer never sees the internal
-  // material/labor/overhead/margin breakdown. Components are listed as a spec only.
   const groups = new Map<string, ReturnType<typeof serializeLine>[]>();
   for (const l of q.lineItems) {
     const arr = groups.get(l.groupName) ?? [];
@@ -677,14 +837,41 @@ export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
   const costByGroup = entries.map(([, lines]) => lines.reduce((s, l) => s + l.lineCostPaise, 0));
   const totalCost = costByGroup.reduce((s, c) => s + c, 0);
   let allocated = 0;
-  const rows: Array<Array<string | number>> = entries.map(([group, lines], i) => {
+  return entries.map(([group, lines], i) => {
     const selling = i === entries.length - 1 || totalCost <= 0
       ? total - allocated
       : Math.round((total * costByGroup[i]) / totalCost);
     allocated += selling;
     const spec = lines.map((l) => (dims(l) !== "—" ? `${l.name} (${dims(l)})` : l.name)).join(", ");
-    return [group, spec, money(selling)];
+    return { piece: group, spec, amountPaise: selling };
   });
+}
+
+// ── PDF blocks ───────────────────────────────────────────────────────────────
+// Build ReportBlock[] (report-html/report-pdf schema) for a quote. One table per
+// piece (groupName) + a totals table. Money is rendered as "Rs. x,xx,xxx" (pdfSafe
+// maps ₹→Rs.). Returns blocks; the route wraps them with renderBrandedReportPdf.
+export function quotePdfBlocks(q: ReturnType<typeof serializeQuote>) {
+  const money = (paise: number) => `Rs. ${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+  const blocks: Array<
+    | { kind: "headline"; text: string }
+    | { kind: "section"; heading: string; body: string }
+    | { kind: "table"; heading?: string; header: string[]; rows: Array<Array<string | number>> }
+  > = [];
+  const total = Number(q.totalPaise) || 0;
+  const gstPct = Number(q.gstPercent) || 0;
+  const gst = gstAmountPaise(total, gstPct);
+  blocks.push({ kind: "headline", text: `${String(q.title)} — ${money(total + gst)}` });
+
+  // "Prepared for" — the linked customer, if any.
+  if (q.contactName) {
+    const contact = q.contactPhone ? `${q.contactName} · ${q.contactPhone}` : String(q.contactName);
+    blocks.push({ kind: "section", heading: "Prepared for", body: contact });
+  }
+
+  // Customer-facing line items via the shared piece allocation (see
+  // allocateSellingByPiece) — the customer never sees cost/overhead/margin.
+  const rows: Array<Array<string | number>> = allocateSellingByPiece(q).map((r) => [r.piece, r.spec, money(r.amountPaise)]);
   blocks.push({ kind: "table", heading: "Quotation", header: ["Item", "Specification", "Amount"], rows });
 
   blocks.push({

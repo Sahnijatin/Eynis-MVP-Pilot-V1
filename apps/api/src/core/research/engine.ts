@@ -48,9 +48,14 @@ function parseInputs(json: string): Record<string, string> {
 }
 
 // Process a single run by id. Safe to call from the worker; it sets failed + error
-// on any unexpected throw so a run never gets stuck mid-flight.
-export async function processRun(runId: string): Promise<void> {
-  const run = await prisma.researchRun.findUnique({ where: { id: runId } });
+// on any unexpected throw so a run never gets stuck mid-flight. Callers holding a
+// tenant context (e.g. a "run now" route) must pass expectedTenantId so a stray
+// run id can never process another tenant's run; the worker's ids come from its
+// own DB scan and may omit it.
+export async function processRun(runId: string, expectedTenantId?: string): Promise<void> {
+  const run = await prisma.researchRun.findFirst({
+    where: { id: runId, ...(expectedTenantId ? { tenantId: expectedTenantId } : {}) },
+  });
   if (!run) return;
   const tenantId = run.tenantId;
 

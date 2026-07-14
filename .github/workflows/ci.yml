@@ -5,8 +5,9 @@ name: CI
 # caught on every PR instead of slipping into main.
 
 on:
+  # Every PR gets CI regardless of its base branch, so stacked PRs (e.g. a
+  # feature branch based on another feature branch) are validated too.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 

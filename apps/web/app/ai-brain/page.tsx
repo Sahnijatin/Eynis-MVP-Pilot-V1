@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Brain, Send, Loader2, Database, FileText, Users, BarChart3 } from "lucide-react";
+import { PreviewBadge } from "../../components/ui/preview-badge";
 
 const SUGGESTED = [
   "Which clients haven't ordered in 60+ days?",
@@ -60,10 +61,11 @@ export default function AIBrainPage() {
             <Brain className="w-5 h-5 text-blue-700" />
           </div>
           <div>
-            <div className="font-semibold text-slate-800">Eynis AI Brain</div>
+            {/* Neutral wordmark — never the platform brand (white-label, 3.2). */}
+            <div className="font-semibold text-slate-800">AI Brain</div>
             <div className="text-xs text-slate-500">Answers sourced from your own data — orders, clients, materials, reports</div>
           </div>
-          <span className="ml-auto badge" style={{ background: "#fef3c7", color: "#b45309" }}>Preview</span>
+          <span className="ml-auto"><PreviewBadge /></span>
         </div>
 
         {/* Messages */}

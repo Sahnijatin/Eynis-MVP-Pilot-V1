@@ -57,6 +57,8 @@ model Tenant {
   sendingDomain         SendingDomain?
   emailSuppressions     EmailSuppression[]
   inventoryItems        InventoryItem[]
+  stockMovements        StockMovement[]
+  orders                Order[]
   pipelines             Pipeline[]
   pipelineStages        Stage[]
   deals                 Deal[]
@@ -79,20 +81,84 @@ model Tenant {
 // persistence, not a frontend mock). Industry-neutral: an "item" works for F&B
 // stock, manufacturing materials, retail SKUs, etc.
 model InventoryItem {
-  id           String   @id @default(cuid())
-  tenantId     String   @map("hotelId")
-  name         String
-  category     String   @default("Other")
-  stock        Float    @default(0)
-  unit         String   @default("units")
-  reorderLevel Float    @default(5)
-  unitCostInr  Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id            String          @id @default(cuid())
+  tenantId      String          @map("hotelId")
+  name          String
+  category      String          @default("Other")
+  stock         Float           @default(0)
+  unit          String          @default("units")
+  reorderLevel  Float           @default(5)
+  // Paise integer (4.1) — replaced whole-rupee unitCostInr so sub-rupee material
+  // rates survive into the quote engine's paise math without loss.
+  unitCostPaise Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  movements     StockMovement[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
+}
+
+// Fulfillment pipeline (Phase 7): an accepted quote becomes an Order tracked
+// through production. Industry-agnostic — every tenant that accepts a quote
+// gets an order row; the nav decides who surfaces the board (mfg/F&B today).
+model Order {
+  id           String            @id @default(cuid())
+  tenantId     String            @map("hotelId")
+  number       String
+  quoteId      String            @unique
+  contactId    String?
+  companyId    String?
+  valuePaise   Int               @default(0) // frozen from the accepted quote (ex-GST)
+  stage        String            @default("new") // new | production | qc | dispatch | delivered
+  promisedDate DateTime?
+  notes        String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote        Quote             @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  transitions  OrderTransition[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, stage])
+}
+
+// Stage history — mirrors ServiceRequestTransition so "when did this enter QC"
+// is always answerable.
+model OrderTransition {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("hotelId")
+  orderId   String
+  fromStage String
+  toStage   String
+  actorId   String?
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+// Immutable stock ledger (4.2): every stock change is a row — received, used,
+// waste, or adjustment — so the current stock is auditable/reconstructable and
+// yield (used vs waste) is computable. `delta` is the signed stock change;
+// InventoryItem.stock remains the derived running balance so list reads stay
+// a single query.
+model StockMovement {
+  id        String        @id @default(cuid())
+  tenantId  String        @map("hotelId")
+  itemId    String
+  kind      String // received | used | waste | adjustment
+  delta     Float // signed stock change (+receive, -use/-waste, ± adjustment)
+  ref       String? // free-form reference (quote number, PO, batch…)
+  note      String?
+  actorId   String?
+  createdAt DateTime      @default(now())
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, itemId, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 // Per-tenant email suppression list. Populated by the Resend webhook on hard
@@ -1229,6 +1295,10 @@ model Quote {
   number            String // "Q-2026-0001", unique per tenant
   title             String
   status            String          @default("draft") // draft | sent | accepted | rejected | expired
+  // Self-serve customer link (Phase 6): only the SHA-256 of the public token is
+  // stored — a DB read never yields a usable link. Regenerating replaces it.
+  publicTokenHash   String?         @unique
+  order             Order?
   contactId         String?
   companyId         String?
   dealId            String?

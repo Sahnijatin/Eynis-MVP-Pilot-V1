@@ -72,13 +72,16 @@ export default async function RequestPage({
               style={{ display: "block", width: "100%", marginTop: 4 }}
             />
           </label>
+          {/* Industry-neutral categories (3.6): this public form serves every
+              vertical, so no hospitality-specific wording. The API accepts the
+              category as free text and classification refines it downstream. */}
           <label>
             Request Type
             <select name="category" defaultValue="general" style={{ display: "block", marginTop: 4 }}>
               <option value="general">General</option>
-              <option value="housekeeping">Housekeeping</option>
+              <option value="service">Service</option>
               <option value="maintenance">Maintenance</option>
-              <option value="front_desk">Front Desk</option>
+              <option value="billing">Billing</option>
             </select>
           </label>
           <label>
@@ -87,7 +90,7 @@ export default async function RequestPage({
               name="summary"
               required
               rows={4}
-              placeholder="Example: Need two extra towels in room 204"
+              placeholder="Describe what you need and where — the more detail, the faster we can help"
               style={{ display: "block", width: "100%", marginTop: 4 }}
             />
           </label>

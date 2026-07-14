@@ -115,3 +115,13 @@ test("computeLine: negative/invalid inputs are clamped, never NaN", () => {
   assert.equal(r.materialCostPaise, 0); // negative length → 0 area
   assert.equal(r.laborCostPaise, 0); // negative hours clamped
 });
+
+test("gstAmountPaise: the one shared GST formula (display-only, clamped)", async () => {
+  const { gstAmountPaise } = await import("./costing");
+  assert.equal(gstAmountPaise(100000, 18), 18000);
+  assert.equal(gstAmountPaise(100000, 0), 0);
+  assert.equal(gstAmountPaise(0, 18), 0);
+  assert.equal(gstAmountPaise(333, 18), 60); // rounds to whole paise
+  assert.equal(gstAmountPaise(-500, 18), 0); // negative taxable clamps to 0
+  assert.equal(gstAmountPaise(100000, -5), 0); // negative rate clamps to 0
+});

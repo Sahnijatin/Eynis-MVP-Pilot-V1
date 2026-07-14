@@ -1,5 +1,12 @@
 # Development Journal Index
 
+> **Historical archive — no longer maintained.** This journal ends at `day-19.md`
+> (2026-05-13). All later work (CRM, Research Studio, campaigns/voice agent, the
+> Tempus quoting engine, security hardening Phases 1–4) is tracked through
+> `docs/*.md` design docs and pull-request history instead. Do not rely on this
+> journal for current project state; every "pending item" in day-19 has since
+> shipped.
+
 - `day-01.md` - Foundation scaffold, build/test baseline, startup fix
 - `day-02.md` - Prisma schema, tenant context guard, event/audit primitives
 - `day-03.md` - DB-backed service requests, audit persistence, tenant isolation tests
@@ -20,5 +27,4 @@
 - `day-18.md` - Hotel-level connector config persistence + secure config APIs
 - `day-template.md` - Copy this template for each new day
 
-## Next File
-- `day-19.md` - AI intelligence layer over normalized connector events
+- `day-19.md` - AI intelligence layer over normalized connector events (final entry)

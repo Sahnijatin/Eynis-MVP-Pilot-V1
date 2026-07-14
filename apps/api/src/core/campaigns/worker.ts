@@ -119,7 +119,9 @@ export async function processVoiceCampaign(
   // leads are dialled.
   let segmentWhere = {};
   if (campaign.segmentId) {
-    const seg = await prisma.leadSegment.findUnique({ where: { id: campaign.segmentId }, select: { rules: true } });
+    // Tenant-pinned: segmentId is tenant data an API caller could point at another
+    // tenant's segment — never read segment rules across the boundary.
+    const seg = await prisma.leadSegment.findFirst({ where: { id: campaign.segmentId, tenantId: campaign.tenantId }, select: { rules: true } });
     if (seg) segmentWhere = buildLeadWhere(parseSegmentRules(seg.rules));
   }
 

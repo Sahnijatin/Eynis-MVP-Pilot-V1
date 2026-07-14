@@ -64,19 +64,19 @@ npm run build
 `@eynis/shared` is a build-time dependency of both `apps/api` and `apps/web`. Its `dist/` must exist before either can compile.
 
 ### API Server (`apps/api/src/server.ts`)
-The entire API is one ~2400-line file with all routes as an `if/else` chain matching on `req.url` and `req.method`. There is no Express/Fastify — only `node:http`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
+The API has no framework — only `node:http`. `server.ts` (~3,700 lines) is the bootstrap + dispatcher: auth/tenant/team/AI/night-audit/connector handlers inline, plus calls into **extracted domain routers** (`core/<domain>/routes.ts` for quotes, inventory, reports, research, CRM, marketing, campaigns — each exports `handleXRoutes(req, res): Promise<boolean>` returning true when it handled the request). Shared HTTP helpers live in `src/http/helpers.ts`; the authorization kernel (`authorize`, `permissionMap`, `canAccess`, `getAuthenticatedContext`) in `src/core/authz.ts`. The file exports both `buildServer()` (used by tests) and starts the server when `START_SERVER=true`.
 
 **Route authorization pattern:**
 1. `getAuthenticatedContext(req)` → verifies JWT, loads user + live permissions from DB
 2. `canAccess(permissions, "METHOD /path")` → looks up the route's required permission in `policyMap` and checks the user has it
 3. `ensureTenantAccess(tenantId)` → verifies the tenant exists
 
-`policyMap` at the top of `server.ts` maps every route to the **permission** it requires (`null` = any authenticated user). RBAC is permission-based: generic system roles (`admin`/`manager`/`supervisor`/`agent`/`viewer`) carry permission sets in the `Role` table. The legacy hospitality role union (`owner`/`front_desk`/…) in `@eynis/shared` is **deprecated** and used only as a backward-compat fallback.
+`permissionMap` (`src/core/authz.ts`) maps every JWT route to the **permission** it requires (`null` = any authenticated user); `src/authz-matrix.test.ts` walks the map and enforces 401/403 behaviour for the whole surface. RBAC is permission-based: generic system roles (`admin`/`manager`/`supervisor`/`agent`/`viewer`) carry permission sets in the `Role` table. The legacy hospitality role union (`owner`/`front_desk`/…) in `@eynis/shared` is **deprecated** and used only as a backward-compat fallback.
 
 **All API responses follow:** `{ ok: boolean, ...data }` on success or `{ ok: false, error: string }` on failure. Paginated endpoints return `{ items, page: { limit, offset, total, hasMore } }`.
 
 ### Authentication
-JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, tenantId, email, roleKey, role?, permissions }` (`hotelId` also emitted as a deprecated alias). `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential). The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
+JWT via `jose` (HS256, 12h expiry). Claims: `{ sub, tenantId, email, roleKey, role?, permissions }` (`hotelId` also emitted as a deprecated alias). `roleKey` is the canonical generic role (admin/manager/supervisor/agent/viewer); `role` is the **deprecated** hospitality union (owner/front_desk/…), retained for backward compat. A token is valid if it carries either identity. Token is issued at `POST /auth/token` by matching credentials against the DB (no passwords — email + role is the credential), gated by the `EYNIS_TOKEN_EXCHANGE_SECRET` header so in production only the Clerk-authenticated web tier can mint tokens. The web app fetches a token server-side in `apps/web/lib/api.ts` using demo env vars, or uses `EYNIS_API_TOKEN` if set.
 
 ### Multi-tenancy
 Every DB query is scoped to `tenantId` from the JWT. The JWT's `tenantId` is verified against the `User` record on every request — a user cannot impersonate a different tenant by forging claims.
@@ -123,7 +123,7 @@ PostgreSQL via Prisma. Key models and relationships:
 - `NightAuditReport` — unique per `(tenantId, reportDate)`; stores AI-generated JSON report
 
 ### Connectors Registry
-Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twilio`, `pms_hotelogix`, `pms_ezee`, `pos_petpooja`, `payments_razorpay`. Each has an env flag (e.g. `CONNECTOR_WHATSAPP_TWILIO_ENABLED=true`) that controls default availability. Hotels can override via `PUT /connectors/configs/:key`.
+Twelve connectors defined in `CONNECTOR_CATALOG` (`packages/shared/src/index.ts`): `whatsapp_interakt`, `whatsapp_twilio`, `pms_hotelogix`, `pms_ezee`, `pos_petpooja`, `payments_razorpay`, `voice_vapi`, `email_resend`, `search_tavily`, `ai_openai`, `ai_anthropic`, `accounting_busy`. Each has an env flag (e.g. `CONNECTOR_WHATSAPP_TWILIO_ENABLED=true`) that controls default availability. Tenants can override via `PUT /connectors/configs/:key`.
 
 ## Key Environment Variables
 
@@ -139,7 +139,9 @@ Six connectors defined inline in `server.ts`: `whatsapp_interakt`, `whatsapp_twi
 | `RESEARCH_AI_PROVIDER` | auto | API: force Research Studio synthesis to `claude` or `openai`. Default auto-selects: Claude if `ANTHROPIC_API_KEY` is set, else OpenAI. Set `openai` if you only have an OpenAI key (or to prefer it when both are set). |
 | `RESEARCH_PLAYWRIGHT_ENABLED` | `false` | API: enable the **optional** headless-browser crawl fallback for JS-heavy pages. Off by default and `playwright` is not a declared dependency — to use it, self-host with `npm i playwright && npx playwright install chromium`, then set `true`. When on, a page whose static HTML is thinner than `RESEARCH_JS_MIN_CHARS` is re-fetched via Chromium and the richer result is cached. Unset/false → static-fetch-only (unchanged). |
 | `RESEARCH_JS_MIN_CHARS` | `250` | API: static-text length below which a page is treated as a JS shell and (when the fallback is enabled) retried via Playwright. |
-| `VERIFY_WEBHOOKS` | `false` | Enforce Twilio/Interakt webhook signatures |
+| `VERIFY_WEBHOOKS` | auto | Twilio/Interakt webhook signatures are enforced automatically once the provider's verification config exists (`INTERAKT_WEBHOOK_SECRET`, or `TWILIO_AUTH_TOKEN` + `TWILIO_WEBHOOK_URL`/`EYNIS_PUBLIC_URL`). `true` forces on, `false` explicitly disables (dev escape hatch) |
+| `SECRETS_ENC_KEY` | — | AES-256 key for connector secrets at rest. **Required in production** (startup fails without it); unset in dev → plaintext no-op |
+| `EYNIS_TOKEN_EXCHANGE_SECRET` | — | Shared web↔API secret gating `POST /auth/token` + `GET /auth/identify` (C1). **Required in production**; unset in dev → endpoints stay open. Set the same value on the web deploy |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | — | Twilio WhatsApp outbound |
 | `INTERAKT_API_KEY` | — | Interakt WhatsApp outbound |
 | `EYNIS_API_BASE_URL` | `http://localhost:4000` | Web → API base URL |

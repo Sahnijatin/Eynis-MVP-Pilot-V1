@@ -2,6 +2,7 @@ import { fetchAutomations, fetchAutomationExecutions } from "../../lib/data";
 import { getUserWorkspace } from "../../lib/workspace";
 import { Plus, Zap, Clock, Download, Filter, CheckCircle2, XCircle, AlertCircle, MessageSquare, RefreshCw, UserX, Star, ArrowRightCircle, Bell } from "lucide-react";
 import { CampaignBarChart } from "../../components/ui/charts";
+import { PreviewBanner } from "../../components/ui/preview-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export default async function AutomationsPage() {
     const totalConv = MFG_FLOWS.reduce((s, f) => s + f.conversions, 0);
     return (
       <div>
+        <PreviewBanner>These flows and their numbers are illustrative — automations for this industry are not yet wired to your live data.</PreviewBanner>
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-bold text-slate-800">Customer Journey Automations</h1>
@@ -97,7 +99,8 @@ export default async function AutomationsPage() {
                     <span className="text-sm font-semibold text-slate-800">{flow.trigger}</span>
                   </div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: config.accentColor }}>Eynis Does</span>
+                    {/* Neutral label — never the platform brand (white-label, 3.2). */}
+                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: config.accentColor }}>Action</span>
                     <span className="text-sm font-medium text-slate-700">{flow.action}</span>
                   </div>
                   <p className="text-xs text-slate-500">{flow.detail}</p>

@@ -1,4 +1,5 @@
 import type { IncomingMessage } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { isValidRole, isSystemRoleKey, type UserRole, type SystemRoleKey } from "@eynis/shared";
 
@@ -33,6 +34,33 @@ export const assertJwtSecretConfigured = (): void => {
   if (process.env.NODE_ENV === "production" && (!process.env.JWT_SECRET || process.env.JWT_SECRET === defaultSecret)) {
     throw new Error("JWT_SECRET must be set to a strong, non-default value in production");
   }
+};
+
+// ── Token-exchange service secret (Phase 9 / C1) ───────────────────────────────
+// /auth/token and /auth/identify are the identity boundary. The web tier has
+// already authenticated the person with Clerk, so these endpoints must accept
+// only the web tier — not anyone on the internet who knows an email address.
+// Enforce-when-configured (same pattern as webhook verification): set the shared
+// secret and it's required; unset in dev keeps local workflows open. Production
+// REQUIRES it via the startup assertion below.
+const exchangeSecret = () => process.env.EYNIS_TOKEN_EXCHANGE_SECRET?.trim() || null;
+
+export const assertTokenExchangeConfigured = (opts: { isProduction?: boolean; configured?: boolean } = {}): void => {
+  const isProduction = opts.isProduction ?? process.env.NODE_ENV === "production";
+  const configured = opts.configured ?? exchangeSecret() !== null;
+  if (isProduction && !configured) {
+    throw new Error("EYNIS_TOKEN_EXCHANGE_SECRET must be set in production — without it, anyone who knows an email can mint tenant JWTs (C1)");
+  }
+};
+
+export const verifyTokenExchangeSecret = (req: IncomingMessage): boolean => {
+  const expected = exchangeSecret();
+  if (!expected) return true; // not configured → open (dev only; prod asserts at startup)
+  const header = req.headers["x-token-exchange-secret"];
+  const provided = typeof header === "string" ? header : Array.isArray(header) ? header[0] ?? "" : "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 };
 
 export const createAuthToken = async (claims: AuthTokenClaims) =>

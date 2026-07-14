@@ -1,8 +1,13 @@
 # Industry-Agnostic & White-Label — Architecture & Execution Plan
 
-_Status: **proposal / planning** · Authored Jun 2026. This is a detailed plan, not
-a build log. It scopes two committed product directions from `CLAUDE.md` →
-Product Principles:_
+_Status: **core shipped** (July 2026) · Authored Jun 2026. The platform layer is
+built and merged (E-8 … E-16): the `Hotel→Tenant` / `Guest→Contact` model rename
+(via `@@map`, no data migration), per-tenant branding + theming with tier gating
+(`core/whitelabel.ts`, `apps/web/lib/theme.ts`), custom domains, and the
+provisioning console (`apps/web/app/admin/provisioning`). Remaining gaps are
+vertical depth (non-hospitality ops pages are still demo stubs) and residual
+hotel-shaped types/copy — tracked in `docs/improvement-plan-2026-07.md`. It
+scopes two committed product directions from `CLAUDE.md` → Product Principles:_
 
 1. **Industry-agnostic** — Eynis serves many industries; nothing new should assume
    hospitality.

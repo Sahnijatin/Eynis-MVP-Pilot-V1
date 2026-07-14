@@ -15,6 +15,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "db:seed:tempus": "tsx --env-file-if-exists=.env prisma/seed-tempus.ts",
+    "db:seed:campaign": "tsx --env-file-if-exists=.env prisma/seed-campaign-demo.ts",
     "db:backfill:quote-templates": "tsx --env-file-if-exists=.env prisma/backfill-quote-templates.ts",
     "db:bump-license": "tsx scripts/bump-license.ts"
   },

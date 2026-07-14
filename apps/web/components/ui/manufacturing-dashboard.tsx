@@ -1,148 +1,135 @@
 import Link from "next/link";
-import { AlertCircle, AlertTriangle, ChevronRight, Brain, Zap, ClipboardList, Calculator } from "lucide-react";
+import { AlertTriangle, ChevronRight, ClipboardList, Calculator } from "lucide-react";
 import { SmartInsights } from "./smart-insights";
+import { fetchOrders, fetchQuotes, fetchInventory, fetchInventoryYield } from "../../lib/data";
 
-const PIPELINE = [
-  { label: "New Orders", count: 12, color: "#6366f1" },
-  { label: "In Production", count: 18, color: "#f59e0b" },
-  { label: "QC Review", count: 8, color: "#8b5cf6" },
-  { label: "Ready to Ship", count: 6, color: "#10b981" }
+// Manufacturing Command Centre (Phase 7) — every number traces to a DB row:
+// orders from the fulfillment pipeline, quotes awaiting decision, material
+// alerts from live inventory, waste ratio from the stock ledger.
+
+const STAGE_META: Array<{ id: string; label: string; color: string }> = [
+  { id: "new", label: "New Orders", color: "#6366f1" },
+  { id: "production", label: "In Production", color: "#f59e0b" },
+  { id: "qc", label: "QC Review", color: "#8b5cf6" },
+  { id: "dispatch", label: "Ready to Dispatch", color: "#10b981" },
 ];
 
-const TOP_ORDERS = [
-  { id: "ORD-2839", client: "Kapoor Furnishings", value: "₹4.5L", due: "28 May", urgent: true },
-  { id: "ORD-2847", client: "Sharma Interiors", value: "₹3.2L", due: "2 Jun", urgent: false },
-  { id: "ORD-2844", client: "Mehta Residences", value: "₹2.1L", due: "30 May", urgent: true }
-];
+const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+const lakh = (paise: number) => {
+  const inr = paise / 100;
+  return inr >= 100000 ? `₹${(inr / 100000).toFixed(1)}L` : rupees(paise);
+};
 
-export function ManufacturingDashboard() {
+export async function ManufacturingDashboard() {
+  const [orders, quotes, inventory, yieldData] = await Promise.all([
+    fetchOrders(), fetchQuotes(), fetchInventory(), fetchInventoryYield(),
+  ]);
+
+  const stageOf = (id: string) => orders.summary.find((s) => s.stage === id);
+  const inProductionValue = stageOf("production")?.valuePaise ?? 0;
+  const openOrders = orders.items.filter((o) => o.stage !== "delivered");
+  const openValue = openOrders.reduce((s, o) => s + o.valuePaise, 0);
+  const sentQuotes = quotes.items.filter((q) => q.status === "sent");
+  const sentValue = sentQuotes.reduce((s, q) => s + (Number(q.totalPaise) || 0), 0);
+  const reorderAlerts = inventory.items.filter((i) => i.status !== "ok");
+  const consumed = yieldData.items.reduce((s, r) => s + r.usedQty + r.wasteQty, 0);
+  const wasted = yieldData.items.reduce((s, r) => s + r.wasteQty, 0);
+  const wastePct = consumed > 0 ? Math.round((wasted / consumed) * 1000) / 10 : 0;
+  const topOrders = [...openOrders].sort((a, b) => b.valuePaise - a.valuePaise).slice(0, 5);
+
   return (
     <div>
       <SmartInsights industry="manufacturing" />
-      {/* KPI row */}
+
+      {/* KPI row — live aggregates */}
       <div className="kpi-grid mb-5">
         <div className="card">
-          <div className="kpi-label">Revenue Today</div>
-          <div className="kpi-value mt-1.5">₹4.2L</div>
-          <div className="kpi-delta neutral mt-1.5">Target: ₹6L · 70% achieved</div>
-          <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5">
-            <div className="h-1.5 rounded-full" style={{ width: "70%", background: "#1d4ed8" }} />
-          </div>
+          <div className="kpi-label">Open Order Book</div>
+          <div className="kpi-value mt-1.5">{lakh(openValue)}</div>
+          <div className="kpi-delta neutral mt-1.5">{openOrders.length} orders in flight</div>
         </div>
         <div className="card">
-          <div className="kpi-label">Active Orders</div>
-          <div className="kpi-value mt-1.5">44</div>
-          <div className="kpi-delta neutral mt-1.5">Pipeline: ₹1.35 Cr</div>
-        </div>
-        <div className="card" style={{ borderTop: "3px solid #f59e0b" }}>
-          <div className="kpi-label">Materials at Risk</div>
-          <div className="kpi-value mt-1.5" style={{ color: "#d97706" }}>3</div>
-          <div className="kpi-delta down mt-1.5">Reorder needed today</div>
+          <div className="kpi-label">In Production</div>
+          <div className="kpi-value mt-1.5">{lakh(inProductionValue)}</div>
+          <div className="kpi-delta neutral mt-1.5">{stageOf("production")?.count ?? 0} orders on the floor</div>
         </div>
         <div className="card">
-          <div className="kpi-label">Open Quotes</div>
-          <div className="kpi-value mt-1.5">₹28.5L</div>
-          <div className="kpi-delta up mt-1.5">↑ 6 active quotes</div>
+          <div className="kpi-label">Quotes Awaiting Decision</div>
+          <div className="kpi-value mt-1.5">{sentQuotes.length}</div>
+          <div className="kpi-delta neutral mt-1.5">{lakh(sentValue)} potential</div>
+        </div>
+        <div className="card" style={{ borderTop: reorderAlerts.length > 0 ? "3px solid #f59e0b" : undefined }}>
+          <div className="kpi-label">Material Alerts</div>
+          <div className="kpi-value mt-1.5">{reorderAlerts.length}</div>
+          <div className="kpi-delta neutral mt-1.5">{wastePct > 0 ? `${wastePct}% waste ratio (90d)` : "No waste logged yet"}</div>
         </div>
       </div>
 
+      {/* Pipeline by stage */}
       <div className="grid grid-cols-3 gap-4 mb-4">
-        {/* Order pipeline mini-board */}
         <div className="card col-span-2">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-blue-600" />
-              <h3 className="card-title mb-0">Order Pipeline</h3>
-            </div>
-            <Link href="/orders" className="text-xs text-blue-600 font-medium flex items-center gap-1 hover:underline">
-              View all <ChevronRight className="w-3 h-3" />
-            </Link>
+          <h3 className="card-title">Production Pipeline</h3>
+          <div className="grid grid-cols-4 gap-3 mt-2">
+            {STAGE_META.map((s) => {
+              const row = stageOf(s.id);
+              return (
+                <div key={s.id} className="rounded-lg p-3" style={{ background: s.color + "10", borderTop: `3px solid ${s.color}` }}>
+                  <div className="text-2xl font-bold text-slate-800">{row?.count ?? 0}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{s.label}</div>
+                  <div className="text-xs font-medium mt-1" style={{ color: s.color }}>{lakh(row?.valuePaise ?? 0)}</div>
+                </div>
+              );
+            })}
           </div>
-          <div className="grid grid-cols-4 gap-3 mb-4">
-            {PIPELINE.map((s) => (
-              <div key={s.label} className="text-center p-3 rounded-lg border border-slate-100">
-                <div className="text-2xl font-black" style={{ color: s.color }}>{s.count}</div>
-                <div className="text-xs text-slate-500 mt-1">{s.label}</div>
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Urgent Orders</div>
-            {TOP_ORDERS.map((o) => (
-              <div key={o.id} className={`flex items-center gap-3 py-2 border-b border-slate-50 last:border-0`}>
-                <span className="font-mono text-xs text-blue-600 font-semibold w-20">{o.id}</span>
-                <span className="flex-1 text-sm text-slate-700">{o.client}</span>
-                <span className="text-sm font-semibold text-slate-700">{o.value}</span>
-                <span className={`text-xs font-medium ${o.urgent ? "text-red-600" : "text-slate-500"}`}>Due {o.due}</span>
-              </div>
-            ))}
-          </div>
+          <Link href="/orders" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+            <ClipboardList className="w-4 h-4" /> Open the order board <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
-        {/* Alerts */}
-        <div className="flex flex-col gap-4">
-          <div className="card">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              <h3 className="card-title mb-0">Bottleneck Alerts</h3>
-            </div>
+        <div className="card">
+          <h3 className="card-title">Top Open Orders</h3>
+          {topOrders.length === 0 ? (
+            <div className="py-6 text-center text-sm text-slate-400">No open orders — accepted quotes land here.</div>
+          ) : (
             <div className="space-y-2">
-              <div className="alert-card error">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-sm font-semibold text-red-700">Teak Veneer — Out of Stock</div>
-                  <div className="text-xs text-red-500">2 orders at risk · ETA: 4 Jun</div>
+              {topOrders.map((o) => (
+                <div key={o.id} className="flex items-center justify-between text-sm border-b border-slate-100 pb-2 last:border-0">
+                  <div>
+                    <div className="font-medium text-slate-700">{o.companyName ?? o.contactName ?? o.title}</div>
+                    <div className="text-xs text-slate-400 font-mono">{o.number}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-semibold">{lakh(o.valuePaise)}</div>
+                    <div className="text-xs text-slate-400">{o.stage}</div>
+                  </div>
                 </div>
-              </div>
-              <div className="alert-card warning">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-sm font-semibold text-amber-700">Wood Finishing Backlog</div>
-                  <div className="text-xs text-amber-600">8 orders pending · 2-day delay</div>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
-
-          {/* Quick links */}
-          <div className="card" style={{ background: "#1d4ed8" }}>
-            <div className="text-xs text-blue-200 uppercase tracking-wider mb-2">Quick Actions</div>
-            <div className="space-y-2">
-              <Link href="/quotes" className="flex items-center gap-2 text-sm text-blue-100 hover:text-white transition-colors">
-                <Calculator className="w-4 h-4" /> New Quote
-              </Link>
-              <Link href="/ai-brain" className="flex items-center gap-2 text-sm text-blue-100 hover:text-white transition-colors">
-                <Brain className="w-4 h-4" /> Ask AI Brain
-              </Link>
-              <Link href="/automations" className="flex items-center gap-2 text-sm text-blue-100 hover:text-white transition-colors">
-                <Zap className="w-4 h-4" /> Automations
-              </Link>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Monthly revenue progress */}
+      {/* Material alerts */}
       <div className="card">
-        <h3 className="card-title mb-3">Monthly Revenue Progress — May 2026</h3>
-        <div className="flex items-end gap-3" style={{ height: 80 }}>
-          {[
-            { week: "Wk 1", pct: 22, val: "₹22L" }, { week: "Wk 2", pct: 48, val: "₹26L" },
-            { week: "Wk 3", pct: 68, val: "₹20L" }, { week: "Wk 4 (live)", pct: 78, val: "₹10L" }
-          ].map((w) => (
-            <div key={w.week} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-xs font-semibold text-slate-600">{w.val}</span>
-              <div className="w-full rounded-t-sm" style={{ height: `${(w.pct / 100) * 55}px`, background: w.week.includes("live") ? "#1d4ed8" : "#bfdbfe", minHeight: 6 }} />
-              <span className="text-xs text-slate-500">{w.week}</span>
-            </div>
-          ))}
+        <div className="flex items-center gap-2 mb-3">
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <h3 className="card-title mb-0">Material Reorder Alerts</h3>
         </div>
-        <div className="mt-3 flex items-center gap-2">
-          <div className="flex-1 bg-slate-100 rounded-full h-2">
-            <div className="h-2 rounded-full" style={{ width: "78%", background: "#1d4ed8" }} />
+        {reorderAlerts.length === 0 ? (
+          <div className="py-4 text-sm text-slate-400">All materials above reorder level.</div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3">
+            {reorderAlerts.slice(0, 6).map((i) => (
+              <div key={i.id} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <div className="font-medium text-amber-800">{i.name}</div>
+                <div className="text-xs text-amber-600">{i.stock} {i.unit} on hand · reorder at {i.reorderLevel}</div>
+              </div>
+            ))}
           </div>
-          <span className="text-sm font-semibold text-slate-700">₹78L / ₹1 Cr target <span className="text-slate-500">(78%)</span></span>
-        </div>
+        )}
+        <Link href="/quotes" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+          <Calculator className="w-4 h-4" /> Build a quote <ChevronRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
     </div>
   );

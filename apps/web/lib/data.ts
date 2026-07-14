@@ -289,19 +289,29 @@ async function authedFetch(path: string) {
   }
 }
 
+// Graceful-empty fetch (improvement plan 3.4): any transport error, timeout, or
+// non-OK status resolves to the caller's typed empty shape instead of throwing
+// into the route error boundary — a flaky API shows an honest empty state, not
+// a crash page. Use for list/summary reads; keep bespoke handling where the
+// caller needs the error detail.
+async function fetchOr<T>(path: string, empty: T): Promise<T> {
+  try {
+    const res = await authedFetch(path);
+    if (!res.ok) return empty;
+    return (await res.json()) as T;
+  } catch {
+    return empty;
+  }
+}
+
 export async function fetchDashboardData() {
-  const [overviewRes, trendsRes, queueSummaryRes, liveFeedRes] = await Promise.all([
-    authedFetch("/dashboard/overview"),
-    authedFetch("/dashboard/trends?days=14"),
-    authedFetch("/dashboard/queue-summary"),
-    authedFetch("/dashboard/live-feed")
+  const [overview, trends, queueSummary, liveFeed] = await Promise.all([
+    fetchOr<OverviewResponse | null>("/dashboard/overview", null),
+    fetchOr<TrendsResponse | null>("/dashboard/trends?days=14", null),
+    fetchOr<QueueSummaryResponse | null>("/dashboard/queue-summary", null),
+    fetchOr<LiveFeedResponse | null>("/dashboard/live-feed", null)
   ]);
-  return {
-    overview: (await overviewRes.json()) as OverviewResponse,
-    trends: (await trendsRes.json()) as TrendsResponse,
-    queueSummary: (await queueSummaryRes.json()) as QueueSummaryResponse,
-    liveFeed: (await liveFeedRes.json()) as LiveFeedResponse
-  };
+  return { overview, trends, queueSummary, liveFeed };
 }
 
 export async function fetchQueueData(filters: {
@@ -472,13 +482,11 @@ export async function fetchResearchSources(): Promise<ResearchSourceCatalog | nu
 }
 
 export async function fetchConnectorRegistry() {
-  const res = await authedFetch("/connectors/registry");
-  return (await res.json()) as ConnectorRegistryResponse;
+  return fetchOr<ConnectorRegistryResponse>("/connectors/registry", { ok: false, items: [] });
 }
 
 export async function fetchLiveFeed() {
-  const res = await authedFetch("/dashboard/live-feed");
-  return (await res.json()) as LiveFeedResponse;
+  return fetchOr<LiveFeedResponse>("/dashboard/live-feed", { ok: false, items: [] });
 }
 
 export async function fetchGuests(params: { search?: string; limit?: number; offset?: number } = {}) {
@@ -486,18 +494,19 @@ export async function fetchGuests(params: { search?: string; limit?: number; off
   if (params.search) query.set("search", params.search);
   if (params.limit) query.set("limit", String(params.limit));
   if (params.offset) query.set("offset", String(params.offset));
-  const res = await authedFetch("/guests?" + query.toString());
-  return (await res.json()) as GuestsResponse;
+  return fetchOr<GuestsResponse>("/guests?" + query.toString(), { ok: false, items: [], page: { limit: 0, offset: 0, total: 0, hasMore: false } });
 }
 
 export async function fetchAutomations() {
-  const res = await authedFetch("/automations");
-  return (await res.json()) as AutomationsResponse;
+  return fetchOr<AutomationsResponse>("/automations", {
+    ok: false,
+    items: [],
+    summary: { totalAutomations: 0, activeFlows: 0, avgConversion: 0, revenueAttributed: 0, totalExecutions: 0 },
+  });
 }
 
 export async function fetchAutomationExecutions(limit = 20): Promise<AutomationExecutionsResponse> {
-  const res = await authedFetch(`/automations/executions?limit=${limit}`);
-  return (await res.json()) as AutomationExecutionsResponse;
+  return fetchOr<AutomationExecutionsResponse>(`/automations/executions?limit=${limit}`, { ok: false, items: [], page: { limit: 0, offset: 0, total: 0, hasMore: false } });
 }
 
 export async function fetchGuestProfile(guestId: string): Promise<GuestProfileResponse> {
@@ -580,9 +589,26 @@ export interface InventoryItem {
   stock: number;
   unit: string;
   reorderLevel: number;
-  unitCostInr: number;
+  unitCostPaise: number;
+  unitCostInr: number; // rupees (may be fractional) — derived from paise
   status: "ok" | "warning" | "critical";
   updatedAt: string;
+}
+
+export interface InventoryYieldRow {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  stock: number;
+  reorderLevel: number;
+  unitCostPaise: number;
+  status: "ok" | "warning" | "critical";
+  receivedQty: number;
+  usedQty: number;
+  wasteQty: number;
+  wasteRatioPct: number;
+  committedQty: number;
 }
 export interface InventoryResponse {
   ok: boolean;
@@ -590,8 +616,52 @@ export interface InventoryResponse {
 }
 
 export async function fetchInventory() {
-  const res = await authedFetch("/inventory/items");
-  return (await res.json()) as InventoryResponse;
+  return fetchOr<InventoryResponse>("/inventory/items", { ok: false, items: [] });
+}
+
+// ── Customer intelligence (Phase 7) ──────────────────────────────────────────
+export interface ContactIntelRow {
+  id: string;
+  fullName: string;
+  phoneE164: string;
+  email: string | null;
+  acceptedTotalPaise: number;
+  acceptedCount: number;
+  lastAcceptedAt: string | null;
+  pendingQuotes: number;
+  openOrders: number;
+}
+
+export async function fetchContactIntel(): Promise<{ ok: boolean; items: ContactIntelRow[] }> {
+  return fetchOr("/contacts/intel", { ok: false, items: [] });
+}
+
+// ── Orders (fulfillment pipeline, Phase 7) ────────────────────────────────────
+export interface OrderRow {
+  id: string;
+  number: string;
+  stage: "new" | "production" | "qc" | "dispatch" | "delivered";
+  valuePaise: number;
+  quoteNumber: string;
+  title: string;
+  contactName: string | null;
+  companyName: string | null;
+  promisedDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface OrderStageSummary { stage: OrderRow["stage"]; count: number; valuePaise: number }
+
+export async function fetchOrders(): Promise<{ ok: boolean; items: OrderRow[]; summary: OrderStageSummary[] }> {
+  return fetchOr("/orders?limit=200", { ok: false, items: [], summary: [] });
+}
+
+export async function fetchInventoryYield(days = 90) {
+  return fetchOr<{ ok: boolean; windowDays: number; items: InventoryYieldRow[] }>(
+    `/inventory/yield?days=${days}`,
+    { ok: false, windowDays: days, items: [] },
+  );
 }
 
 // ── Quotes (component-based costing) ──────────────────────────────────────────
@@ -651,6 +721,7 @@ export interface Quote {
   sentAt: string | null;
   acceptedAt: string | null;
   rejectedAt: string | null;
+  rejectedReason: string | null;
   createdAt: string;
   updatedAt: string;
   contactName: string | null;
@@ -781,18 +852,15 @@ export interface NightAuditResponse {
 // types above are safe to import from here (via `import type`).
 
 export async function fetchTeamUsers(): Promise<TeamUsersResponse> {
-  const res = await authedFetch("/team/users");
-  return (await res.json()) as TeamUsersResponse;
+  return fetchOr<TeamUsersResponse>("/team/users", { ok: false });
 }
 
 export async function fetchTeamRoles(): Promise<TeamRolesResponse> {
-  const res = await authedFetch("/team/roles");
-  return (await res.json()) as TeamRolesResponse;
+  return fetchOr<TeamRolesResponse>("/team/roles", { ok: false });
 }
 
 export async function fetchTeamLicense(): Promise<TeamLicenseResponse> {
-  const res = await authedFetch("/team/license");
-  return (await res.json()) as TeamLicenseResponse;
+  return fetchOr<TeamLicenseResponse>("/team/license", { ok: false });
 }
 
 // ── Voice / multi-channel campaigns ───────────────────────────────────────────
@@ -879,8 +947,7 @@ export interface LeadSegmentRow {
 }
 
 export async function fetchSegments(): Promise<{ ok: boolean; items: LeadSegmentRow[] }> {
-  const res = await authedFetch("/segments");
-  return (await res.json()) as { ok: boolean; items: LeadSegmentRow[] };
+  return fetchOr("/segments", { ok: false, items: [] });
 }
 
 export interface SequenceStepRow {
@@ -908,8 +975,7 @@ export interface SequenceRow {
 }
 
 export async function fetchSequences(): Promise<{ ok: boolean; items: SequenceRow[] }> {
-  const res = await authedFetch("/sequences");
-  return (await res.json()) as { ok: boolean; items: SequenceRow[] };
+  return fetchOr("/sequences", { ok: false, items: [] });
 }
 
 export interface MessageTemplateRow {
@@ -929,13 +995,11 @@ export interface MessageTemplateRow {
 }
 
 export async function fetchTemplates(): Promise<{ ok: boolean; items: MessageTemplateRow[] }> {
-  const res = await authedFetch("/templates");
-  return (await res.json()) as { ok: boolean; items: MessageTemplateRow[] };
+  return fetchOr("/templates", { ok: false, items: [] });
 }
 
 export async function fetchCampaigns(): Promise<{ ok: boolean; items: CampaignSummary[] }> {
-  const res = await authedFetch("/campaigns?limit=100");
-  return (await res.json()) as { ok: boolean; items: CampaignSummary[] };
+  return fetchOr("/campaigns?limit=100", { ok: false, items: [] });
 }
 
 export async function fetchCampaign(id: string): Promise<{
@@ -1014,21 +1078,18 @@ export interface ForecastSummary {
 }
 
 export async function fetchPipelines(): Promise<{ ok: boolean; items: PipelineRow[] }> {
-  const res = await authedFetch("/pipelines");
-  return (await res.json()) as { ok: boolean; items: PipelineRow[] };
+  return fetchOr("/pipelines", { ok: false, items: [] });
 }
 
 export async function fetchDeals(params: { pipelineId?: string } = {}): Promise<{ ok: boolean; items: DealRow[] }> {
   const q = new URLSearchParams({ limit: "500" });
   if (params.pipelineId) q.set("pipelineId", params.pipelineId);
-  const res = await authedFetch("/deals?" + q.toString());
-  return (await res.json()) as { ok: boolean; items: DealRow[] };
+  return fetchOr("/deals?" + q.toString(), { ok: false, items: [] });
 }
 
 export async function fetchForecast(pipelineId?: string): Promise<{ ok: boolean; forecast?: ForecastSummary }> {
   const path = "/deals/forecast" + (pipelineId ? "?pipelineId=" + encodeURIComponent(pipelineId) : "");
-  const res = await authedFetch(path);
-  return (await res.json()) as { ok: boolean; forecast?: ForecastSummary };
+  return fetchOr(path, { ok: false });
 }
 
 // ── CRM: Contacts & Companies (Increment B) ─────────────────────────────────

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { tokenExchangeHeaders } from "./api";
 import { currentUser } from "@clerk/nextjs/server";
 import type { OrgRole } from "./rbac";
 import type { TenantBranding } from "./theme";
@@ -87,7 +88,7 @@ async function identifyByEmail(email: string): Promise<Membership[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 3000);
   try {
-    const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal });
+    const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal, headers: tokenExchangeHeaders() });
     if (!res.ok) return [];
     const data = await res.json() as {
       ok: boolean; exists?: boolean;

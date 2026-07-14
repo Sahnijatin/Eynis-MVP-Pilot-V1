@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Plane, Users, TrendingUp, ChevronRight } from "lucide-react";
 import { SmartInsights } from "./smart-insights";
+import { PreviewBanner } from "./preview-badge";
 
 export function TravelDashboard() {
   return (
     <div>
+      <PreviewBanner />
       <SmartInsights industry="travel" />
       <div className="kpi-grid mb-5">
         <div className="card">

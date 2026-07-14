@@ -6,6 +6,7 @@ import { ClientDetailPanel } from "../../components/ui/client-detail-panel";
 import type { ClientDetailData } from "../../components/ui/client-detail-panel";
 import { ImportExportButtons } from "../../components/ui/import-export-buttons";
 import { TableEmpty } from "../../components/ds";
+import { PreviewBanner } from "../../components/ui/preview-badge";
 
 type PatientStatus = "active" | "overdue" | "due" | "lost_follow_up";
 
@@ -188,6 +189,7 @@ export default function PatientsPage() {
 
   return (
     <div>
+      <PreviewBanner />
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Patient Records</h1>
