@@ -10,6 +10,7 @@ import { json, parseObjectBody, parseUrl, asTrimmedString, clientIp } from "../.
 import { rateLimit } from "../rate-limit";
 import { loadReportBrand } from "../export/brand";
 import * as quotes from "./service";
+import { parseLineImages, flattenLineImages } from "./quotation";
 
 const TOKEN_RE = /^\/public\/quotes\/([A-Za-z0-9_-]{16,128})(?:\/(accept|decline))?$/;
 
@@ -64,5 +65,48 @@ export async function handlePublicQuoteRoutes(req: IncomingMessage, res: ServerR
   }
 
   json(res, 404, { ok: false, error: "Quote not found" });
+  return true;
+}
+
+// Public image serve — the destination of the PDF's "Image N" links. Gated by the
+// quote's plaintext imageToken (image-read only; can't accept/decline). Serves the
+// stored image bytes INLINE by default (opens in the browser) or as an attachment
+// with ?download=1. Rate-limited per IP.
+const IMAGE_RE = /^\/public\/quote-image\/([A-Za-z0-9_-]{16,64})\/(\d{1,3})$/;
+
+export async function handlePublicQuoteImageRoutes(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const url = parseUrl(req.url);
+  if (!url.pathname.startsWith("/public/quote-image/")) return false;
+  const match = IMAGE_RE.exec(url.pathname);
+  if (!match || req.method !== "GET") { json(res, 404, { ok: false, error: "Not found" }); return true; }
+  const [, token, idxStr] = match;
+
+  const ip = clientIp(req);
+  if (!(await rateLimit(`public-quote-image:${ip}`, 120, 60_000))) {
+    json(res, 429, { ok: false, error: "Too many requests. Please try again shortly." });
+    return true;
+  }
+
+  // Any status is fine here (staff may share a draft's PDF): the unguessable token is
+  // the credential and it grants image-read only, never accept/decline.
+  const quote = await quotes.getQuoteByImageToken(token);
+  if (!quote) { json(res, 404, { ok: false, error: "Not found" }); return true; }
+
+  const images = flattenLineImages(parseLineImages(quote.lineImagesJson));
+  const src = images[Number(idxStr)];
+  const dm = src ? /^data:(image\/(?:png|jpe?g));base64,(.+)$/.exec(src) : null;
+  if (!dm) { json(res, 404, { ok: false, error: "Not found" }); return true; }
+
+  const buf = Buffer.from(dm[2], "base64");
+  const download = url.searchParams.get("download") === "1";
+  const ext = dm[1].includes("png") ? "png" : "jpg";
+  const filename = `quote-${quote.number}-image-${Number(idxStr) + 1}.${ext}`;
+  res.writeHead(200, {
+    "content-type": dm[1],
+    "content-length": buf.length,
+    "content-disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
+    "cache-control": "private, max-age=300",
+  });
+  res.end(buf);
   return true;
 }

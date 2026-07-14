@@ -37,7 +37,7 @@ test("buildQuotationView: one line per piece with selling price allocated by cos
 });
 
 test("cleanLineImages: caps at 3 per row, rejects non-image / oversized, drops empty groups", () => {
-  const big = "data:image/png;base64," + "A".repeat(300 * 1024); // > 200 KB per-image cap
+  const big = "data:image/png;base64," + "A".repeat(2_100_000); // ~1.57 MB > 1.5 MB per-image cap
   const out = cleanLineImages({
     "Dining Table": [DATA_URL, DATA_URL, DATA_URL, DATA_URL], // 4 → capped to 3
     "Wardrobe": ["not-a-data-url", "https://evil/x.png", big], // all rejected → group dropped
@@ -51,9 +51,9 @@ test("cleanLineImages: caps at 3 per row, rejects non-image / oversized, drops e
 });
 
 test("cleanLineImages: enforces a whole-quote byte budget", () => {
-  // ~184 KB each (under the 200 KB per-image cap); the 700 KB total budget admits 3
-  // and drops the rest, so 6 requested images cannot all survive.
-  const img = "data:image/jpeg;base64," + "A".repeat(245760); // ~184 KB decoded
+  // ~1.4 MB each (under the 1.5 MB per-image cap); 6 × 1.4 MB = 8.4 MB exceeds the
+  // 6 MB whole-quote budget, so some are dropped.
+  const img = "data:image/jpeg;base64," + "A".repeat(1_957_000); // ~1.4 MB decoded
   const out = cleanLineImages({ A: [img, img, img], B: [img, img, img] });
   const total = Object.values(out).reduce((s, arr) => s + arr.length, 0);
   assert.ok(total >= 1 && total < 6, `budget drops over-budget images, got ${total}`);
