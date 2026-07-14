@@ -14,6 +14,7 @@ import {
   type LineResult,
   type QuoteResult,
 } from "./costing";
+import { parseSeller, parseBillTo, serializeSeller, serializeBillTo } from "./quotation";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 const KINDS = ["material", "labor", "hardware", "finish", "other"] as const;
@@ -143,6 +144,9 @@ export function serializeQuote(q: QuoteWithLines) {
     contactName: contactField(q, "fullName"),
     contactPhone: contactField(q, "phoneE164"),
     contactEmail: contactField(q, "email"),
+    // Quotation letterhead snapshot (parsed from the stored JSON).
+    seller: parseSeller(q.sellerJson as string | null | undefined),
+    billTo: parseBillTo(q.billToJson as string | null | undefined),
     lineItems: (q.lineItems ?? []).map(serializeLine),
   };
 }
@@ -277,7 +281,21 @@ export interface CreateQuoteInput {
   notes?: string | null;
   terms?: string | null;
   createdById?: string | null;
+  seller?: unknown; // letterhead seller details (sanitized + serialized here)
+  billTo?: unknown; // customer bill-to block
   lines?: LineInputPayload[]; // explicit lines (overrides template seeding when provided)
+}
+
+// The seller (issuer) letterhead is usually identical across a tenant's quotes, so
+// when a new quote omits it we carry it forward from the tenant's most recent quote
+// that has one — the operator types it once, not on every quote.
+async function inheritSellerJson(tenantId: string): Promise<string | null> {
+  const last = await prisma.quote.findFirst({
+    where: { tenantId, sellerJson: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { sellerJson: true },
+  });
+  return last?.sellerJson ?? null;
 }
 
 export async function createQuote(tenantId: string, input: CreateQuoteInput) {
@@ -332,6 +350,8 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
       notes: input.notes ?? null,
       terms: input.terms ?? null,
       createdById: input.createdById ?? null,
+      sellerJson: input.seller !== undefined ? serializeSeller(input.seller) : await inheritSellerJson(tenantId),
+      billToJson: input.billTo !== undefined ? serializeBillTo(input.billTo) : null,
     },
   });
 
@@ -386,6 +406,7 @@ export async function updateQuoteFields(
     title: string; contactId: string | null; companyId: string | null; dealId: string | null;
     overheadPct: number; marginPct: number; marginFloorPct: number; discountPaise: number;
     gstPercent: number; validUntil: Date | null; notes: string | null; terms: string | null;
+    sellerJson: string | null; billToJson: string | null;
   }>,
 ) {
   await prisma.quote.update({ where: { id }, data: fields });

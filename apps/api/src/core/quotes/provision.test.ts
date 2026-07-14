@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../../db/prisma";
-import { seedIndustryDefaults } from "./provision";
+import { seedIndustryDefaults, backfillIndustryDefaults } from "./provision";
 import { INDUSTRY_CATALOG, getIndustryCatalog } from "./industry-catalog";
 import { priceQuote } from "./costing";
 
@@ -84,6 +84,26 @@ test("seeded follow-up sequence + WhatsApp agent are wired across workstreams", 
   const agent = await prisma.voiceCampaign.findFirst({ where: { tenantId } });
   assert.ok(agent?.whatsappAgentEnabled, "WhatsApp agent is enabled");
   assert.ok(agent?.whatsappAgentPrompt?.includes("Grand Palace"), "agent prompt is company-stamped");
+});
+
+test("backfill provisions templates for a pre-existing tenant that has none, and skips ones that do", async () => {
+  // A tenant created "before" auto-provisioning: exists, but has zero quote templates.
+  const bare = await newTenant("travel", "Old Travel Co");
+  // A tenant that already has its kit — backfill must not touch it or duplicate.
+  const seeded = await newTenant("manufacturing", "Already Furnished");
+  await seedIndustryDefaults(seeded, "manufacturing", "Already Furnished");
+  const beforeSeeded = await prisma.quoteTemplate.count({ where: { tenantId: seeded } });
+
+  const n = await backfillIndustryDefaults();
+  assert.ok(n >= 1, "at least the bare tenant was backfilled");
+
+  const bareCount = await prisma.quoteTemplate.count({ where: { tenantId: bare } });
+  assert.equal(bareCount, getIndustryCatalog("travel").templates.length, "bare tenant now has its travel templates");
+  const bareNames = (await prisma.quoteTemplate.findMany({ where: { tenantId: bare }, select: { name: true } })).map((t) => t.name);
+  assert.ok(bareNames.includes("Tour Package (per person)"), "travel-specific template present");
+
+  const afterSeeded = await prisma.quoteTemplate.count({ where: { tenantId: seeded } });
+  assert.equal(afterSeeded, beforeSeeded, "an already-provisioned tenant is left untouched");
 });
 
 test("a service-vertical template prices correctly through the shared costing engine", async () => {

@@ -29,7 +29,9 @@ import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
-import { seedIndustryDefaults } from "./core/quotes/provision";
+import { seedIndustryDefaults, backfillIndustryDefaults } from "./core/quotes/provision";
+import { buildQuotationView, serializeSeller, serializeBillTo } from "./core/quotes/quotation";
+import { renderQuotationPdf } from "./core/export/quote-pdf";
 import { hashToken as hashInviteToken } from "./core/crypto/secrets";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
@@ -4392,6 +4394,8 @@ const handleRequest = async (
           notes: asTrimmedString(body.notes),
           terms: asTrimmedString(body.terms),
           createdById: auth.context.userId,
+          seller: body.seller !== undefined ? body.seller : undefined,
+          billTo: body.billTo !== undefined ? body.billTo : undefined,
           lines: Array.isArray(body.lines) ? (body.lines as quotes.LineInputPayload[]) : undefined,
         });
         json(res, 200, { ok: true, quote });
@@ -4440,6 +4444,8 @@ const handleRequest = async (
         if (body.validUntil !== undefined) fields.validUntil = dateOrNull(body.validUntil);
         if (body.notes !== undefined) fields.notes = asTrimmedString(body.notes);
         if (body.terms !== undefined) fields.terms = asTrimmedString(body.terms);
+        if (body.seller !== undefined) fields.sellerJson = serializeSeller(body.seller);
+        if (body.billTo !== undefined) fields.billToJson = serializeBillTo(body.billTo);
         await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
         // Optional full line-replace (the builder's Edit flow saves all lines at once).
         const quote = Array.isArray(body.lines)
@@ -4569,21 +4575,37 @@ const handleRequest = async (
         json(res, 200, { ok: true, quote });
         return;
       }
-      // GET /quotes/:id/pdf — branded quote PDF (reuses renderBrandedReportPdf).
+      // GET /quotes/:id/pdf — branded quotation PDF (seller letterhead, Bill-To,
+      // itemised table with per-unit GST, CGST/SGST summary, bank details, signatures).
       if (sub === "pdf" && req.method === "GET") {
         const auth = await authorize(req, res, "GET /quotes/:id/pdf");
         if (!auth.ok) return;
         const quote = await quotes.getQuote(auth.context.tenantId, quoteId);
         if (!quote) { json(res, 404, { ok: false, error: "Quote not found" }); return; }
         const brand = await loadReportBrand(auth.context.tenantId);
-        const blocks = quotes.quotePdfBlocks(quote);
-        const pdf = await renderBrandedReportPdf(brand, {
-          title: `Quote ${String(quote.number)}`,
-          subtitle: String(quote.title),
-          generatedAt: new Date(),
-          blocks,
+        // Bill-To falls back to the linked contact when the letterhead wasn't filled in.
+        const billTo = (quote.billTo && Object.keys(quote.billTo).length)
+          ? quote.billTo
+          : { name: quote.contactName ?? undefined, phone: quote.contactPhone ?? undefined };
+        const view = buildQuotationView({
+          lineItems: quote.lineItems,
+          totalPaise: Number(quote.totalPaise) || 0,
+          discountPaise: Number(quote.discountPaise) || 0,
+          gstPercent: Number(quote.gstPercent) || 0,
         });
-        sendBinary(res, "application/pdf", pdf, `quote-${quote.number}.pdf`);
+        const pdf = await renderQuotationPdf({
+          number: `${String(quote.number)} — ${String(quote.title)}`,
+          date: quote.sentAt ? new Date(quote.sentAt as unknown as string) : new Date(quote.createdAt as unknown as string),
+          seller: quote.seller,
+          billTo,
+          view,
+          notes: quote.notes as string | null,
+          terms: quote.terms as string | null,
+          validUntil: quote.validUntil ? new Date(quote.validUntil as unknown as string) : null,
+          accentColor: brand.primaryColor,
+          brandName: brand.brandName,
+        });
+        sendBinary(res, "application/pdf", pdf, `quotation-${quote.number}.pdf`);
         return;
       }
       // GET /quotes/:id/busy-export?format=csv|xml — BUSY-ready sales voucher for an
@@ -6887,6 +6909,11 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     void syncSystemRolePermissions()
       .then(() => console.log("Eynis system-role permissions synced"))
       .catch((err) => console.error("system-role permission sync failed", err));
+    // Back-fill industry quote templates for tenants created before auto-provisioning
+    // existed (their "Start from template" dropdown would otherwise be empty).
+    void backfillIndustryDefaults()
+      .then((n) => { if (n) console.log(`Eynis provisioned quote templates for ${n} existing tenant(s)`); })
+      .catch((err) => console.error("industry defaults backfill failed", err));
     startAutomationWorker(60_000);
     console.log("Eynis AutomationEngine started — 60s cycle");
     startCampaignDispatchWorker();
