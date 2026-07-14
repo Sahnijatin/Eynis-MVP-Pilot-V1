@@ -30,6 +30,7 @@ import { listInventory, applyMovement, updateItem, deleteItem, listMovements, yi
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
 import { hashToken as hashInviteToken, assertSecretsEncryptionConfigured } from "./core/crypto/secrets";
+import { seedIndustryDefaults, backfillIndustryDefaults } from "./core/quotes/provision";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -1069,6 +1070,15 @@ const handleRequest = async (
 
       await seedDefaultRolesForHotel(tenantId);
       await seedLicenseForHotel(tenantId, "starter", 5);
+
+      // Provision the industry "starter kit": quote templates, materials, follow-up
+      // sequence + message templates, and the WhatsApp sales agent — all stamped with
+      // the company name. Best-effort: a seeding hiccup must not block workspace creation.
+      try {
+        await seedIndustryDefaults(tenantId, industry, propertyName);
+      } catch (err) {
+        console.warn("[workspace-create] seedIndustryDefaults failed:", err instanceof Error ? err.message : err);
+      }
 
       const adminRole = await prisma.role.findUnique({
         where: { tenantId_key: { tenantId, key: "admin" } },
@@ -3717,6 +3727,11 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     void syncSystemRolePermissions()
       .then(() => console.log("Eynis system-role permissions synced"))
       .catch((err) => console.error("system-role permission sync failed", err));
+    // Back-fill industry quote templates for tenants created before auto-provisioning
+    // existed (their "Start from template" dropdown would otherwise be empty).
+    void backfillIndustryDefaults()
+      .then((n) => { if (n) console.log(`Eynis provisioned quote templates for ${n} existing tenant(s)`); })
+      .catch((err) => console.error("industry defaults backfill failed", err));
     startAutomationWorker(60_000);
     console.log("Eynis AutomationEngine started — 60s cycle");
     startCampaignDispatchWorker();

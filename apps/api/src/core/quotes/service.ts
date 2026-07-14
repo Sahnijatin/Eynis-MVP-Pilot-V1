@@ -18,6 +18,7 @@ import {
   type LineResult,
   type QuoteResult,
 } from "./costing";
+import { parseSeller, parseBillTo, serializeSeller, serializeBillTo } from "./quotation";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 
@@ -165,6 +166,9 @@ export function serializeQuote(q: QuoteWithLines) {
     contactName: contactField(q, "fullName"),
     contactPhone: contactField(q, "phoneE164"),
     contactEmail: contactField(q, "email"),
+    // Quotation letterhead snapshot (parsed from the stored JSON).
+    seller: parseSeller(q.sellerJson as string | null | undefined),
+    billTo: parseBillTo(q.billToJson as string | null | undefined),
     lineItems: (q.lineItems ?? []).map(serializeLine),
   };
 }
@@ -313,7 +317,21 @@ export interface CreateQuoteInput {
   notes?: string | null;
   terms?: string | null;
   createdById?: string | null;
+  seller?: unknown; // letterhead seller details (sanitized + serialized here)
+  billTo?: unknown; // customer bill-to block
   lines?: LineInputPayload[]; // explicit lines (overrides template seeding when provided)
+}
+
+// The seller (issuer) letterhead is usually identical across a tenant's quotes, so
+// when a new quote omits it we carry it forward from the tenant's most recent quote
+// that has one — the operator types it once, not on every quote.
+async function inheritSellerJson(tenantId: string): Promise<string | null> {
+  const last = await prisma.quote.findFirst({
+    where: { tenantId, sellerJson: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { sellerJson: true },
+  });
+  return last?.sellerJson ?? null;
 }
 
 export async function createQuote(tenantId: string, input: CreateQuoteInput) {
@@ -351,7 +369,11 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
   // Number allocation with a collision-retry: two concurrent creates can compute
   // the same max+1; the unique (tenantId, number) index rejects the loser, who
   // re-reads the max (bumped by the attempt count to step past a winner whose
-  // commit it may not see yet) and tries again.
+  // commit it may not see yet) and tries again. sellerJson/billToJson carry the
+  // quotation letterhead (#183): the seller is inherited from the last quote when
+  // not provided; bill-to is per-customer, never carried forward.
+  const sellerJson = input.seller !== undefined ? serializeSeller(input.seller) : await inheritSellerJson(tenantId);
+  const billToJson = input.billTo !== undefined ? serializeBillTo(input.billTo) : null;
   let quote: { id: string } | null = null;
   for (let attempt = 0; attempt < 5 && !quote; attempt++) {
     const number = await nextQuoteNumber(tenantId, year, attempt);
@@ -375,6 +397,8 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
           notes: input.notes ?? null,
           terms: input.terms ?? null,
           createdById: input.createdById ?? null,
+          sellerJson,
+          billToJson,
         },
       });
     } catch (err) {
@@ -434,6 +458,7 @@ export async function updateQuoteFields(
     title: string; contactId: string | null; companyId: string | null; dealId: string | null;
     overheadPct: number; marginPct: number; marginFloorPct: number; discountPaise: number;
     gstPercent: number; validUntil: Date | null; notes: string | null; terms: string | null;
+    sellerJson: string | null; billToJson: string | null;
   }>,
 ) {
   await prisma.quote.update({ where: { id }, data: fields });

@@ -26,12 +26,21 @@ export interface FollowupResult {
   reason?: string;
 }
 
-// Find the tenant's designated quote follow-up sequence: an active sequence whose
-// name mentions "quote" (seeded as "Quote follow-up"). Returns null if none — the
-// tenant just hasn't set up a drip yet, which is fine (the Activity task still logs).
+// Find the tenant's designated quote follow-up sequence: the active sequence seeded
+// at provisioning as "<noun> follow-up" — the noun varies by industry (quote /
+// estimate / proposal), so match any of them. Returns null if none — the tenant just
+// hasn't set up a drip yet, which is fine (the Activity task still logs).
 async function findQuoteSequence(tenantId: string) {
   return prisma.sequence.findFirst({
-    where: { tenantId, status: "active", name: { contains: "quote", mode: "insensitive" } },
+    where: {
+      tenantId,
+      status: "active",
+      OR: [
+        { name: { contains: "quote", mode: "insensitive" } },
+        { name: { contains: "estimate", mode: "insensitive" } },
+        { name: { contains: "proposal", mode: "insensitive" } },
+      ],
+    },
     orderBy: { createdAt: "asc" },
     include: { steps: { orderBy: { order: "asc" }, take: 1 } },
   });

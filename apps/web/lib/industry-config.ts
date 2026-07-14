@@ -72,7 +72,10 @@ const DASHBOARD_MODULE: NavModule = {
 
 // CRM groups every customer-record surface. The first child is the vertical's
 // primary entity database (guests / clients / patients …); the rest are shared.
-function crmModule(records: { href: string; label: string; description: string }): NavModule {
+// `quotesItem` (optional) surfaces the Quote Builder for verticals that don't already
+// expose it under Operations — labelled per-industry (Estimates / Proposals / …) so
+// the industry-specific quote templates are reachable.
+function crmModule(records: { href: string; label: string; description: string }, quotesItem?: NavItem): NavModule {
   return {
     key: "crm", label: "CRM", icon: Handshake, href: "/crm",
     description: "Everyone you do business with — records, contacts, companies, deals and follow-ups in one place.",
@@ -81,6 +84,7 @@ function crmModule(records: { href: string; label: string; description: string }
       { href: "/contacts", label: "Contacts", icon: Users, description: "People you do business with." },
       { href: "/companies", label: "Companies", icon: Building2, description: "Organizations and accounts." },
       { href: "/deals", label: "Deals", icon: Handshake, description: "Your pipeline and open opportunities." },
+      ...(quotesItem ? [quotesItem] : []),
       { href: "/tasks", label: "Tasks", icon: ClipboardList, description: "Follow-ups and to-dos." },
       { href: "/research", label: "Research", icon: Telescope, description: "Run configurable AI research on any prospect, deal or company." }
     ]
@@ -135,7 +139,10 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
     modules: [
       DASHBOARD_MODULE,
       { key: "operations", label: "Service Requests", icon: Bell, href: "/queue", description: "The live request queue and operational feed." },
-      crmModule({ href: "/guest-database", label: "Guest Database", description: "Your full guest records and history." }),
+      crmModule(
+        { href: "/guest-database", label: "Guest Database", description: "Your full guest records and history." },
+        { href: "/quotes", label: "Proposals", icon: Calculator, description: "Build banquet and room-block proposals from event templates." }
+      ),
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -225,7 +232,10 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
           { href: "/inventory", label: "Inventory", icon: Package, description: "Stock levels and reorder alerts." }
         ]
       },
-      crmModule({ href: "/customers", label: "Customer Loyalty", description: "Your full diner records and loyalty." }),
+      crmModule(
+        { href: "/customers", label: "Customer Loyalty", description: "Your full diner records and loyalty." },
+        { href: "/quotes", label: "Catering Quotes", icon: Calculator, description: "Build catering and bulk-order quotes from menu templates." }
+      ),
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -262,7 +272,10 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
     modules: [
       DASHBOARD_MODULE,
       { key: "operations", label: "Bookings", icon: Plane, href: "/bookings", description: "Your booking pipeline and departures." },
-      crmModule({ href: "/customers", label: "Client Database", description: "Your full traveller records and history." }),
+      crmModule(
+        { href: "/customers", label: "Client Database", description: "Your full traveller records and history." },
+        { href: "/quotes", label: "Trip Quotes", icon: Calculator, description: "Build tour and travel-package quotes from itinerary templates." }
+      ),
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
@@ -299,7 +312,10 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
     modules: [
       DASHBOARD_MODULE,
       { key: "operations", label: "Appointments", icon: CalendarDays, href: "/appointments", description: "Today's schedule and patient flow." },
-      crmModule({ href: "/patients", label: "Patient Records", description: "Your full patient records and history." }),
+      crmModule(
+        { href: "/patients", label: "Patient Records", description: "Your full patient records and history." },
+        { href: "/quotes", label: "Estimates", icon: Calculator, description: "Build treatment estimates from clinic templates." }
+      ),
       MARKETING_MODULE,
       {
         key: "analytics", label: "Analytics", icon: BarChart3, href: "/analytics",
