@@ -51,6 +51,37 @@ function blankLine(groupName: string): DraftLine {
   return { key: newKey(), groupName, name: "", kind: "material", costBasis: "area", lengthMm: "", widthMm: "", heightMm: "", quantity: "1", inventoryItemId: "", unitRateInr: "", wastagePct: "0", laborHours: "0", materialUnit: "sqft" };
 }
 
+const MAX_IMAGES_PER_ROW = 3;
+
+// Shrink a picked image to a small JPEG data URL before it ever leaves the browser:
+// caps the longest edge at 400px and re-encodes as JPEG (~20–40 KB). This keeps the
+// quote payload/PDF small AND normalises any format (HEIC/WebP/PNG) to JPEG, which is
+// what the PDF renderer embeds. Resolves to null if the file can't be read as an image.
+function resizeImageToDataUrl(file: File, maxEdge = 400, quality = 0.7): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) { resolve(null); return; }
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = typeof reader.result === "string" ? reader.result : "";
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function statusTone(s: string): "neutral" | "accent" | "success" | "danger" | "warning" {
   return s === "accepted" ? "success" : s === "sent" ? "accent" : s === "rejected" ? "danger" : s === "expired" ? "warning" : "neutral";
 }
@@ -285,6 +316,20 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const setS = (patch: Partial<QuoteSeller>) => setSeller((s) => ({ ...s, ...patch }));
   const setB = (patch: Partial<QuoteBillTo>) => setBillTo((b) => ({ ...b, ...patch }));
 
+  // Per-piece images (keyed by groupName), shown on the PDF after the Quantity column.
+  const [lineImages, setLineImages] = useState<Record<string, string[]>>(editQuote?.lineImages ?? {});
+  const addImages = async (group: string, files: FileList | null) => {
+    if (!files || !files.length) return;
+    const room = MAX_IMAGES_PER_ROW - (lineImages[group]?.length ?? 0);
+    if (room <= 0) { toast.push(`Up to ${MAX_IMAGES_PER_ROW} images per item`, "info"); return; }
+    const picked = await Promise.all(Array.from(files).slice(0, room).map((f) => resizeImageToDataUrl(f)));
+    const valid = picked.filter((s): s is string => !!s);
+    if (!valid.length) { toast.push("Could not read that image", "error"); return; }
+    setLineImages((m) => ({ ...m, [group]: [...(m[group] ?? []), ...valid].slice(0, MAX_IMAGES_PER_ROW) }));
+  };
+  const removeImage = (group: string, idx: number) =>
+    setLineImages((m) => ({ ...m, [group]: (m[group] ?? []).filter((_, i) => i !== idx) }));
+
   useEffect(() => {
     fetch("/api/contacts?limit=200", { cache: "no-store" })
       .then((r) => r.json())
@@ -390,7 +435,10 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       const customer = custSel === "new" ? { customer: { fullName: newCust.fullName, phoneE164: newCust.phone, email: newCust.email } }
         : custSel ? { contactId: custSel } : {};
       let res: Response;
-      const letterhead = { seller, billTo };
+      // Only keep images for pieces (groups) that still exist on the quote.
+      const groups = new Set(lines.map((l) => l.groupName || "General"));
+      const prunedImages = Object.fromEntries(Object.entries(lineImages).filter(([g, arr]) => groups.has(g) && arr.length));
+      const letterhead = { seller, billTo, lineImages: prunedImages };
       if (isEdit && editQuote) {
         res = await fetch(`/api/quotes/${editQuote.id}`, { method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ title: title.trim(), ...knobs, ...(custSel && custSel !== "new" ? { contactId: custSel } : {}), ...letterhead, lines: linePayload() }) });
@@ -565,6 +613,40 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           ))}
           <Button variant="secondary" size="sm" onClick={addLine}><Plus className="w-3.5 h-3.5" /> Add component</Button>
         </div>
+
+        {/* Images per item — up to 3 per piece, shown on the PDF after the Quantity column */}
+        {(() => {
+          const groups = Array.from(new Set(lines.map((l) => l.groupName || "General")));
+          if (groups.length === 0) return null;
+          return (
+            <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, display: "grid", gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>ITEM IMAGES — up to {MAX_IMAGES_PER_ROW} per item, shown on the quotation PDF</div>
+              {groups.map((g) => {
+                const imgs = lineImages[g] ?? [];
+                return (
+                  <div key={g} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 130, fontSize: 13, fontWeight: 600 }}>{g}</div>
+                    {imgs.map((src, i) => (
+                      <div key={i} style={{ position: "relative", width: 48, height: 48 }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+                        <button type="button" onClick={() => removeImage(g, i)} title="Remove"
+                          style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: "none", background: "#ef4444", color: "#fff", fontSize: 11, lineHeight: "18px", cursor: "pointer" }}>×</button>
+                      </div>
+                    ))}
+                    {imgs.length < MAX_IMAGES_PER_ROW && (
+                      <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: 6, border: "1px dashed #cbd5e1", color: "#64748b", cursor: "pointer", fontSize: 20 }}>
+                        +
+                        <input type="file" accept="image/*" multiple style={{ display: "none" }}
+                          onChange={(e) => { addImages(g, e.target.files); e.target.value = ""; }} />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Totals — internal view (the customer PDF never shows cost/margin) */}
         {q && (

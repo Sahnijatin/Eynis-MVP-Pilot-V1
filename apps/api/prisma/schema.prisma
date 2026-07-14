@@ -1321,6 +1321,7 @@ model Quote {
   // the quote. Stored as JSON strings (see SellerDetails / BillTo in quotes/service).
   sellerJson        String? // seller (issuer) business/tax/bank details for the PDF
   billToJson        String? // customer bill-to block (name/address/pin/phone/gstin)
+  lineImagesJson    String? // per-piece images shown on the PDF: { groupName: dataUrl[] } (max 3/row)
   notes             String?
   terms             String?
   validUntil        DateTime?

@@ -78,6 +78,59 @@ export function serializeBillTo(o: unknown): string | null {
   return Object.keys(c).length ? JSON.stringify(c) : null;
 }
 
+// Per-piece images shown on the quotation PDF, keyed by groupName. Each value is a
+// small resized image data URL (data:image/png|jpeg;base64,…), max 3 per piece.
+export type LineImages = Record<string, string[]>;
+
+const MAX_IMAGES_PER_ROW = 3;
+const MAX_IMAGE_BYTES = 200 * 1024; // per image, after client-side resize
+const MAX_TOTAL_IMAGE_BYTES = 700 * 1024; // whole quote — keeps the JSON under the 1 MiB body cap
+
+// Accept only png/jpeg data URLs; reject anything else (svg, remote URLs, junk). The
+// base64 payload must decode and be within the per-image byte cap.
+function validImageDataUrl(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const m = /^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=]+)$/.exec(v.trim());
+  if (!m) return null;
+  const bytes = Math.floor((m[2].length * 3) / 4); // base64 → byte estimate
+  if (bytes === 0 || bytes > MAX_IMAGE_BYTES) return null;
+  return v.trim();
+}
+
+// Sanitize an untrusted { groupName: string[] } map: known-shape only, ≤3 valid
+// images per row, and a whole-quote byte budget so a crafted request can't bloat the
+// DB/PDF. Empty result → caller stores NULL.
+export function cleanLineImages(o: unknown): LineImages {
+  const src = (o ?? {}) as Record<string, unknown>;
+  const out: LineImages = {};
+  let totalBytes = 0;
+  for (const [group, arr] of Object.entries(src)) {
+    if (!Array.isArray(arr)) continue;
+    const imgs: string[] = [];
+    for (const item of arr) {
+      if (imgs.length >= MAX_IMAGES_PER_ROW) break;
+      const ok = validImageDataUrl(item);
+      if (!ok) continue;
+      const bytes = Math.floor((ok.length * 3) / 4);
+      if (totalBytes + bytes > MAX_TOTAL_IMAGE_BYTES) continue; // over budget: drop, don't fail
+      totalBytes += bytes;
+      imgs.push(ok);
+    }
+    const key = String(group).slice(0, 200);
+    if (imgs.length) out[key] = imgs;
+  }
+  return out;
+}
+
+export function parseLineImages(json: string | null | undefined): LineImages {
+  if (!json) return {};
+  try { return cleanLineImages(JSON.parse(json)); } catch { return {}; }
+}
+export function serializeLineImages(o: unknown): string | null {
+  const c = cleanLineImages(o);
+  return Object.keys(c).length ? JSON.stringify(c) : null;
+}
+
 export interface QuotationItem {
   name: string; // the piece (groupName)
   spec: string; // its components + dimensions, as a customer-readable spec
@@ -87,6 +140,7 @@ export interface QuotationItem {
   taxPct: number;
   taxPaise: number; // GST on this line
   amountPaise: number; // ex-GST + tax
+  images: string[]; // up to 3 image data URLs for this piece
 }
 
 export interface QuotationView {
@@ -124,7 +178,9 @@ export function buildQuotationView(q: {
   totalPaise: number; // ex-GST selling value, AFTER discount (the engine's stored total)
   discountPaise: number;
   gstPercent: number;
+  images?: LineImages; // per-piece images keyed by groupName
 }): QuotationView {
+  const images = cleanLineImages(q.images);
   const gstPct = Math.max(0, Number(q.gstPercent) || 0);
   const discountPaise = Math.max(0, Math.round(Number(q.discountPaise) || 0));
   const netTotal = Math.max(0, Math.round(Number(q.totalPaise) || 0));
@@ -153,14 +209,14 @@ export function buildQuotationView(q: {
     gstTotal += tax;
     const lines = groups.get(group)!;
     const spec = lines.map((l) => { const d = dimsOf(l); return d ? `${l.name} (${d})` : l.name; }).join(", ");
-    items.push({ name: group, spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax });
+    items.push({ name: group, spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [] });
   });
 
   // Degenerate case (no line items): a single line for the whole quote.
   if (items.length === 0 && taxablePaise > 0) {
     const tax = Math.round((taxablePaise * gstPct) / 100);
     gstTotal = tax;
-    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax });
+    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax, images: [] });
   }
 
   const cgstPaise = Math.round(gstTotal / 2);

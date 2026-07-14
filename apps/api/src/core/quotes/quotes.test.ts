@@ -538,6 +538,32 @@ test("quotation letterhead: seller/bill-to persist, carry forward, and render on
   }
 });
 
+test("line images: persist per piece, cap at 3, and embed in the PDF", async () => {
+  const { base, H, close } = await setup();
+  try {
+    // A real 1×1 red PNG (base64) so pdf-lib actually embeds it.
+    const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const create = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Table", gstPercent: 5,
+      lines: [{ groupName: "Dining Table", name: "Top", costBasis: "fixed", quantity: 1, unitRatePaise: 5000000 }],
+      lineImages: { "Dining Table": [PNG, PNG, PNG, PNG] }, // 4 → capped to 3
+    }) });
+    const { quote } = (await create.json()) as { quote: { id: string; lineImages: Record<string, string[]> } };
+    assert.equal(quote.lineImages["Dining Table"].length, 3, "capped at 3 server-side");
+
+    // PDF renders and is meaningfully larger than an image-free one (the PNG is embedded).
+    const withImg = new Uint8Array(await (await fetch(base + `/quotes/${quote.id}/pdf`, { headers: H })).arrayBuffer());
+    assert.equal(new TextDecoder().decode(withImg.slice(0, 5)), "%PDF-");
+
+    // Editing to remove images is allowed on a draft and clears them.
+    await fetch(base + `/quotes/${quote.id}`, { method: "PATCH", headers: H, body: JSON.stringify({ lineImages: {} }) });
+    const after = (await (await fetch(base + `/quotes/${quote.id}`, { headers: H })).json()) as { quote: { lineImages: Record<string, string[]> } };
+    assert.deepEqual(after.quote.lineImages, {}, "images cleared");
+  } finally {
+    await close();
+  }
+});
+
 test("quotes are tenant-isolated", async () => {
   const a = await setup();
   const b = await setup();

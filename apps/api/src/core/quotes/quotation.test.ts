@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo } from "./quotation";
+import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages } from "./quotation";
+
+// A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
+const DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
 
 const line = (groupName: string, name: string, lineCostPaise: number, dims?: { l?: number; w?: number; h?: number }) => ({
   groupName, name, lineCostPaise,
@@ -31,6 +34,41 @@ test("buildQuotationView: one line per piece with selling price allocated by cos
   assert.equal(view.grandTotalPaise, 100000 + 18000);
   // Spec carries the piece's components + dimensions.
   assert.match(view.items[0].spec, /Table top \(1800 × 900 mm\)/);
+});
+
+test("cleanLineImages: caps at 3 per row, rejects non-image / oversized, drops empty groups", () => {
+  const big = "data:image/png;base64," + "A".repeat(300 * 1024); // > 200 KB per-image cap
+  const out = cleanLineImages({
+    "Dining Table": [DATA_URL, DATA_URL, DATA_URL, DATA_URL], // 4 → capped to 3
+    "Wardrobe": ["not-a-data-url", "https://evil/x.png", big], // all rejected → group dropped
+    "Empty": [],
+    12345: [DATA_URL], // non-string key coerced
+  });
+  assert.equal(out["Dining Table"].length, 3);
+  assert.equal(out["Wardrobe"], undefined);
+  assert.equal(out["Empty"], undefined);
+  assert.equal(out["12345"].length, 1);
+});
+
+test("cleanLineImages: enforces a whole-quote byte budget", () => {
+  // ~184 KB each (under the 200 KB per-image cap); the 700 KB total budget admits 3
+  // and drops the rest, so 6 requested images cannot all survive.
+  const img = "data:image/jpeg;base64," + "A".repeat(245760); // ~184 KB decoded
+  const out = cleanLineImages({ A: [img, img, img], B: [img, img, img] });
+  const total = Object.values(out).reduce((s, arr) => s + arr.length, 0);
+  assert.ok(total >= 1 && total < 6, `budget drops over-budget images, got ${total}`);
+});
+
+test("buildQuotationView: attaches images to the matching piece by groupName", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Dining Table", "Top", 8000), line("Wardrobe", "Carcass", 2000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 0,
+    images: { "Dining Table": [DATA_URL, DATA_URL] },
+  });
+  const table = view.items.find((i) => i.name === "Dining Table")!;
+  const wardrobe = view.items.find((i) => i.name === "Wardrobe")!;
+  assert.equal(table.images.length, 2);
+  assert.equal(wardrobe.images.length, 0);
 });
 
 test("buildQuotationView: discount is shown pre-tax-value and applied after GST", () => {
