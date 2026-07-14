@@ -29,6 +29,7 @@ import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
+import { seedIndustryDefaults } from "./core/quotes/provision";
 import { hashToken as hashInviteToken } from "./core/crypto/secrets";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
@@ -1521,6 +1522,15 @@ const handleRequest = async (
 
       await seedDefaultRolesForHotel(tenantId);
       await seedLicenseForHotel(tenantId, "starter", 5);
+
+      // Provision the industry "starter kit": quote templates, materials, follow-up
+      // sequence + message templates, and the WhatsApp sales agent — all stamped with
+      // the company name. Best-effort: a seeding hiccup must not block workspace creation.
+      try {
+        await seedIndustryDefaults(tenantId, industry, propertyName);
+      } catch (err) {
+        console.warn("[workspace-create] seedIndustryDefaults failed:", err instanceof Error ? err.message : err);
+      }
 
       const adminRole = await prisma.role.findUnique({
         where: { tenantId_key: { tenantId, key: "admin" } },
