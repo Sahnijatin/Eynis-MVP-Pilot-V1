@@ -37,13 +37,15 @@ export class PayloadTooLargeError extends Error {
   constructor() { super("Request body too large"); this.name = "PayloadTooLargeError"; }
 }
 
-export const parseRawBody = async (req: IncomingMessage): Promise<string> => {
+// `maxBytes` lets a specific route (e.g. quote save, which carries resized images)
+// raise the cap above the tight global default without weakening it everywhere.
+export const parseRawBody = async (req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<string> => {
   const chunks: Uint8Array[] = [];
   let total = 0;
   for await (const chunk of req) {
     const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
     total += buf.length;
-    if (total > MAX_BODY_BYTES) {
+    if (total > maxBytes) {
       req.destroy();
       throw new PayloadTooLargeError();
     }
@@ -52,8 +54,8 @@ export const parseRawBody = async (req: IncomingMessage): Promise<string> => {
   return Buffer.concat(chunks).toString("utf8").trim();
 };
 
-export const parseBody = async (req: IncomingMessage): Promise<unknown> => {
-  const raw = await parseRawBody(req);
+export const parseBody = async (req: IncomingMessage, maxBytes?: number): Promise<unknown> => {
+  const raw = await parseRawBody(req, maxBytes);
   if (!raw) return {};
   return JSON.parse(raw);
 };
@@ -62,8 +64,8 @@ export const parseBody = async (req: IncomingMessage): Promise<unknown> => {
 // which handlers blindly casting to Record<string, unknown> would then read
 // properties off — this validates the root is a plain object and returns {} for
 // anything else, so downstream field coercion always starts from a safe shape.
-export const parseObjectBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
-  const parsed = await parseBody(req);
+export const parseObjectBody = async (req: IncomingMessage, maxBytes?: number): Promise<Record<string, unknown>> => {
+  const parsed = await parseBody(req, maxBytes);
   return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
     : {};

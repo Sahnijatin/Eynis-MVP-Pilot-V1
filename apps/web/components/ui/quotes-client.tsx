@@ -53,11 +53,11 @@ function blankLine(groupName: string): DraftLine {
 
 const MAX_IMAGES_PER_ROW = 3;
 
-// Shrink a picked image to a small JPEG data URL before it ever leaves the browser:
-// caps the longest edge at 400px and re-encodes as JPEG (~20–40 KB). This keeps the
-// quote payload/PDF small AND normalises any format (HEIC/WebP/PNG) to JPEG, which is
-// what the PDF renderer embeds. Resolves to null if the file can't be read as an image.
-function resizeImageToDataUrl(file: File, maxEdge = 400, quality = 0.7): Promise<string | null> {
+// Resize a picked image to a JPEG data URL before it leaves the browser: caps the
+// longest edge at 1600px and re-encodes as JPEG. Big enough for a crisp full view
+// (opened via the PDF's "Image N" links) yet bounded, and normalises any format
+// (HEIC/WebP/PNG) to JPEG. Resolves to null if the file can't be read as an image.
+function resizeImageToDataUrl(file: File, maxEdge = 1600, quality = 0.72): Promise<string | null> {
   return new Promise((resolve) => {
     if (!file.type.startsWith("image/")) { resolve(null); return; }
     const reader = new FileReader();
@@ -97,6 +97,19 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
     const res = await fetch("/api/quotes?limit=100", { cache: "no-store" });
     const data = (await res.json()) as { items?: Quote[] };
     if (data.items) setQuotes(data.items);
+  }, []);
+
+  // Open the editor with the FULL quote — the list omits per-piece images (they can be
+  // large), so re-fetch the single quote to load them, THEN open (the builder seeds its
+  // state on mount, so it must receive the complete quote up front).
+  const openEdit = useCallback(async (q: Quote) => {
+    try {
+      const res = await fetch(`/api/quotes/${q.id}`, { cache: "no-store" });
+      const data = (await res.json()) as { ok: boolean; quote?: Quote };
+      setEditing(data.ok && data.quote ? data.quote : q);
+    } catch {
+      setEditing(q); // fall back to the list item (letterhead/lines present, images may be absent)
+    }
   }, []);
 
   const act = useCallback(async (id: string, action: "send" | "accept" | "reject" | "expire") => {
@@ -170,7 +183,7 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
                     </a>{" "}
                     {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => setViewing(q)} title="View quote"><Eye className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => copyLink(q.id)} title="Copy customer link (replaces any earlier link)"><Link2 className="w-3.5 h-3.5" /></Button>}{" "}
-                    {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => setEditing(q)} title="Edit draft"><Pencil className="w-3.5 h-3.5" /></Button>}{" "}
+                    {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => openEdit(q)} title="Edit draft"><Pencil className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "send")}><Send className="w-3.5 h-3.5" /> Send</Button>}{" "}
                     {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}{" "}
                     {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "reject")} title="Mark rejected"><XCircle className="w-3.5 h-3.5" /> Reject</Button>}{" "}

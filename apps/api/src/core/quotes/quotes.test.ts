@@ -538,10 +538,10 @@ test("quotation letterhead: seller/bill-to persist, carry forward, and render on
   }
 });
 
-test("line images: persist per piece, cap at 3, and embed in the PDF", async () => {
+test("line images: persist per piece (cap 3), PDF renders, and the public serve endpoint opens/downloads", async () => {
   const { base, H, close } = await setup();
   try {
-    // A real 1×1 red PNG (base64) so pdf-lib actually embeds it.
+    // A real 1×1 red PNG.
     const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     const create = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
       title: "Table", gstPercent: 5,
@@ -551,9 +551,33 @@ test("line images: persist per piece, cap at 3, and embed in the PDF", async () 
     const { quote } = (await create.json()) as { quote: { id: string; lineImages: Record<string, string[]> } };
     assert.equal(quote.lineImages["Dining Table"].length, 3, "capped at 3 server-side");
 
-    // PDF renders and is meaningfully larger than an image-free one (the PNG is embedded).
-    const withImg = new Uint8Array(await (await fetch(base + `/quotes/${quote.id}/pdf`, { headers: H })).arrayBuffer());
-    assert.equal(new TextDecoder().decode(withImg.slice(0, 5)), "%PDF-");
+    // PDF renders (links are text, not embedded images).
+    const pdf = new Uint8Array(await (await fetch(base + `/quotes/${quote.id}/pdf`, { headers: H })).arrayBuffer());
+    assert.equal(new TextDecoder().decode(pdf.slice(0, 5)), "%PDF-");
+
+    // Mint the image token (the PDF route does this when EYNIS_PUBLIC_URL is set) and
+    // exercise the public serve endpoint directly.
+    const token = await prisma.quote.findUnique({ where: { id: quote.id }, select: { imageToken: true } })
+      .then((r) => r?.imageToken) ?? null;
+    const tok = token ?? (await (async () => {
+      const t = "imgtok-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      await prisma.quote.update({ where: { id: quote.id }, data: { imageToken: t } });
+      return t;
+    })());
+
+    const open = await fetch(base + `/public/quote-image/${tok}/0`);
+    assert.equal(open.status, 200);
+    assert.equal(open.headers.get("content-type"), "image/png");
+    assert.match(open.headers.get("content-disposition") ?? "", /^inline/);
+    const bytes = new Uint8Array(await open.arrayBuffer());
+    assert.ok(bytes.byteLength > 20 && bytes[0] === 0x89 && bytes[1] === 0x50, "returns real PNG bytes");
+
+    const dl = await fetch(base + `/public/quote-image/${tok}/0?download=1`);
+    assert.match(dl.headers.get("content-disposition") ?? "", /^attachment/);
+
+    // Out-of-range index and a bad token both 404 (token is the credential).
+    assert.equal((await fetch(base + `/public/quote-image/${tok}/9`)).status, 404);
+    assert.equal((await fetch(base + `/public/quote-image/deadbeefdeadbeef00/0`)).status, 404);
 
     // Editing to remove images is allowed on a draft and clears them.
     await fetch(base + `/quotes/${quote.id}`, { method: "PATCH", headers: H, body: JSON.stringify({ lineImages: {} }) });

@@ -83,8 +83,8 @@ export function serializeBillTo(o: unknown): string | null {
 export type LineImages = Record<string, string[]>;
 
 const MAX_IMAGES_PER_ROW = 3;
-const MAX_IMAGE_BYTES = 200 * 1024; // per image, after client-side resize
-const MAX_TOTAL_IMAGE_BYTES = 700 * 1024; // whole quote — keeps the JSON under the 1 MiB body cap
+const MAX_IMAGE_BYTES = 1_500 * 1024; // per image, after client-side resize to ~1600px
+const MAX_TOTAL_IMAGE_BYTES = 6 * 1024 * 1024; // whole quote (the quote-save route raises its body cap to match)
 
 // Accept only png/jpeg data URLs; reject anything else (svg, remote URLs, junk). The
 // base64 payload must decode and be within the per-image byte cap.
@@ -131,6 +131,23 @@ export function serializeLineImages(o: unknown): string | null {
   return Object.keys(c).length ? JSON.stringify(c) : null;
 }
 
+// Flatten the per-group image map to a single ordered list. The PDF (link targets)
+// and the public serve endpoint both use THIS order, so a link's index N always
+// resolves to the same image. Object insertion order is stable across JSON.parse +
+// cleanLineImages, so both sides agree.
+export function flattenLineImages(images: LineImages): string[] {
+  const out: string[] = [];
+  for (const arr of Object.values(images)) for (const s of arr) out.push(s);
+  return out;
+}
+// Map each group to the GLOBAL indices of its images in the flattened order.
+export function lineImageIndexByGroup(images: LineImages): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  let i = 0;
+  for (const [group, arr] of Object.entries(images)) map.set(group, arr.map(() => i++));
+  return map;
+}
+
 export interface QuotationItem {
   name: string; // the piece (groupName)
   spec: string; // its components + dimensions, as a customer-readable spec
@@ -140,7 +157,8 @@ export interface QuotationItem {
   taxPct: number;
   taxPaise: number; // GST on this line
   amountPaise: number; // ex-GST + tax
-  images: string[]; // up to 3 image data URLs for this piece
+  images: string[]; // up to 3 image data URLs for this piece (web view / previews)
+  imageIndices: number[]; // global indices of this piece's images (PDF link targets + serve endpoint)
 }
 
 export interface QuotationView {
@@ -181,6 +199,7 @@ export function buildQuotationView(q: {
   images?: LineImages; // per-piece images keyed by groupName
 }): QuotationView {
   const images = cleanLineImages(q.images);
+  const idxByGroup = lineImageIndexByGroup(images);
   const gstPct = Math.max(0, Number(q.gstPercent) || 0);
   const discountPaise = Math.max(0, Math.round(Number(q.discountPaise) || 0));
   const netTotal = Math.max(0, Math.round(Number(q.totalPaise) || 0));
@@ -209,14 +228,14 @@ export function buildQuotationView(q: {
     gstTotal += tax;
     const lines = groups.get(group)!;
     const spec = lines.map((l) => { const d = dimsOf(l); return d ? `${l.name} (${d})` : l.name; }).join(", ");
-    items.push({ name: group, spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [] });
+    items.push({ name: group, spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [], imageIndices: idxByGroup.get(group) ?? [] });
   });
 
   // Degenerate case (no line items): a single line for the whole quote.
   if (items.length === 0 && taxablePaise > 0) {
     const tax = Math.round((taxablePaise * gstPct) / 100);
     gstTotal = tax;
-    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax, images: [] });
+    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax, images: [], imageIndices: [] });
   }
 
   const cgstPaise = Math.round(gstTotal / 2);

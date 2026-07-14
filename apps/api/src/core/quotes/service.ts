@@ -198,7 +198,10 @@ export async function listQuotes(
   if (opts.contactId) where.contactId = opts.contactId;
   if (opts.dealId) where.dealId = opts.dealId;
   const [rows, total] = await Promise.all([
-    prisma.quote.findMany({ where, include: withLines, orderBy: { createdAt: "desc" }, take: opts.limit, skip: opts.offset }),
+    // Omit the (potentially multi-MB) image blob from list rows — the table doesn't
+    // render images, and the editor re-fetches the full quote. serializeQuote then
+    // sees lineImagesJson as undefined and returns an empty map for list items.
+    prisma.quote.findMany({ where, include: withLines, omit: { lineImagesJson: true }, orderBy: { createdAt: "desc" }, take: opts.limit, skip: opts.offset }),
     prisma.quote.count({ where }),
   ]);
   return { items: rows.map((r) => serializeQuote(r as unknown as QuoteWithLines)), total };
@@ -212,6 +215,25 @@ export async function getQuote(tenantId: string, id: string) {
 // Raw fetch (for lifecycle/PDF handlers that need the model, not the serialized shape).
 export async function getQuoteRaw(tenantId: string, id: string) {
   return prisma.quote.findFirst({ where: { id, tenantId }, include: withLines });
+}
+
+// Lazily mint a plaintext, unguessable token that gates PUBLIC image viewing for this
+// quote (used by the PDF's "Image N" links). Stored plaintext so the PDF can always
+// embed a stable URL; it grants image-read only (NOT accept/decline — that's the
+// separate hashed publicToken), so it's low-sensitivity. Idempotent: minted once.
+export async function ensureImageToken(tenantId: string, quoteId: string): Promise<string | null> {
+  const q = await prisma.quote.findFirst({ where: { id: quoteId, tenantId }, select: { imageToken: true } });
+  if (!q) return null;
+  if (q.imageToken) return q.imageToken;
+  const token = randomBytes(18).toString("base64url");
+  await prisma.quote.updateMany({ where: { id: quoteId, tenantId }, data: { imageToken: token } });
+  return token;
+}
+
+// Resolve a quote by its image token (public image serve path). Includes the lines so
+// the caller can read lineImagesJson.
+export async function getQuoteByImageToken(token: string) {
+  return prisma.quote.findUnique({ where: { imageToken: token }, include: withLines });
 }
 
 // ── Number generation ──────────────────────────────────────────────────────────

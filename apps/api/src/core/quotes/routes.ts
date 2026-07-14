@@ -17,6 +17,10 @@ import { renderQuotationPdf } from "../export/quote-pdf";
 import { resolveAiCredentials, aiConfigured, chooseProvider, providerKey } from "../research/ai-credentials";
 import { aiCompleteTiered, extractJson } from "../ai/intelligence";
 
+// Quote create/update carry resized (≤1600px) images inline, so these routes accept a
+// larger body than the tight global default (the whole-quote image budget is 6 MB).
+const QUOTE_BODY_MAX_BYTES = 8 * 1024 * 1024;
+
 export async function handleQuoteRoutes(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const routePath = parseUrl(req.url).pathname;
   if (!(routePath === "/quotes" || routePath.startsWith("/quotes/") || routePath === "/quote-templates" || routePath.startsWith("/quote-templates/"))) return false;
@@ -174,7 +178,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
     if (req.url === "/quotes" && req.method === "POST") {
       const auth = await authorize(req, res, "POST /quotes");
       if (!auth.ok) return true;
-      const body = await parseObjectBody(req);
+      const body = await parseObjectBody(req, QUOTE_BODY_MAX_BYTES); // carries resized images
       const title = asTrimmedString(body.title);
       if (!title) { json(res, 400, { ok: false, error: "title is required" }); return true; }
       // Resolve the customer: an explicit contactId, else a new-customer object
@@ -257,7 +261,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         const raw = await quotes.getQuoteRaw(auth.context.tenantId, quoteId);
         if (!raw) { json(res, 404, { ok: false, error: "Quote not found" }); return true; }
         if (raw.status !== "draft") { json(res, 409, { ok: false, error: "Only draft quotes can be edited" }); return true; }
-        const body = await parseObjectBody(req);
+        const body = await parseObjectBody(req, QUOTE_BODY_MAX_BYTES); // carries resized images
         const fields: Record<string, unknown> = {};
         const t = asTrimmedString(body.title); if (t) fields.title = t;
         if (body.contactId !== undefined) fields.contactId = asTrimmedString(body.contactId);
@@ -428,6 +432,16 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           gstPercent: Number(quote.gstPercent) || 0,
           images: quote.lineImages,
         });
+        // If the quote has images AND a public base URL is configured, mint (once) a
+        // read-only image token and build the link prefix the PDF's "Image N" links use.
+        // Without a public URL, the renderer falls back to plain text (no links).
+        const hasImages = view.items.some((it) => it.imageIndices.length > 0);
+        const publicBase = (process.env.EYNIS_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+        let imageLinkBase: string | null = null;
+        if (hasImages && publicBase) {
+          const token = await quotes.ensureImageToken(auth.context.tenantId, quoteId);
+          if (token) imageLinkBase = `${publicBase}/api/public/quote-image/${token}`;
+        }
         const pdf = await renderQuotationPdf({
           number: `${String(quote.number)} — ${String(quote.title)}`,
           date: quote.sentAt ? new Date(quote.sentAt as unknown as string) : new Date(quote.createdAt as unknown as string),
@@ -439,6 +453,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           validUntil: quote.validUntil ? new Date(quote.validUntil as unknown as string) : null,
           accentColor: brand.primaryColor,
           brandName: brand.brandName,
+          imageLinkBase,
         });
         sendBinary(res, "application/pdf", pdf, `quotation-${quote.number}.pdf`);
         return true;

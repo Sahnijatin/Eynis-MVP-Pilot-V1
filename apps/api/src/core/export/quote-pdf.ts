@@ -6,7 +6,7 @@
 // The layout mirrors a standard Indian GST quotation. The accent colour comes from the
 // tenant brand (white-label), so it themes per tenant. All money is integer paise.
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import type { SellerDetails, BillTo, QuotationView } from "../quotes/quotation";
 
 const A4: [number, number] = [595.28, 841.89];
@@ -19,6 +19,23 @@ const WHITE = rgb(1, 1, 1);
 const INK = rgb(0.1, 0.12, 0.16);
 const MUTED = rgb(0.42, 0.46, 0.52);
 const LINE = rgb(0.82, 0.84, 0.87);
+const LINKBLUE = rgb(0.11, 0.35, 0.75);
+
+// Attach a clickable URI link annotation over a rectangle on a page. pdf-lib has no
+// high-level link API, so we build the annotation dict directly and append it to the
+// page's /Annots. Supported by every mainstream PDF viewer.
+function addLink(page: PDFPage, rect: [number, number, number, number], uri: string) {
+  const doc = page.doc;
+  const ref = doc.context.register(
+    doc.context.obj({
+      Type: "Annot", Subtype: "Link", Rect: rect, Border: [0, 0, 0],
+      A: { Type: "Action", S: "URI", URI: PDFString.of(uri) },
+    }),
+  );
+  const existing = page.node.Annots();
+  if (existing) existing.push(ref);
+  else page.node.set(PDFName.of("Annots"), doc.context.obj([ref]));
+}
 
 const hexToRgb = (hex: string): RGB => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec((hex || "").trim());
@@ -62,44 +79,22 @@ export interface QuotationPdfData {
   validUntil?: Date | null;
   accentColor: string;
   brandName: string;
+  // Absolute URL prefix for image links, e.g. "https://demo.eynis.com/api/public/
+  // quote-image/<token>". The Image(s) column renders "Image N" links to `${base}/<idx>`
+  // (opens) and `${base}/<idx>?download=1` (downloads). Null → plain text, no links.
+  imageLinkBase?: string | null;
 }
 
 // Item table column layout (fractions of content width). Numeric columns are right-aligned.
-// The Image(s) column sits right after Quantity; rows carrying images grow taller.
+// The Image(s) column (clickable "Image N" links) sits right after Quantity.
 const COLS = { item: 0.30, qty: 0.10, images: 0.18, price: 0.16, tax: 0.14, amount: 0.12 };
-
-// Decode a data:image/(png|jpeg) URL and embed it once. Returns null on anything the
-// renderer can't handle so a bad image never breaks the whole PDF.
-async function embedDataUrl(doc: PDFDocument, src: string): Promise<PDFImage | null> {
-  try {
-    const m = /^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=]+)$/.exec(src.trim());
-    if (!m) return null;
-    const bytes = Uint8Array.from(Buffer.from(m[2], "base64"));
-    if (!bytes.byteLength) return null;
-    return /png/i.test(m[1]) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-  } catch { return null; }
-}
-
-// Pre-embed every unique image up front (embedding is async; the row loop draws
-// synchronously). Cache by the data-URL string so a reused image embeds once.
-async function embedItemImages(doc: PDFDocument, view: QuotationView): Promise<Map<string, PDFImage>> {
-  const cache = new Map<string, PDFImage>();
-  for (const it of view.items) {
-    for (const src of it.images ?? []) {
-      if (cache.has(src)) continue;
-      const img = await embedDataUrl(doc, src);
-      if (img) cache.set(src, img);
-    }
-  }
-  return cache;
-}
 
 export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const accent = hexToRgb(data.accentColor);
-  const imgCache = await embedItemImages(doc, data.view);
+  const linkBase = (data.imageLinkBase ?? "").trim().replace(/\/$/, "") || null;
 
   let page: PDFPage = doc.addPage(A4);
   const top = A4[1] - MARGIN;
@@ -182,30 +177,36 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   };
   drawTableHeader();
 
-  // Draw up to 3 thumbnails in the Image(s) cell for a row, centred within its box.
-  const drawRowImages = (imgs: PDFImage[], rowTopY: number, rowH: number) => {
-    const cellX = cImg + 4, cellW = cPrice - cImg - 8, maxH = rowH - 10;
-    const gap = 4;
-    const slotW = (cellW - gap * (imgs.length - 1)) / imgs.length;
-    let ix = cellX;
-    for (const img of imgs) {
-      const scale = Math.min(slotW / img.width, maxH / img.height);
-      const w = img.width * scale, h = img.height * scale;
-      page.drawImage(img, { x: ix + (slotW - w) / 2, y: rowTopY - rowH + (rowH - h) / 2, width: w, height: h });
-      ix += slotW + gap;
-    }
+  // Draw the "Image N" / "download" links for a row, stacked in the Image(s) cell.
+  // Each image gets an "Image N" link (opens) and a smaller "download" link beside it.
+  // With no linkBase (public URL not configured), it degrades to plain "Image N" text.
+  const drawRowImageLinks = (indices: number[], rowTopY: number) => {
+    let ly = rowTopY - 13;
+    indices.forEach((gidx, j) => {
+      const label = `Image ${j + 1}`;
+      const x = cImg + 4;
+      T(label, x, ly, 8.5, font, linkBase ? LINKBLUE : MUTED);
+      if (linkBase) {
+        const w = font.widthOfTextAtSize(label, 8.5);
+        addLink(page, [x, ly - 2, x + w, ly + 9], `${linkBase}/${gidx}`);
+        const dlX = x + w + 6;
+        T("download", dlX, ly, 7, font, MUTED);
+        addLink(page, [dlX, ly - 2, dlX + font.widthOfTextAtSize("download", 7), ly + 8], `${linkBase}/${gidx}?download=1`);
+      }
+      ly -= 12;
+    });
   };
 
   const bottomLimit = MARGIN + 150; // reserve room for the summary + signatures
   for (const it of data.view.items) {
-    const imgs = (it.images ?? []).map((s) => imgCache.get(s)).filter((x): x is PDFImage => !!x).slice(0, 3);
-    const rowH = imgs.length ? 52 : it.spec ? 30 : 22;
+    const imgCount = it.imageIndices?.length ?? 0;
+    const rowH = imgCount ? Math.max(30, 14 + imgCount * 12) : it.spec ? 30 : 22;
     if (y - rowH < bottomLimit) { page = doc.addPage(A4); y = A4[1] - MARGIN; drawTableHeader(); }
     const ty = y - 15;
     T(truncate(it.name, bold, 10, (cQty - cItem) - 12), cItem + 8, ty, 10, bold, INK);
     if (it.spec) T(truncate(it.spec, font, 8, (cQty - cItem) - 12), cItem + 8, ty - 11, 8, font, MUTED);
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
-    if (imgs.length) drawRowImages(imgs, y, rowH);
+    if (imgCount) drawRowImageLinks(it.imageIndices, y);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
     T(`${money(it.taxPaise)} (${it.taxPct}%)`, cTax + 4, ty, 8, font, INK);
     TR(money(it.amountPaise), RIGHT - 8, ty, 9, font, INK);
