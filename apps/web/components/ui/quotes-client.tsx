@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Download, Send, CheckCircle, Sparkles, AlertTriangle, FileSpreadsheet, Pencil } from "lucide-react";
 import { Button, Modal, Field, Input, Select, Badge, PageHeader, Card, useToast } from "../ds";
-import type { Quote, QuoteTemplate, InventoryItem } from "../../lib/data";
+import type { Quote, QuoteTemplate, InventoryItem, QuoteSeller, QuoteBillTo } from "../../lib/data";
 
 const BASES = [
   { v: "area", label: "Area (L×W)" },
@@ -176,6 +176,15 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const [custSel, setCustSel] = useState(editQuote?.contactId ?? "");
   const [newCust, setNewCust] = useState({ fullName: "", phone: "", email: "" });
 
+  // Quotation letterhead — seller (issuer) + bill-to, snapshotted on the quote and
+  // rendered on the PDF. Collapsible; the seller block is carried forward from the
+  // last quote server-side, so it's typed once.
+  const [showLetterhead, setShowLetterhead] = useState(false);
+  const [seller, setSeller] = useState<QuoteSeller>(editQuote?.seller ?? {});
+  const [billTo, setBillTo] = useState<QuoteBillTo>(editQuote?.billTo ?? {});
+  const setS = (patch: Partial<QuoteSeller>) => setSeller((s) => ({ ...s, ...patch }));
+  const setB = (patch: Partial<QuoteBillTo>) => setBillTo((b) => ({ ...b, ...patch }));
+
   useEffect(() => {
     fetch("/api/contacts?limit=200", { cache: "no-store" })
       .then((r) => r.json())
@@ -281,12 +290,13 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       const customer = custSel === "new" ? { customer: { fullName: newCust.fullName, phoneE164: newCust.phone, email: newCust.email } }
         : custSel ? { contactId: custSel } : {};
       let res: Response;
+      const letterhead = { seller, billTo };
       if (isEdit && editQuote) {
         res = await fetch(`/api/quotes/${editQuote.id}`, { method: "PATCH", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ title: title.trim(), ...knobs, ...(custSel && custSel !== "new" ? { contactId: custSel } : {}), lines: linePayload() }) });
+          body: JSON.stringify({ title: title.trim(), ...knobs, ...(custSel && custSel !== "new" ? { contactId: custSel } : {}), ...letterhead, lines: linePayload() }) });
       } else {
         res = await fetch("/api/quotes", { method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ title: title.trim(), templateId: templateId || undefined, ...knobs, ...customer, lines: linePayload() }) });
+          body: JSON.stringify({ title: title.trim(), templateId: templateId || undefined, ...knobs, ...customer, ...letterhead, lines: linePayload() }) });
       }
       const data = (await res.json()) as { ok: boolean; error?: string };
       if (!data.ok) { toast.push(data.error ?? "Could not save quote", "error"); return; }
@@ -348,6 +358,52 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
               <Input value={newCust.fullName} onChange={(e) => setNewCust({ ...newCust, fullName: e.target.value })} placeholder="Customer name" />
               <Input value={newCust.phone} onChange={(e) => setNewCust({ ...newCust, phone: e.target.value })} placeholder="Phone (e.g. 98xxxxxxxx)" />
               <Input value={newCust.email} onChange={(e) => setNewCust({ ...newCust, email: e.target.value })} placeholder="Email (optional)" />
+            </div>
+          )}
+        </div>
+
+        {/* Quotation letterhead — appears on the PDF (seller tax/bank details + bill-to) */}
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: 8 }}>
+          <button type="button" onClick={() => setShowLetterhead((v) => !v)}
+            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#f8fafc", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, color: "#475569", fontWeight: 600 }}>
+            <span>Quotation letterhead — company & bank details, bill-to (shown on the PDF)</span>
+            <span>{showLetterhead ? "▲" : "▼"}</span>
+          </button>
+          {showLetterhead && (
+            <div style={{ padding: 12, display: "grid", gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>YOUR COMPANY (seller) — carried forward from your last quote</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <Input value={seller.name ?? ""} onChange={(e) => setS({ name: e.target.value })} placeholder="Company name" />
+                  <Input value={seller.phone ?? ""} onChange={(e) => setS({ phone: e.target.value })} placeholder="Phone" />
+                  <Input value={seller.address ?? ""} onChange={(e) => setS({ address: e.target.value })} placeholder="Address" />
+                  <Input value={seller.email ?? ""} onChange={(e) => setS({ email: e.target.value })} placeholder="Email (optional)" />
+                  <Input value={seller.gstin ?? ""} onChange={(e) => setS({ gstin: e.target.value })} placeholder="GSTIN" />
+                  <Input value={seller.pan ?? ""} onChange={(e) => setS({ pan: e.target.value })} placeholder="PAN number" />
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", margin: "10px 0 6px" }}>BANK DETAILS</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <Input value={seller.bankAccountName ?? ""} onChange={(e) => setS({ bankAccountName: e.target.value })} placeholder="Account holder" />
+                  <Input value={seller.bankAccountNumber ?? ""} onChange={(e) => setS({ bankAccountNumber: e.target.value })} placeholder="Account number" />
+                  <Input value={seller.bankName ?? ""} onChange={(e) => setS({ bankName: e.target.value })} placeholder="Bank" />
+                  <Input value={seller.bankBranch ?? ""} onChange={(e) => setS({ bankBranch: e.target.value })} placeholder="Branch" />
+                  <Input value={seller.ifsc ?? ""} onChange={(e) => setS({ ifsc: e.target.value })} placeholder="IFSC code" />
+                  <Input value={seller.upi ?? ""} onChange={(e) => setS({ upi: e.target.value })} placeholder="UPI ID" />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <Input value={seller.signatory ?? ""} onChange={(e) => setS({ signatory: e.target.value })} placeholder="Authorised signatory name (optional)" />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>BILL TO (customer)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <Input value={billTo.name ?? ""} onChange={(e) => setB({ name: e.target.value })} placeholder="Customer / company name" />
+                  <Input value={billTo.phone ?? ""} onChange={(e) => setB({ phone: e.target.value })} placeholder="Phone" />
+                  <Input value={billTo.address ?? ""} onChange={(e) => setB({ address: e.target.value })} placeholder="Address" />
+                  <Input value={billTo.pin ?? ""} onChange={(e) => setB({ pin: e.target.value })} placeholder="Pin code" />
+                  <Input value={billTo.gstin ?? ""} onChange={(e) => setB({ gstin: e.target.value })} placeholder="GSTIN (optional)" />
+                </div>
+              </div>
             </div>
           )}
         </div>

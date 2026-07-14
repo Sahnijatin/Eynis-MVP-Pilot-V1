@@ -1246,6 +1246,11 @@ model Quote {
   totalPaise        Int             @default(0) // selling price (taxable value, ex-GST)
   marginPctActual   Float           @default(0) // margin / total * 100 (gross margin)
   gstPercent        Float           @default(0) // GST applied on the taxable total (display + Busy voucher)
+  // Quotation letterhead — a per-quote SNAPSHOT of the seller's business/tax/bank
+  // details and the customer bill-to block, entered in the builder and frozen with
+  // the quote. Stored as JSON strings (see SellerDetails / BillTo in quotes/service).
+  sellerJson        String? // seller (issuer) business/tax/bank details for the PDF
+  billToJson        String? // customer bill-to block (name/address/pin/phone/gstin)
   notes             String?
   terms             String?
   validUntil        DateTime?

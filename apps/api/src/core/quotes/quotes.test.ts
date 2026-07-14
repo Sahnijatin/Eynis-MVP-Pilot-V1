@@ -330,6 +330,36 @@ test("editing a draft replaces its line items and re-prices; the PDF hides cost/
   }
 });
 
+test("quotation letterhead: seller/bill-to persist, carry forward, and render on the PDF", async () => {
+  const { base, H, close } = await setup();
+  try {
+    const seller = { name: "Akash Furnitures", gstin: "08AALCR2857A1ZD", pan: "AVHPC9999A", ifsc: "SBIN0002836", upi: "1281@paytm", signatory: "Akash Singh" };
+    const billTo = { name: "Sampath singh", address: "04, KK Buildings, Jodhpur", pin: "304582", phone: "+91 9981028177" };
+    const c1 = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({
+      title: "Furniture set", gstPercent: 5, seller, billTo,
+      lines: [{ groupName: "Item 1", name: "Chair", costBasis: "fixed", quantity: 5, unitRatePaise: 1000000 }],
+    }) });
+    const { quote } = (await c1.json()) as { quote: { id: string; seller: Record<string, string>; billTo: Record<string, string> } };
+    assert.equal(quote.seller.gstin, "08AALCR2857A1ZD");
+    assert.equal(quote.billTo.pin, "304582");
+
+    // A second quote WITHOUT a seller inherits the seller from the last one (typed once).
+    const c2 = await fetch(base + "/quotes", { method: "POST", headers: H, body: JSON.stringify({ title: "Second quote" }) });
+    const q2 = (await c2.json()) as { quote: { seller: Record<string, string>; billTo: Record<string, string> } };
+    assert.equal(q2.quote.seller.name, "Akash Furnitures", "seller carried forward");
+    assert.deepEqual(q2.quote.billTo, {}, "bill-to is NOT carried forward (per-customer)");
+
+    // PDF renders as real bytes.
+    const pdfRes = await fetch(base + `/quotes/${quote.id}/pdf`, { headers: H });
+    assert.equal(pdfRes.headers.get("content-type"), "application/pdf");
+    const bytes = new Uint8Array(await pdfRes.arrayBuffer());
+    assert.ok(bytes.byteLength > 800, "pdf has content");
+    assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), "%PDF-");
+  } finally {
+    await close();
+  }
+});
+
 test("quotes are tenant-isolated", async () => {
   const a = await setup();
   const b = await setup();
