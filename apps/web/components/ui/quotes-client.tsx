@@ -94,10 +94,17 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
   const [viewing, setViewing] = useState<Quote | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/quotes?limit=100", { cache: "no-store" });
-    const data = (await res.json()) as { items?: Quote[] };
-    if (data.items) setQuotes(data.items);
-  }, []);
+    try {
+      const res = await fetch("/api/quotes?limit=100", { cache: "no-store" });
+      const data = (await res.json()) as { items?: Quote[] };
+      if (data.items) setQuotes(data.items);
+      else throw new Error("Unexpected response");
+    } catch {
+      // Don't leave the list silently stale after an action — tell the user it
+      // may be out of date so they can reload.
+      toast.push("Couldn't refresh the quotes list — it may be out of date. Reload to see the latest.", "error");
+    }
+  }, [toast]);
 
   // Open the editor with the FULL quote — the list omits per-piece images (they can be
   // large), so re-fetch the single quote to load them, THEN open (the builder seeds its
