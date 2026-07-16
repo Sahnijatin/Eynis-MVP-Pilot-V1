@@ -1202,6 +1202,71 @@ const handleRequest = async (
       return;
     }
 
+    // ── PATCH /me — the signed-in user updates their own basic profile ──────────
+    // Any authenticated user may edit their own display name. Email is the login
+    // identity (managed by the auth provider) and is intentionally not editable here.
+    if (req.url === "/me" && req.method === "PATCH") {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as { fullName?: unknown };
+      const fullName = asTrimmedString(body.fullName);
+      if (!fullName) { json(res, 400, { ok: false, error: "Full name cannot be empty" }); return; }
+      const updated = await prisma.user.update({
+        where: { id: auth.context.userId },
+        data: { fullName },
+        select: { id: true, fullName: true },
+      });
+      json(res, 200, { ok: true, user: updated });
+      return;
+    }
+
+    // ── Tenant profile (property details shown in Settings) ─────────────────────
+    if (req.url === "/tenant/profile" && (req.method === "GET" || req.method === "PATCH")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const { tenantId, permissions } = auth.context;
+      if (!(await ensureTenantAccess(tenantId))) {
+        json(res, 403, { ok: false, error: "Tenant not found or access denied" });
+        return;
+      }
+      if (!canAccess(permissions, `${req.method} /tenant/profile`)) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
+        return;
+      }
+
+      if (req.method === "GET") {
+        const t = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { name: true, timezone: true, address: true, phone: true },
+        });
+        json(res, 200, { ok: true, profile: t });
+        return;
+      }
+
+      // PATCH — update property details. Only fields present in the body change.
+      const body = (await parseBody(req)) as { name?: unknown; timezone?: unknown; address?: unknown; phone?: unknown };
+      const data: { name?: string; timezone?: string; address?: string | null; phone?: string | null } = {};
+      if (body.name !== undefined) {
+        const name = asTrimmedString(body.name);
+        if (!name) { json(res, 400, { ok: false, error: "Property name cannot be empty" }); return; }
+        data.name = name;
+      }
+      if (body.timezone !== undefined) {
+        const tz = asTrimmedString(body.timezone);
+        if (!tz) { json(res, 400, { ok: false, error: "Timezone cannot be empty" }); return; }
+        data.timezone = tz;
+      }
+      if (body.address !== undefined) data.address = asTrimmedString(body.address);
+      if (body.phone !== undefined) data.phone = asTrimmedString(body.phone);
+      const t = await prisma.tenant.update({
+        where: { id: tenantId },
+        data,
+        select: { name: true, timezone: true, address: true, phone: true },
+      });
+      json(res, 200, { ok: true, profile: t });
+      return;
+    }
+
     // ── Tenant branding (white-label) ───────────────────────────────────────────
     if (req.url === "/tenant/branding" && (req.method === "GET" || req.method === "PUT")) {
       const auth = await authorize(req, res, null);
@@ -2834,6 +2899,26 @@ const handleRequest = async (
         createdAt: g.createdAt
       }));
       json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
+      return;
+    }
+
+    // ── PATCH /automations/:id — pause / resume a rule ───────────────────────
+    // The automation engine only fires rules with isActive: true, so toggling
+    // this genuinely starts/stops the rule on the next 60s cycle.
+    const autoPatchMatch = req.method === "PATCH" ? /^\/automations\/([^/]+)$/.exec(parseUrl(req.url).pathname) : null;
+    if (autoPatchMatch) {
+      const auth = await authorize(req, res, "PATCH /automations/:id");
+      if (!auth.ok) return;
+      const context = auth.context;
+      const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
+      if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
+      const ruleId = decodeURIComponent(autoPatchMatch[1] as string);
+      const body = (await parseBody(req)) as { isActive?: unknown };
+      if (typeof body.isActive !== "boolean") { json(res, 400, { ok: false, error: "isActive (boolean) is required" }); return; }
+      const existing = await prisma.automationRule.findFirst({ where: { id: ruleId, tenantId: context.tenantId }, select: { id: true } });
+      if (!existing) { json(res, 404, { ok: false, error: "Automation not found" }); return; }
+      const updated = await prisma.automationRule.update({ where: { id: ruleId }, data: { isActive: body.isActive }, select: { id: true, isActive: true } });
+      json(res, 200, { ok: true, rule: updated });
       return;
     }
 

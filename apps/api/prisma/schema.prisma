@@ -21,6 +21,8 @@ model Tenant {
   // font + extended tokens). Distinct from billing (License.plan).
   whitelabelTier        String                     @default("standard")
   timezone              String                     @default("Asia/Kolkata")
+  address               String? // shown/edited in Settings → Property Details
+  phone                 String? // primary contact number, Settings → Property Details
   slug                  String?                    @unique // <slug>.eynis.com (white-label subdomain)
   customDomain          String?                    @unique // e.g. app.tempus.com (CNAME → platform)
   createdAt             DateTime                   @default(now())

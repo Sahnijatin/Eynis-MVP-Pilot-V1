@@ -1,7 +1,8 @@
-import { Save, Camera, Clock, Phone, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { BrandingPanel } from "../../components/ui/branding-panel";
 import { DomainsPanel } from "../../components/ui/domains-panel";
-import { Button, Badge, Field, Input } from "../../components/ds";
+import { SettingsProfileForm } from "../../components/ui/settings-profile-form";
+import { Badge } from "../../components/ds";
 import { getUserWorkspace } from "../../lib/workspace";
 import { resolveUserContext } from "../../lib/user-context";
 
@@ -19,12 +20,6 @@ function buildTabs(propertyLabel: string, teamLabel: string) {
     { label: "Roles", href: "/settings/roles" },
     { label: "Billing", href: "/settings/billing" },
   ];
-}
-
-function initials(name: string | null): string {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "—";
-  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
 // Flagship reference migration (E-13b): the Settings page now uses the ds/ design
@@ -61,7 +56,6 @@ export default async function SettingsPage() {
             <h1 className="page-title">Settings</h1>
             <p className="page-subtitle">Manage your profile, property details, team access, and external integrations.</p>
           </div>
-          <Button variant="primary"><Save className="w-3.5 h-3.5" /> Save Changes</Button>
         </div>
       </div>
 
@@ -108,51 +102,14 @@ export default async function SettingsPage() {
           {/* White-label domains — admins only */}
           {isAdmin && <DomainsPanel />}
 
-          {/* Account Information */}
-          <div className="card">
-            <h3 className="text-base font-semibold text-slate-800 mb-1">Account Information</h3>
-            <p className="text-sm text-slate-500 mb-4">Update your photo and personal details.</p>
-
-            <div className="flex items-center gap-4 mb-5">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold" style={{ background: BRAND }}>{initials(fullName)}</div>
-                <button className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white shadow border border-slate-200 flex items-center justify-center" aria-label="Change photo">
-                  <Camera className="w-3 h-3 text-slate-500" />
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Full Name"><Input defaultValue={fullName ?? ""} placeholder="Your full name" /></Field>
-              <Field label="Email Address"><Input type="email" defaultValue={email ?? ""} placeholder="you@example.com" /></Field>
-            </div>
-            <Field label="New Password"><Input type="password" defaultValue="" placeholder="••••••••••" /></Field>
-          </div>
-
-          {/* Property Details */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-semibold text-slate-800">{propertyName} Details</h3>
-              <Badge tone="warning">Global master</Badge>
-            </div>
-            <p className="text-sm text-slate-500 mb-4">{propertyLabel} configuration for all staff and integrations.</p>
-
-            <Field label="Address"><Input defaultValue="" placeholder="Street, city, country" /></Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label={`${propertyLabel} Phone`}>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-slate-500 shrink-0" />
-                  <Input defaultValue="" placeholder="Contact number" />
-                </div>
-              </Field>
-              <Field label="Timezone">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-slate-500 shrink-0" />
-                  <Input defaultValue="" placeholder="e.g. Asia/Kolkata" />
-                </div>
-              </Field>
-            </div>
-          </div>
+          {/* Account + Property details — client form with a working Save. */}
+          <SettingsProfileForm
+            initialFullName={fullName ?? ""}
+            email={email ?? ""}
+            initialPropertyName={propertyName}
+            canEditProperty={isAdmin}
+            propertyLabel={propertyLabel}
+          />
 
           {/* Quick links to sub-pages */}
           <div className="grid grid-cols-3 gap-3">
