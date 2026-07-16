@@ -33,6 +33,7 @@ export const permissionMap: Record<string, Permission | null> = {
   "GET /dashboard/overview":              "view_requests",
   "GET /dashboard/queue-summary":         "view_requests",
   "GET /dashboard/live-feed":             "view_requests",
+  "GET /notifications":                   null, // any authenticated user; each signal is gated by its own permission inside the handler
   "GET /users":                           "manage_users",
   "GET /guests":                          "view_guests",
   "GET /guests/:id":                      "view_guests",

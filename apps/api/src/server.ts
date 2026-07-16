@@ -1978,6 +1978,81 @@ const handleRequest = async (
       return;
     }
 
+    // Real notification feed for the top-bar bell. Aggregates the tenant's live
+    // operational signals — SLA-breached / escalated requests, low-stock items,
+    // and quotes about to expire — instead of the hard-coded sample list the UI
+    // used to show. Each source is gated by the caller's own permission, so a
+    // viewer only sees what they may read. Industry-neutral copy; the records
+    // themselves are the tenant's, so they read correctly for any vertical.
+    if (req.url === "/notifications" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /notifications");
+      if (!auth.ok) return;
+      const context = auth.context;
+      const perms = context.permissions;
+      const now = new Date();
+      const soon = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // next 3 days
+
+      type Notif = { id: string; type: "alert" | "info" | "success"; title: string; body: string; at: string; href: string };
+
+      const canRequests = canAccess(perms, "GET /service-requests");
+      const canInventory = canAccess(perms, "GET /inventory/items");
+      const canQuotes = canAccess(perms, "GET /quotes");
+
+      const [breached, escalated, inventory, expiring] = await Promise.all([
+        canRequests
+          ? prisma.serviceRequest.findMany({
+              where: { tenantId: context.tenantId, status: { not: "resolved" }, slaBreachedAt: { not: null } },
+              orderBy: { slaBreachedAt: "desc" }, take: 6,
+              select: { id: true, summary: true, slaBreachedAt: true },
+            })
+          : Promise.resolve([] as { id: string; summary: string; slaBreachedAt: Date | null }[]),
+        canRequests
+          ? prisma.serviceRequest.findMany({
+              where: { tenantId: context.tenantId, status: "escalated", slaBreachedAt: null },
+              orderBy: { createdAt: "desc" }, take: 6,
+              select: { id: true, summary: true, createdAt: true },
+            })
+          : Promise.resolve([] as { id: string; summary: string; createdAt: Date }[]),
+        // Prisma can't compare two columns (stock <= reorderLevel) in a where, so
+        // pull a bounded set and filter in JS — tenant inventories are small.
+        canInventory
+          ? prisma.inventoryItem.findMany({
+              where: { tenantId: context.tenantId },
+              orderBy: { updatedAt: "desc" }, take: 200,
+              select: { id: true, name: true, stock: true, unit: true, reorderLevel: true, updatedAt: true },
+            })
+          : Promise.resolve([] as { id: string; name: string; stock: number; unit: string; reorderLevel: number; updatedAt: Date }[]),
+        canQuotes
+          ? prisma.quote.findMany({
+              where: { tenantId: context.tenantId, status: "sent", validUntil: { not: null, gte: now, lte: soon } },
+              orderBy: { validUntil: "asc" }, take: 6,
+              select: { id: true, number: true, title: true, validUntil: true },
+            })
+          : Promise.resolve([] as { id: string; number: string; title: string; validUntil: Date | null }[]),
+      ]);
+
+      const items: Notif[] = [];
+      for (const s of breached) {
+        items.push({ id: `sr-breach-${s.id}`, type: "alert", title: `Overdue: ${s.summary}`, body: "Past its SLA deadline — needs attention", at: (s.slaBreachedAt ?? now).toISOString(), href: "/queue" });
+      }
+      for (const s of escalated) {
+        items.push({ id: `sr-esc-${s.id}`, type: "alert", title: `Escalated: ${s.summary}`, body: "Escalated for follow-up", at: s.createdAt.toISOString(), href: "/queue" });
+      }
+      for (const it of inventory.filter((i) => i.stock <= i.reorderLevel).slice(0, 6)) {
+        items.push({ id: `inv-${it.id}`, type: "alert", title: `${it.name} is low on stock`, body: `${it.stock} ${it.unit} left · reorder level ${it.reorderLevel}`, at: it.updatedAt.toISOString(), href: "/inventory" });
+      }
+      for (const q of expiring) {
+        items.push({ id: `quote-${q.id}`, type: "info", title: `Quote ${q.number} expiring soon`, body: `${q.title} · valid until ${q.validUntil!.toISOString().slice(0, 10)}`, at: q.validUntil!.toISOString(), href: "/quotes" });
+      }
+
+      // Alerts first, then by recency. Cap the feed so the dropdown stays tidy.
+      const severity = (t: Notif["type"]) => (t === "alert" ? 0 : t === "info" ? 1 : 2);
+      items.sort((a, b) => severity(a.type) - severity(b.type) || b.at.localeCompare(a.at));
+
+      json(res, 200, { ok: true, items: items.slice(0, 12) });
+      return;
+    }
+
     if (req.url === "/dashboard/queue-summary" && req.method === "GET") {
       const auth = await authorize(req, res, "GET /dashboard/queue-summary");
       if (!auth.ok) return;
