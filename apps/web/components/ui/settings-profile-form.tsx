@@ -27,11 +27,16 @@ export function SettingsProfileForm({
 }) {
   const toast = useToast();
   const [fullName, setFullName] = useState(initialFullName);
+  const [savedName, setSavedName] = useState(initialFullName); // last persisted name
   const [propertyName, setPropertyName] = useState(initialPropertyName);
   const [timezone, setTimezone] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
+  // Snapshot of the property fields as last loaded/saved, so we only PATCH the
+  // tenant when something actually changed (and never overwrite with blanks
+  // before the initial load completes).
+  const [propertySnapshot, setPropertySnapshot] = useState<{ name: string; timezone: string; address: string; phone: string } | null>(null);
 
   // Load the tenant's editable property details (admins only — the endpoint
   // requires manage_settings).
@@ -42,10 +47,17 @@ export function SettingsProfileForm({
       .then(r => r.json())
       .then((data: { ok?: boolean; profile?: { name?: string; timezone?: string; address?: string | null; phone?: string | null } }) => {
         if (cancelled || !data.ok || !data.profile) return;
-        setPropertyName(data.profile.name ?? initialPropertyName);
-        setTimezone(data.profile.timezone ?? "");
-        setAddress(data.profile.address ?? "");
-        setPhone(data.profile.phone ?? "");
+        const snap = {
+          name: data.profile.name ?? initialPropertyName,
+          timezone: data.profile.timezone ?? "",
+          address: data.profile.address ?? "",
+          phone: data.profile.phone ?? "",
+        };
+        setPropertyName(snap.name);
+        setTimezone(snap.timezone);
+        setAddress(snap.address);
+        setPhone(snap.phone);
+        setPropertySnapshot(snap);
       })
       .catch(() => { /* keep prop defaults */ });
     return () => { cancelled = true; };
@@ -53,27 +65,44 @@ export function SettingsProfileForm({
 
   async function save() {
     if (!fullName.trim()) { toast.push("Full name cannot be empty", "error"); return; }
-    if (canEditProperty && !propertyName.trim()) { toast.push(`${propertyLabel} name cannot be empty`, "error"); return; }
+
+    // Only send a tenant update when a property field genuinely changed (and the
+    // initial load has completed — snapshot present).
+    const propertyChanged = canEditProperty && propertySnapshot !== null && (
+      propertyName.trim() !== propertySnapshot.name ||
+      timezone.trim() !== propertySnapshot.timezone ||
+      address.trim() !== propertySnapshot.address ||
+      phone.trim() !== propertySnapshot.phone
+    );
+    if (propertyChanged) {
+      if (!propertyName.trim()) { toast.push(`${propertyLabel} name cannot be empty`, "error"); return; }
+      if (!timezone.trim()) { toast.push("Timezone cannot be empty", "error"); return; }
+    }
+
+    const nameChanged = fullName.trim() !== savedName;
+    if (!nameChanged && !propertyChanged) { toast.push("No changes to save", "info"); return; }
+
     setSaving(true);
     try {
       const calls: Promise<Response>[] = [];
-      if (fullName.trim() !== initialFullName) {
+      if (nameChanged) {
         calls.push(fetch("/api/me", {
           method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ fullName: fullName.trim() }),
         }));
       }
-      if (canEditProperty) {
+      if (propertyChanged) {
         calls.push(fetch("/api/tenant/profile", {
           method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ name: propertyName.trim(), timezone: timezone.trim(), address: address.trim(), phone: phone.trim() }),
         }));
       }
-      if (calls.length === 0) { toast.push("No changes to save", "info"); return; }
       const results = await Promise.all(calls);
       const bodies = await Promise.all(results.map(r => r.json().catch(() => ({ ok: false }))));
       const failed = bodies.find((b: { ok?: boolean }) => !b.ok);
       if (failed) { toast.push((failed as { error?: string }).error ?? "Couldn't save changes", "error"); return; }
+      if (nameChanged) setSavedName(fullName.trim());
+      if (propertyChanged) setPropertySnapshot({ name: propertyName.trim(), timezone: timezone.trim(), address: address.trim(), phone: phone.trim() });
       toast.push("Changes saved", "success");
     } catch {
       toast.push("Couldn't save changes — please try again", "error");

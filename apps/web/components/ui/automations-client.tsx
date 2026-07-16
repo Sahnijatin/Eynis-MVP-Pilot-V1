@@ -39,7 +39,12 @@ function successRate(item: Item): string {
 
 function downloadCsv(rows: Item[]) {
   const header = ["Automation Name", "Type", "Status", "Executions", "Success Rate %", "Revenue (INR)", "Last Fired"];
-  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  // Quote every field; prefix a leading =/+/-/@ with an apostrophe so a rule name
+  // can't be interpreted as a formula when the CSV is opened in a spreadsheet.
+  const esc = (v: string) => {
+    const safe = /^[=+\-@]/.test(v) ? `'${v}` : v;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
   const lines = rows.map((r) => [
     r.name,
     r.ruleType === "operational" ? "Engine" : "Marketing",
