@@ -27,38 +27,41 @@ interface Impersonating {
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────
+// Real recent activity from the tenant's live feed — never canned demo alerts.
 
 type Notif = { id: string; title: string; body: string; time: string; type: "alert" | "info" | "success" };
 
-const NOTIFS: Record<string, Notif[]> = {
-  manufacturing: [
-    { id: "n1", title: "Burma Teak Planks — Out of Stock", body: "2 orders at risk · ETA: 4 Jun", time: "2 min ago", type: "alert" },
-    { id: "n2", title: "New Enquiry — ITC Hotels", body: "Lobby Benches × 12 · Estimated ₹5.4L", time: "18 min ago", type: "info" },
-    { id: "n3", title: "BOM Variance Detected", body: "ORD-2847 · Burma Teak +21% over BOM", time: "1 hr ago", type: "alert" },
-    { id: "n4", title: "Quote Expiring Soon", body: "QT-0411 · Kapoor Developers · Expires 4 Jun", time: "2 hr ago", type: "info" },
-  ],
-  hospitality: [
-    { id: "n1", title: "Service Overdue — Room 302", body: "Open 45+ mins · Auto-escalated to manager", time: "5 min ago", type: "alert" },
-    { id: "n2", title: "PMS Sync Lag", body: "Inventory sync delayed by 4 minutes", time: "22 min ago", type: "alert" },
-    { id: "n3", title: "Guest Check-in — VIP", body: "Ravi Sharma · Room 204 · Loyalty Platinum", time: "1 hr ago", type: "info" },
-    { id: "n4", title: "Upsell Opportunity", body: "8 check-outs tomorrow · Run upgrade offer now", time: "2 hr ago", type: "info" },
-  ],
-  fnb: [
-    { id: "n1", title: "Truffle Oil — Critical Stock", body: "Only 4 bottles left · Reorder level: 6", time: "5 min ago", type: "alert" },
-    { id: "n2", title: "Cocktail of the Week Trending", body: "204 orders this month — consider expanding", time: "1 hr ago", type: "success" },
-    { id: "n3", title: "Lamb Rack Margin Below Floor", body: "Margin at 49% · Review supplier pricing", time: "2 hr ago", type: "alert" },
-  ],
-  travel: [
-    { id: "n1", title: "Action Needed — BKG-1046", body: "IT Company Offsite · 0% paid · Departs 7 Jun", time: "10 min ago", type: "alert" },
-    { id: "n2", title: "Visa Still Pending", body: "BKG-1039 · Mehta Corp · Singapore departs 3 Jun", time: "30 min ago", type: "alert" },
-    { id: "n3", title: "Departure in 14 Days", body: "BKG-1042 · Arora Family · Maldives 7N/8D", time: "2 hr ago", type: "info" },
-  ],
-  healthcare: [
-    { id: "n1", title: "No-Show Follow-up Required", body: "Amit Kumar · Missed today's diabetes consultation", time: "30 min ago", type: "alert" },
-    { id: "n2", title: "Overdue Patient", body: "Arun Kumar · Cardiac monitoring · 43 days overdue", time: "1 hr ago", type: "alert" },
-    { id: "n3", title: "Appointment Reminders Sent", body: "3 patients reminded for tomorrow's slots", time: "2 hr ago", type: "success" },
-  ],
-};
+interface LiveFeedItem {
+  id: string;
+  category: string;
+  status: string;
+  summary: string;
+  createdAt: string;
+  guest: { fullName: string } | null;
+  assignedTo: { fullName: string } | null;
+}
+
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function feedItemToNotif(item: LiveFeedItem): Notif {
+  const type: Notif["type"] =
+    item.status === "escalated" ? "alert" : item.status === "resolved" ? "success" : "info";
+  const who = item.guest?.fullName ? ` — ${item.guest.fullName}` : "";
+  return {
+    id: item.id,
+    title: `${item.category.replace(/_/g, " ")}${who}`,
+    body: item.summary,
+    time: timeAgo(item.createdAt),
+    type,
+  };
+}
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
 
@@ -196,6 +199,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
 
   const [navOpen, setNavOpen] = useState(false); // mobile sidebar drawer (E-13e)
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState<Notif[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [accessDenied, setAccessDenied] = useState(false);
   // `orgRole` is the effective role the app renders for — the signed-in user's
@@ -234,6 +238,20 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
       })
       .catch(() => { /* fail silently — keep initial defaults */ });
   }, [isLoaded, user]);
+
+  // Real notifications: the tenant's recent activity feed. Refetched whenever
+  // the panel opens so it's current when the user actually looks at it.
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    let cancelled = false;
+    fetch("/api/live-feed", { cache: "no-store" })
+      .then(r => r.json())
+      .then((data: { ok: boolean; items?: LiveFeedItem[] }) => {
+        if (!cancelled && data.ok) setNotifs((data.items ?? []).slice(0, 8).map(feedItemToNotif));
+      })
+      .catch(() => { /* no feed — panel shows its empty state */ });
+    return () => { cancelled = true; };
+  }, [isLoaded, user, notifOpen]);
 
   async function stopImpersonation() {
     setStoppingImp(true);
@@ -322,7 +340,6 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     return <div className="public-shell">{children}</div>;
   }
 
-  const notifs: Notif[] = NOTIFS[industry] ?? NOTIFS.hospitality;
   const unreadCount = notifs.filter(n => !readIds.has(n.id)).length;
   const OverviewIcon = config.overviewIcon;
   const roleDef = SYSTEM_ROLES.find(r => r.key === orgRole)!;
@@ -443,6 +460,11 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
                   </div>
 
                   <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                    {notifs.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-slate-400">
+                        No activity yet — new requests and updates appear here.
+                      </div>
+                    )}
                     {notifs.map(n => {
                       const unread = !readIds.has(n.id);
                       return (
@@ -454,7 +476,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
                           <div className="flex items-start gap-3">
                             <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === "alert" ? "bg-red-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"}`} />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-slate-800">{n.title}</div>
+                              <div className="text-sm font-semibold text-slate-800 capitalize">{n.title}</div>
                               <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{n.body}</div>
                               <div className="text-xs text-slate-500 mt-1">{n.time}</div>
                             </div>
@@ -466,9 +488,14 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
                   </div>
 
                   <div className="px-4 py-2.5 border-t border-slate-100 text-center">
-                    <button className="text-xs font-medium hover:underline" style={{ color: config.accentColor }}>
+                    <Link
+                      href="/queue"
+                      onClick={() => setNotifOpen(false)}
+                      className="text-xs font-medium hover:underline"
+                      style={{ color: config.accentColor }}
+                    >
                       View all activity
-                    </button>
+                    </Link>
                   </div>
                 </div>
               )}
