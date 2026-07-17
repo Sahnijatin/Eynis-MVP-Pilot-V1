@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, Upload, UserPlus, Star, Search, CheckCircle, AlertCircle } from "lucide-react";
@@ -54,7 +54,7 @@ const EMPTY_FORM: FormState = { fullName: "", phone: "", email: "" };
 
 type ImportStatus = { type: "success"; count: number; failed?: number } | { type: "error"; message: string } | null;
 
-function buildGuestDetail(g: GuestRow): ClientDetailData {
+function buildGuestDetail(g: GuestRow, notes: string): ClientDetailData {
   return {
     historyLabel: "Stays & Requests",
     contact: {
@@ -71,7 +71,7 @@ function buildGuestDetail(g: GuestRow): ClientDetailData {
     history: [
       { id: g.id + "-1", title: "Last stay", subtitle: `${g.visitCount} visit${g.visitCount === 1 ? "" : "s"} on record`, date: formatDate(g.lastStay), status: g.status, statusColor: g.status === "ACTIVE" ? "#059669" : "#475569", statusBg: g.status === "ACTIVE" ? "#d1fae5" : "#f1f5f9" },
     ],
-    notes: "Add stay-level notes from the full profile page.",
+    notes,
   };
 }
 
@@ -87,6 +87,7 @@ function pageHref(offset: number, search?: string): string {
 export function GuestDatabaseClient({ items: guests, total, search, offset, pageSize }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<GuestRow | null>(null);
+  const [selectedNotes, setSelectedNotes] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [success, setSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -94,6 +95,37 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [importStatus, setImportStatus] = useState<ImportStatus>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load the selected guest's real notes (guests share the Contact model, so
+  // notes live on GET/PATCH /contacts/:id).
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setSelectedNotes("");
+    fetch(`/api/contacts/${encodeURIComponent(selected.id)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then((data: { ok: boolean; contact?: { notes?: string | null } }) => {
+        if (!cancelled && data.ok) setSelectedNotes(data.contact?.notes ?? "");
+      })
+      .catch(() => { /* panel shows empty notes */ });
+    return () => { cancelled = true; };
+  }, [selected]);
+
+  async function saveGuestNotes(notes: string): Promise<boolean> {
+    if (!selected) return false;
+    try {
+      const res = await fetch(`/api/contacts/${encodeURIComponent(selected.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean };
+      if (res.ok && data.ok) { setSelectedNotes(notes); return true; }
+      return false;
+    } catch {
+      return false;
+    }
+  }
 
   function exportCSV() {
     const headers = ["Name", "Phone", "Status", "Segment", "Last Stay", "Visits"];
@@ -449,7 +481,9 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
             { label: "Segment",   value: selected.segment },
             { label: "Status",    value: selected.status },
           ]}
-          detail={buildGuestDetail(selected)}
+          detail={buildGuestDetail(selected, selectedNotes)}
+          entityId={selected.id}
+          onSaveNotes={saveGuestNotes}
           accentColor="var(--color-primary, #0f766e)"
         />
       )}
