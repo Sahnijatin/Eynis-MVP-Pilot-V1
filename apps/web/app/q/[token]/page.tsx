@@ -11,7 +11,7 @@ interface PublicQuote {
 }
 interface PublicBrand { name: string; logoUrl: string | null; primaryColor: string; showPoweredBy: boolean; platformName: string }
 
-const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 
 // Public customer quote page (Phase 6): pre-auth, tenant-branded, reachable only
 // via the unguessable link the tenant shared. Shows the customer-safe view and

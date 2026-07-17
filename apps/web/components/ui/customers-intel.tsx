@@ -4,7 +4,7 @@ import type { ContactIntelRow } from "../../lib/data";
 // Real Client Intelligence for manufacturing (Phase 7): every row computed from
 // live quotes and orders — no sample data.
 
-const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 
 const daysSince = (iso: string | null): number | null => {
   if (!iso) return null;

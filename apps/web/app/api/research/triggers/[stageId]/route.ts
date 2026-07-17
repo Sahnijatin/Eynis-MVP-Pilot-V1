@@ -8,5 +8,5 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ stageId
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

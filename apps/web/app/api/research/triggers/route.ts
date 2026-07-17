@@ -8,7 +8,7 @@ export async function GET() {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function POST(req: NextRequest) {
@@ -19,5 +19,5 @@ export async function POST(req: NextRequest) {
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

@@ -196,8 +196,8 @@ export default function NightAuditPage() {
             className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
             disabled={generating}
           >
-            <option value="claude">Claude (Opus 4.7)</option>
-            <option value="openai">GPT-4o</option>
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="openai">OpenAI</option>
           </select>
           <button
             onClick={() => void handleGenerate()}

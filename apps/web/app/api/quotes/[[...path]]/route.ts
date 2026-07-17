@@ -1,23 +1,17 @@
-import { NextRequest } from "next/server";
-import { proxyApi } from "../../../../lib/proxy";
+import { NextRequest, NextResponse } from "next/server";
+import { proxyApi, joinProxyPath } from "../../../../lib/proxy";
 
 // Catch-all proxy for every /quotes[...] backend route (list/create, :id CRUD,
 // lines, calc, parse, send/accept/reject/expire, pdf, busy-export).
-function target(path?: string[]): string {
-  return "/quotes" + (path && path.length ? "/" + path.map(encodeURIComponent).join("/") : "");
-}
-
 type Ctx = { params: Promise<{ path?: string[] }> };
 
-export async function GET(req: NextRequest, ctx: Ctx) {
-  return proxyApi(req, target((await ctx.params).path));
+async function handle(req: NextRequest, ctx: Ctx) {
+  const sub = joinProxyPath((await ctx.params).path);
+  if (sub === null) return NextResponse.json({ ok: false, error: "Invalid path" }, { status: 400 });
+  return proxyApi(req, "/quotes" + sub);
 }
-export async function POST(req: NextRequest, ctx: Ctx) {
-  return proxyApi(req, target((await ctx.params).path));
-}
-export async function PATCH(req: NextRequest, ctx: Ctx) {
-  return proxyApi(req, target((await ctx.params).path));
-}
-export async function DELETE(req: NextRequest, ctx: Ctx) {
-  return proxyApi(req, target((await ctx.params).path));
-}
+
+export async function GET(req: NextRequest, ctx: Ctx) { return handle(req, ctx); }
+export async function POST(req: NextRequest, ctx: Ctx) { return handle(req, ctx); }
+export async function PATCH(req: NextRequest, ctx: Ctx) { return handle(req, ctx); }
+export async function DELETE(req: NextRequest, ctx: Ctx) { return handle(req, ctx); }

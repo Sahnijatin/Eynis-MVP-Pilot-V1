@@ -7,9 +7,16 @@ import { DataGrid, type GridColumn } from "./data-grid";
 import { CrmTabs } from "./crm-tabs";
 import { CsvImportModal } from "./csv-import-modal";
 import ResearchButton from "./research-button";
+import { jsonRequest } from "../../lib/client-request";
 import type { ContactRow, CompanyRow, TimelineItem } from "../../lib/data";
 
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
+// Date-only values must parse as LOCAL dates — new Date("YYYY-MM-DD") is UTC
+// midnight, which renders a day early in timezones west of UTC.
+const parseDate = (iso: string): Date => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+};
+const fmtDate = (iso: string | null) => (iso ? parseDate(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 const KIND_ICON: Record<string, string> = {
   note: "📝", task: "✅", meeting: "📅", call: "📞", whatsapp: "💬", email: "✉️",
@@ -65,13 +72,16 @@ export function ContactsClient({
   }
 
   async function deleteRows(rows: ContactRow[]) {
+    // Best-effort: keep going past a failed row and ALWAYS refresh — aborting
+    // mid-batch left already-deleted rows visible (and selected) in the grid.
+    let failed = 0;
     for (const r of rows) {
-      const res = await fetch(`/api/contacts/${r.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+      const res = await jsonRequest(`/api/contacts/${r.id}`, { method: "DELETE" });
+      if (!res.ok) failed++;
     }
-    toast.push(`Deleted ${rows.length} contact(s)`, "success");
     router.refresh();
+    if (failed > 0) throw new Error(`${failed} of ${rows.length} could not be deleted`);
+    toast.push(`Deleted ${rows.length} contact(s)`, "success");
   }
 
   async function importRows(records: Record<string, string>[]) {
@@ -201,6 +211,7 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
   const [tags, setTags] = useState("");
   const [notes, setNotes] = useState("");
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
   const [score, setScore] = useState<{ score: number; tier: string; reasons: string[]; source: string } | null>(null);
   const [scoring, setScoring] = useState(false);
   const [actType, setActType] = useState<"note" | "task">("note");
@@ -208,9 +219,15 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
   const [actDue, setActDue] = useState("");
 
   async function loadTimeline() {
-    const res = await fetch(`/api/contacts/${id}/timeline`);
-    const d = await res.json();
-    if (d.ok) setTimeline(d.items as TimelineItem[]);
+    try {
+      const res = await fetch(`/api/contacts/${id}/timeline`);
+      const d = await res.json();
+      if (res.ok && d.ok) { setTimeline(d.items as TimelineItem[]); setTimelineError(null); }
+      else { setTimeline([]); setTimelineError("Couldn't load the timeline."); }
+    } catch {
+      setTimeline([]);
+      setTimelineError("Couldn't load the timeline.");
+    }
   }
 
   useEffect(() => {
@@ -351,6 +368,7 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
           {/* Timeline */}
           <div>
             <div style={{ fontSize: t.font.xs, fontWeight: 600, textTransform: "uppercase", color: t.color.textMuted, marginBottom: 6 }}>Timeline ({timeline.length})</div>
+            {timelineError && <div style={{ fontSize: t.font.sm, color: t.color.danger, marginBottom: 6 }}>{timelineError}</div>}
             {timeline.length === 0 ? <div style={{ fontSize: t.font.sm, color: t.color.textFaint }}>No activity yet.</div> : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
                 {timeline.map((i) => (

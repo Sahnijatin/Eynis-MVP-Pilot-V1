@@ -15,7 +15,7 @@ const STAGES: Array<{ id: OrderRow["stage"]; label: string; color: string }> = [
   { id: "delivered", label: "Delivered", color: "#64748b" },
 ];
 
-const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 const lakh = (paise: number) => {
   const inr = paise / 100;
   return inr >= 100000 ? `₹${(inr / 100000).toFixed(1)}L` : rupees(paise);
@@ -28,20 +28,29 @@ export function OrdersBoard({ initialItems, initialSummary }: { initialItems: Or
   const [filter, setFilter] = useState<string>("");
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/orders?limit=200", { cache: "no-store" });
-    const data = (await res.json()) as { ok: boolean; items?: OrderRow[]; summary?: OrderStageSummary[] };
-    if (data.items) setItems(data.items);
-    if (data.summary) setSummary(data.summary);
+    try {
+      const res = await fetch("/api/orders?limit=200", { cache: "no-store" });
+      const data = (await res.json()) as { ok: boolean; items?: OrderRow[]; summary?: OrderStageSummary[] };
+      if (data.items) setItems(data.items);
+      if (data.summary) setSummary(data.summary);
+    } catch {
+      // Keep the current board — the next action or reload will refresh it.
+    }
   }, []);
 
   const moveStage = useCallback(async (id: string, stage: string) => {
-    const res = await fetch(`/api/orders/${id}`, {
-      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ stage }),
-    });
-    const data = (await res.json()) as { ok: boolean; error?: string };
-    if (!data.ok) { toast.push(data.error ?? "Could not move the order", "error"); return; }
-    toast.push("Order moved", "success");
-    refresh();
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ stage }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (!data.ok) { toast.push(data.error ?? "Could not move the order", "error"); return; }
+      toast.push("Order moved", "success");
+      refresh();
+    } catch {
+      // No optimistic update was applied — the board still shows the real stage.
+      toast.push("Network error — the order was not moved.", "error");
+    }
   }, [toast, refresh]);
 
   const visible = filter ? items.filter((o) => o.stage === filter) : items;

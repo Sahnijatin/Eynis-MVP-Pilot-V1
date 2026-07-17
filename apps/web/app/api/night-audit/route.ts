@@ -8,7 +8,7 @@ export async function GET() {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"
   });
-  const data = await res.json() as unknown;
+  const data = await res.json().catch(() => ({ ok: false, error: "Upstream error" })) as unknown;
   return Response.json(data, { status: res.status });
 }
 
@@ -21,6 +21,6 @@ export async function POST(request: Request) {
     body: JSON.stringify(body),
     cache: "no-store"
   });
-  const data = await res.json() as unknown;
+  const data = await res.json().catch(() => ({ ok: false, error: "Upstream error" })) as unknown;
   return Response.json(data, { status: res.status });
 }

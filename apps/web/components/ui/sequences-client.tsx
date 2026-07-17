@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button, Card, PageHeader, Field, Input, Select, Textarea, Badge, EmptyState, Modal, useToast, tokens as t } from "../ds";
 import { CampaignsNav } from "./campaigns-nav";
+import { jsonRequest } from "../../lib/client-request";
 import type { SequenceRow, LeadSegmentRow } from "../../lib/data";
 
 // Drip sequences: an ordered list of timed steps (delay → send on a channel).
@@ -39,39 +40,37 @@ export function SequencesClient({ initialSequences, segments }: { initialSequenc
           emailSubject: s.emailSubject.trim() || null, emailBody: s.emailBody.trim() || null,
         })),
       };
-      const res = await fetch("/api/sequences", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setError(data.error ?? "Create failed"); return; }
-      setSequences((s) => [{ ...data.sequence, stepCount: data.sequence.steps.length, enrollmentCount: 0 }, ...s]);
+      const r = await jsonRequest<{ sequence: SequenceRow & { steps: unknown[] } }>("/api/sequences", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      if (!r.ok || !r.data) { setError(r.error); return; }
+      setSequences((s) => [{ ...r.data!.sequence, stepCount: r.data!.sequence.steps.length, enrollmentCount: 0 }, ...s]);
       setName(""); setSteps([emptyStep()]); setCreating(false);
       toast.push("Sequence created", "success");
     } finally { setBusy(false); }
   }
 
   async function setStatus(id: string, status: "active" | "draft") {
-    const res = await fetch(`/api/sequences/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
-    const data = await res.json();
-    if (data.ok) { setSequences((s) => s.map((x) => (x.id === id ? { ...x, status } : x))); toast.push(status === "active" ? "Sequence activated" : "Sequence paused", "success"); }
-    else toast.push(data.error ?? "Failed", "error");
+    const r = await jsonRequest(`/api/sequences/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+    if (r.ok) { setSequences((s) => s.map((x) => (x.id === id ? { ...x, status } : x))); toast.push(status === "active" ? "Sequence activated" : "Sequence paused", "success"); }
+    else toast.push(r.error, "error");
   }
 
   async function remove(id: string) {
-    await fetch(`/api/sequences/${id}`, { method: "DELETE" });
-    setSequences((s) => s.filter((x) => x.id !== id));
+    const r = await jsonRequest(`/api/sequences/${id}`, { method: "DELETE" });
     setConfirmId(null);
-    toast.push("Sequence deleted");
+    if (!r.ok) { toast.push(`Delete failed: ${r.error}`, "error"); return; }
+    setSequences((s) => s.filter((x) => x.id !== id));
+    toast.push("Sequence deleted", "success");
   }
 
   async function enroll(id: string) {
     if (!enrollSeg) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/sequences/${id}/enroll`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ segmentId: enrollSeg }) });
-      const data = await res.json();
-      if (data.ok) {
-        toast.push(`Enrolled ${data.enrolled} lead(s) — ${data.skipped} already enrolled`, "success");
-        setSequences((s) => s.map((x) => (x.id === id ? { ...x, enrollmentCount: (x.enrollmentCount ?? 0) + (data.enrolled ?? 0) } : x)));
-      } else toast.push(data.error ?? "Enroll failed", "error");
+      const r = await jsonRequest<{ enrolled?: number; skipped?: number }>(`/api/sequences/${id}/enroll`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ segmentId: enrollSeg }) });
+      if (r.ok && r.data) {
+        toast.push(`Enrolled ${r.data.enrolled ?? 0} lead(s) — ${r.data.skipped ?? 0} already enrolled`, "success");
+        setSequences((s) => s.map((x) => (x.id === id ? { ...x, enrollmentCount: (x.enrollmentCount ?? 0) + (r.data!.enrolled ?? 0) } : x)));
+      } else toast.push(r.error, "error");
       setEnrollFor(null); setEnrollSeg("");
     } finally { setBusy(false); }
   }

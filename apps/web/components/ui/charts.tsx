@@ -18,14 +18,12 @@ import {
   Legend
 } from "recharts";
 
-// ── Request Volume (area chart) ──────────────────────────────────────────────
-// Real inbound-request counts per day. Unlike OccupancyChart this has no fixed
-// 0–100 scale or target line — it plots actual counts, auto-scaled.
-interface RequestVolumeChartProps {
-  data: Array<{ date: string; value: number }>;
+// ── Request Volume Trend (real created vs resolved counts) ───────────────────
+interface RequestTrendChartProps {
+  data: Array<{ date: string; created: number; resolved: number }>;
 }
 
-export function RequestVolumeChart({ data }: RequestVolumeChartProps) {
+export function RequestTrendChart({ data }: RequestTrendChartProps) {
   return (
     <div className="h-48 mt-4">
       <ResponsiveContainer width="100%" height="100%">
@@ -41,9 +39,9 @@ export function RequestVolumeChart({ data }: RequestVolumeChartProps) {
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <Tooltip
             contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
-            formatter={(value) => [`${value as number}`, "Requests"]}
           />
-          <Area type="monotone" dataKey="value" stroke="var(--color-primary, #0f766e)" strokeWidth={2.5} fill="url(#reqGrad)" dot={{ fill: "var(--color-primary, #0f766e)", r: 3.5 }} activeDot={{ r: 5 }} />
+          <Area type="monotone" dataKey="created" name="Created" stroke="var(--color-primary, #0f766e)" strokeWidth={2.5} fill="url(#reqGrad)" dot={{ fill: "var(--color-primary, #0f766e)", r: 3 }} activeDot={{ r: 5 }} />
+          <Area type="monotone" dataKey="resolved" name="Resolved" stroke="#f59e0b" strokeWidth={2} fill="transparent" dot={{ fill: "#f59e0b", r: 2.5 }} activeDot={{ r: 4 }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -160,9 +158,10 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
 // ── Campaign Execution Bar ────────────────────────────────────────────────────
 interface CampaignBarProps {
   data: Array<{ day: string; executions: number; conversions: number }>;
+  names?: [string, string]; // tooltip/legend labels for the two series
 }
 
-export function CampaignBarChart({ data }: CampaignBarProps) {
+export function CampaignBarChart({ data, names = ["Executions", "Conversions"] }: CampaignBarProps) {
   return (
     <div className="h-44">
       <ResponsiveContainer width="100%" height="100%">
@@ -171,8 +170,8 @@ export function CampaignBarChart({ data }: CampaignBarProps) {
           <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }} />
-          <Bar dataKey="executions" fill="var(--color-primary, #0f766e)" radius={[3, 3, 0, 0]} name="Executions" />
-          <Bar dataKey="conversions" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Conversions" />
+          <Bar dataKey="executions" fill="var(--color-primary, #0f766e)" radius={[3, 3, 0, 0]} name={names[0]} />
+          <Bar dataKey="conversions" fill="#f59e0b" radius={[3, 3, 0, 0]} name={names[1]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

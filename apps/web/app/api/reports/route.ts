@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const token = await getApiToken();
   const res = await fetch(`${getApiBaseUrl()}/reports`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 // POST /api/reports — save a new report.
@@ -19,5 +19,5 @@ export async function POST(req: NextRequest) {
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

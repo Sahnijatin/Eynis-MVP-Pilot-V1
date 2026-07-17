@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "./badge";
 import { Button, LinkButton, Card, CardTitle, useToast, tokens as t } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 import { CampaignCallsTab } from "./campaign-calls-tab";
 import { CampaignAnalyticsTab } from "./campaign-analytics-tab";
 import { CampaignActivityTab } from "./campaign-activity-tab";
@@ -40,9 +41,8 @@ export function CampaignDetailClient({
   async function act(action: "activate" | "pause" | "complete") {
     setBusy(true);
     try {
-      const res = await fetch(`/api/campaigns/${campaign.id}/${action}`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) toast.push(data.error ?? "Action failed", "error");
+      const r = await jsonRequest(`/api/campaigns/${campaign.id}/${action}`, { method: "POST" });
+      if (!r.ok) toast.push(r.error, "error");
       else { toast.push(`Campaign ${action === "activate" ? "activated" : action === "pause" ? "paused" : "completed"}`, "success"); router.refresh(); }
     } finally {
       setBusy(false);

@@ -13,6 +13,7 @@ import {
 import {
   Button, Card, Badge, Field, Input, Select, Textarea, Modal, Spinner, EmptyState, useToast, tokens as t,
 } from "../ds";
+import { jsonRequest, type JsonResult } from "../../lib/client-request";
 import type { ResearchTemplateItem, ResearchRunItem, ResearchSourceCatalog, ResearchTrigger, PipelineRow } from "../../lib/data";
 import { splitSectionContent, usageSummary } from "../../lib/research-format";
 import { ResearchShareModal } from "./research-share-modal";
@@ -62,9 +63,10 @@ const STAGE_TEXT: Record<string, string> = {
   queued: "Queued", gathering: "Gathering sources", synthesizing: "Synthesizing report", validating: "Validating", ready: "Ready", failed: "Failed",
 };
 
-async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
-  return (await res.json()) as T;
+// Never throws — wraps the shared jsonRequest (checks res.ok AND data.ok, maps
+// network errors to a friendly message) and adds the JSON content-type header.
+function jsonFetch<T = Record<string, unknown>>(url: string, init?: RequestInit): Promise<JsonResult<T>> {
+  return jsonRequest<T>(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
 }
 
 export default function ResearchStudioClient(props: Props) {
@@ -76,17 +78,18 @@ export default function ResearchStudioClient(props: Props) {
   const [triggers, setTriggers] = useState<ResearchTrigger[]>(props.initialTriggers ?? []);
   const [runModalFor, setRunModalFor] = useState<TemplateDetail | null>(null);
 
+  // Background refreshes fail quietly — keep whatever is already on screen.
   const refreshTemplates = useCallback(async () => {
-    const d = await jsonFetch<{ items: ResearchTemplateItem[] }>("/api/research/templates");
-    setTemplates(d.items ?? []);
+    const r = await jsonFetch<{ items: ResearchTemplateItem[] }>("/api/research/templates");
+    if (r.ok && r.data) setTemplates(r.data.items ?? []);
   }, []);
   const refreshRuns = useCallback(async () => {
-    const d = await jsonFetch<{ items: ResearchRunItem[] }>("/api/research/runs");
-    setRuns(d.items ?? []);
+    const r = await jsonFetch<{ items: ResearchRunItem[] }>("/api/research/runs");
+    if (r.ok && r.data) setRuns(r.data.items ?? []);
   }, []);
   const refreshTriggers = useCallback(async () => {
-    const d = await jsonFetch<{ triggers: ResearchTrigger[] }>("/api/research/triggers");
-    setTriggers(d.triggers ?? []);
+    const r = await jsonFetch<{ triggers: ResearchTrigger[] }>("/api/research/triggers");
+    if (r.ok && r.data) setTriggers(r.data.triggers ?? []);
   }, []);
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -137,26 +140,28 @@ export default function ResearchStudioClient(props: Props) {
           triggers={triggers}
           pipelines={props.pipelines ?? []}
           onAddTrigger={async (stageId, templateId) => {
-            const d = await jsonFetch<{ ok: boolean; error?: string }>("/api/research/triggers", { method: "POST", body: JSON.stringify({ stageId, templateId, fast: true }) });
-            if (d.ok) { toast.push("Auto-run added", "success"); refreshTriggers(); }
-            else toast.push(d.error ?? "Couldn't add", "error");
+            const r = await jsonFetch("/api/research/triggers", { method: "POST", body: JSON.stringify({ stageId, templateId, fast: true }) });
+            if (r.ok) { toast.push("Auto-run added", "success"); refreshTriggers(); }
+            else toast.push(r.error, "error");
           }}
           onRemoveTrigger={async (stageId) => {
-            const d = await jsonFetch<{ ok: boolean }>(`/api/research/triggers/${encodeURIComponent(stageId)}`, { method: "DELETE" });
-            if (d.ok) { toast.push("Auto-run removed", "success"); refreshTriggers(); }
+            const r = await jsonFetch(`/api/research/triggers/${encodeURIComponent(stageId)}`, { method: "DELETE" });
+            if (r.ok) { toast.push("Auto-run removed", "success"); refreshTriggers(); }
+            else toast.push(r.error, "error");
           }}
           onNew={() => setView({ mode: "editor" })}
           onEdit={(id) => setView({ mode: "editor", templateId: id })}
           onClone={(id) => setView({ mode: "editor", templateId: id, clone: true })}
           onRun={async (id) => {
-            const d = await jsonFetch<{ ok: boolean; template?: TemplateDetail }>(`/api/research/templates/${id}`);
-            if (d.template) setRunModalFor(d.template);
+            const r = await jsonFetch<{ template?: TemplateDetail }>(`/api/research/templates/${id}`);
+            if (r.ok && r.data?.template) setRunModalFor(r.data.template);
+            else toast.push(r.error || "Couldn't load template", "error");
           }}
           onOpenRun={(runId) => setView({ mode: "run", runId })}
           onDelete={async (id) => {
-            const d = await jsonFetch<{ ok: boolean; error?: string }>(`/api/research/templates/${id}`, { method: "DELETE" });
-            if (d.ok) { toast.push("Template deleted", "success"); refreshTemplates(); }
-            else toast.push(d.error ?? "Couldn't delete", "error");
+            const r = await jsonFetch(`/api/research/templates/${id}`, { method: "DELETE" });
+            if (r.ok) { toast.push("Template deleted", "success"); refreshTemplates(); }
+            else toast.push(r.error, "error");
           }}
         />
       )}
@@ -219,7 +224,7 @@ function HomeView(props: {
     <div>
       {noAi && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> (or set <code>OPENAI_API_KEY</code> on the API) to generate full reports.
+          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> to generate full reports.
         </div>
       )}
       {noSearch && (
@@ -383,18 +388,13 @@ function RunModal(props: { accent: string; template: TemplateDetail; onClose: ()
 
   const submit = async () => {
     setBusy(true);
-    try {
-      const subjectLabel = values.name ?? Object.values(values)[0] ?? template.name;
-      const d = await jsonFetch<{ ok: boolean; id?: string; error?: string }>("/api/research/runs", {
-        method: "POST",
-        body: JSON.stringify({ templateId: template.id, inputs: values, subjectType: template.subjectType, subjectLabel }),
-      });
-      if (d.ok && d.id) props.onStarted(d.id);
-      else { toast.push(d.error ?? "Couldn't start run", "error"); setBusy(false); }
-    } catch {
-      toast.push("Couldn't start run", "error");
-      setBusy(false);
-    }
+    const subjectLabel = values.name ?? Object.values(values)[0] ?? template.name;
+    const r = await jsonFetch<{ id?: string }>("/api/research/runs", {
+      method: "POST",
+      body: JSON.stringify({ templateId: template.id, inputs: values, subjectType: template.subjectType, subjectLabel }),
+    });
+    if (r.ok && r.data?.id) props.onStarted(r.data.id);
+    else { toast.push(r.error || "Couldn't start run", "error"); setBusy(false); }
   };
 
   return (
@@ -444,11 +444,9 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
 
   const rerun = async () => {
     setRerunning(true);
-    try {
-      const d = await jsonFetch<{ ok: boolean; id?: string; error?: string }>(`/api/research/runs/${runId}/rerun`, { method: "POST" });
-      if (d.ok && d.id) props.onOpenRun(d.id);
-      else { toast.push(d.error ?? "Couldn't re-run", "error"); setRerunning(false); }
-    } catch { toast.push("Couldn't re-run", "error"); setRerunning(false); }
+    const r = await jsonFetch<{ id?: string }>(`/api/research/runs/${runId}/rerun`, { method: "POST" });
+    if (r.ok && r.data?.id) props.onOpenRun(r.data.id);
+    else { toast.push(r.error || "Couldn't re-run", "error"); setRerunning(false); }
   };
 
   // Recurring re-research (RS-4): "off" + the three cadences. Picking a cadence
@@ -457,32 +455,33 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
     setSchedBusy(true);
     try {
       if (value === "off") {
-        if (schedule) await jsonFetch(`/api/research/schedules/${schedule.id}`, { method: "DELETE" });
+        if (schedule) {
+          const r = await jsonFetch(`/api/research/schedules/${schedule.id}`, { method: "DELETE" });
+          if (!r.ok) { toast.push(r.error, "error"); return; }
+        }
         setSchedule(null);
         toast.push("Auto-refresh off", "success");
       } else {
-        const d = await jsonFetch<{ ok: boolean; schedule?: ScheduleInfo; error?: string }>(`/api/research/runs/${runId}/schedule`, { method: "POST", body: JSON.stringify({ cadence: value }) });
-        if (d.ok && d.schedule) { setSchedule(d.schedule); toast.push(`Auto-refresh ${value}`, "success"); }
-        else toast.push(d.error ?? "Couldn't schedule", "error");
+        const r = await jsonFetch<{ schedule?: ScheduleInfo }>(`/api/research/runs/${runId}/schedule`, { method: "POST", body: JSON.stringify({ cadence: value }) });
+        if (r.ok && r.data?.schedule) { setSchedule(r.data.schedule); toast.push(`Auto-refresh ${value}`, "success"); }
+        else toast.push(r.error || "Couldn't schedule", "error");
       }
-    } catch { toast.push("Couldn't update schedule", "error"); }
-    finally { setSchedBusy(false); }
+    } finally { setSchedBusy(false); }
   };
 
   useEffect(() => {
     let active = true;
     const poll = async () => {
-      try {
-        const d = await jsonFetch<{ ok: boolean; run?: RunDetail }>(`/api/research/runs/${runId}`);
-        if (!active) return;
-        if (d.run) {
-          setRun(d.run);
-          if (d.run.status !== "ready" && d.run.status !== "failed") {
-            timer.current = setTimeout(poll, 1800);
-          }
+      const r = await jsonFetch<{ run?: RunDetail }>(`/api/research/runs/${runId}`);
+      if (!active) return;
+      if (r.ok && r.data?.run) {
+        setRun(r.data.run);
+        if (r.data.run.status !== "ready" && r.data.run.status !== "failed") {
+          timer.current = setTimeout(poll, 1800);
         }
-      } catch {
-        if (active) timer.current = setTimeout(poll, 3000);
+      } else if (r.data === null) {
+        // Network error (data null) — retry, matching the old catch-and-retry.
+        timer.current = setTimeout(poll, 3000);
       }
     };
     poll();
@@ -493,10 +492,9 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        const d = await jsonFetch<{ ok: boolean; schedule?: ScheduleInfo | null }>(`/api/research/runs/${runId}/schedule`);
-        if (active && d.ok) setSchedule(d.schedule ?? null);
-      } catch { /* non-fatal — the control just shows "off" */ }
+      const r = await jsonFetch<{ schedule?: ScheduleInfo | null }>(`/api/research/runs/${runId}/schedule`);
+      // Failure is non-fatal — the control just shows "off".
+      if (active && r.ok && r.data) setSchedule(r.data.schedule ?? null);
     })();
     return () => { active = false; };
   }, [runId]);
@@ -702,12 +700,14 @@ function TemplateEditor(props: {
   useEffect(() => {
     if (!props.templateId) return;
     (async () => {
-      const d = await jsonFetch<{ ok: boolean; template?: TemplateDetail }>(`/api/research/templates/${props.templateId}`);
-      if (d.template) {
-        const { id, isBuiltIn, isOwner, ...rest } = d.template;
+      const r = await jsonFetch<{ template?: TemplateDetail }>(`/api/research/templates/${props.templateId}`);
+      if (r.ok && r.data?.template) {
+        const { id, isBuiltIn, isOwner, ...rest } = r.data.template;
         void id; void isBuiltIn; void isOwner;
         setDef({ ...rest, name: props.clone ? `${rest.name} (copy)` : rest.name });
       } else {
+        // Surface the load failure but still clear the spinner with a blank form.
+        if (!r.ok) toast.push(r.error, "error");
         setDef(BLANK);
       }
     })();
@@ -721,12 +721,13 @@ function TemplateEditor(props: {
   const save = async () => {
     if (!def.name.trim()) { toast.push("Give the template a name", "error"); return; }
     setBusy(true);
-    const url = editing ? `/api/research/templates/${props.templateId}` : "/api/research/templates";
-    const method = editing ? "PUT" : "POST";
-    const d = await jsonFetch<{ ok: boolean; error?: string }>(url, { method, body: JSON.stringify(def) });
-    setBusy(false);
-    if (d.ok) props.onSaved();
-    else toast.push(d.error ?? "Couldn't save", "error");
+    try {
+      const url = editing ? `/api/research/templates/${props.templateId}` : "/api/research/templates";
+      const method = editing ? "PUT" : "POST";
+      const r = await jsonFetch(url, { method, body: JSON.stringify(def) });
+      if (r.ok) props.onSaved();
+      else toast.push(r.error, "error");
+    } finally { setBusy(false); }
   };
 
   const src = def.sources;

@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     jar.delete(IMPERSONATION_COOKIE);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error("[api] internal error:", e);
+    return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }

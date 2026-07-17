@@ -29,10 +29,11 @@ export function ReportView({ reportId }: { reportId: string }) {
           fetch(`/api/reports/${reportId}`, { cache: "no-store" }),
           fetch(`/api/reports/${reportId}/run`, { cache: "no-store" }),
         ]);
-        const mData = (await mRes.json()) as { ok: boolean; report?: ReportMeta };
+        const mData = (await mRes.json()) as { ok: boolean; report?: ReportMeta; error?: string };
         const rData = await rRes.json();
         if (!alive) return;
-        if (mData.ok && mData.report) setMeta(mData.report);
+        if (mRes.ok && mData.ok && mData.report) setMeta(mData.report);
+        else setError(mData.error ?? "Couldn't load this report's details.");
         if (rRes.ok && rData.ok) setResult(rData as RunResult);
         else setError(rData.error ?? "Couldn't run this report.");
       } catch {

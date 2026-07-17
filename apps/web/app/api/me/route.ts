@@ -9,7 +9,8 @@ export async function GET() {
     const ctx = await resolveUserContext();
     return NextResponse.json({ ok: true, ...ctx });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error("[api] internal error:", e);
+    return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }
 

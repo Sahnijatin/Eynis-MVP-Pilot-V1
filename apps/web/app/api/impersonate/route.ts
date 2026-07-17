@@ -27,7 +27,8 @@ export async function GET() {
       currentUserId: ctxRes?.context?.userId ?? null,
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error("[api] internal error:", e);
+    return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }
 
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({ targetUserId }),
       cache: "no-store",
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ ok: false, error: "Upstream error" }));
     if (!res.ok || !data.ok) {
       return NextResponse.json({ ok: false, error: data?.error ?? "Failed to start impersonation" }, { status: res.status || 500 });
     }
@@ -65,7 +66,8 @@ export async function POST(req: Request) {
     );
     return NextResponse.json({ ok: true, target: data.target });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error("[api] internal error:", e);
+    return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }
 
@@ -89,6 +91,7 @@ export async function DELETE() {
     jar.delete(IMPERSONATION_COOKIE);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error("[api] internal error:", e);
+    return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }

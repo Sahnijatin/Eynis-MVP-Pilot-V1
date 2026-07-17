@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Card, PageHeader, Field, Input, Select, Badge, EmptyState, Modal, useToast, tokens as t } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 import { CampaignsNav } from "./campaigns-nav";
 import type { LeadSegmentRow, SegmentRules } from "../../lib/data";
 
@@ -51,27 +52,27 @@ export function SegmentsClient({ initialSegments }: { initialSegments: LeadSegme
     if (!name.trim()) { setError("Name is required"); return; }
     setBusy(true); setError(null);
     try {
-      const res = await fetch("/api/segments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.trim(), rules: buildRules() }) });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setError(data.error ?? "Create failed"); return; }
-      setSegments((s) => [data.segment, ...s]);
+      const r = await jsonRequest<{ segment: LeadSegmentRow }>("/api/segments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.trim(), rules: buildRules() }) });
+      if (!r.ok || !r.data) { setError(r.error); return; }
+      setSegments((s) => [r.data!.segment, ...s]);
       setName(""); setTagsAny(""); setTagsNot(""); setStatuses(new Set()); setConsent("any"); setCompany(""); setCreating(false);
       toast.push("Segment created", "success");
     } finally { setBusy(false); }
   }
 
   async function remove(id: string) {
-    await fetch(`/api/segments/${id}`, { method: "DELETE" });
-    setSegments((s) => s.filter((x) => x.id !== id));
+    const r = await jsonRequest(`/api/segments/${id}`, { method: "DELETE" });
     setConfirmId(null);
-    toast.push("Segment deleted");
+    if (!r.ok) { toast.push(`Delete failed: ${r.error}`, "error"); return; }
+    setSegments((s) => s.filter((x) => x.id !== id));
+    toast.push("Segment deleted", "success");
   }
 
   async function preview(id: string) {
     setPreviews((p) => ({ ...p, [id]: "…" }));
-    const res = await fetch(`/api/segments/${id}/preview`, { cache: "no-store" });
-    const data = await res.json();
-    setPreviews((p) => ({ ...p, [id]: data.ok ? data.total : 0 }));
+    const r = await jsonRequest<{ total: number }>(`/api/segments/${id}/preview`, { cache: "no-store" });
+    setPreviews((p) => ({ ...p, [id]: r.ok && r.data ? r.data.total : 0 }));
+    if (!r.ok) toast.push(`Preview failed: ${r.error}`, "error");
   }
 
   const toggleStatus = (s: string) => setStatuses((prev) => { const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next; });

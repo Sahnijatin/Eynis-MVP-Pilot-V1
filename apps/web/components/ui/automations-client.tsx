@@ -78,7 +78,9 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
 
-  const executions = initialExecutions;
+  // The page fetches up to 200 executions: the full set feeds the per-day
+  // activity chart; the log below shows the most recent 15.
+  const executions = initialExecutions.slice(0, 15);
 
   const filtered = useMemo(() => items.filter((i) =>
     (typeFilter === "all" || i.ruleType === typeFilter) &&
@@ -87,13 +89,23 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
 
   const activeFlows = items.filter((i) => i.isActive).length;
 
-  const weeklyData = [
-    { day: "01 Nov", executions: 200, conversions: 60 },
-    { day: "08 Nov", executions: 280, conversions: 85 },
-    { day: "15 Nov", executions: 320, conversions: 95 },
-    { day: "22 Nov", executions: 380, conversions: 110 },
-    { day: "30 Nov", executions: initialSummary.totalExecutions > 0 ? Math.min(initialSummary.totalExecutions, 500) : 480, conversions: 180 },
-  ];
+  // Real engine activity: executions per day (total vs successful) over the
+  // last 14 days, aggregated from the execution log — never fabricated bars.
+  const weeklyData = useMemo(() => {
+    const dayMs = 24 * 3600_000;
+    const now = Date.now();
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(now - (13 - i) * dayMs);
+      const key = d.toISOString().slice(0, 10);
+      const ofDay = initialExecutions.filter((ex) => ex.executedAt.slice(0, 10) === key);
+      return {
+        day: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+        executions: ofDay.length,
+        conversions: ofDay.filter((ex) => ex.actionResult === "success").length,
+      };
+    });
+  }, [initialExecutions]);
+  const hasChartData = weeklyData.some((d) => d.executions > 0);
 
   async function toggleRule(item: Item) {
     const next = !item.isActive;
@@ -185,15 +197,17 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
         <div className="card col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="card-title mb-0 flex items-center gap-2">Workflow Performance <PreviewBadge label="Sample" /></h3>
-              <p className="text-xs text-slate-500 mt-0.5">Flow Executions vs Conversions (30D)</p>
+              <h3 className="card-title mb-0">Engine Activity</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Executions per day · last 14 days</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-700 inline-block" />EXECUTIONS</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />CONVERSIONS</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />SUCCESSFUL</span>
             </div>
           </div>
-          <CampaignBarChart data={weeklyData} />
+          {hasChartData
+            ? <CampaignBarChart data={weeklyData} names={["Executions", "Successful"]} />
+            : <div className="py-14 text-center text-sm text-slate-400">No engine activity in the last 14 days — this chart fills in as rules fire.</div>}
         </div>
       </div>
 

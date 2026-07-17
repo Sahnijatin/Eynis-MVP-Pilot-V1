@@ -105,7 +105,8 @@ export default async function SettingsPage() {
           {/* White-label branding — admins only */}
           {isAdmin && <BrandingPanel />}
 
-          {/* White-label domains — admins only */}
+          {/* White-label domains — admins only. The platform base domain comes
+              from the deployment env so resellers show their own. */}
           {isAdmin && <DomainsPanel />}
 
           {/* Account + Property details — client form with a working Save. */}

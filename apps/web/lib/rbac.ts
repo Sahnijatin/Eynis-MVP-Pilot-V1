@@ -123,6 +123,7 @@ export const ROUTE_PERMISSIONS: Array<{ pattern: string; permission: Permission 
   // as campaigns/automations so the whole module appears together.
   { pattern: "/marketing",           permission: "manage_automations" },
   { pattern: "/sequences",           permission: "manage_automations" },
+  { pattern: "/segments",            permission: "manage_automations" },
   { pattern: "/templates",           permission: "manage_automations" },
   { pattern: "/reports",             permission: "view_reports" },
   { pattern: "/analytics",           permission: "view_analytics" },

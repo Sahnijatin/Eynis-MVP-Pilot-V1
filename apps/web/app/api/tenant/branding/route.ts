@@ -7,7 +7,7 @@ export async function GET() {
   const res = await fetch(`${getApiBaseUrl()}/tenant/branding`, {
     headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function PUT(req: NextRequest) {
@@ -18,5 +18,5 @@ export async function PUT(req: NextRequest) {
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

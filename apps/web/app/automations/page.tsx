@@ -95,7 +95,9 @@ export default async function AutomationsPage() {
   let execData: Awaited<ReturnType<typeof fetchAutomationExecutions>> | null = null;
   let error = "";
   try {
-    [data, execData] = await Promise.all([fetchAutomations(), fetchAutomationExecutions(15)]);
+    // 200 recent executions: 15 rows feed the log below, the rest feed the
+    // per-day activity chart so it reflects real engine history.
+    [data, execData] = await Promise.all([fetchAutomations(), fetchAutomationExecutions(200)]);
   } catch (err) {
     error = err instanceof Error ? err.message : "Failed to load automations";
   }

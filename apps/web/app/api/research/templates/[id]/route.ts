@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -20,7 +20,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -30,5 +30,5 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

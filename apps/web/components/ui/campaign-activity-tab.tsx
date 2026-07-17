@@ -30,14 +30,23 @@ const timeAgo = (iso: string) => {
 export function CampaignActivityTab({ campaignId, isActive }: { campaignId: string; isActive: boolean }) {
   const [items, setItems] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [live, setLive] = useState(isActive);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/campaigns/${campaignId}/deliveries?limit=100`, { cache: "no-store" });
-    const data = await res.json();
-    if (data.ok) setItems(data.items);
-    setLoading(false);
+    // Also runs on a 5s poll — failures are swallowed (no toast spam); existing
+    // items stay on screen and the next tick retries.
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/deliveries?limit=100`, { cache: "no-store" });
+      const data = await res.json();
+      if (data.ok) { setItems(data.items); setLoadFailed(false); }
+      else setLoadFailed(true);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [campaignId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -60,7 +69,11 @@ export function CampaignActivityTab({ campaignId, isActive }: { campaignId: stri
         </label>
       </div>
       {items.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 32, color: "#666" }}>No messages sent yet. WhatsApp and email sends will stream in here.</div>
+        <div style={{ textAlign: "center", padding: 32, color: loadFailed ? "#991b1b" : "#666" }}>
+          {loadFailed
+            ? "Couldn't load activity — check your connection. It retries automatically while auto-refresh is on."
+            : "No messages sent yet. WhatsApp and email sends will stream in here."}
+        </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {items.map((d) => (

@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl, getApiToken } from "./api";
 
+// Join catch-all path segments for a backend URL, refusing traversal. A ".."
+// segment survives encodeURIComponent (dots aren't escaped) and the WHATWG URL
+// parser then normalizes it away — letting a crafted request climb out of the
+// intended backend prefix. Reject dot segments (and any embedded separator)
+// outright; the backend's authz still gates everything, but these catch-alls
+// must only ever reach their own prefix.
+export function joinProxyPath(segments: string[] | undefined): string | null {
+  if (!segments || segments.length === 0) return "";
+  for (const s of segments) {
+    if (s === "." || s === ".." || s.includes("/") || s.includes("\\")) return null;
+  }
+  return "/" + segments.map(encodeURIComponent).join("/");
+}
+
 // Thin server-side proxy: injects the API bearer token and forwards the request to
 // the backend, preserving status and (for non-JSON responses like PDF) the raw body.
 // Used by the quotes/quote-templates catch-all routes so the browser never sees the

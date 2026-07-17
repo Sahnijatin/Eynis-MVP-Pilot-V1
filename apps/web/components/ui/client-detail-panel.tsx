@@ -39,6 +39,11 @@ interface Props {
   detail: ClientDetailData;
   accentColor: string;
   headerChildren?: React.ReactNode;
+  // Stable identity for per-entity state resets (falls back to `name`).
+  entityId?: string;
+  // Persist the notes; resolve true on success. When absent the Notes tab is
+  // read-only — an editable field whose save goes nowhere is worse than none.
+  onSaveNotes?: (notes: string) => Promise<boolean>;
 }
 
 type Tab = "overview" | "history" | "contact" | "notes";
@@ -55,20 +60,33 @@ function Avatar({ name, color }: { name: string; color: string }) {
   );
 }
 
-export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail, accentColor, headerChildren }: Props) {
+export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail, accentColor, headerChildren, entityId, onSaveNotes }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [notes, setNotes] = useState(detail.notes);
+  const [notesDirty, setNotesDirty] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
-  // When the panel is reused for a different entity (the parent swaps `name`
+  // When the panel is reused for a different entity (the parent swaps props
   // without unmounting), reset the per-entity state so we don't show the previous
   // client's notes/active tab. React's recommended "reset state on prop change".
-  const [trackedName, setTrackedName] = useState(name);
-  if (name !== trackedName) {
-    setTrackedName(name);
+  const key = entityId ?? name;
+  const [trackedKey, setTrackedKey] = useState(key);
+  const [trackedNotes, setTrackedNotes] = useState(detail.notes);
+  if (key !== trackedKey) {
+    setTrackedKey(key);
+    setTrackedNotes(detail.notes);
     setNotes(detail.notes);
+    setNotesDirty(false);
     setActiveTab("overview");
     setNotesSaved(false);
+    setSaveError(false);
+  } else if (detail.notes !== trackedNotes) {
+    // Same entity, fresher notes from the parent (async load) — adopt them
+    // unless the user has already started editing.
+    setTrackedNotes(detail.notes);
+    if (!notesDirty) setNotes(detail.notes);
   }
 
   if (!open) return null;
@@ -80,9 +98,24 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
     { id: "notes", label: "Notes" },
   ];
 
-  function saveNotes() {
-    setNotesSaved(true);
-    setTimeout(() => setNotesSaved(false), 2000);
+  async function saveNotes() {
+    if (!onSaveNotes || saving) return;
+    setSaving(true);
+    setSaveError(false);
+    try {
+      const ok = await onSaveNotes(notes);
+      if (ok) {
+        setNotesDirty(false);
+        setNotesSaved(true);
+        setTimeout(() => setNotesSaved(false), 2000);
+      } else {
+        setSaveError(true);
+      }
+    } catch {
+      setSaveError(true);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -284,23 +317,33 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
 
           {/* NOTES */}
           {activeTab === "notes" && (
-            <div className="space-y-3">
-              <textarea
-                rows={10}
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 resize-none"
-                style={{ "--tw-ring-color": accentColor } as React.CSSProperties}
-                placeholder="Add internal notes about this client…"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-              />
-              <button
-                onClick={saveNotes}
-                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                style={{ background: accentColor }}
-              >
-                {notesSaved ? "✓ Saved" : "Save Notes"}
-              </button>
-            </div>
+            onSaveNotes ? (
+              <div className="space-y-3">
+                <textarea
+                  rows={10}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 resize-none"
+                  style={{ "--tw-ring-color": accentColor } as React.CSSProperties}
+                  placeholder="Add internal notes about this client…"
+                  value={notes}
+                  onChange={e => { setNotes(e.target.value); setNotesDirty(true); }}
+                />
+                {saveError && (
+                  <p className="text-xs text-red-600">Could not save notes — please try again.</p>
+                )}
+                <button
+                  onClick={saveNotes}
+                  disabled={saving}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  style={{ background: accentColor }}
+                >
+                  {saving ? "Saving…" : notesSaved ? "✓ Saved" : "Save Notes"}
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                {detail.notes || "No notes recorded."}
+              </p>
+            )
           )}
         </div>
       </div>

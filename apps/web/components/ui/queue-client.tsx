@@ -1,18 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { AlertCircle, Clock, RefreshCw, Search, Download } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Clock, RefreshCw, Download } from "lucide-react";
 import { QueueActionBanner } from "./queue-action-banner";
 import { PendingForm, PendingSubmitButton } from "./pending-form";
 import { TableEmpty } from "../ds";
-
-type Period = "Today" | "Week" | "Month";
 
 export interface QueueItem {
   id: string;
   status: string;
   category: string;
   summary: string;
+  priority?: string;
   createdAt: string;
   assignedToUserId?: string | null;
 }
@@ -63,26 +62,12 @@ const statusLabel: Record<string, string> = {
   pending: "PENDING"
 };
 
-const PERIOD_KPIS: Record<Period, { open: number; inProgress: number; escalated: number; avgRes: string }> = {
-  Today: { open: 0,   inProgress: 0,  escalated: 0,  avgRes: "18m" },  // overridden from live data
-  Week:  { open: 142, inProgress: 28, escalated: 7,  avgRes: "22m" },
-  Month: { open: 524, inProgress: 96, escalated: 31, avgRes: "19m" }
-};
-
-const PERIOD_VOLUME: Record<Period, Array<{ label: string; v: number }>> = {
-  Today: [
-    { label: "8AM",  v: 3  }, { label: "10AM", v: 5 }, { label: "12PM", v: 8 },
-    { label: "2PM",  v: 6  }, { label: "4PM",  v: 12}, { label: "6PM",  v: 9 },
-    { label: "8PM",  v: 10 }, { label: "10PM", v: 7 }
-  ],
-  Week: [
-    { label: "Mon", v: 32 }, { label: "Tue", v: 41 }, { label: "Wed", v: 38 },
-    { label: "Thu", v: 55 }, { label: "Fri", v: 48 }, { label: "Sat", v: 62 }, { label: "Sun", v: 44 }
-  ],
-  Month: [
-    { label: "Wk 1", v: 142 }, { label: "Wk 2", v: 168 },
-    { label: "Wk 3", v: 195 }, { label: "Wk 4", v: 178 }
-  ]
+// Priority → badge style. Priorities come from the API's classification.
+const priorityBadge: Record<string, string> = {
+  urgent: "badge badge-red",
+  high: "badge badge-red",
+  medium: "badge badge-blue",
+  low: "badge badge-slate"
 };
 
 function elapsedTimer(isoDate: string) {
@@ -100,21 +85,29 @@ function isOverdue(isoDate: string, minutes = 45) {
 }
 
 export function QueueClient({ items, users, filters, action, result, flashMsg, returnSearch }: Props) {
-  const [period, setPeriod] = useState<Period>("Today");
-
+  const router = useRouter();
   const userMap = Object.fromEntries(users.map((u) => [u.id, u.fullName]));
 
-  const liveOpen = items.filter(i => i.status === "open").length;
-  const liveInProgress = items.filter(i => i.status === "accepted").length;
-  const liveEscalated = items.filter(i => i.status === "escalated").length;
-  const staffWorkload = users.slice(0, 3).map((u, idx) => ({ name: u.fullName, active: [4, 3, 1][idx] ?? 1 }));
+  const kpis = {
+    open: items.filter(i => i.status === "open").length,
+    inProgress: items.filter(i => i.status === "accepted").length,
+    escalated: items.filter(i => i.status === "escalated").length,
+    unassigned: items.filter(i => !i.assignedToUserId && i.status !== "resolved").length
+  };
 
-  const kpis = period === "Today"
-    ? { open: liveOpen, inProgress: liveInProgress, escalated: liveEscalated, avgRes: "18m" }
-    : PERIOD_KPIS[period];
-
-  const volumeBars = PERIOD_VOLUME[period];
-  const maxVol = Math.max(...volumeBars.map(b => b.v));
+  // Real per-user active load, computed from the requests on screen.
+  const activeByUser = new Map<string, number>();
+  for (const i of items) {
+    if (i.assignedToUserId && i.status !== "resolved") {
+      activeByUser.set(i.assignedToUserId, (activeByUser.get(i.assignedToUserId) ?? 0) + 1);
+    }
+  }
+  const staffWorkload = users
+    .map((u) => ({ name: u.fullName, active: activeByUser.get(u.id) ?? 0 }))
+    .filter((s) => s.active > 0)
+    .sort((a, b) => b.active - a.active)
+    .slice(0, 5);
+  const maxActive = Math.max(1, ...staffWorkload.map((s) => s.active));
 
   return (
     <div>
@@ -132,17 +125,6 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
             >
               <Download className="w-3.5 h-3.5" /> Export CSV
             </a>
-            <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
-              {(["Today", "Week", "Month"] as Period[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setPeriod(t)}
-                  className={`px-4 py-1.5 font-medium transition-colors ${t === period ? "bg-teal-700 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>
@@ -154,7 +136,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
         <div className="card" style={{ borderLeft: "3px solid #f59e0b" }}>
           <div className="kpi-label">Open Requests</div>
           <div className="kpi-value">{kpis.open}</div>
-          <div className="text-xs text-slate-500 mt-1">{period === "Today" ? "active now" : `total this ${period.toLowerCase()}`}</div>
+          <div className="text-xs text-slate-500 mt-1">active now</div>
         </div>
         <div className="card">
           <div className="kpi-label">In-Progress</div>
@@ -167,9 +149,9 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
           {kpis.escalated > 0 && <div className="text-xs text-red-400 mt-1 font-semibold uppercase tracking-wide">URGENT</div>}
         </div>
         <div className="card">
-          <div className="kpi-label">Avg. Resolution</div>
-          <div className="kpi-value">{kpis.avgRes}</div>
-          <div className="kpi-delta up mt-1">−2m ↓</div>
+          <div className="kpi-label">Unassigned</div>
+          <div className="kpi-value">{kpis.unassigned}</div>
+          <div className="text-xs text-slate-500 mt-1">awaiting an owner</div>
         </div>
       </div>
 
@@ -178,11 +160,12 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
         {/* Live Request Board */}
         <div className="card col-span-2">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="card-title mb-0 flex items-center gap-2">
-              Live Request Board
-              <span className="badge badge-green text-[10px]">Auto-refreshing</span>
-            </h3>
-            <button className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors">
+            <h3 className="card-title mb-0">Live Request Board</h3>
+            <button
+              onClick={() => router.refresh()}
+              aria-label="Refresh requests"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
+            >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -205,7 +188,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Room</th>
+                  <th>Priority</th>
                   <th>Request Type</th>
                   <th>Description</th>
                   <th>Timer</th>
@@ -215,13 +198,13 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, idx) => {
+                {items.map((item) => {
                   const overdue = item.status !== "resolved" && isOverdue(item.createdAt);
                   return (
                     <tr key={item.id} className={overdue ? "bg-red-50" : ""}>
                       <td>
-                        <span className={`font-semibold text-sm ${overdue ? "text-red-600" : "text-teal-700"}`}>
-                          {100 + ((idx * 47 + 312) % 400)}
+                        <span className={priorityBadge[item.priority ?? ""] ?? "badge badge-slate"}>
+                          {(item.priority ?? "—").toUpperCase()}
                         </span>
                       </td>
                       <td><span className="text-slate-700 font-medium text-sm">{categoryLabel[item.category] ?? item.category}</span></td>
@@ -265,99 +248,31 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
           </div>
         </div>
 
-        {/* Right column */}
+        {/* Right column — real per-user active load from the visible requests. */}
         <div className="flex flex-col gap-4">
-          <div className="card">
+          <div className="card flex-1">
             <div className="flex items-center justify-between mb-3">
               <h3 className="card-title mb-0">Staff Workload</h3>
               <span className="text-xs text-slate-500 uppercase tracking-wider">ACTIVE LOAD</span>
             </div>
-            <div className="space-y-3">
-              {staffWorkload.map((s) => (
-                <div key={s.name}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{s.name}</span>
-                    <span className="text-xs text-slate-500">{s.active} active</span>
-                  </div>
-                  <div className="progress-track">
-                    <div className="progress-fill" style={{ width: `${Math.min(100, s.active * 25)}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button className="w-full mt-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
-              Reassign Tasks
-            </button>
-          </div>
-
-          {/* Request Volume — changes per period */}
-          <div className="card flex-1">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="card-title mb-0">Request Volume</h3>
-              <span className="text-xs text-slate-500 uppercase tracking-wider">{period === "Today" ? "LAST 12H" : period === "Week" ? "MON–SUN" : "WK1–WK4"}</span>
-            </div>
-            <div className="flex items-end gap-1 h-24">
-              {volumeBars.map((b, i) => (
-                <div key={i} className="flex-1 rounded-sm transition-all duration-300"
-                  style={{ height: `${(b.v / maxVol) * 100}%`, background: i === Math.floor(volumeBars.length / 2) ? "var(--color-primary, #0f766e)" : "#e2e8f0" }} />
-              ))}
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-              <span>{volumeBars[0]?.label}</span>
-              <span>{volumeBars[Math.floor(volumeBars.length / 2)]?.label}</span>
-              <span>{volumeBars[volumeBars.length - 1]?.label}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Resolution Log */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="card-title mb-0">Recent Resolution Log</h3>
-          <a href="/api/service-requests/export?status=resolved" className="text-sm font-medium" style={{ color: "var(--color-teal)" }}>Export history (CSV)</a>
-        </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Room</th>
-                <th>Request</th>
-                <th>Completed by</th>
-                <th>Total Time</th>
-                <th>Guest Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { room: "402", req: "Mini-bar Restock",   by: "Sanya K.",   time: "14m 20s", stars: 4 },
-                { room: "115", req: "Technical: TV Setup", by: "Marcus V.", time: "28m 05s", stars: 5 },
-                { room: "312", req: "Extra Towels",        by: "Elena R.",  time: "08m 45s", stars: 5 },
-                { room: "204", req: "Room Cleaning",       by: "Amit S.",   time: "22m 10s", stars: 4 }
-              ].map((r, i) => (
-                <tr key={i}>
-                  <td className="font-semibold text-teal-700">{r.room}</td>
-                  <td className="text-slate-700">{r.req}</td>
-                  <td>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-teal-700 flex items-center justify-center text-white text-[9px] font-bold">
-                        {r.by.split(" ").map(w => w[0]).join("")}
-                      </span>
-                      {r.by}
-                    </span>
-                  </td>
-                  <td className="font-mono text-slate-600">{r.time}</td>
-                  <td>
-                    <div className="flex gap-0.5">
-                      {Array.from({ length: 5 }, (_, j) => (
-                        <span key={j} className={j < r.stars ? "text-amber-400" : "text-slate-200"}>★</span>
-                      ))}
+            {staffWorkload.length === 0 ? (
+              <p className="text-sm text-slate-500">No requests are assigned right now.</p>
+            ) : (
+              <div className="space-y-3">
+                {staffWorkload.map((s) => (
+                  <div key={s.name}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-slate-700">{s.name}</span>
+                      <span className="text-xs text-slate-500">{s.active} active</span>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="progress-track">
+                      <div className="progress-fill" style={{ width: `${(s.active / maxActive) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

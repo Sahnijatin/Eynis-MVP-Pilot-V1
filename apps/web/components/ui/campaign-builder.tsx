@@ -5,6 +5,7 @@ import type { MessageTemplateRow } from "../../lib/data";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, LinkButton, Card, CardTitle, Field, Label, Input, Select, Disclosure, useToast, tokens as t } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 
 // Reusable variable reference — shared across voice script, WhatsApp, and email.
 const VARIABLE_GROUPS: Array<{ group: string; vars: string[] }> = [
@@ -168,13 +169,12 @@ export function CampaignBuilder() {
 
     setBusy(true);
     try {
-      const res = await fetch("/api/campaigns", {
+      const r = await jsonRequest<{ campaign: { id: string } }>("/api/campaigns", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setError(data.error ?? "Failed to create campaign"); return; }
+      if (!r.ok || !r.data) { setError(r.error || "Failed to create campaign"); return; }
       toast.push("Campaign created", "success");
-      router.push(`/campaigns/${data.campaign.id}`);
+      router.push(`/campaigns/${r.data.campaign.id}`);
     } finally {
       setBusy(false);
     }
@@ -186,7 +186,7 @@ export function CampaignBuilder() {
       <h1 style={{ margin: "12px 0 22px", fontSize: t.font.xxl, fontWeight: 700, letterSpacing: -0.3 }}>New Campaign</h1>
 
       <Card style={{ marginBottom: 16 }}>
-        <Field label="Campaign name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Summer Room Upgrade" /></Field>
+        <Field label="Campaign name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Summer Season Offer" /></Field>
       </Card>
 
       <Card style={{ marginBottom: 16 }}>
@@ -275,7 +275,7 @@ export function CampaignBuilder() {
               <div style={{ marginTop: 10 }}>
                 <Label>How should the bot respond? (your instructions to the AI)</Label>
                 <textarea value={whatsappAgentPrompt} onChange={(e) => setWaAgentPrompt(e.target.value)} rows={4}
-                  placeholder={"e.g. You are a warm, concise concierge for {tenant.name}. Answer questions about the offer, never make up prices, and if the guest is interested share the booking link."}
+                  placeholder={"e.g. You are a warm, concise assistant for {tenant.name}. Answer questions about the offer, never make up prices, and if the customer is interested share the next-steps link."}
                   style={textareaStyle} />
                 <p style={{ fontSize: t.font.xs, color: t.color.textMuted, margin: "6px 0 0" }}>
                   This is the AI&apos;s system prompt — it fully controls tone & behaviour. Supports {"{variables}"}. Leave blank for a sensible default.

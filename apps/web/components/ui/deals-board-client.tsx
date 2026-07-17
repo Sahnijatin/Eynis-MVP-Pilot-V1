@@ -7,9 +7,17 @@ import {
 } from "../ds";
 import { DataGrid, type GridColumn } from "./data-grid";
 import { CrmTabs } from "./crm-tabs";
+import { jsonRequest } from "../../lib/client-request";
 import type { DealRow, PipelineRow, PipelineStage, ForecastSummary, DealSuggestionRow } from "../../lib/data";
 
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
+// Date-only values ("YYYY-MM-DD" from <input type="date">) must parse as LOCAL
+// dates — new Date("YYYY-MM-DD") is UTC midnight, which renders (and flags
+// "overdue") a day early in timezones west of UTC.
+const parseDate = (iso: string): Date => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+};
+const fmtDate = (iso: string | null) => (iso ? parseDate(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 // ── Money formatting ──────────────────────────────────────────────────────────
 function fmtMoney(amount: number, currency = "INR"): string {
@@ -106,7 +114,10 @@ export function DealsBoardClient({
       router.refresh();
     } catch (e) {
       toast.push(e instanceof Error ? e.message : "Move failed", "error");
-      setDeals(initialDeals); // roll back
+      // Roll back ONLY this deal — resetting to initialDeals would also revert
+      // other deals' successful optimistic moves still awaiting router.refresh().
+      const original = deals.find((d) => d.id === dealId);
+      if (original) setDeals((prev) => prev.map((d) => (d.id === dealId ? original : d)));
     }
   }
 
@@ -158,13 +169,16 @@ export function DealsBoardClient({
   }
 
   async function deleteDeals(rows: DealRow[]) {
+    // Best-effort: keep going past a failed row and ALWAYS refresh — aborting
+    // mid-batch left already-deleted rows visible (and selected) in the grid.
+    let failed = 0;
     for (const r of rows) {
-      const res = await fetch(`/api/deals/${r.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+      const res = await jsonRequest(`/api/deals/${r.id}`, { method: "DELETE" });
+      if (!res.ok) failed++;
     }
-    toast.push(`Deleted ${rows.length} deal(s)`, "success");
     router.refresh();
+    if (failed > 0) throw new Error(`${failed} of ${rows.length} could not be deleted`);
+    toast.push(`Deleted ${rows.length} deal(s)`, "success");
   }
 
   const ownerOptions = owners.map((o) => ({ value: o.id, label: o.fullName }));
@@ -365,7 +379,7 @@ function DealCard({
 }: {
   deal: DealRow; currency: string; onDragStart: () => void; onDragEnd: () => void; dragging: boolean;
 }) {
-  const close = deal.expectedCloseAt ? new Date(deal.expectedCloseAt) : null;
+  const close = deal.expectedCloseAt ? parseDate(deal.expectedCloseAt) : null;
   const closeLabel = close ? close.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : null;
   const overdue = close && deal.status === "open" ? close.getTime() < Date.now() : false;
   return (

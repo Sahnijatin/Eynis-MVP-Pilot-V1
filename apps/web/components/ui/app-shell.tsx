@@ -27,7 +27,6 @@ interface Impersonating {
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────
-
 // Real, tenant-scoped operational alerts fetched from GET /api/notifications
 // (SLA-breached / escalated requests, low-stock items, expiring quotes). `href`
 // deep-links each item to the page where it can be acted on; `at` is an ISO
@@ -73,8 +72,9 @@ function TopbarClock() {
 // the API yet (F-19). The `inventory` vertical is fully wired and is the template
 // the rest follow; until each is built on it, we label them honestly as "Preview"
 // so demos don't overpromise.
+// (/patients left this list in Wave 5 — it is now backed by the real Patient model.)
 const PREVIEW_ROUTES = [
-  "/materials", "/menu", "/orders", "/patients", "/appointments",
+  "/materials", "/menu", "/orders", "/appointments",
   "/bookings", "/quotes", "/customers", "/ai-brain",
 ];
 
@@ -234,6 +234,8 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
       .catch(() => { /* fail silently — keep initial defaults */ });
   }, [isLoaded, user]);
 
+  // Real notifications: the tenant's recent activity feed. Refetched whenever
+  // the panel opens so it's current when the user actually looks at it.
   async function stopImpersonation() {
     setStoppingImp(true);
     try {
@@ -471,7 +473,7 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
                           <div className="flex items-start gap-3">
                             <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === "alert" ? "bg-red-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"}`} />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-slate-800">{n.title}</div>
+                              <div className="text-sm font-semibold text-slate-800 capitalize">{n.title}</div>
                               <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{n.body}</div>
                               <div className="text-xs text-slate-500 mt-1">{relativeTime(n.at)}</div>
                             </div>

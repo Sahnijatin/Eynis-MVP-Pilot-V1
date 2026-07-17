@@ -13,7 +13,7 @@ const PROVIDER_META = {
     glyph: "✦"
   },
   openai: {
-    label: "GPT-4o",
+    label: "OpenAI",
     accent: "#10a37f",
     accentLight: "rgba(16,163,127,0.15)",
     accentBorder: "rgba(16,163,127,0.3)",

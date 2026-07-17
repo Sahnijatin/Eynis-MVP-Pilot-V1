@@ -44,9 +44,11 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
             unsafeMetadata: {
               ...user.unsafeMetadata,
               tenantId: data.tenantId,
-              role: data.role ?? "housekeeping",
+              // Cache only what the DB actually says — no hospitality-flavored
+              // defaults in this industry-agnostic path (the DB stays truth).
+              role: data.role ?? null,
               roleKey: data.roleKey ?? null,
-              industry: data.industry ?? "hospitality",
+              industry: data.industry ?? null,
               onboardingCompleted: true,
             },
           }).catch(() => { /* Clerk update failed — DB is source of truth, proceed anyway */ });

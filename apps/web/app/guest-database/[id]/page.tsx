@@ -186,7 +186,7 @@ export default async function GuestProfilePage({
                 )}
               </div>
             ) : (
-              <div className="text-sm text-slate-500 text-center py-6">AI brief unavailable — configure Claude API key</div>
+              <div className="text-sm text-slate-500 text-center py-6">AI brief unavailable — connect an AI provider in Integrations</div>
             )}
           </div>
 

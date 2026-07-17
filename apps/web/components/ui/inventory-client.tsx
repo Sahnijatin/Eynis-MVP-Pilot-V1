@@ -42,22 +42,46 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
     return true;
   }
 
+  // Absolute update of an existing item (PUT). The API records a stock change as
+  // an "adjustment" ledger event, so import corrections stay auditable without
+  // fabricating a goods receipt.
+  async function putItem(id: string, payload: Record<string, unknown>): Promise<boolean> {
+    const res = await fetch(`/api/inventory/items/${id}`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as { ok: boolean; item?: InventoryItem; error?: string };
+    if (!res.ok || !data.ok || !data.item) return false;
+    mergeItem(data.item);
+    return true;
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.name || !form.qty || busy) return;
     setBusy(true);
-    const ok = await postMovement({ name: form.name, category: form.category, txType: form.txType, qty: Number(form.qty), unit: form.unit || undefined });
-    setBusy(false);
-    if (ok) { setForm(EMPTY_FORM); setShowModal(false); }
-    else setImportStatus({ type: "error", message: "Could not save the movement." });
+    try {
+      const ok = await postMovement({ name: form.name, category: form.category, txType: form.txType, qty: Number(form.qty), unit: form.unit || undefined });
+      if (ok) { setForm(EMPTY_FORM); setShowModal(false); }
+      else setImportStatus({ type: "error", message: "Could not save the movement." });
+    } catch {
+      setImportStatus({ type: "error", message: "Could not save the movement." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDelete(item: InventoryItem) {
     if (busy || !confirm(`Delete "${item.name}"?`)) return;
     setBusy(true);
-    const res = await fetch(`/api/inventory/items/${item.id}`, { method: "DELETE" });
-    setBusy(false);
-    if (res.ok) setItems((prev) => prev.filter((i) => i.id !== item.id));
+    try {
+      const res = await fetch(`/api/inventory/items/${item.id}`, { method: "DELETE" });
+      if (res.ok) setItems((prev) => prev.filter((i) => i.id !== item.id));
+      else setImportStatus({ type: "error", message: `Could not delete "${item.name}".` });
+    } catch {
+      setImportStatus({ type: "error", message: `Could not delete "${item.name}".` });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -77,23 +101,41 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
     const reorderIdx = headers.indexOf("reorder level");
     const costIdx = headers.indexOf("cost");
 
+    // CSV stock values are ABSOLUTE levels (that's what export writes), so an
+    // existing item gets an absolute update (ledger: "adjustment"), never an
+    // additive "received" movement — otherwise an export→import round-trip
+    // doubles every item's stock. Only genuinely new items are created via a
+    // receipt, which starts them at the imported level.
+    const byName = new Map(items.map((i) => [i.name, i]));
     let count = 0;
     setBusy(true);
-    for (let i = 1; i < lines.length; i++) {
-      const cols = parseCSVLine(lines[i]);
-      const name = cols[nameIdx];
-      if (!name) continue;
-      const ok = await postMovement({
-        name, txType: "received",
-        qty: stockIdx >= 0 ? Number(cols[stockIdx]) || 0 : 0,
-        category: catIdx >= 0 ? cols[catIdx] || undefined : undefined,
-        unit: unitIdx >= 0 ? cols[unitIdx] || undefined : undefined,
-        reorderLevel: reorderIdx >= 0 ? Number(cols[reorderIdx]) || undefined : undefined,
-        unitCostInr: costIdx >= 0 ? Number(cols[costIdx]) || undefined : undefined,
-      });
-      if (ok) count++;
+    try {
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        const name = cols[nameIdx]?.trim();
+        if (!name) continue;
+        const common = {
+          category: catIdx >= 0 ? cols[catIdx] || undefined : undefined,
+          unit: unitIdx >= 0 ? cols[unitIdx] || undefined : undefined,
+          reorderLevel: reorderIdx >= 0 ? Number(cols[reorderIdx]) || undefined : undefined,
+          unitCostInr: costIdx >= 0 ? Number(cols[costIdx]) || undefined : undefined,
+        };
+        const existing = byName.get(name);
+        const ok = existing
+          ? await putItem(existing.id, {
+              ...common,
+              ...(stockIdx >= 0 ? { stock: Number(cols[stockIdx]) || 0 } : {}),
+            })
+          : await postMovement({
+              name, txType: "received",
+              qty: stockIdx >= 0 ? Number(cols[stockIdx]) || 0 : 0,
+              ...common,
+            });
+        if (ok) count++;
+      }
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
     setImportStatus(count > 0 ? { type: "success", count } : { type: "error", message: "No valid rows imported." });
     setTimeout(() => setImportStatus(null), 4000);
   }

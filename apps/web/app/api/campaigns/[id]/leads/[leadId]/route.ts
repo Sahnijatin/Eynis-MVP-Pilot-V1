@@ -11,7 +11,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string; leadId: string }> }) {
@@ -20,5 +20,5 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   const res = await fetch(`${getApiBaseUrl()}/campaigns/${encodeURIComponent(id)}/leads/${encodeURIComponent(leadId)}`, {
     method: "DELETE", headers: { Authorization: `Bearer ${token}` },
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

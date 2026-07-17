@@ -9,16 +9,6 @@ export default async function RequestPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = searchParams ? await searchParams : {};
-  // Accept the legacy `?hotelId=` param so QR codes / links printed before the
-  // rename still resolve to the right tenant. A param-less visit only falls back
-  // to the demo tenant when EYNIS_ALLOW_DEMO_FALLBACK is on (public demo) — in a
-  // real multi-tenant deployment it must NOT silently write into the demo tenant.
-  const explicitTenant =
-    typeof query.tenantId === "string" ? query.tenantId
-    : typeof query.hotelId === "string" ? query.hotelId
-    : null;
-  const allowDemo = process.env.EYNIS_ALLOW_DEMO_FALLBACK === "true";
-  const tenantId = explicitTenant ?? (allowDemo ? (process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1") : null);
   const result = typeof query.result === "string" ? query.result : "";
   const msg = typeof query.msg === "string" ? query.msg : "";
   const ackText =
@@ -30,19 +20,19 @@ export default async function RequestPage({
   // (white-label, E-9). Degrades to the platform default off a custom domain.
   const theme = await resolveHostTheme();
 
-  // No tenant could be determined and demo fallback is off — refuse to render a
-  // form that would post into the wrong (demo) tenant.
-  if (!tenantId) {
-    return (
-      <main style={{ maxWidth: 720 }}>
-        <h1>Request form unavailable</h1>
-        <p style={{ color: "#64748b" }}>
-          This request link is missing its workspace. Please use the exact link or QR code
-          your provider shared with you.
-        </p>
-      </main>
-    );
-  }
+  // Tenant resolution, most-specific first: an explicit link param (accepting the
+  // legacy `?hotelId=` so QR codes printed before the rename still work), then the
+  // tenant that owns this host (white-label domains). The shared demo tenant is
+  // opt-in only (EYNIS_ALLOW_DEMO_FALLBACK, matching lib/api.ts) — otherwise a
+  // param-less visit must fail closed rather than file a real customer's request
+  // (and their PII) into the demo workspace.
+  const demoFallbackAllowed =
+    String(process.env.EYNIS_ALLOW_DEMO_FALLBACK ?? "").toLowerCase() === "true";
+  const tenantId =
+    typeof query.tenantId === "string" ? query.tenantId
+    : typeof query.hotelId === "string" ? query.hotelId
+    : theme.tenantId
+      ?? (demoFallbackAllowed ? (process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1") : null);
 
   return (
     <main style={{ maxWidth: 720 }}>
@@ -55,6 +45,13 @@ export default async function RequestPage({
         <span style={{ fontWeight: 700, fontSize: 18 }}>{theme.brandName}</span>
       </div>
       <h1>Submit a Request</h1>
+      {!tenantId ? (
+        <p style={{ color: "#64748b" }}>
+          This request link is missing its workspace. Please use the exact link or
+          QR code you were given, or contact the team that shared it with you.
+        </p>
+      ) : (
+      <>
       <p style={{ color: "#64748b" }}>
         Scan-ready request form. Submit once and our team will follow up.
       </p>
@@ -127,6 +124,8 @@ export default async function RequestPage({
           </button>
         </form>
       </section>
+      </>
+      )}
     </main>
   );
 }

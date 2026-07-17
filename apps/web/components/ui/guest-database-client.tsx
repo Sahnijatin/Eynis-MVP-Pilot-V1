@@ -1,22 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Download, Upload, UserPlus, Star, Search, CheckCircle, AlertCircle } from "lucide-react";
 import { ClientDetailPanel, type ClientDetailData } from "./client-detail-panel";
 import { escapeCSV, parseCSVLine } from "../../lib/csv";
 import { Modal, TableEmpty } from "../ds";
-
-// Parse a possibly-malformed date string from an imported CSV without throwing.
-// `new Date("garbage").toISOString()` throws a RangeError, which would abort the
-// entire import; fall back to "now" for unparseable values.
-function safeIso(value: string | undefined): string {
-  if (value) {
-    const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
-  }
-  return new Date().toISOString();
-}
 
 export interface GuestRow {
   id: string;
@@ -32,6 +22,8 @@ interface Props {
   items: GuestRow[];
   total: number;
   search?: string;
+  offset: number;
+  pageSize: number;
 }
 
 const segmentBadge: Record<string, string> = {
@@ -48,28 +40,21 @@ const statusBadge: Record<string, string> = {
   UPCOMING: "badge-amber"
 };
 
-const SEGMENTS = ["VIP", "Business", "Family", "Solo", "Couple"];
-const STATUSES: Array<"ACTIVE" | "UPCOMING"> = ["ACTIVE", "UPCOMING"];
-
 interface FormState {
   fullName: string;
   phone: string;
   email: string;
-  segment: string;
-  status: "ACTIVE" | "UPCOMING";
 }
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
-let nextId = 90001;
+const EMPTY_FORM: FormState = { fullName: "", phone: "", email: "" };
 
-const EMPTY_FORM: FormState = { fullName: "", phone: "", email: "", segment: "Business", status: "ACTIVE" };
+type ImportStatus = { type: "success"; count: number; failed?: number } | { type: "error"; message: string } | null;
 
-type ImportStatus = { type: "success"; count: number } | { type: "error"; message: string } | null;
-
-function buildGuestDetail(g: GuestRow): ClientDetailData {
+function buildGuestDetail(g: GuestRow, notes: string): ClientDetailData {
   return {
     historyLabel: "Stays & Requests",
     contact: {
@@ -84,23 +69,63 @@ function buildGuestDetail(g: GuestRow): ClientDetailData {
       ],
     },
     history: [
-      { id: g.id + "-1", title: "Last stay",      subtitle: g.segment === "VIP" ? "Suite · welcome amenities" : "Standard room", date: formatDate(g.lastStay), status: g.status, statusColor: g.status === "ACTIVE" ? "#059669" : "#475569", statusBg: g.status === "ACTIVE" ? "#d1fae5" : "#f1f5f9" },
+      { id: g.id + "-1", title: "Last stay", subtitle: `${g.visitCount} visit${g.visitCount === 1 ? "" : "s"} on record`, date: formatDate(g.lastStay), status: g.status, statusColor: g.status === "ACTIVE" ? "#059669" : "#475569", statusBg: g.status === "ACTIVE" ? "#d1fae5" : "#f1f5f9" },
     ],
-    notes: g.segment === "VIP"
-      ? "VIP — auto-welcome message at check-in, brief housekeeping daily."
-      : "Add stay-level notes from the full profile page.",
+    notes,
   };
 }
 
-export function GuestDatabaseClient({ items: initialItems, total: initialTotal, search }: Props) {
-  const [guests, setGuests] = useState<GuestRow[]>(initialItems);
+// Build the hrefs for server-driven pagination, preserving the active search.
+function pageHref(offset: number, search?: string): string {
+  const qs = new URLSearchParams();
+  if (search) qs.set("search", search);
+  if (offset > 0) qs.set("offset", String(offset));
+  const s = qs.toString();
+  return s ? `/guest-database?${s}` : "/guest-database";
+}
+
+export function GuestDatabaseClient({ items: guests, total, search, offset, pageSize }: Props) {
+  const router = useRouter();
   const [selected, setSelected] = useState<GuestRow | null>(null);
-  const [total, setTotal] = useState(initialTotal);
+  const [selectedNotes, setSelectedNotes] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [importStatus, setImportStatus] = useState<ImportStatus>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load the selected guest's real notes (guests share the Contact model, so
+  // notes live on GET/PATCH /contacts/:id).
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setSelectedNotes("");
+    fetch(`/api/contacts/${encodeURIComponent(selected.id)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then((data: { ok: boolean; contact?: { notes?: string | null } }) => {
+        if (!cancelled && data.ok) setSelectedNotes(data.contact?.notes ?? "");
+      })
+      .catch(() => { /* panel shows empty notes */ });
+    return () => { cancelled = true; };
+  }, [selected]);
+
+  async function saveGuestNotes(notes: string): Promise<boolean> {
+    if (!selected) return false;
+    try {
+      const res = await fetch(`/api/contacts/${encodeURIComponent(selected.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean };
+      if (res.ok && data.ok) { setSelectedNotes(notes); return true; }
+      return false;
+    } catch {
+      return false;
+    }
+  }
 
   function exportCSV() {
     const headers = ["Name", "Phone", "Status", "Segment", "Last Stay", "Visits"];
@@ -115,7 +140,23 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
     URL.revokeObjectURL(url);
   }
 
-  function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+  // Create one record through the real contacts API (guests and CRM contacts
+  // share the Contact model). Returns true on success.
+  async function createGuest(payload: { fullName: string; phone?: string; email?: string }): Promise<boolean> {
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...payload, source: "manual" }),
+      });
+      const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean };
+      return res.ok && data.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!fileInputRef.current) return;
     fileInputRef.current.value = "";
@@ -125,80 +166,89 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
       setTimeout(() => setImportStatus(null), 4000);
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const text = (ev.target?.result as string) ?? "";
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) {
-          setImportStatus({ type: "error", message: "CSV has no data rows" });
-          setTimeout(() => setImportStatus(null), 4000);
-          return;
-        }
-        const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").toLowerCase().trim());
-        const nameIdx     = headers.findIndex(h => h === "name" || h === "full name" || h === "fullname");
-        const phoneIdx    = headers.findIndex(h => h === "phone" || h === "phone number");
-        const statusIdx   = headers.findIndex(h => h === "status");
-        const segmentIdx  = headers.findIndex(h => h === "segment");
-        const lastStayIdx = headers.findIndex(h => h === "last stay" || h === "laststay");
-        const visitsIdx   = headers.findIndex(h => h === "visits" || h === "visit count");
-        if (nameIdx === -1) {
-          setImportStatus({ type: "error", message: 'CSV must have a "Name" column' });
-          setTimeout(() => setImportStatus(null), 4000);
-          return;
-        }
-        const imported: GuestRow[] = lines.slice(1).map(line => {
-          const cols = parseCSVLine(line).map(c => c.replace(/^"|"$/g, ""));
-          const rawStatus = (cols[statusIdx] ?? "ACTIVE").toUpperCase();
-          return {
-            id: String(nextId++),
-            fullName:   cols[nameIdx]    ?? "Unknown",
-            phoneE164:  cols[phoneIdx]   ?? "—",
-            status:     (rawStatus === "UPCOMING" || rawStatus === "CHECK-OUT") ? rawStatus : "ACTIVE",
-            segment:    cols[segmentIdx] ?? "Solo",
-            lastStay:   lastStayIdx >= 0 ? safeIso(cols[lastStayIdx]) : new Date().toISOString(),
-            visitCount: visitsIdx >= 0 ? (parseInt(cols[visitsIdx], 10) || 1) : 1,
-          };
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) {
+      setImportStatus({ type: "error", message: "CSV has no data rows" });
+      setTimeout(() => setImportStatus(null), 4000);
+      return;
+    }
+    const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").toLowerCase().trim());
+    const nameIdx  = headers.findIndex(h => h === "name" || h === "full name" || h === "fullname");
+    const phoneIdx = headers.findIndex(h => h === "phone" || h === "phone number");
+    const emailIdx = headers.findIndex(h => h === "email");
+    if (nameIdx === -1) {
+      setImportStatus({ type: "error", message: 'CSV must have a "Name" column' });
+      setTimeout(() => setImportStatus(null), 4000);
+      return;
+    }
+
+    setBusy(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const line of lines.slice(1)) {
+        const cols = parseCSVLine(line).map(c => c.replace(/^"|"$/g, ""));
+        const fullName = cols[nameIdx]?.trim();
+        if (!fullName) continue;
+        const created = await createGuest({
+          fullName,
+          phone: phoneIdx >= 0 ? cols[phoneIdx]?.trim() || undefined : undefined,
+          email: emailIdx >= 0 ? cols[emailIdx]?.trim() || undefined : undefined,
         });
-        setGuests(prev => [...imported, ...prev]);
-        setTotal(prev => prev + imported.length);
-        setImportStatus({ type: "success", count: imported.length });
-        setTimeout(() => setImportStatus(null), 4000);
-      } catch {
-        setImportStatus({ type: "error", message: "Failed to parse CSV" });
-        setTimeout(() => setImportStatus(null), 4000);
+        if (created) ok++; else failed++;
       }
-    };
-    reader.readAsText(file);
+    } finally {
+      setBusy(false);
+    }
+    setImportStatus(ok > 0 ? { type: "success", count: ok, failed } : { type: "error", message: "No rows could be imported." });
+    setTimeout(() => setImportStatus(null), 5000);
+    if (ok > 0) router.refresh();
   }
 
   function openModal() {
     setForm({ ...EMPTY_FORM });
     setSuccess(false);
+    setSubmitError(null);
     setModalOpen(true);
   }
 
   function closeModal() {
     setModalOpen(false);
     setSuccess(false);
+    setSubmitError(null);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const newGuest: GuestRow = {
-      id: String(nextId++),
-      fullName: form.fullName,
-      phoneE164: form.phone || "—",
-      status: form.status,
-      segment: form.segment,
-      lastStay: new Date().toISOString(),
-      visitCount: 1
-    };
-    setGuests(prev => [newGuest, ...prev]);
-    setTotal(prev => prev + 1);
-    setSuccess(true);
-    setTimeout(closeModal, 1500);
+    if (busy || !form.fullName.trim()) return;
+    setBusy(true);
+    setSubmitError(null);
+    try {
+      const created = await createGuest({
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim() || undefined,
+        email: form.email.trim() || undefined,
+      });
+      if (created) {
+        setSuccess(true);
+        router.refresh();
+        setTimeout(closeModal, 1500);
+      } else {
+        setSubmitError("Could not save this record — please try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + guests.length, total);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.floor(offset / pageSize) + 1;
+  // Compact page window: first, last, and pages adjacent to the current one.
+  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
+    .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1);
 
   return (
     <>
@@ -206,7 +256,7 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
         <div className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Guest Database</h1>
-            <p className="page-subtitle">Managing {total.toLocaleString()} sovereign entries across all tiers.</p>
+            <p className="page-subtitle">Managing {total.toLocaleString()} guest record{total === 1 ? "" : "s"}.</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -218,7 +268,8 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"
+              disabled={busy}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
             >
               <Upload className="w-3.5 h-3.5" /> Import
             </button>
@@ -243,55 +294,24 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
       {importStatus && (
         <div className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${importStatus.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
           {importStatus.type === "success"
-            ? <><CheckCircle className="w-4 h-4 shrink-0" /> {importStatus.count} guest{importStatus.count !== 1 ? "s" : ""} imported successfully</>
+            ? <><CheckCircle className="w-4 h-4 shrink-0" /> {importStatus.count} guest{importStatus.count !== 1 ? "s" : ""} imported{importStatus.failed ? ` · ${importStatus.failed} failed` : ""}</>
             : <><AlertCircle className="w-4 h-4 shrink-0" /> {importStatus.message}</>
           }
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="kpi-grid-3 mb-5">
-        <div className="card">
-          <div className="kpi-label">Total Records</div>
-          <div className="kpi-value mt-1.5">{total.toLocaleString()}</div>
-          <div className="kpi-delta up mt-1">+1.2%</div>
-        </div>
-        <div className="card">
-          <div className="kpi-label">New This Month</div>
-          <div className="kpi-value mt-1.5">324</div>
-          <div className="mt-1"><span className="badge badge-green text-xs">On Target</span></div>
-        </div>
-        <div className="card" style={{ background: "#0f2d3d", color: "#fff" }}>
-          <div className="text-xs uppercase tracking-wider font-medium" style={{ color: "#7ab8d4" }}>Repeat Guest Rate</div>
-          <div className="text-2xl font-bold mt-1.5 text-white flex items-center gap-2">42% <span className="text-emerald-400 text-sm">↑</span></div>
-        </div>
-      </div>
-
-      {/* Search + Filters */}
+      {/* Search */}
       <div className="card mb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <form method="GET">
-              <input
-                name="search"
-                defaultValue={search ?? ""}
-                placeholder="Search by name, email or booking ID..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              />
-            </form>
-          </div>
-          <div className="flex items-center gap-2">
-            <select className="px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-600 focus:outline-none">
-              <option>All Segments</option>
-              {SEGMENTS.map(s => <option key={s}>{s}</option>)}
-            </select>
-            <select className="px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-600 focus:outline-none">
-              <option>Any Time</option>
-              <option>Last 30 Days</option>
-              <option>Last Quarter</option>
-            </select>
-          </div>
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <form method="GET">
+            <input
+              name="search"
+              defaultValue={search ?? ""}
+              placeholder="Search by name or phone..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            />
+          </form>
         </div>
       </div>
 
@@ -358,15 +378,27 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
         </div>
         {total > 0 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
-            <span className="text-sm text-slate-500">Showing 1 to {Math.min(guests.length, total)} of {total.toLocaleString()} sovereign guests</span>
-            <div className="flex items-center gap-1">
-              {[1, 2, 3].map(p => (
-                <button key={p} className={`w-8 h-8 rounded-lg text-sm font-medium ${p === 1 ? "text-white" : "text-slate-600 hover:bg-slate-100"}`}
-                  style={p === 1 ? { background: "var(--color-primary, #0f766e)" } : {}}>{p}</button>
-              ))}
-              <span className="text-slate-500 px-1">...</span>
-              <button className="w-8 h-8 rounded-lg text-sm text-slate-600 hover:bg-slate-100">{Math.ceil(total / 20)}</button>
-            </div>
+            <span className="text-sm text-slate-500">Showing {from.toLocaleString()} to {to.toLocaleString()} of {total.toLocaleString()} guests</span>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                {pageNumbers.map((p, i) => {
+                  const prev = pageNumbers[i - 1];
+                  const gap = prev !== undefined && p - prev > 1;
+                  return (
+                    <span key={p} className="flex items-center gap-1">
+                      {gap && <span className="text-slate-500 px-1">…</span>}
+                      <Link
+                        href={pageHref((p - 1) * pageSize, search)}
+                        className={`w-8 h-8 rounded-lg text-sm font-medium flex items-center justify-center ${p === currentPage ? "text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                        style={p === currentPage ? { background: "var(--color-primary, #0f766e)" } : {}}
+                      >
+                        {p}
+                      </Link>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -382,6 +414,11 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <p className="text-xs text-slate-500 -mt-1">Create a new guest profile in the database</p>
+                {submitError && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">
+                    <AlertCircle className="w-4 h-4 shrink-0" /> {submitError}
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Full Name *</label>
                   <input
@@ -415,46 +452,16 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Segment</label>
-                    <select
-                      value={form.segment}
-                      onChange={e => setForm(f => ({ ...f, segment: e.target.value }))}
-                      className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    >
-                      {SEGMENTS.map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</label>
-                    <div className="mt-1.5 flex gap-2">
-                      {STATUSES.map(s => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => setForm(f => ({ ...f, status: s }))}
-                          className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
-                          style={form.status === s
-                            ? { background: "var(--color-primary, #0f766e)", color: "#fff" }
-                            : { border: "1px solid #e2e8f0", color: "#475569" }}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
 
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={closeModal}
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50">
                     Cancel
                   </button>
-                  <button type="submit"
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
+                  <button type="submit" disabled={busy}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
                     style={{ background: "var(--color-primary, #0f766e)" }}>
-                    Add Guest
+                    {busy ? "Adding…" : "Add Guest"}
                   </button>
                 </div>
               </form>
@@ -474,7 +481,9 @@ export function GuestDatabaseClient({ items: initialItems, total: initialTotal, 
             { label: "Segment",   value: selected.segment },
             { label: "Status",    value: selected.status },
           ]}
-          detail={buildGuestDetail(selected)}
+          detail={buildGuestDetail(selected, selectedNotes)}
+          entityId={selected.id}
+          onSaveNotes={saveGuestNotes}
           accentColor="var(--color-primary, #0f766e)"
         />
       )}
