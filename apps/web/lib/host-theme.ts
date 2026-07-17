@@ -15,9 +15,10 @@ export interface HostTheme {
   logoUrl: string | null;
   primaryColor: string;
   isTenant: boolean;        // true when a custom-host tenant resolved
+  tenantId: string | null;  // the resolved tenant's id (null on the platform host)
 }
 
-const DEFAULT_THEME: HostTheme = { brandName: "Eynis", logoUrl: null, primaryColor: "#0f766e", isTenant: false };
+const DEFAULT_THEME: HostTheme = { brandName: "Eynis", logoUrl: null, primaryColor: "#0f766e", isTenant: false, tenantId: null };
 
 export async function resolveHostTheme(): Promise<HostTheme> {
   try {
@@ -29,7 +30,7 @@ export async function resolveHostTheme(): Promise<HostTheme> {
     try {
       const res = await fetch(`${apiBase()}/tenant/resolve?host=${encodeURIComponent(host)}`, { cache: "no-store", signal: ctrl.signal });
       if (!res.ok) return DEFAULT_THEME;
-      const data = (await res.json()) as { ok: boolean; found?: boolean; industry?: string; propertyName?: string; whitelabelTier?: string | null; branding?: TenantBranding | null };
+      const data = (await res.json()) as { ok: boolean; found?: boolean; tenantId?: string; industry?: string; propertyName?: string; whitelabelTier?: string | null; branding?: TenantBranding | null };
       if (!data.ok || !data.found) return DEFAULT_THEME;
 
       const config = getIndustryConfig((data.industry as Industry) ?? "hospitality");
@@ -39,6 +40,7 @@ export async function resolveHostTheme(): Promise<HostTheme> {
         logoUrl: theme.logoUrl,
         primaryColor: theme.primaryColor,
         isTenant: true,
+        tenantId: data.tenantId ?? null,
       };
     } finally {
       clearTimeout(timer);
