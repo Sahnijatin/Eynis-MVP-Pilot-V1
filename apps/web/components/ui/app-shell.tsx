@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { Bell, Building2, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Menu } from "lucide-react";
+import { Bell, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Menu } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
@@ -28,37 +28,25 @@ interface Impersonating {
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
-type Notif = { id: string; title: string; body: string; time: string; type: "alert" | "info" | "success" };
+// Real, tenant-scoped operational alerts fetched from GET /api/notifications
+// (SLA-breached / escalated requests, low-stock items, expiring quotes). `href`
+// deep-links each item to the page where it can be acted on; `at` is an ISO
+// timestamp rendered as relative time client-side.
+type Notif = { id: string; type: "alert" | "info" | "success"; title: string; body: string; at: string; href: string };
 
-const NOTIFS: Record<string, Notif[]> = {
-  manufacturing: [
-    { id: "n1", title: "Burma Teak Planks — Out of Stock", body: "2 orders at risk · ETA: 4 Jun", time: "2 min ago", type: "alert" },
-    { id: "n2", title: "New Enquiry — ITC Hotels", body: "Lobby Benches × 12 · Estimated ₹5.4L", time: "18 min ago", type: "info" },
-    { id: "n3", title: "BOM Variance Detected", body: "ORD-2847 · Burma Teak +21% over BOM", time: "1 hr ago", type: "alert" },
-    { id: "n4", title: "Quote Expiring Soon", body: "QT-0411 · Kapoor Developers · Expires 4 Jun", time: "2 hr ago", type: "info" },
-  ],
-  hospitality: [
-    { id: "n1", title: "Service Overdue — Room 302", body: "Open 45+ mins · Auto-escalated to manager", time: "5 min ago", type: "alert" },
-    { id: "n2", title: "PMS Sync Lag", body: "Inventory sync delayed by 4 minutes", time: "22 min ago", type: "alert" },
-    { id: "n3", title: "Guest Check-in — VIP", body: "Ravi Sharma · Room 204 · Loyalty Platinum", time: "1 hr ago", type: "info" },
-    { id: "n4", title: "Upsell Opportunity", body: "8 check-outs tomorrow · Run upgrade offer now", time: "2 hr ago", type: "info" },
-  ],
-  fnb: [
-    { id: "n1", title: "Truffle Oil — Critical Stock", body: "Only 4 bottles left · Reorder level: 6", time: "5 min ago", type: "alert" },
-    { id: "n2", title: "Cocktail of the Week Trending", body: "204 orders this month — consider expanding", time: "1 hr ago", type: "success" },
-    { id: "n3", title: "Lamb Rack Margin Below Floor", body: "Margin at 49% · Review supplier pricing", time: "2 hr ago", type: "alert" },
-  ],
-  travel: [
-    { id: "n1", title: "Action Needed — BKG-1046", body: "IT Company Offsite · 0% paid · Departs 7 Jun", time: "10 min ago", type: "alert" },
-    { id: "n2", title: "Visa Still Pending", body: "BKG-1039 · Mehta Corp · Singapore departs 3 Jun", time: "30 min ago", type: "alert" },
-    { id: "n3", title: "Departure in 14 Days", body: "BKG-1042 · Arora Family · Maldives 7N/8D", time: "2 hr ago", type: "info" },
-  ],
-  healthcare: [
-    { id: "n1", title: "No-Show Follow-up Required", body: "Amit Kumar · Missed today's diabetes consultation", time: "30 min ago", type: "alert" },
-    { id: "n2", title: "Overdue Patient", body: "Arun Kumar · Cardiac monitoring · 43 days overdue", time: "1 hr ago", type: "alert" },
-    { id: "n3", title: "Appointment Reminders Sent", body: "3 patients reminded for tomorrow's slots", time: "2 hr ago", type: "success" },
-  ],
-};
+// Render an ISO timestamp as a short relative string, handling both past
+// (breaches) and future (expiring quotes) times.
+function relativeTime(iso: string): string {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  const future = diffMs > 0;
+  const mins = Math.round(Math.abs(diffMs) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return future ? `in ${mins} min` : `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return future ? `in ${hrs} hr` : `${hrs} hr ago`;
+  const days = Math.round(hrs / 24);
+  return future ? `in ${days} day${days === 1 ? "" : "s"}` : `${days} day${days === 1 ? "" : "s"} ago`;
+}
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
 
@@ -178,6 +166,10 @@ function SidebarNav({ modules, pathname, accentColor }: { modules: NavModule[]; 
 
 interface AppShellProps {
   children: ReactNode;
+  // Platform/reseller brand shown to standard-tier tenants and on the shared
+  // host, resolved from PLATFORM_BRAND_NAME server-side (never the hardcoded
+  // literal "Eynis"). White-label tenants hide it entirely.
+  platformBrand?: string;
   initialOrgRole?: OrgRole;
   initialIndustry?: Industry;
   initialPropertyName?: string | null;
@@ -188,7 +180,7 @@ interface AppShellProps {
   initialWhitelabelTier?: string | null;
 }
 
-export function AppShell({ children, initialOrgRole = "org_admin", initialIndustry = "hospitality", initialPropertyName = null, initialBranding = null, initialWhitelabelTier = null }: AppShellProps) {
+export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "org_admin", initialIndustry = "hospitality", initialPropertyName = null, initialBranding = null, initialWhitelabelTier = null }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoaded } = useUser();
@@ -197,13 +189,20 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   const [navOpen, setNavOpen] = useState(false); // mobile sidebar drawer (E-13e)
   const [notifOpen, setNotifOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifLoaded, setNotifLoaded] = useState(false);
+  const [notifError, setNotifError] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   // `orgRole` is the effective role the app renders for — the signed-in user's
   // role, or (while impersonating, E-6) the target user's role. It is resolved
   // server-side from the impersonation cookie; the client never decides it.
   const [orgRole, setOrgRoleState] = useState<OrgRole>(initialOrgRole);
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
-  const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
+  // Fall back to a neutral label — never the platform brand — if the tenant's
+  // own name can't be resolved, so a real tenant never sees "Eynis" as their
+  // workspace name.
+  const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Workspace");
   const [branding, setBranding] = useState<TenantBranding | null>(initialBranding);
   const [whitelabelTier, setWhitelabelTier] = useState<string | null>(initialWhitelabelTier);
   const [impersonating, setImpersonating] = useState<Impersonating | null>(null);
@@ -315,6 +314,25 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     return () => document.removeEventListener("mousedown", handle);
   }, [notifOpen]);
 
+  // Lazily load the real notification feed the first time the bell is opened —
+  // keeps it off the critical path for every page load.
+  useEffect(() => {
+    if (!notifOpen || notifLoaded || notifLoading) return;
+    let cancelled = false;
+    setNotifLoading(true);
+    setNotifError(false);
+    fetch("/api/notifications", { cache: "no-store" })
+      .then(r => r.json())
+      .then((data: { ok?: boolean; items?: Notif[] }) => {
+        if (cancelled) return;
+        if (data.ok && Array.isArray(data.items)) { setNotifs(data.items); setNotifLoaded(true); }
+        else setNotifError(true);
+      })
+      .catch(() => { if (!cancelled) setNotifError(true); })
+      .finally(() => { if (!cancelled) setNotifLoading(false); });
+    return () => { cancelled = true; };
+  }, [notifOpen, notifLoaded, notifLoading]);
+
   // Close the mobile nav drawer whenever the route changes (E-13e).
   useEffect(() => { setNavOpen(false); }, [pathname]);
 
@@ -322,7 +340,6 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
     return <div className="public-shell">{children}</div>;
   }
 
-  const notifs: Notif[] = NOTIFS[industry] ?? NOTIFS.hospitality;
   const unreadCount = notifs.filter(n => !readIds.has(n.id)).length;
   const OverviewIcon = config.overviewIcon;
   const roleDef = SYSTEM_ROLES.find(r => r.key === orgRole)!;
@@ -347,7 +364,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
             <div className="flex flex-col leading-tight">
               {(theme.brandName || !theme.hidePoweredBy) && (
                 <span className="text-[10px] uppercase tracking-widest font-medium" style={{ color: "#5a7a9a" }}>
-                  {theme.brandName ?? "Eynis"}
+                  {theme.brandName ?? platformBrand}
                 </span>
               )}
               <span className="brand-title" title={propertyName} style={{ fontSize: "15px" }}>
@@ -389,16 +406,6 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
         </div>
 
         <SidebarNav modules={visibleModules} pathname={pathname} accentColor={config.accentColor} />
-
-        <div className="sidebar-footer">
-          <div className="multi-property-badge">
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Multi-{config.terminology.property}</span>
-            <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.1)", color: "#7a9bbf" }}>
-              PHASE 3
-            </span>
-          </div>
-        </div>
       </aside>
 
       {/* Main */}
@@ -443,32 +450,42 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
                   </div>
 
                   <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                    {notifLoading && notifs.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+                    )}
+                    {!notifLoading && notifError && notifs.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-slate-400">Couldn&apos;t load notifications. Try again shortly.</div>
+                    )}
+                    {!notifLoading && !notifError && notifLoaded && notifs.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-slate-400">You&apos;re all caught up.</div>
+                    )}
                     {notifs.map(n => {
                       const unread = !readIds.has(n.id);
                       return (
-                        <div
+                        <Link
                           key={n.id}
-                          onClick={() => setReadIds(prev => new Set([...prev, n.id]))}
-                          className={`px-4 py-3 cursor-pointer transition-colors hover:bg-slate-50 ${unread ? "bg-blue-50/30" : ""}`}
+                          href={n.href}
+                          onClick={() => { setReadIds(prev => new Set([...prev, n.id])); setNotifOpen(false); }}
+                          className={`block px-4 py-3 cursor-pointer transition-colors hover:bg-slate-50 ${unread ? "bg-blue-50/30" : ""}`}
                         >
                           <div className="flex items-start gap-3">
                             <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === "alert" ? "bg-red-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"}`} />
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-semibold text-slate-800">{n.title}</div>
                               <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{n.body}</div>
-                              <div className="text-xs text-slate-500 mt-1">{n.time}</div>
+                              <div className="text-xs text-slate-500 mt-1">{relativeTime(n.at)}</div>
                             </div>
                             {unread && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-2" />}
                           </div>
-                        </div>
+                        </Link>
                       );
                     })}
                   </div>
 
                   <div className="px-4 py-2.5 border-t border-slate-100 text-center">
-                    <button className="text-xs font-medium hover:underline" style={{ color: config.accentColor }}>
+                    <Link href="/dashboard" onClick={() => setNotifOpen(false)} className="text-xs font-medium hover:underline" style={{ color: config.accentColor }}>
                       View all activity
-                    </button>
+                    </Link>
                   </div>
                 </div>
               )}

@@ -129,16 +129,6 @@
     @apply w-3.5 h-3.5 shrink-0;
   }
 
-  .sidebar-footer {
-    @apply px-3 pb-4;
-  }
-
-  .multi-property-badge {
-    @apply flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs;
-    color: #7a9bbf;
-    border: 1px solid rgba(255,255,255,0.08);
-  }
-
   /* Topbar */
   .app-main {
     @apply flex-1 flex flex-col min-w-0;

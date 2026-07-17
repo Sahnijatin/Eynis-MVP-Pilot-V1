@@ -27,7 +27,7 @@ export default async function SignInPage() {
             <>
               <h1 className="auth-headline">Intelligence for every industry</h1>
               <p className="auth-subline">
-                From hotel lobbies to factory floors — Eynis gives owners real-time
+                From hotel lobbies to factory floors — {theme.brandName} gives owners real-time
                 visibility, AI-driven automation, and actionable insights.
               </p>
               <div className="auth-industry-pills">

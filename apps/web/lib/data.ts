@@ -864,6 +864,47 @@ export async function fetchTeamLicense(): Promise<TeamLicenseResponse> {
   return fetchOr<TeamLicenseResponse>("/team/license", { ok: false });
 }
 
+export interface MenuItemRow {
+  id: string; name: string; category: string; description: string | null;
+  isAvailable: boolean; pricePaise: number; priceInr: number; costPaise: number; costInr: number; marginPct: number;
+}
+export async function fetchMenuItems(): Promise<{ ok: boolean; items: MenuItemRow[] }> {
+  return fetchOr<{ ok: boolean; items: MenuItemRow[] }>("/menu/items", { ok: false, items: [] });
+}
+
+export interface BookingRow {
+  id: string; number: string; clientName: string; destination: string; departureDate: string | null;
+  pax: number; status: string; notes: string | null;
+  valuePaise: number; valueInr: number; paidPaise: number; paidInr: number; paidPct: number;
+}
+export async function fetchBookings(): Promise<{ ok: boolean; items: BookingRow[] }> {
+  return fetchOr<{ ok: boolean; items: BookingRow[] }>("/bookings", { ok: false, items: [] });
+}
+
+export interface PatientRow {
+  id: string; name: string; phone: string | null; email: string | null; dateOfBirth: string | null; age: number | null;
+  condition: string | null; bloodGroup: string | null; insurance: string | null; status: string; notes: string | null;
+}
+export async function fetchPatients(): Promise<{ ok: boolean; items: PatientRow[] }> {
+  return fetchOr<{ ok: boolean; items: PatientRow[] }>("/patients", { ok: false, items: [] });
+}
+
+export interface AppointmentRow {
+  id: string; patientId: string | null; patientName: string; provider: string; type: string | null;
+  scheduledAt: string; durationMin: number; status: string; notes: string | null;
+}
+export async function fetchAppointments(date?: string): Promise<{ ok: boolean; items: AppointmentRow[] }> {
+  return fetchOr<{ ok: boolean; items: AppointmentRow[] }>(`/appointments${date ? `?date=${encodeURIComponent(date)}` : ""}`, { ok: false, items: [] });
+}
+
+export interface TenantProfile { name: string; timezone: string; address: string | null; phone: string | null }
+export async function fetchTenantProfile(): Promise<TenantProfile | null> {
+  // Admin-only (manage_settings); non-admins get null, which the UI treats as
+  // "no editable property details".
+  const res = await fetchOr<{ ok: boolean; profile?: TenantProfile }>("/tenant/profile", { ok: false });
+  return res.ok && res.profile ? res.profile : null;
+}
+
 // ── Voice / multi-channel campaigns ───────────────────────────────────────────
 
 export interface CampaignSummary {

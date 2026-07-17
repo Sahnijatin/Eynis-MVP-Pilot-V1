@@ -13,11 +13,14 @@ const SUGGESTED = [
   "What was our on-time delivery rate last month?"
 ];
 
+// The data categories the AI Brain will draw on once it's wired to your live
+// data. No fabricated record counts / "connected" status — this surface is a
+// Preview (see the badge in the header).
 const DATA_SOURCES = [
-  { icon: FileText, label: "Orders & Quotes", count: "234 records" },
-  { icon: Users, label: "Client Database", count: "47 clients" },
-  { icon: Database, label: "Material Logs", count: "1,840 transactions" },
-  { icon: BarChart3, label: "Production Reports", count: "6 months" }
+  { icon: FileText, label: "Orders & Quotes" },
+  { icon: Users, label: "Client Database" },
+  { icon: Database, label: "Material Logs" },
+  { icon: BarChart3, label: "Production Reports" }
 ];
 
 interface Message {
@@ -26,8 +29,8 @@ interface Message {
 }
 
 const MOCK_ANSWERS: Record<string, string> = {
-  "Which clients haven't ordered in 60+ days?": "Based on your client database, **2 clients** haven't placed an order in 60+ days:\n\n• **Kapoor Developers** — last order 8 Apr 2025 (47 days ago). LTV ₹92L. Suggested action: send WhatsApp re-engagement.\n• **Tata Housing Ltd.** — last order 15 Mar 2025 (71 days ago). LTV ₹58L. Mark as at-risk and schedule a follow-up call.",
-  "What is our average margin on hospitality orders this quarter?": "Looking at hospitality-sector orders (Marriott, ITC, The Leela) for Q2 2025:\n\n• Average margin: **34.2%** — above your 25% floor\n• Best margin: Marriott Suite Furniture at **38%**\n• Total hospitality revenue this quarter: **₹2.94 Cr**\n\nHospitality accounts for 39% of your total revenue.",
+  "Which clients haven't ordered in 60+ days?": "Based on your client database, **2 clients** haven't placed an order in 60+ days:\n\n• **Kapoor Developers** — last order 8 Apr 2025 (47 days ago). LTV ₹92L. Suggested action: send WhatsApp re-engagement.\n• **Meridian Housing Ltd.** — last order 15 Mar 2025 (71 days ago). LTV ₹58L. Mark as at-risk and schedule a follow-up call.",
+  "What is our average margin on hospitality orders this quarter?": "Looking at hospitality-sector orders (Grandview Hotels, Crestline Resorts, Azure Suites) for Q2 2025:\n\n• Average margin: **34.2%** — above your 25% floor\n• Best margin: Grandview Suite Furniture at **38%**\n• Total hospitality revenue this quarter: **₹2.94 Cr**\n\nHospitality accounts for 39% of your total revenue.",
   "Which materials are most frequently over-consumed vs BOM?": "Your top 3 over-consumed materials in the last 30 days:\n\n1. **Burma Teak Planks** — avg +18% over BOM across 6 orders\n2. **Marine Ply (19mm)** — avg +22% on wardrobes specifically\n3. **Upholstery Foam** — avg +9% variance\n\nSuggested fix: review BOM templates for wardrobe SKUs — they appear to consistently under-estimate material requirements."
 };
 
@@ -146,20 +149,18 @@ export default function AIBrainPage() {
 
         {/* Data sources */}
         <div className="card">
-          <h3 className="card-title mb-3">Data Sources</h3>
+          <h3 className="card-title mb-1">Data Sources</h3>
+          <p className="text-xs text-slate-500 mb-3">Categories the AI Brain will draw on once connected to your live data.</p>
           <div className="space-y-3">
             {DATA_SOURCES.map((s) => {
               const Icon = s.icon;
               return (
                 <div key={s.label} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50">
-                    <Icon className="w-4 h-4 text-blue-600" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50">
+                    <Icon className="w-4 h-4 text-slate-400" />
                   </div>
-                  <div>
-                    <div className="text-sm font-medium text-slate-700">{s.label}</div>
-                    <div className="text-xs text-slate-500">{s.count}</div>
-                  </div>
-                  <span className="ml-auto w-2 h-2 rounded-full bg-emerald-500" />
+                  <div className="text-sm font-medium text-slate-700">{s.label}</div>
+                  <span className="ml-auto text-[10px] font-medium text-slate-400 uppercase tracking-wide">Not connected</span>
                 </div>
               );
             })}

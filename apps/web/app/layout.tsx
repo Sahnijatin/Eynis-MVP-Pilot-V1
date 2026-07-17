@@ -5,6 +5,7 @@ import { AppShell } from "../components/ui/app-shell";
 import { ToastProvider } from "../components/ds";
 import { resolveUserContext } from "../lib/user-context";
 import { resolveHostTheme } from "../lib/host-theme";
+import { platformBrand } from "../lib/platform";
 import type { Industry } from "../lib/industry-config";
 import type { OrgRole } from "../lib/rbac";
 import "./globals.css";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const theme = await resolveHostTheme();
   return {
-    title: theme.isTenant ? theme.brandName : "Eynis Platform",
+    title: theme.isTenant ? theme.brandName : `${platformBrand()} Platform`,
     description: "Intelligent operations platform for every industry"
   };
 }
@@ -41,6 +42,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <body style={{ margin: 0, fontFamily: "var(--font-brand, Inter, system-ui, Segoe UI, Arial, sans-serif)", background: "var(--color-bg)" }}>
           <ToastProvider>
             <AppShell
+              platformBrand={platformBrand()}
               initialOrgRole={ctx?.orgRole as OrgRole | undefined}
               initialIndustry={(ctx?.industry as Industry | null) ?? undefined}
               initialPropertyName={ctx?.propertyName ?? null}

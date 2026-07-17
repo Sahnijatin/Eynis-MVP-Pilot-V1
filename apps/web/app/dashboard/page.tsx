@@ -8,7 +8,7 @@ import Link from "next/link";
 import {
   LayoutDashboard, Users, Bell, DollarSign, AlertCircle, AlertTriangle, ChevronRight, Zap
 } from "lucide-react";
-import { OccupancyChart } from "../../components/ui/charts";
+import { RequestVolumeChart } from "../../components/ui/charts";
 import { PreviewBadge } from "../../components/ui/preview-badge";
 import { SmartInsights } from "../../components/ui/smart-insights";
 import { InboundPipeline } from "../../components/ui/inbound-pipeline";
@@ -53,7 +53,9 @@ export default async function DashboardPage() {
   const escalated = overview?.escalatedOpenCount ?? 0;
   const resolvedToday = overview?.resolvedTodayCount ?? 0;
 
-  const chartData = trendSeries.slice(-14).map((p) => ({ date: p.date.slice(5), value: Math.max(55, 60 + p.created * 3) }));
+  // Real inbound-request volume per day (was previously a fabricated "occupancy"
+  // formula presented as real — now it plots the actual created counts).
+  const chartData = trendSeries.slice(-14).map((p) => ({ date: p.date.slice(5), value: p.created }));
 
   // Sample panels: occupancy/revenue/upsell/automation-activity/alerts have no
   // backing endpoint yet, so they carry a Preview badge instead of posing as
@@ -213,10 +215,8 @@ export default async function DashboardPage() {
           </div>
           <div className="card" style={{ background: "#0f766e" }}>
             <div className="text-xs text-teal-200 uppercase tracking-wider font-medium mb-1">Night Audit</div>
-            <div className="text-white font-semibold text-sm mb-3">AI-generated operations report</div>
-            <div className="w-full bg-teal-600 rounded-full h-1.5 mb-3">
-              <div className="bg-white rounded-full h-1.5" style={{ width: "65%" }} />
-            </div>
+            <div className="text-white font-semibold text-sm mb-1">AI-generated operations report</div>
+            <div className="text-teal-100 text-xs mb-3">Generate an end-of-day summary of requests, resolutions and revenue.</div>
             <Link href="/night-audit" className="w-full text-center text-xs text-teal-100 font-medium flex items-center justify-center gap-1 py-1.5 rounded-lg border border-teal-500 hover:bg-teal-600 transition-colors">
               View &amp; Generate Report <ChevronRight className="w-3 h-3" />
             </Link>
@@ -229,16 +229,15 @@ export default async function DashboardPage() {
       <div className="card">
         <div className="flex items-center justify-between mb-1">
           <div>
-            <h3 className="card-title mb-0">Occupancy Trend</h3>
-            <p className="text-xs text-slate-500 mt-0.5">14-day rolling average vs target</p>
+            <h3 className="card-title mb-0">Request Volume</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Inbound requests per day — last 14 days</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-700 inline-block" />ACTUAL</span>
-            <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />TARGET (70%)</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-700 inline-block" />REQUESTS / DAY</span>
           </div>
         </div>
         {chartData.length > 0
-          ? <OccupancyChart data={chartData} />
+          ? <RequestVolumeChart data={chartData} />
           : <div className="py-10 text-center text-sm text-slate-400">No trend data yet — this chart fills in as requests come through.</div>}
       </div>
     </div>
