@@ -6,8 +6,14 @@ import { fetchContactIntel } from "../../lib/data";
 
 export const dynamic = "force-dynamic";
 
-// Client records (Phase 7). Manufacturing renders REAL intelligence computed
-// from live quotes/orders; F&B and travel keep their Preview until wired.
+// Client records (Phase 7 + Wave 5). Manufacturing and F&B render REAL
+// intelligence computed from live quotes/orders/contacts; travel keeps its
+// Preview until wired.
+const INTEL_LABEL: Record<string, string> = {
+  manufacturing: "Client Intelligence",
+  fnb: "Customer Loyalty",
+};
+
 export default async function CustomersPage() {
   let terminology = getIndustryConfig("manufacturing").terminology;
   let industry = "manufacturing";
@@ -16,9 +22,9 @@ export default async function CustomersPage() {
     terminology = ws.config.terminology;
     industry = ws.industry ?? "manufacturing";
   } catch { }
-  if (industry === "manufacturing") {
+  if (industry === "manufacturing" || industry === "fnb") {
     const intel = await fetchContactIntel();
-    return <CustomersIntel items={intel.items} entityLabel="Client Intelligence" />;
+    return <CustomersIntel items={intel.items} entityLabel={INTEL_LABEL[industry] ?? "Customer Records"} />;
   }
   return <CustomersClient terminology={terminology} industry={industry} />;
 }
