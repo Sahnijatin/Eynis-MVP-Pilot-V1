@@ -19,6 +19,8 @@ export const permissionMap: Record<string, Permission | null> = {
   "POST /auth/impersonate/stop":           null,
   "GET /auth/impersonations/recent":       "impersonate_users",
   "PATCH /me":                             null,
+  "GET /me/notifications":                 null,
+  "PATCH /me/notifications":               null,
   "GET /tenant/profile":                   "manage_settings",
   "PATCH /tenant/profile":                 "manage_settings",
   "GET /tenant/branding":                  "manage_settings",

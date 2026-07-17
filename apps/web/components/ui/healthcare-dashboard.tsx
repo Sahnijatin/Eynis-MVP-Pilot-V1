@@ -63,7 +63,7 @@ export function HealthcareDashboard() {
             <div key={i} className="p-2.5 mb-2 rounded-lg bg-red-50 border border-red-100">
               <div className="text-sm font-semibold text-red-800">{a.name}</div>
               <div className="text-xs text-red-600 mt-0.5">{a.note}</div>
-              <button className="mt-1.5 text-xs font-medium px-2 py-1 rounded bg-red-100 text-red-700">Send reminder via WhatsApp</button>
+              <button disabled title="Sample data — connect your patient records to send real reminders" className="mt-1.5 text-xs font-medium px-2 py-1 rounded bg-red-50 text-red-300 cursor-not-allowed">Send reminder via WhatsApp</button>
             </div>
           ))}
         </div>

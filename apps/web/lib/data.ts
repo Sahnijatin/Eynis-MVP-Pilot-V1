@@ -864,6 +864,14 @@ export async function fetchTeamLicense(): Promise<TeamLicenseResponse> {
   return fetchOr<TeamLicenseResponse>("/team/license", { ok: false });
 }
 
+export interface TenantProfile { name: string; timezone: string; address: string | null; phone: string | null }
+export async function fetchTenantProfile(): Promise<TenantProfile | null> {
+  // Admin-only (manage_settings); non-admins get null, which the UI treats as
+  // "no editable property details".
+  const res = await fetchOr<{ ok: boolean; profile?: TenantProfile }>("/tenant/profile", { ok: false });
+  return res.ok && res.profile ? res.profile : null;
+}
+
 // ── Voice / multi-channel campaigns ───────────────────────────────────────────
 
 export interface CampaignSummary {

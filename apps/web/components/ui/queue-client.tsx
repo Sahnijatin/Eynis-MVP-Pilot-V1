@@ -315,7 +315,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="card-title mb-0">Recent Resolution Log</h3>
-          <a href="#" className="text-sm font-medium" style={{ color: "var(--color-teal)" }}>View History</a>
+          <a href="/api/service-requests/export?status=resolved" className="text-sm font-medium" style={{ color: "var(--color-teal)" }}>Export history (CSV)</a>
         </div>
         <div className="table-wrap">
           <table className="data-table">

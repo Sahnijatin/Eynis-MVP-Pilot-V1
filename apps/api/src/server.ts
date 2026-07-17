@@ -162,6 +162,21 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
 
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
+// Per-user notification bell preferences. null/invalid → all categories enabled.
+type NotificationPrefs = { escalations: boolean; inventory: boolean; quotes: boolean };
+const parseNotificationPrefs = (raw: string | null): NotificationPrefs => {
+  const all: NotificationPrefs = { escalations: true, inventory: true, quotes: true };
+  if (!raw) return all;
+  try {
+    const p = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      escalations: typeof p.escalations === "boolean" ? p.escalations : true,
+      inventory: typeof p.inventory === "boolean" ? p.inventory : true,
+      quotes: typeof p.quotes === "boolean" ? p.quotes : true,
+    };
+  } catch { return all; }
+};
+
 const createServiceRequestForHotel = async (input: {
   tenantId: string;
   guestId: string;
@@ -1220,6 +1235,33 @@ const handleRequest = async (
       return;
     }
 
+    // ── GET/PATCH /me/notifications — per-user bell notification preferences ─────
+    // These map 1:1 to the categories the top-bar bell (GET /notifications) can
+    // show, so toggling one genuinely hides/shows that category for this user.
+    if (req.url === "/me/notifications" && (req.method === "GET" || req.method === "PATCH")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const userId = auth.context.userId;
+
+      if (req.method === "GET") {
+        const u = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+        json(res, 200, { ok: true, prefs: parseNotificationPrefs(u?.notificationPrefs ?? null) });
+        return;
+      }
+      // PATCH — merge the provided booleans onto the current prefs.
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+      const current = parseNotificationPrefs(u?.notificationPrefs ?? null);
+      const next = {
+        escalations: typeof body.escalations === "boolean" ? body.escalations : current.escalations,
+        inventory: typeof body.inventory === "boolean" ? body.inventory : current.inventory,
+        quotes: typeof body.quotes === "boolean" ? body.quotes : current.quotes,
+      };
+      await prisma.user.update({ where: { id: userId }, data: { notificationPrefs: JSON.stringify(next) } });
+      json(res, 200, { ok: true, prefs: next });
+      return;
+    }
+
     // ── Tenant profile (property details shown in Settings) ─────────────────────
     if (req.url === "/tenant/profile" && (req.method === "GET" || req.method === "PATCH")) {
       const auth = await authorize(req, res, null);
@@ -2059,9 +2101,13 @@ const handleRequest = async (
 
       type Notif = { id: string; type: "alert" | "info" | "success"; title: string; body: string; at: string; href: string };
 
-      const canRequests = canAccess(perms, "GET /service-requests");
-      const canInventory = canAccess(perms, "GET /inventory/items");
-      const canQuotes = canAccess(perms, "GET /quotes");
+      // Gate each source by BOTH the caller's permission AND their own
+      // notification preferences (escalations/inventory/quotes toggles in Settings).
+      const me = await prisma.user.findUnique({ where: { id: context.userId }, select: { notificationPrefs: true } });
+      const prefs = parseNotificationPrefs(me?.notificationPrefs ?? null);
+      const canRequests = canAccess(perms, "GET /service-requests") && prefs.escalations;
+      const canInventory = canAccess(perms, "GET /inventory/items") && prefs.inventory;
+      const canQuotes = canAccess(perms, "GET /quotes") && prefs.quotes;
 
       const [breached, escalated, inventory, expiring] = await Promise.all([
         canRequests

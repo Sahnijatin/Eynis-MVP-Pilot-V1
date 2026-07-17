@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Save, Camera, Clock, Phone, Lock } from "lucide-react";
 import { Button, Field, Input, useToast } from "../ds";
 
@@ -18,57 +18,36 @@ function initials(name: string): string {
 // managed by the auth provider, so both are shown read-only rather than faked.
 export function SettingsProfileForm({
   initialFullName, email, initialPropertyName, canEditProperty, propertyLabel,
+  initialTimezone = "", initialAddress = "", initialPhone = "",
 }: {
   initialFullName: string;
   email: string;
   initialPropertyName: string;
   canEditProperty: boolean;
   propertyLabel: string;
+  initialTimezone?: string;
+  initialAddress?: string;
+  initialPhone?: string;
 }) {
   const toast = useToast();
   const [fullName, setFullName] = useState(initialFullName);
   const [savedName, setSavedName] = useState(initialFullName); // last persisted name
   const [propertyName, setPropertyName] = useState(initialPropertyName);
-  const [timezone, setTimezone] = useState("");
-  const [address, setAddress] = useState("");
-  const [phone, setPhone] = useState("");
+  const [timezone, setTimezone] = useState(initialTimezone);
+  const [address, setAddress] = useState(initialAddress);
+  const [phone, setPhone] = useState(initialPhone);
   const [saving, setSaving] = useState(false);
-  // Snapshot of the property fields as last loaded/saved, so we only PATCH the
-  // tenant when something actually changed (and never overwrite with blanks
-  // before the initial load completes).
-  const [propertySnapshot, setPropertySnapshot] = useState<{ name: string; timezone: string; address: string; phone: string } | null>(null);
-
-  // Load the tenant's editable property details (admins only — the endpoint
-  // requires manage_settings).
-  useEffect(() => {
-    if (!canEditProperty) return;
-    let cancelled = false;
-    fetch("/api/tenant/profile", { cache: "no-store" })
-      .then(r => r.json())
-      .then((data: { ok?: boolean; profile?: { name?: string; timezone?: string; address?: string | null; phone?: string | null } }) => {
-        if (cancelled || !data.ok || !data.profile) return;
-        const snap = {
-          name: data.profile.name ?? initialPropertyName,
-          timezone: data.profile.timezone ?? "",
-          address: data.profile.address ?? "",
-          phone: data.profile.phone ?? "",
-        };
-        setPropertyName(snap.name);
-        setTimezone(snap.timezone);
-        setAddress(snap.address);
-        setPhone(snap.phone);
-        setPropertySnapshot(snap);
-      })
-      .catch(() => { /* keep prop defaults */ });
-    return () => { cancelled = true; };
-  }, [canEditProperty, initialPropertyName]);
+  // Snapshot of the property fields as last saved, so we only PATCH the tenant
+  // when something actually changed. Seeded from server-provided props.
+  const [propertySnapshot, setPropertySnapshot] = useState(
+    { name: initialPropertyName, timezone: initialTimezone, address: initialAddress, phone: initialPhone }
+  );
 
   async function save() {
     if (!fullName.trim()) { toast.push("Full name cannot be empty", "error"); return; }
 
-    // Only send a tenant update when a property field genuinely changed (and the
-    // initial load has completed — snapshot present).
-    const propertyChanged = canEditProperty && propertySnapshot !== null && (
+    // Only send a tenant update when a property field genuinely changed.
+    const propertyChanged = canEditProperty && (
       propertyName.trim() !== propertySnapshot.name ||
       timezone.trim() !== propertySnapshot.timezone ||
       address.trim() !== propertySnapshot.address ||

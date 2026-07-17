@@ -133,8 +133,8 @@ export function OrdersFnbMock() {
         <div className="card col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="card-title mb-0">Active Orders</h3>
-            <span className="text-xs text-blue-600 font-medium cursor-pointer hover:underline flex items-center gap-1">
-              View all 44 <ChevronRight className="w-3.5 h-3.5" />
+            <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+              44 total <ChevronRight className="w-3.5 h-3.5" />
             </span>
           </div>
           <div className="table-wrap">
