@@ -124,22 +124,33 @@ export default async function AutomationsPage() {
   let execData: Awaited<ReturnType<typeof fetchAutomationExecutions>> | null = null;
   let error = "";
   try {
-    [data, execData] = await Promise.all([fetchAutomations(), fetchAutomationExecutions(15)]);
+    // 200 recent executions: 15 rows feed the log below, the rest feed the
+    // per-day activity chart so it reflects real engine history.
+    [data, execData] = await Promise.all([fetchAutomations(), fetchAutomationExecutions(200)]);
   } catch (err) {
     error = err instanceof Error ? err.message : "Failed to load automations";
   }
 
   const summary = data?.summary ?? { totalAutomations: 0, activeFlows: 0, avgConversion: 0, revenueAttributed: 0, totalExecutions: 0 };
   const items = data?.items ?? [];
-  const executions = execData?.items ?? [];
+  const allExecutions = execData?.items ?? [];
+  const executions = allExecutions.slice(0, 15);
 
-  const weeklyData = [
-    { day: "01 Nov", executions: 200, conversions: 60 },
-    { day: "08 Nov", executions: 280, conversions: 85 },
-    { day: "15 Nov", executions: 320, conversions: 95 },
-    { day: "22 Nov", executions: 380, conversions: 110 },
-    { day: "30 Nov", executions: summary.totalExecutions > 0 ? Math.min(summary.totalExecutions, 500) : 480, conversions: 180 }
-  ];
+  // Real engine activity: executions per day (total vs successful) over the
+  // last 14 days, aggregated from the execution log.
+  const dayMs = 24 * 3600_000;
+  const today = new Date();
+  const weeklyData = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(today.getTime() - (13 - i) * dayMs);
+    const key = d.toISOString().slice(0, 10);
+    const ofDay = allExecutions.filter((ex) => ex.executedAt.slice(0, 10) === key);
+    return {
+      day: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+      executions: ofDay.length,
+      conversions: ofDay.filter((ex) => ex.actionResult === "success").length,
+    };
+  });
+  const hasChartData = weeklyData.some((d) => d.executions > 0);
 
   return (
     <div>
@@ -169,10 +180,7 @@ export default async function AutomationsPage() {
           <div className="kpi-value mt-1.5">{summary.activeFlows}</div>
         </div>
         <div className="card">
-          <div className="flex items-start justify-between">
-            <div className="kpi-label">Avg. Conversion</div>
-            <span className="badge badge-red text-[10px]">−2.4%</span>
-          </div>
+          <div className="kpi-label">Avg. Conversion</div>
           <div className="kpi-value mt-1.5">{summary.avgConversion.toFixed(1)}%</div>
         </div>
         <div className="card">
@@ -207,15 +215,17 @@ export default async function AutomationsPage() {
         <div className="card col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="card-title mb-0">Workflow Performance</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Flow Executions vs Conversions (30D)</p>
+              <h3 className="card-title mb-0">Engine Activity</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Executions per day · last 14 days</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-700 inline-block" />EXECUTIONS</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />CONVERSIONS</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />SUCCESSFUL</span>
             </div>
           </div>
-          <CampaignBarChart data={weeklyData} />
+          {hasChartData
+            ? <CampaignBarChart data={weeklyData} names={["Executions", "Successful"]} />
+            : <div className="py-14 text-center text-sm text-slate-400">No engine activity in the last 14 days — this chart fills in as rules fire.</div>}
         </div>
       </div>
 
