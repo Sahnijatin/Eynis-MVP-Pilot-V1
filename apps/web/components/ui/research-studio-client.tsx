@@ -13,6 +13,7 @@ import {
 import {
   Button, Card, Badge, Field, Input, Select, Textarea, Modal, Spinner, EmptyState, useToast, tokens as t,
 } from "../ds";
+import { jsonRequest, type JsonResult } from "../../lib/client-request";
 import type { ResearchTemplateItem, ResearchRunItem, ResearchSourceCatalog, ResearchTrigger, PipelineRow } from "../../lib/data";
 import { splitSectionContent, usageSummary } from "../../lib/research-format";
 import { ResearchShareModal } from "./research-share-modal";
@@ -62,9 +63,10 @@ const STAGE_TEXT: Record<string, string> = {
   queued: "Queued", gathering: "Gathering sources", synthesizing: "Synthesizing report", validating: "Validating", ready: "Ready", failed: "Failed",
 };
 
-async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
-  return (await res.json()) as T;
+// Never throws — wraps the shared jsonRequest (checks res.ok AND data.ok, maps
+// network errors to a friendly message) and adds the JSON content-type header.
+function jsonFetch<T = Record<string, unknown>>(url: string, init?: RequestInit): Promise<JsonResult<T>> {
+  return jsonRequest<T>(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
 }
 
 export default function ResearchStudioClient(props: Props) {
@@ -76,17 +78,18 @@ export default function ResearchStudioClient(props: Props) {
   const [triggers, setTriggers] = useState<ResearchTrigger[]>(props.initialTriggers ?? []);
   const [runModalFor, setRunModalFor] = useState<TemplateDetail | null>(null);
 
+  // Background refreshes fail quietly — keep whatever is already on screen.
   const refreshTemplates = useCallback(async () => {
-    const d = await jsonFetch<{ items: ResearchTemplateItem[] }>("/api/research/templates");
-    setTemplates(d.items ?? []);
+    const r = await jsonFetch<{ items: ResearchTemplateItem[] }>("/api/research/templates");
+    if (r.ok && r.data) setTemplates(r.data.items ?? []);
   }, []);
   const refreshRuns = useCallback(async () => {
-    const d = await jsonFetch<{ items: ResearchRunItem[] }>("/api/research/runs");
-    setRuns(d.items ?? []);
+    const r = await jsonFetch<{ items: ResearchRunItem[] }>("/api/research/runs");
+    if (r.ok && r.data) setRuns(r.data.items ?? []);
   }, []);
   const refreshTriggers = useCallback(async () => {
-    const d = await jsonFetch<{ triggers: ResearchTrigger[] }>("/api/research/triggers");
-    setTriggers(d.triggers ?? []);
+    const r = await jsonFetch<{ triggers: ResearchTrigger[] }>("/api/research/triggers");
+    if (r.ok && r.data) setTriggers(r.data.triggers ?? []);
   }, []);
 
   // ── Header ──────────────────────────────────────────────────────────────────

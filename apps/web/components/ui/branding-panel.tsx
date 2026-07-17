@@ -65,7 +65,8 @@ export function BrandingPanel() {
       if (!res.ok || !data.ok) { toast.push(data.error ?? "Save failed", "error"); return; }
       setForm({ ...EMPTY, ...data.branding });
       toast.push("Branding saved — reload to see it everywhere", "success");
-    } finally { setSaving(false); }
+    } catch { toast.push("Network error — branding was not saved.", "error"); }
+    finally { setSaving(false); }
   }
 
   if (loading) return <Card style={{ maxWidth: 640 }}><span style={{ color: t.color.textMuted }}>Loading…</span></Card>;

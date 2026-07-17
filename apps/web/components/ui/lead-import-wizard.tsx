@@ -81,6 +81,8 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
       const data = await res.json();
       if (!res.ok || !data.ok) { setError(data.error ?? "Import failed"); return; }
       setResult({ imported: data.imported, skipped: data.skipped, errors: data.errors ?? [] });
+    } catch {
+      setError("Network error — the import didn't complete. Check your connection and try again.");
     } finally {
       setBusy(false);
     }

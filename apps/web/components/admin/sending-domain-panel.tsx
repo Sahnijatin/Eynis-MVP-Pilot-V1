@@ -30,6 +30,9 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Load failure ≠ "no domain": rendering the empty form on a transient error
+  // would let a staff save silently overwrite an existing config.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -37,12 +40,16 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
       try {
         const r = await fetch(`/api/admin/tenants/${encodeURIComponent(tenantId)}/sending-domain`, { cache: "no-store" });
         const data = (await r.json()) as { ok: boolean; sendingDomain: SendingDomain | null };
-        if (alive && data.ok && data.sendingDomain) {
+        if (!alive) return;
+        if (!r.ok || !data.ok) { setLoadFailed(true); return; }
+        if (data.sendingDomain) {
           setCurrent(data.sendingDomain);
           setDomain(data.sendingDomain.domain);
           setLocalPart(data.sendingDomain.fromLocalPart);
           setFromName(data.sendingDomain.fromName ?? "");
         }
+      } catch {
+        if (alive) setLoadFailed(true);
       } finally {
         if (alive) setLoading(false);
       }

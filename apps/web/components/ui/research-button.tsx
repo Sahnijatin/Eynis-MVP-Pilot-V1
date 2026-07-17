@@ -53,6 +53,7 @@ function ResearchDialog(props: Props & { onClose: () => void }) {
   const [run, setRun] = useState<RunDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pollTick, setPollTick] = useState(0);
 
   // Load templates relevant to this subject (its type or free-form).
   useEffect(() => {
@@ -80,15 +81,21 @@ function ResearchDialog(props: Props & { onClose: () => void }) {
     if (!templateId) return;
     let active = true;
     (async () => {
-      const d = await fetch(`/api/research/templates/${templateId}`).then((r) => r.json());
-      if (!active || !d.template) return;
-      setDetail(d.template);
-      const pre: Record<string, string> = {};
-      const supplied = props.prefill ?? {};
-      for (const inp of d.template.inputs as TemplateInput[]) {
-        pre[inp.key] = supplied[inp.key] ?? (inp.key === "name" ? props.subjectLabel : "");
+      try {
+        const d = await fetch(`/api/research/templates/${templateId}`).then((r) => r.json());
+        if (!active) return;
+        if (!d.template) { setErr(d.error ?? "Couldn't load template details"); return; }
+        setErr(null);
+        setDetail(d.template);
+        const pre: Record<string, string> = {};
+        const supplied = props.prefill ?? {};
+        for (const inp of d.template.inputs as TemplateInput[]) {
+          pre[inp.key] = supplied[inp.key] ?? (inp.key === "name" ? props.subjectLabel : "");
+        }
+        setValues(pre);
+      } catch {
+        if (active) setErr("Couldn't load template details");
       }
-      setValues(pre);
     })();
     return () => { active = false; };
   }, [templateId, props.prefill, props.subjectLabel]);
@@ -97,14 +104,20 @@ function ResearchDialog(props: Props & { onClose: () => void }) {
   useEffect(() => {
     if (phase !== "running" || !run) return;
     if (run.status === "ready" || run.status === "failed") { setPhase("done"); return; }
+    let active = true;
     const id = setTimeout(async () => {
       try {
         const d = await fetch(`/api/research/runs/${run.id}`).then((r) => r.json());
-        if (d.run) setRun(d.run);
-      } catch { /* keep polling */ }
+        if (active && d.run) setRun(d.run);
+      } catch { /* transient — the tick below retries */ }
+      finally {
+        // Always re-arm: a failed poll or a payload without `run` must not
+        // freeze the progress modal. Bumping the tick re-fires this effect.
+        if (active) setPollTick((n) => n + 1);
+      }
     }, 1800);
-    return () => clearTimeout(id);
-  }, [phase, run]);
+    return () => { active = false; clearTimeout(id); };
+  }, [phase, run, pollTick]);
 
   const start = async () => {
     setBusy(true); setErr(null);
