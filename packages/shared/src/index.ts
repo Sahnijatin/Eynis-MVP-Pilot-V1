@@ -48,7 +48,10 @@ export interface ServiceRequest {
   id: string;
   tenantId: string;
   guestId: string;
-  category: "housekeeping" | "maintenance" | "front_desk" | "concierge" | "fnb" | "other";
+  // Category is industry-agnostic (#159): the allowed values come from the
+  // tenant's industry pack, not a fixed hospitality union. Hospitality tenants
+  // still use housekeeping | maintenance | front_desk | concierge | fnb | other.
+  category: string;
   status: "open" | "accepted" | "resolved" | "escalated";
   createdAt: string;
 }

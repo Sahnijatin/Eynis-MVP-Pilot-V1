@@ -4,6 +4,7 @@ import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
 import { expireOverdueQuotes } from "../quotes/service";
 import { singleFlight } from "../single-flight";
 import { loadTemplateForRun } from "../research/store";
+import { getIntakePack, packLookup } from "../industry-pack";
 
 type ActionResult = "success" | "failed" | "skipped" | "pending";
 
@@ -88,10 +89,13 @@ export async function evaluateSlaBreachEscalate() {
 export async function evaluateSentimentLowFlag() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "sentiment_low_flag", isActive: true },
-    select: { id: true, tenantId: true, code: true }
+    select: { id: true, tenantId: true, code: true, tenant: { select: { industry: true } } }
   });
 
   for (const rule of rules) {
+    // The auto-created SR's category and SLA come from the tenant's industry pack
+    // (#159) rather than hardcoded hospitality values.
+    const pack = getIntakePack(rule.tenant?.industry ?? null);
     const negativeEvents = await prisma.connectorEvent.findMany({
       where: { tenantId: rule.tenantId, aiSentiment: "negative", guestId: { not: null } },
       select: { id: true, guestId: true, guestName: true, aiSummary: true }
@@ -109,12 +113,12 @@ export async function evaluateSentimentLowFlag() {
           data: {
             tenantId: rule.tenantId,
             guestId: event.guestId,
-            category: "front_desk",
-            summary: `Guest Experience Alert — negative feedback: ${(event.aiSummary ?? "Review required").slice(0, 100)}`,
+            category: pack.defaultCategory,
+            summary: `Negative sentiment flagged — review required: ${(event.aiSummary ?? "Review required").slice(0, 100)}`,
             status: "open",
             priority: "high",
             source: "automation",
-            slaDueAt: new Date(Date.now() + 30 * 60000)
+            slaDueAt: new Date(Date.now() + pack.sla.autoMinutes * 60000)
           }
         });
         await finalizeExecution(rule.id, event.id, "success", `Created SR ${sr.id} for ${event.guestName ?? event.guestId}`);
@@ -178,12 +182,15 @@ export async function evaluateCheckinWelcome() {
 export async function evaluateUpsellFollowup() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "upsell_followup", isActive: true },
-    select: { id: true, tenantId: true, code: true }
+    select: { id: true, tenantId: true, code: true, tenant: { select: { industry: true } } }
   });
 
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60000);
 
   for (const rule of rules) {
+    // Offer type per resolved-request category comes from the tenant's industry
+    // pack (#159), defaulting when the category has no specific mapping.
+    const pack = getIntakePack(rule.tenant?.industry ?? null);
     const recentResolved = await prisma.serviceRequest.findMany({
       where: {
         tenantId: rule.tenantId,
@@ -201,9 +208,7 @@ export async function evaluateUpsellFollowup() {
         triggerType: "upsell_followup", triggerEntityId: sr.id, actionType: "queue_offer",
       }))) continue;
 
-      const offerType =
-        sr.category === "fnb" ? "fnb_offer" :
-        sr.category === "housekeeping" ? "room_upgrade" : "late_checkout";
+      const offerType = packLookup(pack.offerRouting.byCategory, sr.category, pack.offerRouting.default);
 
       try {
         await prisma.offerEvent.create({

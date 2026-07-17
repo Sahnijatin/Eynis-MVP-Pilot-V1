@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { DEFAULT_INTAKE_PACK } from "../industry-pack";
 
 // ── Provider availability ─────────────────────────────────────────────────────
 
@@ -171,7 +172,10 @@ export interface GuestIntelligence {
 }
 
 export interface EventClassification {
-  category: "housekeeping" | "maintenance" | "fnb" | "concierge" | "front_desk" | "other";
+  // Category is a free string keyed by the tenant's industry pack (#159), not a
+  // fixed hospitality union — the allowed values are supplied to the prompt at
+  // classify time and validated/clamped downstream in the ingest pipeline.
+  category: string;
   priority: "urgent" | "high" | "normal";
   summary: string;
   sentiment: "positive" | "neutral" | "negative";
@@ -220,20 +224,35 @@ Return a JSON object with exactly these keys:
 }`;
 }
 
-function classifyPrompt(tenantId: string, text: string): string {
-  return `A guest message arrived at hotel ${tenantId}. Classify it and extract key details.
+// Allowed categories are supplied by the caller from the tenant's industry pack
+// (#159), and the operation vocabulary comes from getIndustryTerms — so the same
+// prompt classifies a hotel, a plant or an IT helpdesk without hardcoded "hotel"/
+// "guest" framing. Falls back to the hospitality pack's categories when none given
+// (reused from industry-pack so the two can't drift).
+function classifyPrompt(text: string, categories: string[] | undefined, industry: string | null | undefined): string {
+  const t = getIndustryTerms(industry);
+  const cats = (categories && categories.length ? categories : DEFAULT_INTAKE_PACK.categories)
+    .map((c) => `"${c}"`)
+    .join(" | ");
+  return `An inbound message arrived for a ${t.label} operation. Classify the ${t.request} and extract key details.
 
-Guest message: "${text}"
+Message: "${text}"
 
 Return a JSON object with exactly these keys:
 {
-  "category": one of: "housekeeping" | "maintenance" | "fnb" | "concierge" | "front_desk" | "other",
+  "category": one of: ${cats},
   "priority": one of: "urgent" | "high" | "normal",
   "summary": "10-15 word summary of the request for the operations team",
   "sentiment": one of: "positive" | "neutral" | "negative",
   "routingHint": "which team or person should handle this",
   "slaMinutes": target resolution time in minutes as an integer
 }`;
+}
+
+// Optional per-tenant classification config threaded from the ingest pipeline.
+export interface ClassifyConfig {
+  categories: string[];
+  industry: string | null;
 }
 
 function guestPrompt(data: GuestHistoryData): string {
@@ -305,8 +324,8 @@ async function claudeSmartInsights(data: SmartInsightsData): Promise<SmartInsigh
   return parseStructured<SmartInsights>(await claudeCall(insightsPrompt(data)), INSIGHTS_KEYS);
 }
 
-async function claudeClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
-  return parseStructured<EventClassification>(await claudeCall(classifyPrompt(tenantId, text)), CLASSIFICATION_KEYS);
+async function claudeClassifyEvent(text: string, cfg?: ClassifyConfig): Promise<EventClassification> {
+  return parseStructured<EventClassification>(await claudeCall(classifyPrompt(text, cfg?.categories, cfg?.industry)), CLASSIFICATION_KEYS);
 }
 
 async function claudeGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
@@ -392,8 +411,8 @@ async function openaiSmartInsights(data: SmartInsightsData): Promise<SmartInsigh
   return parseStructured<SmartInsights>(await openaiCall(insightsPrompt(data)), INSIGHTS_KEYS);
 }
 
-async function openaiClassifyEvent(tenantId: string, text: string): Promise<EventClassification> {
-  return parseStructured<EventClassification>(await openaiCall(classifyPrompt(tenantId, text)), CLASSIFICATION_KEYS);
+async function openaiClassifyEvent(text: string, cfg?: ClassifyConfig): Promise<EventClassification> {
+  return parseStructured<EventClassification>(await openaiCall(classifyPrompt(text, cfg?.categories, cfg?.industry)), CLASSIFICATION_KEYS);
 }
 
 async function openaiGuestIntelligence(data: GuestHistoryData): Promise<GuestIntelligence> {
@@ -486,9 +505,10 @@ export async function generateSmartInsights(
 export async function classifyInboundEvent(
   tenantId: string,
   text: string,
-  provider: AIProvider = "claude"
+  provider: AIProvider = "claude",
+  cfg?: ClassifyConfig
 ): Promise<EventClassification> {
-  return provider === "openai" ? openaiClassifyEvent(tenantId, text) : claudeClassifyEvent(tenantId, text);
+  return provider === "openai" ? openaiClassifyEvent(text, cfg) : claudeClassifyEvent(text, cfg);
 }
 
 export async function generateGuestIntelligence(
