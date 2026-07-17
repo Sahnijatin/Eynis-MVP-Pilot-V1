@@ -40,6 +40,7 @@ model Tenant {
   connectorConfigs      ConnectorConfig[]
   connectorEvents       ConnectorEvent[]
   menuItems             MenuItem[]
+  bookings              Booking[]
   license               License?
   roles                 Role[]
   invitations           Invitation[]
@@ -100,6 +101,27 @@ model InventoryItem {
   movements     StockMovement[]
 
   @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Travel bookings (Wave 5). Self-contained trip records; value/paid in paise,
+// paid% derived. clientName is free text (optional CRM link is a future step).
+model Booking {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("hotelId")
+  number        String // display reference, e.g. "BKG-1001"
+  clientName    String
+  destination   String    @default("")
+  departureDate DateTime?
+  pax           Int       @default(1)
+  status        String    @default("in_progress") // in_progress | confirmed | pending_visa | urgent | completed | cancelled
+  valuePaise    Int       @default(0)
+  paidPaise     Int       @default(0)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId])
 }
 

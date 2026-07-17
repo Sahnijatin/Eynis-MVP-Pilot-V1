@@ -872,6 +872,15 @@ export async function fetchMenuItems(): Promise<{ ok: boolean; items: MenuItemRo
   return fetchOr<{ ok: boolean; items: MenuItemRow[] }>("/menu/items", { ok: false, items: [] });
 }
 
+export interface BookingRow {
+  id: string; number: string; clientName: string; destination: string; departureDate: string | null;
+  pax: number; status: string; notes: string | null;
+  valuePaise: number; valueInr: number; paidPaise: number; paidInr: number; paidPct: number;
+}
+export async function fetchBookings(): Promise<{ ok: boolean; items: BookingRow[] }> {
+  return fetchOr<{ ok: boolean; items: BookingRow[] }>("/bookings", { ok: false, items: [] });
+}
+
 export interface TenantProfile { name: string; timezone: string; address: string | null; phone: string | null }
 export async function fetchTenantProfile(): Promise<TenantProfile | null> {
   // Admin-only (manage_settings); non-admins get null, which the UI treats as

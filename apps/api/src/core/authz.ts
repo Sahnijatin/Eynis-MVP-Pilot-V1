@@ -158,6 +158,10 @@ export const permissionMap: Record<string, Permission | null> = {
   "GET /orders":                          "view_crm",
   "GET /orders/:id":                      "view_crm",
   "PATCH /orders/:id":                    "manage_crm",
+  "GET /bookings":                        "view_crm",
+  "POST /bookings":                       "manage_crm",
+  "PATCH /bookings/:id":                  "manage_crm",
+  "DELETE /bookings/:id":                 "manage_crm",
   "GET /contacts/intel":                  "view_crm",
   // Campaigns launch-hardening (Phase 8).
   "POST /campaigns/erasure":              "manage_campaigns",
