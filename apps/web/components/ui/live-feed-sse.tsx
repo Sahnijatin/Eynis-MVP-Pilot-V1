@@ -66,7 +66,14 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    // The reconnect timer must be tracked and cleared on unmount — otherwise a
+    // navigation during the 5s backoff lets connect() run after unmount, opening
+    // an EventSource nothing will ever close (and each error loop stacks more).
+    let disposed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
     const connect = () => {
+      if (disposed) return;
       const es = new EventSource("/api/sse");
       esRef.current = es;
 
@@ -96,12 +103,17 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
         setConnected(false);
         es.close();
         // Reconnect after 5s
-        setTimeout(connect, 5000);
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 5000);
       };
     };
 
     connect();
-    return () => { esRef.current?.close(); };
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      esRef.current?.close();
+    };
   }, []);
 
   return (

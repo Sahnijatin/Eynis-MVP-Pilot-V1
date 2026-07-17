@@ -42,7 +42,7 @@ interface Preview {
 
 interface ContactLite { id: string; fullName: string; phoneE164: string; email: string | null }
 
-const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 const num = (s: string) => { const n = Number(s); return Number.isFinite(n) ? n : 0; };
 const nz = (s: string) => (s.trim() === "" ? null : Math.round(num(s)));
 const newKey = () => Math.random().toString(36).slice(2, 9);
@@ -307,15 +307,17 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const [marginPct, setMarginPct] = useState(String(editQuote?.marginPct ?? 45));
   const [marginFloorPct, setMarginFloorPct] = useState(String(editQuote?.marginFloorPct ?? 30));
   const [gstPct, setGstPct] = useState(String(editQuote?.gstPercent ?? 18));
-  const [discountInr, setDiscountInr] = useState(String(Math.round((editQuote?.discountPaise ?? 0) / 100)));
-  const [laborRateInr, setLaborRateInr] = useState(String(Math.round((editQuote?.lineItems?.[0]?.laborRatePaise ?? 15000) / 100)));
+  // Seed edit state without rounding away sub-rupee precision — Math.round here
+  // silently changed a draft's totals on an open→save round-trip (₹12.50 → ₹13).
+  const [discountInr, setDiscountInr] = useState(String((editQuote?.discountPaise ?? 0) / 100));
+  const [laborRateInr, setLaborRateInr] = useState(String((editQuote?.lineItems?.[0]?.laborRatePaise ?? 15000) / 100));
   const [lines, setLines] = useState<DraftLine[]>(
     editQuote?.lineItems?.length
       ? editQuote.lineItems.map((l) => ({
           key: newKey(), groupName: l.groupName, name: l.name, kind: l.kind, costBasis: l.costBasis,
           lengthMm: l.lengthMm != null ? String(l.lengthMm) : "", widthMm: l.widthMm != null ? String(l.widthMm) : "",
           heightMm: l.heightMm != null ? String(l.heightMm) : "", quantity: String(l.quantity),
-          inventoryItemId: l.inventoryItemId ?? "", unitRateInr: l.inventoryItemId ? "" : String(Math.round(l.unitRatePaise / 100)),
+          inventoryItemId: l.inventoryItemId ?? "", unitRateInr: l.inventoryItemId ? "" : String(l.unitRatePaise / 100),
           wastagePct: String(l.wastagePct), laborHours: String(l.laborHours), materialUnit: l.materialUnit,
         }))
       : [blankLine("General")],
@@ -389,11 +391,15 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
     return Math.round(num(l.unitRateInr) * 100);
   }, [invMap]);
 
-  // Debounced live cost preview.
+  // Debounced live cost preview. A sequence counter drops out-of-order
+  // responses: two rapid edits put two /calc calls in flight, and without the
+  // guard the slower (stale) one could land last and render outdated totals.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewSeq = useRef(0);
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
+      const seq = ++previewSeq.current;
       const payload = {
         overheadPct: num(overheadPct), marginPct: num(marginPct), marginFloorPct: num(marginFloorPct),
         discountPaise: Math.round(num(discountInr) * 100),
@@ -403,9 +409,11 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           wastagePct: num(l.wastagePct), laborHours: num(l.laborHours), laborRatePaise: Math.round(num(laborRateInr) * 100),
         })),
       };
-      const res = await fetch("/api/quotes/calc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const data = (await res.json()) as { preview?: Preview };
-      if (data.preview) setPreview(data.preview);
+      try {
+        const res = await fetch("/api/quotes/calc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const data = (await res.json()) as { preview?: Preview };
+        if (data.preview && seq === previewSeq.current) setPreview(data.preview);
+      } catch { /* preview is display-only — keep the last one on a failed fetch */ }
     }, 350);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [lines, overheadPct, marginPct, marginFloorPct, discountInr, laborRateInr, ratePaiseFor]);

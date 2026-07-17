@@ -10,7 +10,14 @@ import { Calendar, X } from "lucide-react";
 // friendly. `defaultPreset` is highlighted when no params are set.
 
 const DAY_MS = 86_400_000;
-const ymd = (d: Date) => d.toISOString().slice(0, 10);
+// Format in the user's LOCAL calendar date. toISOString() is UTC — for an IST
+// user before 05:30 it made "Today" mean yesterday and shifted every preset
+// window by a day (invisibly, since the active-preset highlight used the same
+// skewed math).
+const ymd = (d: Date) => {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 const PRESETS: Array<{ key: string; label: string; days: number }> = [
   { key: "today", label: "Today", days: 0 },

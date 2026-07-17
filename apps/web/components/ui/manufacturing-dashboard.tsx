@@ -14,7 +14,7 @@ const STAGE_META: Array<{ id: string; label: string; color: string }> = [
   { id: "dispatch", label: "Ready to Dispatch", color: "#10b981" },
 ];
 
-const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;
+const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 const lakh = (paise: number) => {
   const inr = paise / 100;
   return inr >= 100000 ? `₹${(inr / 100000).toFixed(1)}L` : rupees(paise);

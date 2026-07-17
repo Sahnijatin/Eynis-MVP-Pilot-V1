@@ -7,6 +7,7 @@ import { DataGrid, type GridColumn } from "./data-grid";
 import { CrmTabs } from "./crm-tabs";
 import { CsvImportModal } from "./csv-import-modal";
 import ResearchButton from "./research-button";
+import { jsonRequest } from "../../lib/client-request";
 import type { CompanyRow, ContactRow } from "../../lib/data";
 
 const SIZES = ["1-10", "11-50", "51-200", "200+"];
@@ -44,13 +45,16 @@ export function CompaniesClient({ initialCompanies, owners }: { initialCompanies
   }
 
   async function deleteRows(rows: CompanyRow[]) {
+    // Best-effort: keep going past a failed row and ALWAYS refresh — aborting
+    // mid-batch left already-deleted rows visible (and selected) in the grid.
+    let failed = 0;
     for (const r of rows) {
-      const res = await fetch(`/api/companies/${r.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+      const res = await jsonRequest(`/api/companies/${r.id}`, { method: "DELETE" });
+      if (!res.ok) failed++;
     }
-    toast.push(`Deleted ${rows.length} company(ies)`, "success");
     router.refresh();
+    if (failed > 0) throw new Error(`${failed} of ${rows.length} could not be deleted`);
+    toast.push(`Deleted ${rows.length} company(ies)`, "success");
   }
 
   async function importRows(records: Record<string, string>[]) {

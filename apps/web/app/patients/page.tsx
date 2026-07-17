@@ -232,7 +232,7 @@ export default function PatientsPage() {
       <div className="kpi-grid mb-5">
         <div className="card">
           <div className="kpi-label">Total Patients</div>
-          <div className="kpi-value mt-1.5">{PATIENTS.length}</div>
+          <div className="kpi-value mt-1.5">{patients.length}</div>
           <div className="kpi-delta neutral mt-1.5">+2 new this week</div>
         </div>
         <div className="card" style={{ borderTop: "3px solid #f43f5e" }}>
