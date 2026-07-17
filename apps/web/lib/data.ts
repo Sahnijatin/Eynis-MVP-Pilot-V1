@@ -881,6 +881,22 @@ export async function fetchBookings(): Promise<{ ok: boolean; items: BookingRow[
   return fetchOr<{ ok: boolean; items: BookingRow[] }>("/bookings", { ok: false, items: [] });
 }
 
+export interface PatientRow {
+  id: string; name: string; phone: string | null; email: string | null; dateOfBirth: string | null; age: number | null;
+  condition: string | null; bloodGroup: string | null; insurance: string | null; status: string; notes: string | null;
+}
+export async function fetchPatients(): Promise<{ ok: boolean; items: PatientRow[] }> {
+  return fetchOr<{ ok: boolean; items: PatientRow[] }>("/patients", { ok: false, items: [] });
+}
+
+export interface AppointmentRow {
+  id: string; patientId: string | null; patientName: string; provider: string; type: string | null;
+  scheduledAt: string; durationMin: number; status: string; notes: string | null;
+}
+export async function fetchAppointments(date?: string): Promise<{ ok: boolean; items: AppointmentRow[] }> {
+  return fetchOr<{ ok: boolean; items: AppointmentRow[] }>(`/appointments${date ? `?date=${encodeURIComponent(date)}` : ""}`, { ok: false, items: [] });
+}
+
 export interface TenantProfile { name: string; timezone: string; address: string | null; phone: string | null }
 export async function fetchTenantProfile(): Promise<TenantProfile | null> {
   // Admin-only (manage_settings); non-admins get null, which the UI treats as

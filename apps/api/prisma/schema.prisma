@@ -41,6 +41,8 @@ model Tenant {
   connectorEvents       ConnectorEvent[]
   menuItems             MenuItem[]
   bookings              Booking[]
+  patients              Patient[]
+  appointments          Appointment[]
   license               License?
   roles                 Role[]
   invitations           Invitation[]
@@ -123,6 +125,48 @@ model Booking {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+// Healthcare patient records (Wave 5). Age derived from dateOfBirth.
+model Patient {
+  id            String        @id @default(cuid())
+  tenantId      String        @map("hotelId")
+  name          String
+  phone         String?
+  email         String?
+  dateOfBirth   DateTime?
+  condition     String? // primary condition / reason for care
+  bloodGroup    String?
+  insurance     String?
+  status        String        @default("active") // active | due | overdue | lost_follow_up
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments  Appointment[]
+
+  @@index([tenantId])
+}
+
+// Healthcare appointments (Wave 5). Optionally linked to a Patient; patientName
+// is denormalised so walk-ins work without a record.
+model Appointment {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("hotelId")
+  patientId   String?
+  patientName String
+  provider    String   @default("") // doctor / clinician
+  type        String? // Consultation | Follow-up | …
+  scheduledAt DateTime
+  durationMin Int      @default(30)
+  status      String   @default("scheduled") // scheduled | checked_in | waiting | in_progress | completed | no_show | cancelled
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patient     Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, scheduledAt])
 }
 
 // F&B menu catalogue (Wave 5). Prices/costs in paise for consistency with the
