@@ -224,7 +224,7 @@ function HomeView(props: {
     <div>
       {noAi && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> (or set <code>OPENAI_API_KEY</code> on the API) to generate full reports.
+          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> to generate full reports.
         </div>
       )}
       {noSearch && (

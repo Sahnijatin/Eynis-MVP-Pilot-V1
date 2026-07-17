@@ -123,7 +123,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
             <input style={input} type="datetime-local" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
           </Field>
           <Field label="Timezone (IANA, optional)">
-            <input style={input} value={sendTimeZone} onChange={(e) => setTimeZone(e.target.value)} placeholder="defaults to hotel tz" />
+            <input style={input} value={sendTimeZone} onChange={(e) => setTimeZone(e.target.value)} placeholder="defaults to workspace timezone" />
           </Field>
         </div>
         <Field label="Daily send window">

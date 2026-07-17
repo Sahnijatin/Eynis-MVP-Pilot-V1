@@ -7,9 +7,11 @@ import { Button, Card, CardTitle, Field, Input, Badge, useToast, tokens as t } f
 // subdomain (slug), but the custom CNAME domain is provider-managed — we set up
 // DNS/SSL for it. So the custom domain here is read-only status + a request path;
 // staff fulfil the request from the internal provisioning console.
-const PLATFORM = "eynis.com";
-
-export function DomainsPanel() {
+//
+// The platform base domain is passed in from the server (EYNIS_PLATFORM_DOMAIN)
+// — never hard-coded, so a reseller deployment shows its own domain here.
+export function DomainsPanel({ platformDomain }: { platformDomain: string }) {
+  const PLATFORM = platformDomain;
   const toast = useToast();
   const [slug, setSlug] = useState("");
   const [customDomain, setCustomDomain] = useState<string | null>(null);

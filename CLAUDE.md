@@ -147,6 +147,7 @@ Twelve connectors defined in `CONNECTOR_CATALOG` (`packages/shared/src/index.ts`
 | `EYNIS_API_BASE_URL` | `http://localhost:4000` | Web → API base URL |
 | `EYNIS_API_TOKEN` | — | Static API token for web (skips `/auth/token` call if set) |
 | `EYNIS_DEMO_HOTEL_ID` | `eynis-riviera-1` | Demo hotel used by web to authenticate |
+| `EYNIS_PLATFORM_DOMAIN` | `eynis.com` | Web: the platform's base domain shown in customer-facing Settings → Domains (`<slug>.<domain>`). Set to the reseller's domain on white-label deployments. |
 | `EYNIS_ALLOW_DEMO_FALLBACK` | `false` | Web: serve the demo hotel to unresolved visitors. Set `true` for the public demo; leave off in real multi-tenant prod. A resolved real user never falls back to demo regardless. |
 | `LICENSE_PLAN_OVERRIDE` | — | API: force EVERY tenant to a plan (`starter`/`growth`/`enterprise`) for feature gating, ignoring per-tenant DB plans. Unlocks plan-gated features (Research Studio, advanced analytics, automations, night audit) with one env var — no billing/DB change. For single-tenant/demo/self-hosted only; leave unset in real multi-tenant prod. |
 

@@ -65,7 +65,7 @@ async function PipelineContent() {
       <div className="text-center py-8">
         <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
         <p className="text-sm text-slate-500">No inbound events yet</p>
-        <p className="text-xs text-slate-500 mt-1">Events appear here when guests message via WhatsApp</p>
+        <p className="text-xs text-slate-500 mt-1">Events appear here when customers message via WhatsApp</p>
       </div>
     );
   }
@@ -119,7 +119,7 @@ async function PipelineContent() {
 
                 {/* AI provider badge */}
                 {ev.aiProvider && ev.aiProvider !== "keyword" && (
-                  <span className="text-[9px] text-slate-500">via {ev.aiProvider === "openai" ? "GPT-4o" : "Claude"}</span>
+                  <span className="text-[9px] text-slate-500">via {ev.aiProvider === "openai" ? "OpenAI" : "Claude"}</span>
                 )}
               </div>
             </div>

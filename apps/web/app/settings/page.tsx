@@ -104,8 +104,9 @@ export default async function SettingsPage() {
           {/* White-label branding — admins only */}
           {isAdmin && <BrandingPanel />}
 
-          {/* White-label domains — admins only */}
-          {isAdmin && <DomainsPanel />}
+          {/* White-label domains — admins only. The platform base domain comes
+              from the deployment env so resellers show their own. */}
+          {isAdmin && <DomainsPanel platformDomain={process.env.EYNIS_PLATFORM_DOMAIN ?? "eynis.com"} />}
 
           {/* Account Information — read-only: identity is managed by the sign-in
               account (Clerk), so we display it rather than render edit fields

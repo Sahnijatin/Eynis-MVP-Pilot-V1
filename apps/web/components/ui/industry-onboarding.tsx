@@ -44,9 +44,11 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
             unsafeMetadata: {
               ...user.unsafeMetadata,
               tenantId: data.tenantId,
-              role: data.role ?? "housekeeping",
+              // Cache only what the DB actually says — no hospitality-flavored
+              // defaults in this industry-agnostic path (the DB stays truth).
+              role: data.role ?? null,
               roleKey: data.roleKey ?? null,
-              industry: data.industry ?? "hospitality",
+              industry: data.industry ?? null,
               onboardingCompleted: true,
             },
           }).catch(() => { /* Clerk update failed — DB is source of truth, proceed anyway */ });
@@ -140,7 +142,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
         <div className="onboarding-content">
           <h1 className="onboarding-title">Choose your industry workspace</h1>
           <p className="onboarding-subtitle">
-            Eynis configures its modules, terminology, and AI models specifically for your industry.
+            Your workspace configures its modules, terminology, and AI models specifically for your industry.
           </p>
 
           <div className="industry-select-grid">
