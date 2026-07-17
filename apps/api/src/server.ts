@@ -65,6 +65,10 @@ import { json, sendDoc, sendBinary, parseRawBody, parseBody, hasString, asTrimme
 import { authorize, getAuthenticatedContext, canAccess, type RouteContext } from "./core/authz";
 import { upsertContactByPhone } from "./core/crm/upsert-contact";
 import { handleInventoryRoutes } from "./core/inventory/routes";
+import { handleMenuRoutes } from "./core/menu/routes";
+import { handleBookingRoutes } from "./core/bookings/routes";
+import { handlePatientRoutes } from "./core/patients/routes";
+import { handleAppointmentRoutes } from "./core/appointments/routes";
 import { handleQuoteRoutes } from "./core/quotes/routes";
 import { handlePublicQuoteRoutes, handlePublicQuoteImageRoutes } from "./core/quotes/public-routes";
 import { handleOrderRoutes } from "./core/orders/routes";
@@ -161,6 +165,21 @@ const sanitizeBranding = (body: Record<string, unknown>) => {
 };
 
 const normalizePhone = (value: string) => value.replace(/\s+/g, "");
+
+// Per-user notification bell preferences. null/invalid → all categories enabled.
+type NotificationPrefs = { escalations: boolean; inventory: boolean; quotes: boolean };
+const parseNotificationPrefs = (raw: string | null): NotificationPrefs => {
+  const all: NotificationPrefs = { escalations: true, inventory: true, quotes: true };
+  if (!raw) return all;
+  try {
+    const p = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      escalations: typeof p.escalations === "boolean" ? p.escalations : true,
+      inventory: typeof p.inventory === "boolean" ? p.inventory : true,
+      quotes: typeof p.quotes === "boolean" ? p.quotes : true,
+    };
+  } catch { return all; }
+};
 
 const createServiceRequestForHotel = async (input: {
   tenantId: string;
@@ -1202,6 +1221,98 @@ const handleRequest = async (
       return;
     }
 
+    // ── PATCH /me — the signed-in user updates their own basic profile ──────────
+    // Any authenticated user may edit their own display name. Email is the login
+    // identity (managed by the auth provider) and is intentionally not editable here.
+    if (req.url === "/me" && req.method === "PATCH") {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const body = (await parseBody(req)) as { fullName?: unknown };
+      const fullName = asTrimmedString(body.fullName);
+      if (!fullName) { json(res, 400, { ok: false, error: "Full name cannot be empty" }); return; }
+      const updated = await prisma.user.update({
+        where: { id: auth.context.userId },
+        data: { fullName },
+        select: { id: true, fullName: true },
+      });
+      json(res, 200, { ok: true, user: updated });
+      return;
+    }
+
+    // ── GET/PATCH /me/notifications — per-user bell notification preferences ─────
+    // These map 1:1 to the categories the top-bar bell (GET /notifications) can
+    // show, so toggling one genuinely hides/shows that category for this user.
+    if (req.url === "/me/notifications" && (req.method === "GET" || req.method === "PATCH")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const userId = auth.context.userId;
+
+      if (req.method === "GET") {
+        const u = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+        json(res, 200, { ok: true, prefs: parseNotificationPrefs(u?.notificationPrefs ?? null) });
+        return;
+      }
+      // PATCH — merge the provided booleans onto the current prefs.
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+      const current = parseNotificationPrefs(u?.notificationPrefs ?? null);
+      const next = {
+        escalations: typeof body.escalations === "boolean" ? body.escalations : current.escalations,
+        inventory: typeof body.inventory === "boolean" ? body.inventory : current.inventory,
+        quotes: typeof body.quotes === "boolean" ? body.quotes : current.quotes,
+      };
+      await prisma.user.update({ where: { id: userId }, data: { notificationPrefs: JSON.stringify(next) } });
+      json(res, 200, { ok: true, prefs: next });
+      return;
+    }
+
+    // ── Tenant profile (property details shown in Settings) ─────────────────────
+    if (req.url === "/tenant/profile" && (req.method === "GET" || req.method === "PATCH")) {
+      const auth = await authorize(req, res, null);
+      if (!auth.ok) return;
+      const { tenantId, permissions } = auth.context;
+      if (!(await ensureTenantAccess(tenantId))) {
+        json(res, 403, { ok: false, error: "Tenant not found or access denied" });
+        return;
+      }
+      if (!canAccess(permissions, `${req.method} /tenant/profile`)) {
+        json(res, 403, { ok: false, error: "Insufficient permissions" });
+        return;
+      }
+
+      if (req.method === "GET") {
+        const t = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { name: true, timezone: true, address: true, phone: true },
+        });
+        json(res, 200, { ok: true, profile: t });
+        return;
+      }
+
+      // PATCH — update property details. Only fields present in the body change.
+      const body = (await parseBody(req)) as { name?: unknown; timezone?: unknown; address?: unknown; phone?: unknown };
+      const data: { name?: string; timezone?: string; address?: string | null; phone?: string | null } = {};
+      if (body.name !== undefined) {
+        const name = asTrimmedString(body.name);
+        if (!name) { json(res, 400, { ok: false, error: "Property name cannot be empty" }); return; }
+        data.name = name;
+      }
+      if (body.timezone !== undefined) {
+        const tz = asTrimmedString(body.timezone);
+        if (!tz) { json(res, 400, { ok: false, error: "Timezone cannot be empty" }); return; }
+        data.timezone = tz;
+      }
+      if (body.address !== undefined) data.address = asTrimmedString(body.address);
+      if (body.phone !== undefined) data.phone = asTrimmedString(body.phone);
+      const t = await prisma.tenant.update({
+        where: { id: tenantId },
+        data,
+        select: { name: true, timezone: true, address: true, phone: true },
+      });
+      json(res, 200, { ok: true, profile: t });
+      return;
+    }
+
     // ── Tenant branding (white-label) ───────────────────────────────────────────
     if (req.url === "/tenant/branding" && (req.method === "GET" || req.method === "PUT")) {
       const auth = await authorize(req, res, null);
@@ -1975,6 +2086,85 @@ const handleRequest = async (
           slaBreachedOpenCount
         }
       });
+      return;
+    }
+
+    // Real notification feed for the top-bar bell. Aggregates the tenant's live
+    // operational signals — SLA-breached / escalated requests, low-stock items,
+    // and quotes about to expire — instead of the hard-coded sample list the UI
+    // used to show. Each source is gated by the caller's own permission, so a
+    // viewer only sees what they may read. Industry-neutral copy; the records
+    // themselves are the tenant's, so they read correctly for any vertical.
+    if (req.url === "/notifications" && req.method === "GET") {
+      const auth = await authorize(req, res, "GET /notifications");
+      if (!auth.ok) return;
+      const context = auth.context;
+      const perms = context.permissions;
+      const now = new Date();
+      const soon = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // next 3 days
+
+      type Notif = { id: string; type: "alert" | "info" | "success"; title: string; body: string; at: string; href: string };
+
+      // Gate each source by BOTH the caller's permission AND their own
+      // notification preferences (escalations/inventory/quotes toggles in Settings).
+      const me = await prisma.user.findUnique({ where: { id: context.userId }, select: { notificationPrefs: true } });
+      const prefs = parseNotificationPrefs(me?.notificationPrefs ?? null);
+      const canRequests = canAccess(perms, "GET /service-requests") && prefs.escalations;
+      const canInventory = canAccess(perms, "GET /inventory/items") && prefs.inventory;
+      const canQuotes = canAccess(perms, "GET /quotes") && prefs.quotes;
+
+      const [breached, escalated, inventory, expiring] = await Promise.all([
+        canRequests
+          ? prisma.serviceRequest.findMany({
+              where: { tenantId: context.tenantId, status: { not: "resolved" }, slaBreachedAt: { not: null } },
+              orderBy: { slaBreachedAt: "desc" }, take: 6,
+              select: { id: true, summary: true, slaBreachedAt: true },
+            })
+          : Promise.resolve([] as { id: string; summary: string; slaBreachedAt: Date | null }[]),
+        canRequests
+          ? prisma.serviceRequest.findMany({
+              where: { tenantId: context.tenantId, status: "escalated", slaBreachedAt: null },
+              orderBy: { createdAt: "desc" }, take: 6,
+              select: { id: true, summary: true, createdAt: true },
+            })
+          : Promise.resolve([] as { id: string; summary: string; createdAt: Date }[]),
+        // Prisma can't compare two columns (stock <= reorderLevel) in a where, so
+        // pull a bounded set and filter in JS — tenant inventories are small.
+        canInventory
+          ? prisma.inventoryItem.findMany({
+              where: { tenantId: context.tenantId },
+              orderBy: { updatedAt: "desc" }, take: 200,
+              select: { id: true, name: true, stock: true, unit: true, reorderLevel: true, updatedAt: true },
+            })
+          : Promise.resolve([] as { id: string; name: string; stock: number; unit: string; reorderLevel: number; updatedAt: Date }[]),
+        canQuotes
+          ? prisma.quote.findMany({
+              where: { tenantId: context.tenantId, status: "sent", validUntil: { not: null, gte: now, lte: soon } },
+              orderBy: { validUntil: "asc" }, take: 6,
+              select: { id: true, number: true, title: true, validUntil: true },
+            })
+          : Promise.resolve([] as { id: string; number: string; title: string; validUntil: Date | null }[]),
+      ]);
+
+      const items: Notif[] = [];
+      for (const s of breached) {
+        items.push({ id: `sr-breach-${s.id}`, type: "alert", title: `Overdue: ${s.summary}`, body: "Past its SLA deadline — needs attention", at: (s.slaBreachedAt ?? now).toISOString(), href: "/queue" });
+      }
+      for (const s of escalated) {
+        items.push({ id: `sr-esc-${s.id}`, type: "alert", title: `Escalated: ${s.summary}`, body: "Escalated for follow-up", at: s.createdAt.toISOString(), href: "/queue" });
+      }
+      for (const it of inventory.filter((i) => i.stock <= i.reorderLevel).slice(0, 6)) {
+        items.push({ id: `inv-${it.id}`, type: "alert", title: `${it.name} is low on stock`, body: `${it.stock} ${it.unit} left · reorder level ${it.reorderLevel}`, at: it.updatedAt.toISOString(), href: "/inventory" });
+      }
+      for (const q of expiring) {
+        items.push({ id: `quote-${q.id}`, type: "info", title: `Quote ${q.number} expiring soon`, body: `${q.title} · valid until ${q.validUntil!.toISOString().slice(0, 10)}`, at: q.validUntil!.toISOString(), href: "/quotes" });
+      }
+
+      // Alerts first, then by recency. Cap the feed so the dropdown stays tidy.
+      const severity = (t: Notif["type"]) => (t === "alert" ? 0 : t === "info" ? 1 : 2);
+      items.sort((a, b) => severity(a.type) - severity(b.type) || b.at.localeCompare(a.at));
+
+      json(res, 200, { ok: true, items: items.slice(0, 12) });
       return;
     }
 
@@ -2762,6 +2952,26 @@ const handleRequest = async (
       return;
     }
 
+    // ── PATCH /automations/:id — pause / resume a rule ───────────────────────
+    // The automation engine only fires rules with isActive: true, so toggling
+    // this genuinely starts/stops the rule on the next 60s cycle.
+    const autoPatchMatch = req.method === "PATCH" ? /^\/automations\/([^/]+)$/.exec(parseUrl(req.url).pathname) : null;
+    if (autoPatchMatch) {
+      const auth = await authorize(req, res, "PATCH /automations/:id");
+      if (!auth.ok) return;
+      const context = auth.context;
+      const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
+      if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
+      const ruleId = decodeURIComponent(autoPatchMatch[1] as string);
+      const body = (await parseBody(req)) as { isActive?: unknown };
+      if (typeof body.isActive !== "boolean") { json(res, 400, { ok: false, error: "isActive (boolean) is required" }); return; }
+      const existing = await prisma.automationRule.findFirst({ where: { id: ruleId, tenantId: context.tenantId }, select: { id: true } });
+      if (!existing) { json(res, 404, { ok: false, error: "Automation not found" }); return; }
+      const updated = await prisma.automationRule.update({ where: { id: ruleId }, data: { isActive: body.isActive }, select: { id: true, isActive: true } });
+      json(res, 200, { ok: true, rule: updated });
+      return;
+    }
+
     // ── GET /automations/executions ──────────────────────────────────────────
     if (req.url?.startsWith("/automations/executions") && req.method === "GET") {
       const auth = await authorize(req, res, "GET /automations/executions");
@@ -2880,6 +3090,10 @@ const handleRequest = async (
     if (await handlePublicQuoteRoutes(req, res)) return;
     if (await handlePublicQuoteImageRoutes(req, res)) return;
     if (await handleInventoryRoutes(req, res)) return;
+    if (await handleMenuRoutes(req, res)) return;
+    if (await handleBookingRoutes(req, res)) return;
+    if (await handlePatientRoutes(req, res)) return;
+    if (await handleAppointmentRoutes(req, res)) return;
     if (await handleQuoteRoutes(req, res)) return;
     if (await handleOrderRoutes(req, res)) return;
 

@@ -7,11 +7,13 @@ import { Button, Card, CardTitle, Field, Input, Badge, useToast, tokens as t } f
 // subdomain (slug), but the custom CNAME domain is provider-managed — we set up
 // DNS/SSL for it. So the custom domain here is read-only status + a request path;
 // staff fulfil the request from the internal provisioning console.
-//
-// The platform base domain is passed in from the server (EYNIS_PLATFORM_DOMAIN)
-// — never hard-coded, so a reseller deployment shows its own domain here.
-export function DomainsPanel({ platformDomain }: { platformDomain: string }) {
-  const PLATFORM = platformDomain;
+// The platform apex domain that white-label subdomains hang off (<slug>.<apex>).
+// Overridable per deployment so a reseller shows their own domain, never
+// "eynis.com", to a tenant admin. NEXT_PUBLIC_ so it's readable in this client
+// component; inlined at build time.
+const PLATFORM = process.env.NEXT_PUBLIC_PLATFORM_APEX_DOMAIN?.trim() || "eynis.com";
+
+export function DomainsPanel() {
   const toast = useToast();
   const [slug, setSlug] = useState("");
   const [customDomain, setCustomDomain] = useState<string | null>(null);

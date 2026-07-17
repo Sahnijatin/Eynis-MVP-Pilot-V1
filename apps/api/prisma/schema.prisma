@@ -21,6 +21,8 @@ model Tenant {
   // font + extended tokens). Distinct from billing (License.plan).
   whitelabelTier        String                     @default("standard")
   timezone              String                     @default("Asia/Kolkata")
+  address               String? // shown/edited in Settings → Property Details
+  phone                 String? // primary contact number, Settings → Property Details
   slug                  String?                    @unique // <slug>.eynis.com (white-label subdomain)
   customDomain          String?                    @unique // e.g. app.tempus.com (CNAME → platform)
   createdAt             DateTime                   @default(now())
@@ -37,6 +39,10 @@ model Tenant {
   transitions           ServiceRequestTransition[]
   connectorConfigs      ConnectorConfig[]
   connectorEvents       ConnectorEvent[]
+  menuItems             MenuItem[]
+  bookings              Booking[]
+  patients              Patient[]
+  appointments          Appointment[]
   license               License?
   roles                 Role[]
   invitations           Invitation[]
@@ -95,6 +101,88 @@ model InventoryItem {
   updatedAt     DateTime        @updatedAt
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   movements     StockMovement[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Travel bookings (Wave 5). Self-contained trip records; value/paid in paise,
+// paid% derived. clientName is free text (optional CRM link is a future step).
+model Booking {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("hotelId")
+  number        String // display reference, e.g. "BKG-1001"
+  clientName    String
+  destination   String    @default("")
+  departureDate DateTime?
+  pax           Int       @default(1)
+  status        String    @default("in_progress") // in_progress | confirmed | pending_visa | urgent | completed | cancelled
+  valuePaise    Int       @default(0)
+  paidPaise     Int       @default(0)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// Healthcare patient records (Wave 5). Age derived from dateOfBirth.
+model Patient {
+  id            String        @id @default(cuid())
+  tenantId      String        @map("hotelId")
+  name          String
+  phone         String?
+  email         String?
+  dateOfBirth   DateTime?
+  condition     String? // primary condition / reason for care
+  bloodGroup    String?
+  insurance     String?
+  status        String        @default("active") // active | due | overdue | lost_follow_up
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments  Appointment[]
+
+  @@index([tenantId])
+}
+
+// Healthcare appointments (Wave 5). Optionally linked to a Patient; patientName
+// is denormalised so walk-ins work without a record.
+model Appointment {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("hotelId")
+  patientId   String?
+  patientName String
+  provider    String   @default("") // doctor / clinician
+  type        String? // Consultation | Follow-up | …
+  scheduledAt DateTime
+  durationMin Int      @default(30)
+  status      String   @default("scheduled") // scheduled | checked_in | waiting | in_progress | completed | no_show | cancelled
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patient     Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, scheduledAt])
+}
+
+// F&B menu catalogue (Wave 5). Prices/costs in paise for consistency with the
+// quote/inventory money math; margin is derived (not stored).
+model MenuItem {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("hotelId")
+  name        String
+  category    String   @default("Other")
+  pricePaise  Int      @default(0) // selling price
+  costPaise   Int      @default(0) // food/ingredient cost
+  description String?
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -237,6 +325,9 @@ model User {
   role                   String
   roleId                 String?
   isActive               Boolean                    @default(true)
+  // Per-user notification preferences (JSON), governing which alert categories
+  // appear in the top-bar bell. null = all enabled. See GET/PATCH /me/notifications.
+  notificationPrefs      String?
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
   tenant                 Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)

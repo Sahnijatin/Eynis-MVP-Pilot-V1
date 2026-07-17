@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Loader2, Save } from "lucide-react";
 
-const PLATFORM = "eynis.com";
+// Same platform apex domain knob as the customer-facing domains panel, so a
+// reseller deployment shows a consistent domain here too (not hardcoded eynis.com).
+const PLATFORM = process.env.NEXT_PUBLIC_PLATFORM_APEX_DOMAIN?.trim() || "eynis.com";
 const CNAME_TARGET = `cname.${PLATFORM}`;
 
 // Staff editor for a tenant's white-label routing identity — subdomain (slug) +

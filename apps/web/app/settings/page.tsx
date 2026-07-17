@@ -1,9 +1,12 @@
-import { Lock } from "lucide-react";
+import { Lock, MapPin, ExternalLink } from "lucide-react";
 import { BrandingPanel } from "../../components/ui/branding-panel";
 import { DomainsPanel } from "../../components/ui/domains-panel";
+import { SettingsProfileForm } from "../../components/ui/settings-profile-form";
+import { NotificationPrefsCard } from "../../components/ui/notification-prefs-card";
 import { Badge } from "../../components/ds";
 import { getUserWorkspace } from "../../lib/workspace";
 import { resolveUserContext } from "../../lib/user-context";
+import { fetchTenantProfile } from "../../lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +22,6 @@ function buildTabs(propertyLabel: string, teamLabel: string) {
     { label: "Roles", href: "/settings/roles" },
     { label: "Billing", href: "/settings/billing" },
   ];
-}
-
-function initials(name: string | null): string {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "—";
-  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
 // Flagship reference migration (E-13b): the Settings page now uses the ds/ design
@@ -52,6 +49,10 @@ export default async function SettingsPage() {
     email = ctx.email;
     if (ctx.propertyName) propertyName = ctx.propertyName;
   } catch {}
+
+  // Editable property details (admins only). Non-admins get null → read-only name.
+  const profile = isAdmin ? await fetchTenantProfile() : null;
+  if (profile?.name) propertyName = profile.name;
 
   return (
     <div>
@@ -106,23 +107,19 @@ export default async function SettingsPage() {
 
           {/* White-label domains — admins only. The platform base domain comes
               from the deployment env so resellers show their own. */}
-          {isAdmin && <DomainsPanel platformDomain={process.env.EYNIS_PLATFORM_DOMAIN ?? "eynis.com"} />}
+          {isAdmin && <DomainsPanel />}
 
-          {/* Account Information — read-only: identity is managed by the sign-in
-              account (Clerk), so we display it rather than render edit fields
-              whose "save" would go nowhere. */}
-          <div className="card">
-            <h3 className="text-base font-semibold text-slate-800 mb-1">Account Information</h3>
-            <p className="text-sm text-slate-500 mb-4">Your name, email, and photo are managed through your sign-in account (the avatar menu in the top bar).</p>
-
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold" style={{ background: BRAND }}>{initials(fullName)}</div>
-              <div>
-                <div className="text-sm font-semibold text-slate-800">{fullName ?? "—"}</div>
-                <div className="text-sm text-slate-500">{email ?? "—"}</div>
-              </div>
-            </div>
-          </div>
+          {/* Account + Property details — client form with a working Save. */}
+          <SettingsProfileForm
+            initialFullName={fullName ?? ""}
+            email={email ?? ""}
+            initialPropertyName={propertyName}
+            canEditProperty={isAdmin}
+            propertyLabel={propertyLabel}
+            initialTimezone={profile?.timezone ?? ""}
+            initialAddress={profile?.address ?? ""}
+            initialPhone={profile?.phone ?? ""}
+          />
 
           {/* Quick links to sub-pages */}
           <div className="grid grid-cols-3 gap-3">
@@ -153,11 +150,33 @@ export default async function SettingsPage() {
 
         {/* Right sidebar */}
         <div className="space-y-4">
-          {/* Workspace summary */}
+          {/* Notifications — real per-user preferences, saved on toggle. */}
+          <NotificationPrefsCard />
+
+          {/* Property Location — the real address (when set), with a maps link,
+              instead of a decorative gradient. */}
           <div className="card">
-            <h3 className="card-title">{propertyLabel} Workspace</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <MapPin className="w-4 h-4" style={{ color: BRAND }} />
+              <h3 className="card-title mb-0">{propertyLabel} Location</h3>
+            </div>
             <div className="text-sm font-semibold text-slate-800">{propertyName}</div>
-            <p className="text-xs text-slate-500 mt-1">Workspace details are shared by all staff and integrations.</p>
+            {profile?.address ? (
+              <>
+                <div className="text-sm text-slate-500 mt-0.5">{profile.address}</div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-medium mt-2" style={{ color: BRAND }}
+                >
+                  View on map <ExternalLink className="w-3 h-3" />
+                </a>
+              </>
+            ) : (
+              <div className="text-xs text-slate-400 mt-1">
+                {isAdmin ? "Add an address above to show it here with a map link." : "No address on file."}
+              </div>
+            )}
           </div>
         </div>
       </div>

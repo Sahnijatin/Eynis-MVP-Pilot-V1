@@ -89,6 +89,7 @@ export default function RolesClient({
   const [editingKey, setEditingKey]           = useState<string | null>(null);
   const [editName, setEditName]               = useState("");
   const [saveLoading, setSaveLoading]         = useState(false);
+  const [saveError, setSaveError]             = useState<string | null>(null);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [customName, setCustomName]           = useState("");
   const [customKey, setCustomKey]             = useState("");
@@ -102,26 +103,33 @@ export default function RolesClient({
   function startEdit(role: DisplayRole) {
     setEditingKey(role.key);
     setEditName(role.displayName);
+    setSaveError(null);
   }
 
   async function saveRename(key: string) {
     if (!editName.trim()) return;
     setSaveLoading(true);
+    setSaveError(null);
     try {
       const role = displayRoles.find(r => r.key === key);
       if (role?.apiId) {
-        const r = await jsonRequest(`/api/team/roles/${role.apiId}`, {
+        const res = await fetch(`/api/team/roles/${role.apiId}`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ displayName: editName.trim() }),
         });
-        if (!r.ok) { toast.push(`Rename failed: ${r.error}`, "error"); return; }
+        const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; error?: string };
+        // Only reflect the rename locally once the server confirms it persisted —
+        // otherwise the UI would show a rename that never saved.
+        if (!res.ok || !data.ok) {
+          setSaveError(data.error ?? "Couldn't save the new name. Please try again.");
+          return;
+        }
       }
       setDisplayRoles(prev => prev.map(r => r.key === key ? { ...r, displayName: editName.trim() } : r));
-      toast.push("Role renamed", "success");
+      setEditingKey(null);
     } finally {
       setSaveLoading(false);
-      setEditingKey(null);
     }
   }
 
@@ -219,16 +227,19 @@ export default function RolesClient({
 
                 <div className="flex-1 min-w-0">
                   {editingKey === role.key ? (
-                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                      <input
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") void saveRename(role.key); if (e.key === "Escape") setEditingKey(null); }}
-                        className="border border-slate-200 rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 w-44"
-                        autoFocus
-                      />
-                      <button onClick={() => void saveRename(role.key)} disabled={saveLoading} className="text-teal-700 hover:text-teal-800"><Check className="w-4 h-4" /></button>
-                      <button onClick={() => setEditingKey(null)} className="text-slate-500 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                    <div onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") void saveRename(role.key); if (e.key === "Escape") { setEditingKey(null); setSaveError(null); } }}
+                          className="border border-slate-200 rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 w-44"
+                          autoFocus
+                        />
+                        <button onClick={() => void saveRename(role.key)} disabled={saveLoading} className="text-teal-700 hover:text-teal-800"><Check className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditingKey(null); setSaveError(null); }} className="text-slate-500 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                      </div>
+                      {saveError && <div className="text-[11px] text-red-600 mt-1">{saveError}</div>}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">

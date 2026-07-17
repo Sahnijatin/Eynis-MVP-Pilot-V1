@@ -215,10 +215,8 @@ export default async function DashboardPage() {
           </div>
           <div className="card" style={{ background: "#0f766e" }}>
             <div className="text-xs text-teal-200 uppercase tracking-wider font-medium mb-1">Night Audit</div>
-            <div className="text-white font-semibold text-sm mb-3">AI-generated operations report</div>
-            <div className="w-full bg-teal-600 rounded-full h-1.5 mb-3">
-              <div className="bg-white rounded-full h-1.5" style={{ width: "65%" }} />
-            </div>
+            <div className="text-white font-semibold text-sm mb-1">AI-generated operations report</div>
+            <div className="text-teal-100 text-xs mb-3">Generate an end-of-day summary of requests, resolutions and revenue.</div>
             <Link href="/night-audit" className="w-full text-center text-xs text-teal-100 font-medium flex items-center justify-center gap-1 py-1.5 rounded-lg border border-teal-500 hover:bg-teal-600 transition-colors">
               View &amp; Generate Report <ChevronRight className="w-3 h-3" />
             </Link>

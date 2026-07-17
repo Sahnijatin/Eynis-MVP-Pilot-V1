@@ -142,7 +142,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
         <div className="onboarding-content">
           <h1 className="onboarding-title">Choose your industry workspace</h1>
           <p className="onboarding-subtitle">
-            Your workspace configures its modules, terminology, and AI models specifically for your industry.
+            Your workspace is configured with modules, terminology, and AI models specifically for your industry.
           </p>
 
           <div className="industry-select-grid">
