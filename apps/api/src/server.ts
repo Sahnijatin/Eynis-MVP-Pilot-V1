@@ -65,6 +65,7 @@ import { json, sendDoc, sendBinary, parseRawBody, parseBody, hasString, asTrimme
 import { authorize, getAuthenticatedContext, canAccess, type RouteContext } from "./core/authz";
 import { upsertContactByPhone } from "./core/crm/upsert-contact";
 import { handleInventoryRoutes } from "./core/inventory/routes";
+import { handleMenuRoutes } from "./core/menu/routes";
 import { handleQuoteRoutes } from "./core/quotes/routes";
 import { handlePublicQuoteRoutes, handlePublicQuoteImageRoutes } from "./core/quotes/public-routes";
 import { handleOrderRoutes } from "./core/orders/routes";
@@ -3086,6 +3087,7 @@ const handleRequest = async (
     if (await handlePublicQuoteRoutes(req, res)) return;
     if (await handlePublicQuoteImageRoutes(req, res)) return;
     if (await handleInventoryRoutes(req, res)) return;
+    if (await handleMenuRoutes(req, res)) return;
     if (await handleQuoteRoutes(req, res)) return;
     if (await handleOrderRoutes(req, res)) return;
 

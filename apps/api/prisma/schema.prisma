@@ -39,6 +39,7 @@ model Tenant {
   transitions           ServiceRequestTransition[]
   connectorConfigs      ConnectorConfig[]
   connectorEvents       ConnectorEvent[]
+  menuItems             MenuItem[]
   license               License?
   roles                 Role[]
   invitations           Invitation[]
@@ -97,6 +98,25 @@ model InventoryItem {
   updatedAt     DateTime        @updatedAt
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   movements     StockMovement[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// F&B menu catalogue (Wave 5). Prices/costs in paise for consistency with the
+// quote/inventory money math; margin is derived (not stored).
+model MenuItem {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("hotelId")
+  name        String
+  category    String   @default("Other")
+  pricePaise  Int      @default(0) // selling price
+  costPaise   Int      @default(0) // food/ingredient cost
+  description String?
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
   @@index([tenantId])

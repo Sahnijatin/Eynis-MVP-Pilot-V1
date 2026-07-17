@@ -864,6 +864,14 @@ export async function fetchTeamLicense(): Promise<TeamLicenseResponse> {
   return fetchOr<TeamLicenseResponse>("/team/license", { ok: false });
 }
 
+export interface MenuItemRow {
+  id: string; name: string; category: string; description: string | null;
+  isAvailable: boolean; pricePaise: number; priceInr: number; costPaise: number; costInr: number; marginPct: number;
+}
+export async function fetchMenuItems(): Promise<{ ok: boolean; items: MenuItemRow[] }> {
+  return fetchOr<{ ok: boolean; items: MenuItemRow[] }>("/menu/items", { ok: false, items: [] });
+}
+
 export interface TenantProfile { name: string; timezone: string; address: string | null; phone: string | null }
 export async function fetchTenantProfile(): Promise<TenantProfile | null> {
   // Admin-only (manage_settings); non-admins get null, which the UI treats as
