@@ -10,12 +10,15 @@ export default async function RequestPage({
 }) {
   const query = searchParams ? await searchParams : {};
   // Accept the legacy `?hotelId=` param so QR codes / links printed before the
-  // rename still resolve to the right tenant. Fallback is the demo tenant
-  // (matches the seed + EYNIS_DEMO_HOTEL_ID), so a param-less visit still works.
-  const tenantId =
+  // rename still resolve to the right tenant. A param-less visit only falls back
+  // to the demo tenant when EYNIS_ALLOW_DEMO_FALLBACK is on (public demo) — in a
+  // real multi-tenant deployment it must NOT silently write into the demo tenant.
+  const explicitTenant =
     typeof query.tenantId === "string" ? query.tenantId
     : typeof query.hotelId === "string" ? query.hotelId
-    : (process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1");
+    : null;
+  const allowDemo = process.env.EYNIS_ALLOW_DEMO_FALLBACK === "true";
+  const tenantId = explicitTenant ?? (allowDemo ? (process.env.EYNIS_DEMO_HOTEL_ID ?? "eynis-riviera-1") : null);
   const result = typeof query.result === "string" ? query.result : "";
   const msg = typeof query.msg === "string" ? query.msg : "";
   const ackText =
@@ -26,6 +29,20 @@ export default async function RequestPage({
   // Brand the public intake page with the tenant when it's served on their host
   // (white-label, E-9). Degrades to the platform default off a custom domain.
   const theme = await resolveHostTheme();
+
+  // No tenant could be determined and demo fallback is off — refuse to render a
+  // form that would post into the wrong (demo) tenant.
+  if (!tenantId) {
+    return (
+      <main style={{ maxWidth: 720 }}>
+        <h1>Request form unavailable</h1>
+        <p style={{ color: "#64748b" }}>
+          This request link is missing its workspace. Please use the exact link or QR code
+          your provider shared with you.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main style={{ maxWidth: 720 }}>

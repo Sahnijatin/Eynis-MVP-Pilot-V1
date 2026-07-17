@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { getIndustryConfig, type Industry } from "./industry-config";
 import { resolveTheme, type TenantBranding } from "./theme";
+import { platformBrand } from "./platform";
 
 // Server-side, pre-auth tenant theming for white-label hosts (A7). Reads the
 // incoming Host header and asks the API which tenant (if any) owns it, so the
@@ -17,25 +18,25 @@ export interface HostTheme {
   isTenant: boolean;        // true when a custom-host tenant resolved
 }
 
-const DEFAULT_THEME: HostTheme = { brandName: "Eynis", logoUrl: null, primaryColor: "#0f766e", isTenant: false };
+const defaultTheme = (): HostTheme => ({ brandName: platformBrand(), logoUrl: null, primaryColor: "#0f766e", isTenant: false });
 
 export async function resolveHostTheme(): Promise<HostTheme> {
   try {
     const host = (await headers()).get("host");
-    if (!host) return DEFAULT_THEME;
+    if (!host) return defaultTheme();
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 2500); // never hang the auth render
     try {
       const res = await fetch(`${apiBase()}/tenant/resolve?host=${encodeURIComponent(host)}`, { cache: "no-store", signal: ctrl.signal });
-      if (!res.ok) return DEFAULT_THEME;
+      if (!res.ok) return defaultTheme();
       const data = (await res.json()) as { ok: boolean; found?: boolean; industry?: string; propertyName?: string; whitelabelTier?: string | null; branding?: TenantBranding | null };
-      if (!data.ok || !data.found) return DEFAULT_THEME;
+      if (!data.ok || !data.found) return defaultTheme();
 
       const config = getIndustryConfig((data.industry as Industry) ?? "hospitality");
       const theme = resolveTheme(data.branding ?? null, config, data.whitelabelTier);
       return {
-        brandName: theme.brandName ?? data.propertyName ?? "Eynis",
+        brandName: theme.brandName ?? data.propertyName ?? platformBrand(),
         logoUrl: theme.logoUrl,
         primaryColor: theme.primaryColor,
         isTenant: true,
@@ -44,6 +45,6 @@ export async function resolveHostTheme(): Promise<HostTheme> {
       clearTimeout(timer);
     }
   } catch {
-    return DEFAULT_THEME;
+    return defaultTheme();
   }
 }

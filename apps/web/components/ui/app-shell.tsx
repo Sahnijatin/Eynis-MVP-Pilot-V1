@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { Bell, Building2, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Menu } from "lucide-react";
+import { Bell, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Menu } from "lucide-react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
@@ -166,6 +166,10 @@ function SidebarNav({ modules, pathname, accentColor }: { modules: NavModule[]; 
 
 interface AppShellProps {
   children: ReactNode;
+  // Platform/reseller brand shown to standard-tier tenants and on the shared
+  // host, resolved from PLATFORM_BRAND_NAME server-side (never the hardcoded
+  // literal "Eynis"). White-label tenants hide it entirely.
+  platformBrand?: string;
   initialOrgRole?: OrgRole;
   initialIndustry?: Industry;
   initialPropertyName?: string | null;
@@ -176,7 +180,7 @@ interface AppShellProps {
   initialWhitelabelTier?: string | null;
 }
 
-export function AppShell({ children, initialOrgRole = "org_admin", initialIndustry = "hospitality", initialPropertyName = null, initialBranding = null, initialWhitelabelTier = null }: AppShellProps) {
+export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "org_admin", initialIndustry = "hospitality", initialPropertyName = null, initialBranding = null, initialWhitelabelTier = null }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoaded } = useUser();
@@ -195,7 +199,10 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
   // server-side from the impersonation cookie; the client never decides it.
   const [orgRole, setOrgRoleState] = useState<OrgRole>(initialOrgRole);
   const [industry, setIndustryState] = useState<Industry>(initialIndustry);
-  const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Eynis");
+  // Fall back to a neutral label — never the platform brand — if the tenant's
+  // own name can't be resolved, so a real tenant never sees "Eynis" as their
+  // workspace name.
+  const [propertyName, setPropertyNameState] = useState<string>(initialPropertyName ?? "Workspace");
   const [branding, setBranding] = useState<TenantBranding | null>(initialBranding);
   const [whitelabelTier, setWhitelabelTier] = useState<string | null>(initialWhitelabelTier);
   const [impersonating, setImpersonating] = useState<Impersonating | null>(null);
@@ -357,7 +364,7 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
             <div className="flex flex-col leading-tight">
               {(theme.brandName || !theme.hidePoweredBy) && (
                 <span className="text-[10px] uppercase tracking-widest font-medium" style={{ color: "#5a7a9a" }}>
-                  {theme.brandName ?? "Eynis"}
+                  {theme.brandName ?? platformBrand}
                 </span>
               )}
               <span className="brand-title" title={propertyName} style={{ fontSize: "15px" }}>
@@ -399,16 +406,6 @@ export function AppShell({ children, initialOrgRole = "org_admin", initialIndust
         </div>
 
         <SidebarNav modules={visibleModules} pathname={pathname} accentColor={config.accentColor} />
-
-        <div className="sidebar-footer">
-          <div className="multi-property-badge">
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Multi-{config.terminology.property}</span>
-            <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.1)", color: "#7a9bbf" }}>
-              PHASE 3
-            </span>
-          </div>
-        </div>
       </aside>
 
       {/* Main */}

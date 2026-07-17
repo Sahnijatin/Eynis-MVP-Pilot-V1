@@ -501,7 +501,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
     }>
       <div style={{ display: "grid", gap: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
-          <Field label="Quote title"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riviera Dining Table — 6 seater" /></Field>
+          <Field label="Quote title"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Executive Dining Table — 6 seater" /></Field>
           {!isEdit && (
             <Field label="Start from template">
               <Select value={templateId} onChange={(e) => applyTemplate(e.target.value)}>

@@ -16,7 +16,7 @@ const MFG_CLIENTS_INIT = [
   { name: "Marriott Hotels India",  type: "Corporate",         ltv: "₹1.84 Cr", lastOrder: "12 May 2025", orders: 14, status: "active",     segment: "key" },
   { name: "Patel Architects LLP",   type: "Architect/Channel", ltv: "₹68.4L",   lastOrder: "22 May 2025", orders: 9,  status: "active",     segment: "channel" },
   { name: "Kapoor Developers",      type: "Real Estate",       ltv: "₹92.0L",   lastOrder: "8 Apr 2025",  orders: 7,  status: "dormant_60", segment: "at-risk" },
-  { name: "The Leela Group",        type: "Hospitality",       ltv: "₹2.1 Cr",  lastOrder: "3 Jun 2024",  orders: 22, status: "dormant_90", segment: "dormant" },
+  { name: "Grandview Hotels",        type: "Hospitality",       ltv: "₹2.1 Cr",  lastOrder: "3 Jun 2024",  orders: 22, status: "dormant_90", segment: "dormant" },
   { name: "Sharma Retail Chains",   type: "Retail",            ltv: "₹34.2L",   lastOrder: "18 May 2025", orders: 5,  status: "active",     segment: "growth" },
   { name: "ITC Hotels",             type: "Hospitality",       ltv: "₹1.1 Cr",  lastOrder: "26 May 2025", orders: 11, status: "active",     segment: "key" },
   { name: "Tata Housing Ltd.",      type: "Real Estate",       ltv: "₹58.0L",   lastOrder: "15 Mar 2025", orders: 8,  status: "dormant_60", segment: "at-risk" },
@@ -46,10 +46,10 @@ const MFG_CLIENT_DETAILS: Record<string, ClientDetailData> = {
       { id: "ORD-2789", title: "Villa Bedroom Furniture × 12 units", amount: "₹31.2L", date: "8 Apr 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
       { id: "ORD-2640", title: "Lobby Seating — Prestige Tower", amount: "₹18.8L", date: "5 Dec 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
     ],
-    historyLabel: "Orders", notes: "At risk — last order 60d ago. Phase 3 starts Q4. Send re-engagement offer.",
+    historyLabel: "Orders", notes: "At risk — last order 60d ago. Send re-engagement offer.",
   },
-  "The Leela Group": {
-    contact: { person: "Priya Nair", role: "Corporate Procurement", phone: "+91 80123 45678", email: "procurement@theleela.com", address: "The Leela Palace, Bengaluru - 560008", extras: [{ label: "GST", value: "29AABCT1234C1ZB" }, { label: "Contract", value: "Annual rate card" }] },
+  "Grandview Hotels": {
+    contact: { person: "Priya Nair", role: "Corporate Procurement", phone: "+91 80123 45678", email: "procurement@grandviewhotels.example", address: "MG Road, Bengaluru - 560001", extras: [{ label: "GST", value: "29AABCT1234C1ZB" }, { label: "Contract", value: "Annual rate card" }] },
     history: [
       { id: "ORD-2422", title: "Spa Furniture Package", amount: "₹44.6L", date: "3 Jun 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
       { id: "ORD-2318", title: "Presidential Suite Fit-out", amount: "₹62.1L", date: "8 Jan 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
