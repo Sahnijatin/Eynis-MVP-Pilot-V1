@@ -58,6 +58,12 @@ const SYSTEM_KEY_TO_ORG: Record<string, OrgRole> = {
 };
 
 
+// Role for a session with no resolved membership (signed out, or signed in but
+// not yet onboarded). Least privilege — except in the opt-in public-demo mode,
+// where the shared demo workspace is meant to be explored with the full nav.
+const fallbackOrgRole = (): OrgRole =>
+  String(process.env.EYNIS_ALLOW_DEMO_FALLBACK ?? "").toLowerCase() === "true" ? "org_admin" : "org_viewer";
+
 const LEGACY_TO_ORG_ROLE: Record<string, OrgRole> = {
   owner:        "org_admin",
   front_desk:   "org_manager",
@@ -125,7 +131,7 @@ export const resolveUserContext = cache(async function resolveUserContext(opts: 
   }
 
   if (!clerkUser) {
-    return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: null, email: null, exists: false, workspaces: [], impersonating: null };
+    return { tenantId: null, role: null, roleKey: null, orgRole: fallbackOrgRole(), industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: null, email: null, exists: false, workspaces: [], impersonating: null };
   }
 
   const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
@@ -186,5 +192,5 @@ export const resolveUserContext = cache(async function resolveUserContext(opts: 
   }
 
   // No membership — user must (re-)onboard. Don't trust Clerk metadata pointing to deleted hotels.
-  return { tenantId: null, role: null, roleKey: null, orgRole: "org_admin", industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: clerkUser.fullName ?? null, email, exists: false, workspaces: [], impersonating: null };
+  return { tenantId: null, role: null, roleKey: null, orgRole: fallbackOrgRole(), industry: null, propertyName: null, branding: null, whitelabelTier: null, fullName: clerkUser.fullName ?? null, email, exists: false, workspaces: [], impersonating: null };
 });
