@@ -86,6 +86,13 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
   }
 
   if (loading) return <div className="text-sm text-slate-500 py-3">Loading sending domain…</div>;
+  if (loadFailed) {
+    return (
+      <div className="text-sm text-red-600 py-3">
+        Couldn&apos;t load this tenant&apos;s current sending-domain config. The form is hidden so an existing domain isn&apos;t overwritten — reload to try again.
+      </div>
+    );
+  }
 
   const status = current?.status ?? "none";
 
