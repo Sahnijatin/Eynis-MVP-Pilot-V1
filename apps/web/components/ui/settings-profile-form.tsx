@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { Save, Camera, Clock, Phone, Lock } from "lucide-react";
 import { Button, Field, Input, useToast } from "../ds";
 
@@ -30,6 +31,12 @@ export function SettingsProfileForm({
   initialPhone?: string;
 }) {
   const toast = useToast();
+  // Profile photo is managed by the auth provider (Clerk) — the same image the
+  // top-bar avatar shows — so we read it here and open Clerk's editor to change
+  // it, rather than maintaining a separate (and inconsistent) avatar store.
+  const { user } = useUser();
+  const clerk = useClerk();
+  const avatarUrl = user?.imageUrl && user.hasImage ? user.imageUrl : null;
   const [fullName, setFullName] = useState(initialFullName);
   const [savedName, setSavedName] = useState(initialFullName); // last persisted name
   const [propertyName, setPropertyName] = useState(initialPropertyName);
@@ -105,11 +112,28 @@ export function SettingsProfileForm({
 
         <div className="flex items-center gap-4 mb-5">
           <div className="relative">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold" style={{ background: BRAND }}>{initials(fullName)}</div>
-            <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white shadow border border-slate-200 flex items-center justify-center" title="Profile photos are coming soon">
-              <Camera className="w-3 h-3 text-slate-400" />
-            </span>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover" />
+            ) : (
+              <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold" style={{ background: BRAND }}>{initials(fullName)}</div>
+            )}
+            {user && (
+              <button
+                type="button"
+                onClick={() => clerk.openUserProfile()}
+                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white shadow border border-slate-200 flex items-center justify-center hover:bg-slate-50"
+                aria-label="Change photo"
+                title="Change your photo"
+              >
+                <Camera className="w-3 h-3 text-slate-500" />
+              </button>
+            )}
           </div>
+          {user && (
+            <button type="button" onClick={() => clerk.openUserProfile()} className="text-sm font-medium hover:underline" style={{ color: BRAND }}>
+              {avatarUrl ? "Change photo" : "Add a photo"}
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
