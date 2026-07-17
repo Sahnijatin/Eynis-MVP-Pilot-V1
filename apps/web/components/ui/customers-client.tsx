@@ -13,18 +13,18 @@ import { PreviewBanner } from "./preview-badge";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MFG_CLIENTS_INIT = [
-  { name: "Marriott Hotels India",  type: "Corporate",         ltv: "₹1.84 Cr", lastOrder: "12 May 2025", orders: 14, status: "active",     segment: "key" },
+  { name: "Crestline Hotels",  type: "Corporate",         ltv: "₹1.84 Cr", lastOrder: "12 May 2025", orders: 14, status: "active",     segment: "key" },
   { name: "Patel Architects LLP",   type: "Architect/Channel", ltv: "₹68.4L",   lastOrder: "22 May 2025", orders: 9,  status: "active",     segment: "channel" },
   { name: "Kapoor Developers",      type: "Real Estate",       ltv: "₹92.0L",   lastOrder: "8 Apr 2025",  orders: 7,  status: "dormant_60", segment: "at-risk" },
   { name: "Grandview Hotels",        type: "Hospitality",       ltv: "₹2.1 Cr",  lastOrder: "3 Jun 2024",  orders: 22, status: "dormant_90", segment: "dormant" },
   { name: "Sharma Retail Chains",   type: "Retail",            ltv: "₹34.2L",   lastOrder: "18 May 2025", orders: 5,  status: "active",     segment: "growth" },
-  { name: "ITC Hotels",             type: "Hospitality",       ltv: "₹1.1 Cr",  lastOrder: "26 May 2025", orders: 11, status: "active",     segment: "key" },
-  { name: "Tata Housing Ltd.",      type: "Real Estate",       ltv: "₹58.0L",   lastOrder: "15 Mar 2025", orders: 8,  status: "dormant_60", segment: "at-risk" },
+  { name: "Azure Hospitality",             type: "Hospitality",       ltv: "₹1.1 Cr",  lastOrder: "26 May 2025", orders: 11, status: "active",     segment: "key" },
+  { name: "Meridian Housing Ltd.",      type: "Real Estate",       ltv: "₹58.0L",   lastOrder: "15 Mar 2025", orders: 8,  status: "dormant_60", segment: "at-risk" },
 ];
 
 const MFG_CLIENT_DETAILS: Record<string, ClientDetailData> = {
-  "Marriott Hotels India": {
-    contact: { person: "Rajesh Mehta", role: "Procurement Director", phone: "+91 98765 43210", email: "rajesh.mehta@marriott.in", address: "Marriott HQ, Aerocity, New Delhi - 110037", extras: [{ label: "GST", value: "07AABCM1234F1Z5" }, { label: "Payment Terms", value: "Net 45 days" }, { label: "Credit Limit", value: "₹50L" }] },
+  "Crestline Hotels": {
+    contact: { person: "Rajesh Mehta", role: "Procurement Director", phone: "+91 98765 43210", email: "rajesh.mehta@crestlinehotels.example", address: "Corporate Park, Aerocity, New Delhi - 110037", extras: [{ label: "GST", value: "07AABCM1234F1Z5" }, { label: "Payment Terms", value: "Net 45 days" }, { label: "Credit Limit", value: "₹50L" }] },
     history: [
       { id: "ORD-2841", title: "Teak Lobby Benches × 24", subtitle: "Custom finish, brass hardware", amount: "₹18.4L", date: "12 May 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
       { id: "ORD-2734", title: "Conference Tables × 6", subtitle: "Mahogany, executive grade", amount: "₹14.2L", date: "8 Mar 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
@@ -64,8 +64,8 @@ const MFG_CLIENT_DETAILS: Record<string, ClientDetailData> = {
     ],
     historyLabel: "Orders", notes: "Growth account — expanding to 6 new stores in Q3.",
   },
-  "ITC Hotels": {
-    contact: { person: "Manish Agarwal", role: "VP Procurement", phone: "+91 33456 78901", email: "manish.agarwal@itchotels.in", address: "37 J.L. Nehru Road, Kolkata - 700071", extras: [{ label: "Contract Value", value: "₹3Cr+ annually" }, { label: "Payment Terms", value: "Net 45 days" }] },
+  "Azure Hospitality": {
+    contact: { person: "Manish Agarwal", role: "VP Procurement", phone: "+91 33456 78901", email: "manish.agarwal@azurehospitality.example", address: "Park Street, Kolkata - 700071", extras: [{ label: "Contract Value", value: "₹3Cr+ annually" }, { label: "Payment Terms", value: "Net 45 days" }] },
     history: [
       { id: "ORD-2848", title: "Banquet Hall Chairs × 500", amount: "₹28.5L", date: "26 May 2025", status: "In Production", statusColor: "#d97706", statusBg: "#fef3c7" },
       { id: "ORD-2801", title: "Restaurant Seating Revamp", amount: "₹19.2L", date: "10 Apr 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
@@ -73,8 +73,8 @@ const MFG_CLIENT_DETAILS: Record<string, ClientDetailData> = {
     ],
     historyLabel: "Orders", notes: "Key account — priority handling. Manish expects weekly status updates.",
   },
-  "Tata Housing Ltd.": {
-    contact: { person: "Ravi Krishnan", role: "Head of Projects", phone: "+91 22345 67890", email: "ravi.k@tatahousing.com", address: "Bombay House, Homi Mody St, Mumbai - 400001", extras: [{ label: "Payment Terms", value: "Net 60 days" }] },
+  "Meridian Housing Ltd.": {
+    contact: { person: "Ravi Krishnan", role: "Head of Projects", phone: "+91 22345 67890", email: "ravi.k@meridianhousing.example", address: "Nariman Point, Mumbai - 400021", extras: [{ label: "Payment Terms", value: "Net 60 days" }] },
     history: [
       { id: "ORD-2698", title: "Apartment Kitchen Modules × 80", amount: "₹26.4L", date: "15 Mar 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
       { id: "ORD-2601", title: "Common Area Furniture", amount: "₹12.8L", date: "4 Nov 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
@@ -182,7 +182,7 @@ const TRAVEL_CLIENT_DETAILS: Record<string, ClientDetailData> = {
     historyLabel: "Bookings", notes: "Key corporate account. Vikram consolidates all travel. Negotiate annual rate card for 15+ trips/year.",
   },
   "ABC Technologies": {
-    contact: { person: "Anita Singh", role: "Admin Head", phone: "+91 99001 55667", email: "anita@abctech.in", address: "ABC Tech Park, Whitefield, Bengaluru - 560066", extras: [{ label: "GST", value: "29AABCA9988H1Z6" }, { label: "Preferred Hotel Chain", value: "Marriott / Taj" }] },
+    contact: { person: "Anita Singh", role: "Admin Head", phone: "+91 99001 55667", email: "anita@abctech.in", address: "ABC Tech Park, Whitefield, Bengaluru - 560066", extras: [{ label: "GST", value: "29AABCA9988H1Z6" }, { label: "Preferred Hotel Chain", value: "Crestline / Regal" }] },
     history: [
       { id: "BKG-1042", title: "Team Offsite — Goa — 12 pax", subtitle: "GOI 24–27 May · 3N/4D · Resort", amount: "₹2.9L", date: "18 May 2025", status: "Confirmed", statusColor: "#1d4ed8", statusBg: "#dbeafe" },
       { id: "BKG-1031", title: "US Client Visit — 2 pax", subtitle: "JFK 1–8 Apr · 7N/8D", amount: "₹4.1L", date: "12 Mar 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
@@ -626,7 +626,7 @@ export function CustomersClient({ terminology, industry }: Props) {
           ) : (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">{terminology.entity} Name <span className="text-red-500">*</span></label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={isFnb ? "e.g. Rahul Sharma" : isTravel ? "e.g. Oberoi Group" : "e.g. Oberoi Hotels Ltd."} value={formName} onChange={e => setFormName(e.target.value)} />
+              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={isFnb ? "e.g. Rahul Sharma" : isTravel ? "e.g. Grandview Group" : "e.g. Grandview Hotels Ltd."} value={formName} onChange={e => setFormName(e.target.value)} />
             </div>
           )}
         </Modal>

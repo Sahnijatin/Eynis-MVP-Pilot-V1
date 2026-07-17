@@ -19,9 +19,9 @@ const LIVE_ORDERS = [
   { id: "ORD-2847", client: "Sharma Interiors", sku: "Walnut Wardrobe × 4", value: "₹3,20,000", due: "2 Jun", stage: "production", priority: "high", daysLeft: 7 },
   { id: "ORD-2851", client: "Patel Architects", sku: "Oak Dining Table × 2", value: "₹1,85,000", due: "5 Jun", stage: "qc", priority: "normal", daysLeft: 10 },
   { id: "ORD-2839", client: "Kapoor Furnishings", sku: "Modular Sofa Set × 1", value: "₹4,50,000", due: "28 May", stage: "dispatch", priority: "urgent", daysLeft: 2 },
-  { id: "ORD-2856", client: "The Grand Hyatt", sku: "Executive Chairs × 40", value: "₹8,00,000", due: "12 Jun", stage: "new", priority: "normal", daysLeft: 17 },
+  { id: "ORD-2856", client: "Grandview Hotels", sku: "Executive Chairs × 40", value: "₹8,00,000", due: "12 Jun", stage: "new", priority: "normal", daysLeft: 17 },
   { id: "ORD-2844", client: "Mehta Residences", sku: "Custom Bookshelf × 3", value: "₹2,10,000", due: "30 May", stage: "production", priority: "high", daysLeft: 4 },
-  { id: "ORD-2860", client: "ITC Hotels", sku: "Lobby Benches × 12", value: "₹5,40,000", due: "18 Jun", stage: "new", priority: "normal", daysLeft: 23 }
+  { id: "ORD-2860", client: "Azure Hospitality", sku: "Lobby Benches × 12", value: "₹5,40,000", due: "18 Jun", stage: "new", priority: "normal", daysLeft: 23 }
 ];
 
 const BOTTLENECKS = [
