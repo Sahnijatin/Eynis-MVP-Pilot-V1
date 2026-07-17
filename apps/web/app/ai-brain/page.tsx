@@ -13,11 +13,14 @@ const SUGGESTED = [
   "What was our on-time delivery rate last month?"
 ];
 
+// The data categories the AI Brain will draw on once it's wired to your live
+// data. No fabricated record counts / "connected" status — this surface is a
+// Preview (see the badge in the header).
 const DATA_SOURCES = [
-  { icon: FileText, label: "Orders & Quotes", count: "234 records" },
-  { icon: Users, label: "Client Database", count: "47 clients" },
-  { icon: Database, label: "Material Logs", count: "1,840 transactions" },
-  { icon: BarChart3, label: "Production Reports", count: "6 months" }
+  { icon: FileText, label: "Orders & Quotes" },
+  { icon: Users, label: "Client Database" },
+  { icon: Database, label: "Material Logs" },
+  { icon: BarChart3, label: "Production Reports" }
 ];
 
 interface Message {
@@ -146,20 +149,18 @@ export default function AIBrainPage() {
 
         {/* Data sources */}
         <div className="card">
-          <h3 className="card-title mb-3">Data Sources</h3>
+          <h3 className="card-title mb-1">Data Sources</h3>
+          <p className="text-xs text-slate-500 mb-3">Categories the AI Brain will draw on once connected to your live data.</p>
           <div className="space-y-3">
             {DATA_SOURCES.map((s) => {
               const Icon = s.icon;
               return (
                 <div key={s.label} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50">
-                    <Icon className="w-4 h-4 text-blue-600" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50">
+                    <Icon className="w-4 h-4 text-slate-400" />
                   </div>
-                  <div>
-                    <div className="text-sm font-medium text-slate-700">{s.label}</div>
-                    <div className="text-xs text-slate-500">{s.count}</div>
-                  </div>
-                  <span className="ml-auto w-2 h-2 rounded-full bg-emerald-500" />
+                  <div className="text-sm font-medium text-slate-700">{s.label}</div>
+                  <span className="ml-auto text-[10px] font-medium text-slate-400 uppercase tracking-wide">Not connected</span>
                 </div>
               );
             })}

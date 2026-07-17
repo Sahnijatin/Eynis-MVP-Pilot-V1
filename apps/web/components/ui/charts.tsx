@@ -51,6 +51,38 @@ export function OccupancyChart({ data }: OccupancyChartProps) {
   );
 }
 
+// ── Request Volume (area chart) ──────────────────────────────────────────────
+// Real inbound-request counts per day. Unlike OccupancyChart this has no fixed
+// 0–100 scale or target line — it plots actual counts, auto-scaled.
+interface RequestVolumeChartProps {
+  data: Array<{ date: string; value: number }>;
+}
+
+export function RequestVolumeChart({ data }: RequestVolumeChartProps) {
+  return (
+    <div className="h-48 mt-4">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+          <defs>
+            <linearGradient id="reqGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+          <Tooltip
+            contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
+            formatter={(value) => [`${value as number}`, "Requests"]}
+          />
+          <Area type="monotone" dataKey="value" stroke="var(--color-primary, #0f766e)" strokeWidth={2.5} fill="url(#reqGrad)" dot={{ fill: "var(--color-primary, #0f766e)", r: 3.5 }} activeDot={{ r: 5 }} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 // ── Revenue Bar Chart ────────────────────────────────────────────────────────
 interface RevenueBarProps {
   data: Array<{ day: string; upgrades: number; lateCO: number; fnb: number }>;
