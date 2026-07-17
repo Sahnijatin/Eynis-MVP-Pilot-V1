@@ -10,6 +10,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Manual trigger: lets CI be (re)run on any branch on demand — needed when a
+  # push comes from an integration whose events don't create pull_request runs.
+  workflow_dispatch:
 
 # Cancel superseded runs on the same branch/PR.
 concurrency:
