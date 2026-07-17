@@ -3,5 +3,5 @@ import { getApiBaseUrl, getApiToken } from "../../../../lib/api";
 export async function GET(req: NextRequest) {
   const token = await getApiToken();
   const res = await fetch(`${getApiBaseUrl()}/deals/suggestions${req.nextUrl.search}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

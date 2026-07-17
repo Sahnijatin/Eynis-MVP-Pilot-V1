@@ -8,7 +8,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const res = await fetch(`${getApiBaseUrl()}/inventory/items/${id}`, {
     method: "PUT", headers: { "content-type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -17,5 +17,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const res = await fetch(`${getApiBaseUrl()}/inventory/items/${id}`, {
     method: "DELETE", headers: { Authorization: `Bearer ${token}` },
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

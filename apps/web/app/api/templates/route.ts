@@ -4,7 +4,7 @@ import { getApiBaseUrl, getApiToken } from "../../../lib/api";
 export async function GET(req: NextRequest) {
   const token = await getApiToken();
   const res = await fetch(`${getApiBaseUrl()}/templates${req.nextUrl.search}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }
 
 export async function POST(req: NextRequest) {
@@ -13,5 +13,5 @@ export async function POST(req: NextRequest) {
   const res = await fetch(`${getApiBaseUrl()}/templates`, {
     method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body),
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

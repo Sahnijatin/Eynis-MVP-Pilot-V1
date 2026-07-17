@@ -5,5 +5,5 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const token = await getApiToken();
   const body = await req.json().catch(() => ({}));
   const res = await fetch(`${getApiBaseUrl()}/contacts/${encodeURIComponent(id)}/activities`, { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

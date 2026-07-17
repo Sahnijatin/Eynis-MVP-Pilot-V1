@@ -10,5 +10,5 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const res = await fetch(`${getApiBaseUrl()}/reports/${encodeURIComponent(id)}/run`, {
     headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
   });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return NextResponse.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })), { status: res.status });
 }

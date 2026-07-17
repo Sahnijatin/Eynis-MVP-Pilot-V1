@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { tokenExchangeHeaders } from "./api";
+import { getApiBaseUrl, tokenExchangeHeaders } from "./api";
 import { currentUser } from "@clerk/nextjs/server";
 import type { OrgRole } from "./rbac";
 import type { TenantBranding } from "./theme";
@@ -57,7 +57,6 @@ const SYSTEM_KEY_TO_ORG: Record<string, OrgRole> = {
   admin: "org_admin", manager: "org_manager", supervisor: "org_supervisor", agent: "org_agent", viewer: "org_viewer",
 };
 
-const apiBase = () => process.env.EYNIS_API_BASE_URL ?? "http://localhost:4000";
 
 const LEGACY_TO_ORG_ROLE: Record<string, OrgRole> = {
   owner:        "org_admin",
@@ -88,7 +87,7 @@ async function identifyByEmail(email: string): Promise<Membership[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 3000);
   try {
-    const res = await fetch(`${apiBase()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal, headers: tokenExchangeHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/auth/identify?email=${encodeURIComponent(email)}`, { cache: "no-store", signal: ctrl.signal, headers: tokenExchangeHeaders() });
     if (!res.ok) return [];
     const data = await res.json() as {
       ok: boolean; exists?: boolean;

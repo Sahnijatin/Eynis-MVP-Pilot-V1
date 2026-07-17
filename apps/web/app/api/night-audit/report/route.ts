@@ -11,5 +11,5 @@ export async function GET(req: NextRequest) {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"
   });
-  return Response.json(await res.json() as unknown, { status: res.status });
+  return Response.json(await res.json().catch(() => ({ ok: false, error: "Upstream error" })) as unknown, { status: res.status });
 }

@@ -13,6 +13,6 @@ export async function PUT(
     headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ ok: false, error: "Upstream error" }));
   return NextResponse.json(data, { status: res.status });
 }
