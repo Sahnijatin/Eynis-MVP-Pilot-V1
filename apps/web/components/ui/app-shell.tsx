@@ -27,8 +27,6 @@ interface Impersonating {
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────
-// Real recent activity from the tenant's live feed — never canned demo alerts.
-
 // Real, tenant-scoped operational alerts fetched from GET /api/notifications
 // (SLA-breached / escalated requests, low-stock items, expiring quotes). `href`
 // deep-links each item to the page where it can be acted on; `at` is an ISO
@@ -74,8 +72,9 @@ function TopbarClock() {
 // the API yet (F-19). The `inventory` vertical is fully wired and is the template
 // the rest follow; until each is built on it, we label them honestly as "Preview"
 // so demos don't overpromise.
+// (/patients left this list in Wave 5 — it is now backed by the real Patient model.)
 const PREVIEW_ROUTES = [
-  "/materials", "/menu", "/orders", "/patients", "/appointments",
+  "/materials", "/menu", "/orders", "/appointments",
   "/bookings", "/quotes", "/customers", "/ai-brain",
 ];
 
