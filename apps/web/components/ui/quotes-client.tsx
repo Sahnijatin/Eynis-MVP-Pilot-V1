@@ -112,22 +112,32 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
     }
   }, []);
 
+  // In-flight guard: a double-click on Send must not fire the action twice.
+  const actingRef = useRef(false);
   const act = useCallback(async (id: string, action: "send" | "accept" | "reject" | "expire") => {
+    if (actingRef.current) return;
     let body: Record<string, unknown> = {};
     if (action === "reject") {
       const reason = window.prompt("Reason for rejection (optional):", "");
       if (reason === null) return; // cancelled
       if (reason.trim()) body = { reason: reason.trim() };
     }
-    const res = await fetch(`/api/quotes/${id}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const data = (await res.json()) as { ok: boolean; error?: string; minTotalPaise?: number; followup?: { enrolled: boolean } };
-    if (!data.ok) {
-      toast.push(data.minTotalPaise ? `${data.error}. Minimum price to clear the floor: ${rupees(data.minTotalPaise)}` : (data.error ?? "Action failed"), "error");
-      return;
+    actingRef.current = true;
+    try {
+      const res = await fetch(`/api/quotes/${id}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = (await res.json()) as { ok: boolean; error?: string; minTotalPaise?: number; followup?: { enrolled: boolean } };
+      if (!data.ok) {
+        toast.push(data.minTotalPaise ? `${data.error}. Minimum price to clear the floor: ${rupees(data.minTotalPaise)}` : (data.error ?? "Action failed"), "error");
+        return;
+      }
+      if (action === "send") toast.push(data.followup?.enrolled ? "Quote sent — follow-up started" : "Quote sent (no customer linked, so no follow-up)", data.followup?.enrolled ? "success" : "info");
+      else toast.push(`Quote ${{ accept: "accepted", reject: "rejected", expire: "expired" }[action]}`, "success");
+      refresh();
+    } catch {
+      toast.push("Network error — please try again.", "error");
+    } finally {
+      actingRef.current = false;
     }
-    if (action === "send") toast.push(data.followup?.enrolled ? "Quote sent — follow-up started" : "Quote sent (no customer linked, so no follow-up)", data.followup?.enrolled ? "success" : "info");
-    else toast.push(`Quote ${{ accept: "accepted", reject: "rejected", expire: "expired" }[action]}`, "success");
-    refresh();
   }, [toast, refresh]);
 
   // Copy the customer's self-serve link. Re-mints the token (only its hash is
@@ -422,6 +432,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       } else {
         toast.push(data.note ?? "Nothing to add", "info");
       }
+    } catch {
+      toast.push("Network error — could not parse the description. Please try again.", "error");
     } finally {
       setAiBusy(false);
     }
@@ -463,6 +475,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       if (!data.ok) { toast.push(data.error ?? "Could not save quote", "error"); return; }
       toast.push(isEdit ? "Quote updated" : "Quote created", "success");
       onSaved();
+    } catch {
+      toast.push("Network error — the quote was not saved. Please try again.", "error");
     } finally {
       setSaving(false);
     }

@@ -35,6 +35,8 @@ export function BrandingPanel() {
           if (data.branding) setForm({ ...EMPTY, ...data.branding });
           if (data.whitelabelTier) setTier(data.whitelabelTier);
         }
+      } catch {
+        if (alive) toast.push("Couldn't load your branding settings — please reload.", "error");
       } finally {
         if (alive) setLoading(false);
       }

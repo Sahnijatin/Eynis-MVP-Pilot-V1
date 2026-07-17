@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "./badge";
+import { useToast } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 import type { CampaignLeadRow } from "../../lib/data";
 
 const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
@@ -14,6 +16,7 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> 
 export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
   campaignId: string; initialLeads: CampaignLeadRow[]; initialTotal: number;
 }) {
+  const toast = useToast();
   const [leads, setLeads] = useState<CampaignLeadRow[]>(initialLeads);
   const [total, setTotal] = useState(initialTotal);
   const [tagFilter, setTagFilter] = useState("");
@@ -44,10 +47,12 @@ export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
     if (!tag || selected.size === 0) return;
     setBusy(true);
     try {
-      await fetch(`/api/campaigns/${campaignId}/leads/tag`, {
+      const r = await jsonRequest(`/api/campaigns/${campaignId}/leads/tag`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ leadIds: [...selected], [action]: [tag] }),
       });
+      // Keep the selection on failure so the user can retry.
+      if (!r.ok) { toast.push(r.error, "error"); return; }
       setBulkTag(""); setSelected(new Set());
       await load(tagFilter);
     } finally { setBusy(false); }

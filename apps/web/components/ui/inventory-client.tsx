@@ -59,18 +59,29 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
     e.preventDefault();
     if (!form.name || !form.qty || busy) return;
     setBusy(true);
-    const ok = await postMovement({ name: form.name, category: form.category, txType: form.txType, qty: Number(form.qty), unit: form.unit || undefined });
-    setBusy(false);
-    if (ok) { setForm(EMPTY_FORM); setShowModal(false); }
-    else setImportStatus({ type: "error", message: "Could not save the movement." });
+    try {
+      const ok = await postMovement({ name: form.name, category: form.category, txType: form.txType, qty: Number(form.qty), unit: form.unit || undefined });
+      if (ok) { setForm(EMPTY_FORM); setShowModal(false); }
+      else setImportStatus({ type: "error", message: "Could not save the movement." });
+    } catch {
+      setImportStatus({ type: "error", message: "Could not save the movement." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDelete(item: InventoryItem) {
     if (busy || !confirm(`Delete "${item.name}"?`)) return;
     setBusy(true);
-    const res = await fetch(`/api/inventory/items/${item.id}`, { method: "DELETE" });
-    setBusy(false);
-    if (res.ok) setItems((prev) => prev.filter((i) => i.id !== item.id));
+    try {
+      const res = await fetch(`/api/inventory/items/${item.id}`, { method: "DELETE" });
+      if (res.ok) setItems((prev) => prev.filter((i) => i.id !== item.id));
+      else setImportStatus({ type: "error", message: `Could not delete "${item.name}".` });
+    } catch {
+      setImportStatus({ type: "error", message: `Could not delete "${item.name}".` });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {

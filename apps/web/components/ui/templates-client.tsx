@@ -6,6 +6,7 @@ import {
   EmptyState, Modal, useToast, tokens as t,
 } from "../ds";
 import { CampaignsNav } from "./campaigns-nav";
+import { jsonRequest } from "../../lib/client-request";
 import type { MessageTemplateRow } from "../../lib/data";
 
 // Message template library: author reusable WhatsApp/email templates and track
@@ -38,35 +39,33 @@ export function TemplatesClient({ initialTemplates }: { initialTemplates: Messag
     setBusy(true); setError(null);
     try {
       const payload = { name: name.trim(), channel, category, subject: subject.trim() || null, body: body.trim(), variables: variables.split(",").map((v) => v.trim()).filter(Boolean) };
-      const res = await fetch("/api/templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setError(data.error ?? "Create failed"); return; }
-      setTemplates((ts) => [data.template, ...ts]);
+      const r = await jsonRequest<{ template: MessageTemplateRow }>("/api/templates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      if (!r.ok || !r.data) { setError(r.error); return; }
+      setTemplates((ts) => [r.data!.template, ...ts]);
       setName(""); setSubject(""); setBody(""); setVariables(""); setCreating(false);
       toast.push("Template created", "success");
     } finally { setBusy(false); }
   }
 
   async function submit(id: string) {
-    const res = await fetch(`/api/templates/${id}/submit`, { method: "POST" });
-    const data = await res.json();
-    if (data.ok) { replace(data.template); toast.push("Submitted for approval", "success"); }
-    else toast.push(data.error ?? "Failed", "error");
+    const r = await jsonRequest<{ template: MessageTemplateRow }>(`/api/templates/${id}/submit`, { method: "POST" });
+    if (r.ok && r.data) { replace(r.data.template); toast.push("Submitted for approval", "success"); }
+    else toast.push(r.error, "error");
   }
 
   async function confirmModal() {
     if (!modal) return;
     const extra = modal.action === "approved" ? { providerTemplateId: modalValue.trim() } : { rejectionReason: modalValue.trim() };
-    const res = await fetch(`/api/templates/${modal.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: modal.action, ...extra }) });
-    const data = await res.json();
-    if (data.ok) { replace(data.template); toast.push(modal.action === "approved" ? "Template approved" : "Template rejected", "success"); setModal(null); setModalValue(""); }
-    else toast.push(data.error ?? "Failed", "error");
+    const r = await jsonRequest<{ template: MessageTemplateRow }>(`/api/templates/${modal.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: modal.action, ...extra }) });
+    if (r.ok && r.data) { replace(r.data.template); toast.push(modal.action === "approved" ? "Template approved" : "Template rejected", "success"); setModal(null); setModalValue(""); }
+    else toast.push(r.error, "error");
   }
 
   async function remove(id: string) {
-    await fetch(`/api/templates/${id}`, { method: "DELETE" });
+    const r = await jsonRequest(`/api/templates/${id}`, { method: "DELETE" });
+    if (!r.ok) { toast.push(`Delete failed: ${r.error}`, "error"); return; }
     setTemplates((ts) => ts.filter((x) => x.id !== id));
-    toast.push("Template deleted");
+    toast.push("Template deleted", "success");
   }
 
   return (

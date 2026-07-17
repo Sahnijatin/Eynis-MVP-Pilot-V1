@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { UserPlus, Copy, Check, X, ChevronDown } from "lucide-react";
 import type { TeamUser, TeamRole } from "../../lib/data";
-import { Modal, TableEmpty } from "../ds";
+import { Modal, TableEmpty, useToast } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 
 const ROLE_COLORS: Record<string, string> = {
   admin: "badge-red",
@@ -40,6 +41,7 @@ export default function TeamClient({
     { label: "Roles", href: "/settings/roles" },
     { label: "Billing", href: "/settings/billing" },
   ];
+  const toast = useToast();
   const [users, setUsers] = useState<TeamUser[]>(initialUsers);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -90,14 +92,17 @@ export default function TeamClient({
   async function toggleActive(user: TeamUser) {
     setActionLoading(user.id);
     try {
-      const res = await fetch(`/api/team/users/${user.id}`, {
+      const r = await jsonRequest<{ user?: TeamUser }>(`/api/team/users/${user.id}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ isActive: !user.isActive }),
       });
-      const data = (await res.json()) as { ok: boolean; user?: TeamUser };
-      if (data.ok && data.user) {
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: data.user!.isActive } : u));
+      if (r.ok && r.data?.user) {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: r.data!.user!.isActive } : u));
+        toast.push(user.isActive ? `${user.fullName} deactivated` : `${user.fullName} reactivated`, "success");
+      } else {
+        // An access-change that silently fails is dangerous — always surface it.
+        toast.push(`Could not update ${user.fullName}: ${r.error}`, "error");
       }
     } finally {
       setActionLoading(null);
@@ -107,14 +112,16 @@ export default function TeamClient({
   async function changeRole(userId: string, roleId: string) {
     setActionLoading(userId);
     try {
-      const res = await fetch(`/api/team/users/${userId}`, {
+      const r = await jsonRequest<{ user?: TeamUser }>(`/api/team/users/${userId}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ roleId }),
       });
-      const data = (await res.json()) as { ok: boolean; user?: TeamUser };
-      if (data.ok && data.user) {
-        setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...data.user } : u));
+      if (r.ok && r.data?.user) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...r.data!.user } : u));
+        toast.push("Role updated", "success");
+      } else {
+        toast.push(`Role change failed: ${r.error}`, "error");
       }
     } finally {
       setActionLoading(null);

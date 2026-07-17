@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Pencil, Check, X, Plus, Lock, Users, ShieldCheck } from "lucide-react";
-import { Modal, Button, Field, Input } from "../ds";
+import { Modal, Button, Field, Input, useToast } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 import {
   SYSTEM_ROLES,
   PERMISSION_LABELS,
@@ -46,15 +47,20 @@ export default function RolesClient({
     { label: "Roles", href: "/settings/roles" },
     { label: "Billing", href: "/settings/billing" },
   ];
+  const toast = useToast();
   const [displayRoles, setDisplayRoles] = useState<DisplayRole[]>(() => {
     const system: DisplayRole[] = SYSTEM_ROLES.map(r => {
-      // Try to match an API role by partial key
-      const apiRole = initialRoles.find(ar => ar.key.includes(r.key.replace("org_", "")));
+      // Exact key match only — a substring match let a custom role like
+      // "night_manager" hijack the "Manager" system card (wrong userCount, and
+      // renaming the card would PUT to the custom role's id).
+      const apiRole = initialRoles.find(ar => !ar.isCustom && ar.key === r.key.replace("org_", ""));
       return {
         key: r.key,
         displayName: apiRole?.displayName ?? r.defaultDisplayName,
+        // The DB's permission set is what the API actually enforces — display
+        // it when present rather than the client-side defaults.
         description: r.description,
-        permissions: r.permissions,
+        permissions: apiRole?.permissions?.length ? apiRole.permissions : r.permissions,
         isSystemRole: true,
         iconColor: r.iconColor,
         iconBg: r.iconBg,
@@ -104,13 +110,15 @@ export default function RolesClient({
     try {
       const role = displayRoles.find(r => r.key === key);
       if (role?.apiId) {
-        await fetch(`/api/team/roles/${role.apiId}`, {
+        const r = await jsonRequest(`/api/team/roles/${role.apiId}`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ displayName: editName.trim() }),
         });
+        if (!r.ok) { toast.push(`Rename failed: ${r.error}`, "error"); return; }
       }
       setDisplayRoles(prev => prev.map(r => r.key === key ? { ...r, displayName: editName.trim() } : r));
+      toast.push("Role renamed", "success");
     } finally {
       setSaveLoading(false);
       setEditingKey(null);
@@ -127,13 +135,13 @@ export default function RolesClient({
     setCustomError(null);
     try {
       const key = customKey.trim() || customName.trim().toLowerCase().replace(/\s+/g, "_");
-      const res = await fetch("/api/team/roles", {
+      const r = await jsonRequest<{ role?: TeamRole }>("/api/team/roles", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ displayName: customName.trim(), key, permissions: customPerms }),
       });
-      const data = (await res.json()) as { ok: boolean; role?: TeamRole; error?: string };
-      if (!data.ok) { setCustomError(data.error ?? "Failed to create role"); return; }
+      if (!r.ok) { setCustomError(r.error); return; }
+      const data = r.data!;
       setDisplayRoles(prev => [...prev, {
         key,
         displayName: customName.trim(),

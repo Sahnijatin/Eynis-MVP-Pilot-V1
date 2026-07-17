@@ -5,6 +5,7 @@ import type { MessageTemplateRow } from "../../lib/data";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, LinkButton, Card, CardTitle, Field, Label, Input, Select, Disclosure, useToast, tokens as t } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 
 // Reusable variable reference — shared across voice script, WhatsApp, and email.
 const VARIABLE_GROUPS: Array<{ group: string; vars: string[] }> = [
@@ -168,13 +169,12 @@ export function CampaignBuilder() {
 
     setBusy(true);
     try {
-      const res = await fetch("/api/campaigns", {
+      const r = await jsonRequest<{ campaign: { id: string } }>("/api/campaigns", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setError(data.error ?? "Failed to create campaign"); return; }
+      if (!r.ok || !r.data) { setError(r.error || "Failed to create campaign"); return; }
       toast.push("Campaign created", "success");
-      router.push(`/campaigns/${data.campaign.id}`);
+      router.push(`/campaigns/${r.data.campaign.id}`);
     } finally {
       setBusy(false);
     }

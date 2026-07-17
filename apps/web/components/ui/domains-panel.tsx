@@ -29,6 +29,8 @@ export function DomainsPanel() {
         const res = await fetch("/api/tenant/domains", { cache: "no-store" });
         const d = await res.json();
         if (alive && d.ok) { setSlug(d.slug ?? ""); setCustomDomain(d.customDomain ?? null); }
+      } catch {
+        if (alive) toast.push("Couldn't load your domain settings — please reload.", "error");
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
@@ -45,7 +47,8 @@ export function DomainsPanel() {
       if (!res.ok || !d.ok) { toast.push(d.error ?? "Save failed", "error"); return; }
       setSlug(d.slug ?? "");
       toast.push("Subdomain saved", "success");
-    } finally { setSaving(false); }
+    } catch { toast.push("Network error — the subdomain was not saved.", "error"); }
+    finally { setSaving(false); }
   }
 
   async function submitRequest() {
@@ -60,7 +63,8 @@ export function DomainsPanel() {
       setRequested(true);
       setRequesting(false);
       toast.push("Request received — our team will set this up", "success");
-    } finally { setSending(false); }
+    } catch { toast.push("Network error — the request was not sent.", "error"); }
+    finally { setSending(false); }
   }
 
   if (loading) return <Card style={{ maxWidth: 640 }}><span style={{ color: t.color.textMuted }}>Loading…</span></Card>;

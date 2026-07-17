@@ -201,6 +201,7 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
   const [tags, setTags] = useState("");
   const [notes, setNotes] = useState("");
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
   const [score, setScore] = useState<{ score: number; tier: string; reasons: string[]; source: string } | null>(null);
   const [scoring, setScoring] = useState(false);
   const [actType, setActType] = useState<"note" | "task">("note");
@@ -208,9 +209,15 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
   const [actDue, setActDue] = useState("");
 
   async function loadTimeline() {
-    const res = await fetch(`/api/contacts/${id}/timeline`);
-    const d = await res.json();
-    if (d.ok) setTimeline(d.items as TimelineItem[]);
+    try {
+      const res = await fetch(`/api/contacts/${id}/timeline`);
+      const d = await res.json();
+      if (res.ok && d.ok) { setTimeline(d.items as TimelineItem[]); setTimelineError(null); }
+      else { setTimeline([]); setTimelineError("Couldn't load the timeline."); }
+    } catch {
+      setTimeline([]);
+      setTimelineError("Couldn't load the timeline.");
+    }
   }
 
   useEffect(() => {
@@ -351,6 +358,7 @@ function ContactDetailModal({ id, companies, owners, onClose, onChanged, fmtINR 
           {/* Timeline */}
           <div>
             <div style={{ fontSize: t.font.xs, fontWeight: 600, textTransform: "uppercase", color: t.color.textMuted, marginBottom: 6 }}>Timeline ({timeline.length})</div>
+            {timelineError && <div style={{ fontSize: t.font.sm, color: t.color.danger, marginBottom: 6 }}>{timelineError}</div>}
             {timeline.length === 0 ? <div style={{ fontSize: t.font.sm, color: t.color.textFaint }}>No activity yet.</div> : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
                 {timeline.map((i) => (

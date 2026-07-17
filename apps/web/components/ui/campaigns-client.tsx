@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "./badge";
 import { PageHeader, LinkButton, useToast } from "../ds";
+import { jsonRequest } from "../../lib/client-request";
 import { CampaignsNav } from "./campaigns-nav";
 import type { CampaignSummary } from "../../lib/data";
 
@@ -22,9 +23,8 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
   async function act(id: string, action: "activate" | "pause") {
     setBusy(id + action);
     try {
-      const res = await fetch(`/api/campaigns/${id}/${action}`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) toast.push(data.error ?? "Action failed", "error");
+      const r = await jsonRequest(`/api/campaigns/${id}/${action}`, { method: "POST" });
+      if (!r.ok) toast.push(r.error, "error");
       else { toast.push(action === "activate" ? "Campaign activated" : "Campaign paused", "success"); router.refresh(); }
     } finally {
       setBusy(null);
