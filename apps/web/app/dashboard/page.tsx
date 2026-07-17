@@ -8,7 +8,7 @@ import Link from "next/link";
 import {
   LayoutDashboard, Users, Bell, DollarSign, AlertCircle, AlertTriangle, ChevronRight, Zap
 } from "lucide-react";
-import { OccupancyChart } from "../../components/ui/charts";
+import { RequestTrendChart } from "../../components/ui/charts";
 import { PreviewBadge } from "../../components/ui/preview-badge";
 import { SmartInsights } from "../../components/ui/smart-insights";
 import { InboundPipeline } from "../../components/ui/inbound-pipeline";
@@ -53,7 +53,9 @@ export default async function DashboardPage() {
   const escalated = overview?.escalatedOpenCount ?? 0;
   const resolvedToday = overview?.resolvedTodayCount ?? 0;
 
-  const chartData = trendSeries.slice(-14).map((p) => ({ date: p.date.slice(5), value: Math.max(55, 60 + p.created * 3) }));
+  // Real request counts, straight from the trends endpoint — no synthetic
+  // transforms (a chart labeled with numbers a tenant can act on must be real).
+  const chartData = trendSeries.slice(-14).map((p) => ({ date: p.date.slice(5), created: p.created, resolved: p.resolved }));
 
   // Sample panels: occupancy/revenue/upsell/automation-activity/alerts have no
   // backing endpoint yet, so they carry a Preview badge instead of posing as
@@ -229,16 +231,16 @@ export default async function DashboardPage() {
       <div className="card">
         <div className="flex items-center justify-between mb-1">
           <div>
-            <h3 className="card-title mb-0">Occupancy Trend</h3>
-            <p className="text-xs text-slate-500 mt-0.5">14-day rolling average vs target</p>
+            <h3 className="card-title mb-0">Request Volume</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Created vs resolved · last 14 days</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-700 inline-block" />ACTUAL</span>
-            <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />TARGET (70%)</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-700 inline-block" />CREATED</span>
+            <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />RESOLVED</span>
           </div>
         </div>
         {chartData.length > 0
-          ? <OccupancyChart data={chartData} />
+          ? <RequestTrendChart data={chartData} />
           : <div className="py-10 text-center text-sm text-slate-400">No trend data yet — this chart fills in as requests come through.</div>}
       </div>
     </div>
