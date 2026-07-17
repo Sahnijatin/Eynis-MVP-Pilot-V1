@@ -7,6 +7,10 @@ const isPublicRoute = createRouteMatcher([
   // Invite acceptance must be reachable while signed out — a brand-new invitee
   // has no account yet. The page itself handles the signed-out → sign-up path.
   "/invite(.*)",
+  // Public customer quote link (Phase 6): recipients are external customers with
+  // no account. The token in the URL is the only credential; the backing
+  // /api/public/quotes/* routes are already public below.
+  "/q(.*)",
   "/api/invitations(.*)",
   "/api/public/(.*)",
   // NOTE: /api/connectors/* (connector-config writes) and /api/sse (live tenant
