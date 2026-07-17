@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { DEFAULT_INTAKE_PACK } from "../industry-pack";
+import { DEFAULT_INTAKE_PACK, getIndustryTerms } from "../industry-pack";
 
 // ── Provider availability ─────────────────────────────────────────────────────
 
@@ -97,30 +97,8 @@ function claudeTextContent(response: Anthropic.Message): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-// Industry-agnostic terminology so the generated copy uses each tenant's own
-// vocabulary (orders / bookings / appointments …) instead of hospitality nouns.
-// Kept self-contained here so the API has no dependency on the web's
-// industry-config (CLAUDE.md product principle #1).
-interface IndustryTerms {
-  label: string;        // human-readable industry name
-  request: string;      // singular unit of work ("service request", "order" …)
-  requestPlural: string;
-  contactPlural: string; // people the tenant serves ("guests", "patients" …)
-}
-
-const INDUSTRY_TERMS: Record<string, IndustryTerms> = {
-  hospitality: { label: "Hospitality", request: "service request", requestPlural: "service requests", contactPlural: "guests" },
-  manufacturing: { label: "Manufacturing", request: "order", requestPlural: "orders", contactPlural: "clients" },
-  fnb: { label: "Food & Beverage", request: "order", requestPlural: "orders", contactPlural: "diners" },
-  travel: { label: "Travel", request: "booking", requestPlural: "bookings", contactPlural: "travellers" },
-  healthcare: { label: "Healthcare", request: "appointment", requestPlural: "appointments", contactPlural: "patients" }
-};
-
-export function getIndustryTerms(industry: string | null | undefined): IndustryTerms {
-  return (industry && INDUSTRY_TERMS[industry]) || {
-    label: "Operations", request: "request", requestPlural: "requests", contactPlural: "contacts"
-  };
-}
+// Industry vocabulary now lives in the industry pack (#160); getIndustryTerms is
+// imported at the top of this file and used by the prompt builders below.
 
 // Metrics that depend on an external source (PMS / POS / billing) are nullable:
 // when no source is connected we pass null and the prompt says "not available"

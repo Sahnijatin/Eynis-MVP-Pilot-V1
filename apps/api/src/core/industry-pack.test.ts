@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getIntakePack, DEFAULT_INTAKE_PACK, packLookup } from "./industry-pack";
+import { getIntakePack, DEFAULT_INTAKE_PACK, packLookup, getIndustryPack, getIndustryTerms, OPERATIONAL_RULE_DEFS } from "./industry-pack";
 import { keywordClassify, sanitizeClassification } from "./connectors/ingest";
 
 // #159: the intake taxonomy (categories, keyword routing, SLA) is config-driven per
@@ -55,6 +55,34 @@ test("keywordClassify uses the tenant's pack for category, routing and SLA", () 
   const urgent = keywordClassify("this is urgent", generic);
   assert.equal(urgent.slaMinutes, 15); // generic urgent, vs hospitality's 10
   assert.equal(keywordClassify("hello there", generic).slaMinutes, 60); // generic normal, vs 45
+});
+
+// #160 — the composed pack unifies vocabulary + intake + automation set per vertical.
+
+test("getIndustryPack composes vocabulary, intake and automation set per industry", () => {
+  const hotel = getIndustryPack("hospitality");
+  assert.equal(hotel.label, "Hospitality");
+  assert.equal(hotel.vocabulary.contactPlural, "guests");
+  assert.equal(hotel.intake, DEFAULT_INTAKE_PACK);
+  assert.deepEqual(hotel.automations, ["sla_breach_escalate", "sentiment_low_flag", "checkin_welcome", "upsell_followup"]);
+
+  const mfg = getIndustryPack("manufacturing");
+  assert.equal(mfg.label, "Manufacturing");
+  assert.equal(mfg.vocabulary.contactPlural, "clients");
+  assert.equal(mfg.intake.industry, "generic"); // no dedicated intake pack yet (#165)
+  // Switching the pack changes the active automation set with no engine change.
+  assert.deepEqual(mfg.automations, ["sla_breach_escalate", "sentiment_low_flag"]);
+
+  // Every declared automation code resolves to a seedable definition.
+  for (const code of [...hotel.automations, ...mfg.automations]) {
+    assert.ok(OPERATIONAL_RULE_DEFS[code], `missing rule def for ${code}`);
+  }
+});
+
+test("getIndustryTerms ignores prototype-chain keys and falls back neutrally", () => {
+  assert.equal(getIndustryTerms("__proto__").label, "Operations");
+  assert.equal(getIndustryTerms(null).contactPlural, "contacts");
+  assert.equal(getIndustryTerms("healthcare").contactPlural, "patients");
 });
 
 test("sanitizeClassification applies the pack's default category and SLA on bad input", () => {

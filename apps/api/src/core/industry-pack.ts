@@ -133,3 +133,98 @@ export function packLookup<T>(map: Record<string, T>, key: string, dflt: T): T {
 
 /** The hospitality pack, exported so pack-aware helpers can default to it. */
 export const DEFAULT_INTAKE_PACK = HOSPITALITY_PACK;
+
+// ── Vocabulary (#160) ──────────────────────────────────────────────────────────
+// The tenant-facing nouns for a vertical. Relocated here from ai/intelligence.ts so
+// vocabulary is one facet of the industry pack rather than a parallel registry
+// (CLAUDE.md product principle #1). Kept API-local so the API has no dependency on
+// the web's industry-config.
+export interface IndustryTerms {
+  label: string; // human-readable industry name
+  request: string; // singular unit of work ("service request", "order" …)
+  requestPlural: string;
+  contactPlural: string; // people the tenant serves ("guests", "patients" …)
+}
+
+const INDUSTRY_TERMS: Record<string, IndustryTerms> = {
+  hospitality: { label: "Hospitality", request: "service request", requestPlural: "service requests", contactPlural: "guests" },
+  manufacturing: { label: "Manufacturing", request: "order", requestPlural: "orders", contactPlural: "clients" },
+  fnb: { label: "Food & Beverage", request: "order", requestPlural: "orders", contactPlural: "diners" },
+  travel: { label: "Travel", request: "booking", requestPlural: "bookings", contactPlural: "travellers" },
+  healthcare: { label: "Healthcare", request: "appointment", requestPlural: "appointments", contactPlural: "patients" },
+};
+
+export function getIndustryTerms(industry: string | null | undefined): IndustryTerms {
+  return (industry && Object.prototype.hasOwnProperty.call(INDUSTRY_TERMS, industry) && INDUSTRY_TERMS[industry]) || {
+    label: "Operations", request: "request", requestPlural: "requests", contactPlural: "contacts",
+  };
+}
+
+// ── Automation set (#160) ──────────────────────────────────────────────────────
+// The operational automation rules the engine evaluates every 60s. A pack declares
+// WHICH rule codes are active for its vertical; the definitions below are the seed
+// data used to provision those rows on a new tenant (see
+// core/automations/provision.ts). Effects are already industry-aware via getIntakePack
+// (#159); this makes the *set* of active rules pack-driven too.
+export interface AutomationRuleDef {
+  code: string;
+  name: string;
+  configJson: string;
+}
+
+export const OPERATIONAL_RULE_DEFS: Record<string, AutomationRuleDef> = {
+  sla_breach_escalate: {
+    code: "sla_breach_escalate",
+    name: "SLA Breach → Auto-Escalate",
+    configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sla_breach" }, action: { type: "escalate_sr" } }),
+  },
+  sentiment_low_flag: {
+    code: "sentiment_low_flag",
+    name: "Negative Sentiment → Flag for Review",
+    // Category/priority of the created SR are derived from the tenant's intake pack
+    // at run time (#159), so they are intentionally not hardcoded here.
+    configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sentiment_low", params: { threshold: 2 } }, action: { type: "create_sr" } }),
+  },
+  checkin_welcome: {
+    code: "checkin_welcome",
+    name: "Check-in → Welcome WhatsApp",
+    configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "checkin_within_minutes", params: { minutes: 30 } }, action: { type: "send_whatsapp", params: { template: "welcome" } } }),
+  },
+  upsell_followup: {
+    code: "upsell_followup",
+    name: "Resolved Request → Queue Upsell",
+    configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sr_resolved_within_hours", params: { hours: 2 } }, action: { type: "queue_offer" } }),
+  },
+};
+
+// SLA escalation and sentiment flagging apply to any operations vertical; check-in
+// welcome and upsell follow-up assume arrival/offer flows a hotel has, so they ship
+// only in the hospitality pack. A new vertical picks its set by listing rule codes.
+const HOSPITALITY_AUTOMATIONS = ["sla_breach_escalate", "sentiment_low_flag", "checkin_welcome", "upsell_followup"];
+const GENERIC_AUTOMATIONS = ["sla_breach_escalate", "sentiment_low_flag"];
+
+// ── Composed Industry Pack (#160) ──────────────────────────────────────────────
+// The single per-tenant bundle: vocabulary + intake taxonomy + automation set,
+// keyed by Tenant.industry. Standing up a new vertical is adding vocabulary +
+// (optionally) an intake pack and an automation list — no engine change.
+export interface IndustryPack {
+  industry: string;
+  label: string;
+  vocabulary: IndustryTerms;
+  intake: IntakePack;
+  /** Active operational automation rule codes (keys of OPERATIONAL_RULE_DEFS). */
+  automations: string[];
+}
+
+export function getIndustryPack(industry: string | null | undefined): IndustryPack {
+  const vocabulary = getIndustryTerms(industry);
+  const intake = getIntakePack(industry);
+  const automations = industry === "hospitality" ? HOSPITALITY_AUTOMATIONS : GENERIC_AUTOMATIONS;
+  return {
+    industry: industry || "generic",
+    label: vocabulary.label,
+    vocabulary,
+    intake,
+    automations: [...automations], // copy so callers can't mutate the module constant
+  };
+}
