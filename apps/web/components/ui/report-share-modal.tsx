@@ -107,7 +107,7 @@ export function ReportShareModal({ reportId, onClose }: { reportId: string; onCl
                     const on = selected.has(k);
                     return (
                       <label key={k} className={`${rowCls} ${on ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
-                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-teal-600" />
+                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-[var(--accent-solid,#0f766e)]" />
                         <span className="text-fg">{r.displayName}</span>
                       </label>
                     );
@@ -125,7 +125,7 @@ export function ReportShareModal({ reportId, onClose }: { reportId: string; onCl
                     const on = selected.has(k);
                     return (
                       <label key={k} className={`${rowCls} ${on ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
-                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-teal-600" />
+                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-[var(--accent-solid,#0f766e)]" />
                         <span className="min-w-0">
                           <span className="text-fg">{u.fullName || u.email}</span>
                           {u.fullName && <span className="text-fg-subtle ml-1.5 text-xs">{u.email}</span>}

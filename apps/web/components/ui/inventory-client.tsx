@@ -199,7 +199,7 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
 
       <div className="card">
         <div className="flex items-center gap-2 mb-4">
-          <Package className="w-4 h-4 text-orange-500" />
+          <Package className="w-4 h-4 text-accent-text" />
           <h3 className="card-title mb-0">Stock Levels</h3>
         </div>
         {items.length === 0 ? (

@@ -40,6 +40,34 @@ Enabling the dark theme by **default** (flip `NEXT_PUBLIC_ENABLE_THEME_TOGGLE`
 + honor OS) stays gated until the categorical pass (Phase 7) and dark-mode
 visual QA (Phase 8) land, so the toggle remains opt-in for now.
 
+### Phase 7 (categorical + charts) — done
+
+A colour-blind-safe categorical palette `--cat-1..8` (light + dark) is defined in
+`globals.css` and registered in `tailwind.config.ts` (`cat` keys → `bg-cat-1`,
+`text-cat-1`, …). It was validated against the app's own chart surfaces
+(`#FFFFFF` light / `#16181F` dark) with the dataviz validator — passes the
+lightness band, chroma floor, adjacent CVD ΔE (9.1 light / 8.4 dark, ≥8), and
+normal-vision floor (19.6 / 19.3, ≥15); three light slots sit <3:1 on surface, so
+they carry the **relief rule** (always shipped with a legend/label). Assign in
+fixed order, never cycled; always pair with a legend/label/shape.
+
+Two distinct things came out of the Phase 6 "categorical" residual:
+
+| Residual | Reality | Resolution |
+|---|---|---|
+| `ring-cyan/purple/orange-400` (form focus rings), `text/bg/border-purple·orange-*` (icons, links, refs, tinted hovers/callouts), `accent-teal-600` (checkbox accent-color) | **Not** chart series — per-vertical accent hardcodes (healthcare=cyan, travel=purple, F&B=orange) predating white-label | → **tenant accent** tokens (`ring-accent-focus`, `text-accent-text`, `bg-accent-bg`, `border-accent[-line]`, `accent-[var(--accent-solid)]`) so every vertical follows the tenant hue |
+| `charts.tsx` series fills + chrome (`#f59e0b`, `#14b8a6`, `#cbd5e1`, grid/axis/tooltip hex) | Genuine series + chart chrome | primary series → accent ramp; secondary → `--cat-4`/`--cat-1`; comparison line → `--chart-compare`; grid/axis/tooltip → `--chart-grid`/`--chart-axis`/`--chart-tooltip-*` (all theme-flipping) |
+
+Categorical Tailwind residual is now **0**; `charts.tsx` carries no hardcoded hex
+beyond the accent SSR fallback.
+
+**Still deferred — the inline-hex long tail (~600 values).** Per-item `color`/`bg`
+dictionaries in inline styles (segment maps in `customers-client`, status maps in
+`healthcare-/fnb-/manufacturing-dashboard`, misc inline `style={{color:'#…'}}`)
+are unchanged — they render correctly but aren't tokenised. These are STATUS
+(→ status tokens) or true category (→ `--cat-*`) and move in a dedicated hex pass,
+separate from this Tailwind-utility program.
+
 ```bash
 # files
 grep -rlE '(bg|text|border|ring)-(slate|gray|teal|red|amber|emerald|blue|indigo|cyan|purple|orange)-[0-9]' apps/web/components apps/web/app --include=*.tsx | wc -l

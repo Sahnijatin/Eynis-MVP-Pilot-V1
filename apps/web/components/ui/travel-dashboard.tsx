@@ -51,8 +51,8 @@ export async function TravelDashboard() {
       <div className="grid grid-cols-3 gap-4">
         <div className="card col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2"><Plane className="w-4 h-4 text-purple-600" /><h3 className="card-title mb-0">Upcoming Departures</h3></div>
-            <Link href="/bookings" className="text-xs text-purple-600 font-medium flex items-center gap-1 hover:underline">View all <ChevronRight className="w-3 h-3" /></Link>
+            <div className="flex items-center gap-2"><Plane className="w-4 h-4 text-accent-text" /><h3 className="card-title mb-0">Upcoming Departures</h3></div>
+            <Link href="/bookings" className="text-xs text-accent-text font-medium flex items-center gap-1 hover:underline">View all <ChevronRight className="w-3 h-3" /></Link>
           </div>
           {upcoming.length === 0 ? (
             <div className="py-6 text-center text-sm text-fg-subtle">No upcoming departures — new bookings appear here.</div>
@@ -62,7 +62,7 @@ export async function TravelDashboard() {
                 const s = STATUS_META[b.status] ?? STATUS_META.in_progress;
                 return (
                   <div key={b.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-line">
-                    <Plane className="w-4 h-4 text-purple-400 shrink-0" />
+                    <Plane className="w-4 h-4 text-accent-text shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-fg">{b.clientName}</div>
                       <div className="text-xs text-fg-muted">{b.destination || "—"} · {b.pax} pax</div>

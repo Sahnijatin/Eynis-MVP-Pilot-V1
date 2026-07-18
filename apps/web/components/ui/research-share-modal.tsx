@@ -102,7 +102,7 @@ export function ResearchShareModal({ runId, onClose, onSaved }: { runId: string;
           ) : (
             <>
               <label className={`${rowCls} mb-4 ${shared ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
-                <input type="checkbox" checked={shared} onChange={() => setShared((v) => !v)} className="accent-teal-600" />
+                <input type="checkbox" checked={shared} onChange={() => setShared((v) => !v)} className="accent-[var(--accent-solid,#0f766e)]" />
                 <Globe className="w-3.5 h-3.5 text-fg-muted" />
                 <span className="text-fg">Everyone in workspace</span>
               </label>
@@ -117,7 +117,7 @@ export function ResearchShareModal({ runId, onClose, onSaved }: { runId: string;
                     const on = selected.has(k);
                     return (
                       <label key={k} className={`${rowCls} ${on ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
-                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-teal-600" />
+                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-[var(--accent-solid,#0f766e)]" />
                         <span className="text-fg">{r.displayName}</span>
                       </label>
                     );
@@ -135,7 +135,7 @@ export function ResearchShareModal({ runId, onClose, onSaved }: { runId: string;
                     const on = selected.has(k);
                     return (
                       <label key={k} className={`${rowCls} ${on ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
-                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-teal-600" />
+                        <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-[var(--accent-solid,#0f766e)]" />
                         <span className="min-w-0">
                           <span className="text-fg">{u.fullName || u.email}</span>
                           {u.fullName && <span className="text-fg-subtle ml-1.5 text-xs">{u.email}</span>}

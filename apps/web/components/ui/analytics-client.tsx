@@ -87,7 +87,7 @@ export default function AnalyticsClient({ terminology }: Props) {
       <div className="card mb-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-orange-600" />
+            <BarChart3 className="w-4 h-4 text-accent-text" />
             <h3 className="card-title mb-0">Revenue Trend — {RANGE_LABELS[range]}</h3>
           </div>
           <div className="flex items-center gap-1.5">
@@ -96,9 +96,9 @@ export default function AnalyticsClient({ terminology }: Props) {
                 key={r}
                 onClick={() => setRange(r)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${range === r
-                  ? "text-white border-orange-500"
+                  ? "text-accent-contrast border-accent"
                   : "border-line text-fg-muted hover:bg-surface-inset"}`}
-                style={range === r ? { background: "#ea580c" } : {}}
+                style={range === r ? { background: "var(--accent-solid, #0f766e)" } : {}}
               >
                 {r === "24h" ? "Last 24h" : r === "7d" ? "Last 7 Days" : "Custom Range"}
               </button>
@@ -107,14 +107,14 @@ export default function AnalyticsClient({ terminology }: Props) {
         </div>
 
         {range === "custom" && (
-          <div className="flex items-center gap-3 mb-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
+          <div className="flex items-center gap-3 mb-4 p-3 bg-accent-bg rounded-lg border border-accent-line">
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-fg-muted">From</label>
               <input
                 type="date"
                 value={customFrom}
                 onChange={e => setCustomFrom(e.target.value)}
-                className="border border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="border border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-focus"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -123,7 +123,7 @@ export default function AnalyticsClient({ terminology }: Props) {
                 type="date"
                 value={customTo}
                 onChange={e => setCustomTo(e.target.value)}
-                className="border border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="border border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-focus"
               />
             </div>
             <span className="text-xs text-fg-muted italic">Showing 6-month sample data</span>

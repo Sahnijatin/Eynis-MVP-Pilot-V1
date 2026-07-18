@@ -85,6 +85,13 @@ const config: Config = {
           bg: "var(--info-bg)",
           border: "var(--info-border)",
           solid: "var(--info-solid)"
+        },
+
+        // Categorical (Phase 7) — series/identity colours, assigned in fixed order,
+        // never cycled. Colour-blind-safe set; always paired with a legend/label.
+        cat: {
+          1: "var(--cat-1)", 2: "var(--cat-2)", 3: "var(--cat-3)", 4: "var(--cat-4)",
+          5: "var(--cat-5)", 6: "var(--cat-6)", 7: "var(--cat-7)", 8: "var(--cat-8)"
         }
       },
       fontFamily: {
