@@ -59,7 +59,7 @@ export async function ManufacturingDashboard() {
 
       {/* Maintenance & Downtime — real signal from webhook/CSV intake (#165) */}
       <div className="flex items-center gap-2 mb-3">
-        <Wrench className="w-4 h-4 text-slate-500" />
+        <Wrench className="w-4 h-4 text-fg-muted" />
         <h3 className="card-title mb-0">Maintenance &amp; Downtime</h3>
       </div>
       <div className="kpi-grid mb-4">
@@ -88,23 +88,23 @@ export async function ManufacturingDashboard() {
       <div className="card mb-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="card-title mb-0">Open by Category</h3>
-          <Link href="/queue" className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+          <Link href="/queue" className="inline-flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
             <ClipboardList className="w-4 h-4" /> Maintenance queue <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>
         {maintTotalOpen === 0 ? (
-          <div className="py-4 text-sm text-slate-400">No open maintenance or downtime events — signal arrives via the webhook/CSV/email intake doors.</div>
+          <div className="py-4 text-sm text-fg-subtle">No open maintenance or downtime events — signal arrives via the webhook/CSV/email intake doors.</div>
         ) : (
           <div className="space-y-2">
             {MAINT_CATEGORIES.map((c) => {
               const n = byCategory[c.key] ?? 0;
               return (
                 <div key={c.key} className="flex items-center gap-3">
-                  <div className="w-24 text-sm text-slate-600">{c.label}</div>
-                  <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="w-24 text-sm text-fg-muted">{c.label}</div>
+                  <div className="flex-1 h-2.5 rounded-full bg-surface-inset overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${(n / maxCat) * 100}%`, background: c.color }} />
                   </div>
-                  <div className="w-8 text-right text-sm font-semibold text-slate-700">{n}</div>
+                  <div className="w-8 text-right text-sm font-semibold text-fg">{n}</div>
                 </div>
               );
             })}
