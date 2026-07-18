@@ -121,7 +121,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
             {/* Branded CSV export (E-9), honoring the active status filter. */}
             <a
               href={`/api/service-requests/export${filters.status ? `?status=${encodeURIComponent(filters.status)}` : ""}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-line rounded-lg text-fg-muted hover:bg-surface-inset"
             >
               <Download className="w-3.5 h-3.5" /> Export CSV
             </a>
@@ -136,22 +136,22 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
         <div className="card" style={{ borderLeft: "3px solid #f59e0b" }}>
           <div className="kpi-label">Open Requests</div>
           <div className="kpi-value">{kpis.open}</div>
-          <div className="text-xs text-slate-500 mt-1">active now</div>
+          <div className="text-xs text-fg-muted mt-1">active now</div>
         </div>
         <div className="card">
           <div className="kpi-label">In-Progress</div>
           <div className="kpi-value">{kpis.inProgress}</div>
-          <div className="text-xs text-slate-500 mt-1 flex items-center gap-1"><RefreshCw className="w-3 h-3" /> staff assigned</div>
+          <div className="text-xs text-fg-muted mt-1 flex items-center gap-1"><RefreshCw className="w-3 h-3" /> staff assigned</div>
         </div>
         <div className="card" style={{ borderLeft: kpis.escalated > 0 ? "3px solid #ef4444" : undefined, background: kpis.escalated > 0 ? "#fff5f5" : undefined }}>
-          <div className="kpi-label text-red-500">Escalations</div>
-          <div className="kpi-value text-red-600">{kpis.escalated}</div>
-          {kpis.escalated > 0 && <div className="text-xs text-red-400 mt-1 font-semibold uppercase tracking-wide">URGENT</div>}
+          <div className="kpi-label text-danger">Escalations</div>
+          <div className="kpi-value text-danger">{kpis.escalated}</div>
+          {kpis.escalated > 0 && <div className="text-xs text-danger mt-1 font-semibold uppercase tracking-wide">URGENT</div>}
         </div>
         <div className="card">
           <div className="kpi-label">Unassigned</div>
           <div className="kpi-value">{kpis.unassigned}</div>
-          <div className="text-xs text-slate-500 mt-1">awaiting an owner</div>
+          <div className="text-xs text-fg-muted mt-1">awaiting an owner</div>
         </div>
       </div>
 
@@ -164,7 +164,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
             <button
               onClick={() => router.refresh()}
               aria-label="Refresh requests"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-fg-muted hover:bg-surface-inset transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -177,7 +177,7 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
               const active = (filters.status === s) || (s === "All" && !filters.status);
               return (
                 <a key={s} href={s === "All" ? "/queue" : `/queue?status=${s}`}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${active ? "bg-teal-700 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${active ? "bg-accent text-accent-contrast" : "bg-surface-inset text-fg-muted hover:bg-surface-inset"}`}>
                   {label}
                 </a>
               );
@@ -201,16 +201,16 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
                 {items.map((item) => {
                   const overdue = item.status !== "resolved" && isOverdue(item.createdAt);
                   return (
-                    <tr key={item.id} className={overdue ? "bg-red-50" : ""}>
+                    <tr key={item.id} className={overdue ? "bg-danger-bg" : ""}>
                       <td>
                         <span className={priorityBadge[item.priority ?? ""] ?? "badge badge-slate"}>
                           {(item.priority ?? "—").toUpperCase()}
                         </span>
                       </td>
-                      <td><span className="text-slate-700 font-medium text-sm">{categoryLabel[item.category] ?? item.category}</span></td>
-                      <td><span className="text-slate-600 text-sm truncate max-w-xs block">{item.summary}</span></td>
+                      <td><span className="text-fg font-medium text-sm">{categoryLabel[item.category] ?? item.category}</span></td>
+                      <td><span className="text-fg-muted text-sm truncate max-w-xs block">{item.summary}</span></td>
                       <td>
-                        <span className={`font-mono text-sm flex items-center gap-1 ${overdue ? "text-red-500 font-bold" : "text-slate-500"}`}>
+                        <span className={`font-mono text-sm flex items-center gap-1 ${overdue ? "text-danger font-bold" : "text-fg-muted"}`}>
                           <Clock className="w-3 h-3" />
                           {elapsedTimer(item.createdAt)}
                         </span>
@@ -218,13 +218,13 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
                       <td>
                         {item.assignedToUserId ? (
                           <span className="flex items-center gap-1.5">
-                            <span className="w-6 h-6 rounded-full bg-teal-700 flex items-center justify-center text-white text-[10px] font-semibold">
+                            <span className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-accent-contrast text-[10px] font-semibold">
                               {(userMap[item.assignedToUserId] ?? "?").split(" ").map(w => w[0]).join("").slice(0, 2)}
                             </span>
-                            <span className="text-sm text-slate-700">{(userMap[item.assignedToUserId] ?? "").split(" ")[0]}</span>
+                            <span className="text-sm text-fg">{(userMap[item.assignedToUserId] ?? "").split(" ")[0]}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-sm">Unassigned</span>
+                          <span className="text-fg-muted text-sm">Unassigned</span>
                         )}
                       </td>
                       <td><span className={statusBadge[item.status] ?? "badge badge-slate"}>{statusLabel[item.status] ?? item.status.toUpperCase()}</span></td>
@@ -253,17 +253,17 @@ export function QueueClient({ items, users, filters, action, result, flashMsg, r
           <div className="card flex-1">
             <div className="flex items-center justify-between mb-3">
               <h3 className="card-title mb-0">Staff Workload</h3>
-              <span className="text-xs text-slate-500 uppercase tracking-wider">ACTIVE LOAD</span>
+              <span className="text-xs text-fg-muted uppercase tracking-wider">ACTIVE LOAD</span>
             </div>
             {staffWorkload.length === 0 ? (
-              <p className="text-sm text-slate-500">No requests are assigned right now.</p>
+              <p className="text-sm text-fg-muted">No requests are assigned right now.</p>
             ) : (
               <div className="space-y-3">
                 {staffWorkload.map((s) => (
                   <div key={s.name}>
                     <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-slate-700">{s.name}</span>
-                      <span className="text-xs text-slate-500">{s.active} active</span>
+                      <span className="text-sm font-medium text-fg">{s.name}</span>
+                      <span className="text-xs text-fg-muted">{s.active} active</span>
                     </div>
                     <div className="progress-track">
                       <div className="progress-fill" style={{ width: `${(s.active / maxActive) * 100}%` }} />

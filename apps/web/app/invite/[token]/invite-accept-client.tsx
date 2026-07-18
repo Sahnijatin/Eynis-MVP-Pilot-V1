@@ -65,20 +65,20 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
 
     return (
       <div className="text-center">
-        <div className="w-14 h-14 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="w-7 h-7 text-teal-600" />
+        <div className="w-14 h-14 bg-accent-bg rounded-full flex items-center justify-center mx-auto mb-4">
+          <CheckCircle className="w-7 h-7 text-accent-text" />
         </div>
-        <h1 className="text-xl font-semibold text-slate-900 mb-2">
+        <h1 className="text-xl font-semibold text-fg mb-2">
           You&apos;re in!
         </h1>
-        <p className="text-slate-500 text-sm mb-1">
+        <p className="text-fg-muted text-sm mb-1">
           Your account has been created for
         </p>
-        <p className="text-slate-800 font-medium text-sm mb-1">
+        <p className="text-fg font-medium text-sm mb-1">
           {hotelName}
         </p>
-        <p className="text-xs text-slate-500 mb-6">
-          Role: <span className="font-medium text-slate-600">{roleName}</span>
+        <p className="text-xs text-fg-muted mb-6">
+          Role: <span className="font-medium text-fg-muted">{roleName}</span>
         </p>
         <a
           href={nextHref}
@@ -88,8 +88,8 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
           {nextLabel}
         </a>
         {!sameSession && (
-          <p className="mt-3 text-xs text-slate-500">
-            Use <span className="font-medium text-slate-600">{email}</span> when signing up — it&apos;s already linked to your role.
+          <p className="mt-3 text-xs text-fg-muted">
+            Use <span className="font-medium text-fg-muted">{email}</span> when signing up — it&apos;s already linked to your role.
           </p>
         )}
       </div>
@@ -99,25 +99,25 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
   return (
     <>
       <div className="mb-6 text-center">
-        <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center mx-auto mb-3">
-          <CheckCircle className="w-5 h-5 text-teal-600" />
+        <div className="w-10 h-10 bg-accent-bg rounded-xl flex items-center justify-center mx-auto mb-3">
+          <CheckCircle className="w-5 h-5 text-accent-text" />
         </div>
-        <h1 className="text-xl font-semibold text-slate-900 mb-1">
+        <h1 className="text-xl font-semibold text-fg mb-1">
           You&apos;ve been invited
         </h1>
-        <p className="text-slate-500 text-sm">
-          Join <span className="font-medium text-slate-700">{hotelName}</span> as{" "}
-          <span className="font-medium text-slate-700">{roleName}</span>
+        <p className="text-fg-muted text-sm">
+          Join <span className="font-medium text-fg">{hotelName}</span> as{" "}
+          <span className="font-medium text-fg">{roleName}</span>
         </p>
       </div>
 
-      <div className="bg-slate-50 rounded-lg px-4 py-3 mb-6 text-sm text-slate-600">
-        Invitation sent to <span className="font-medium text-slate-800">{email}</span>
+      <div className="bg-surface-inset rounded-lg px-4 py-3 mb-6 text-sm text-fg-muted">
+        Invitation sent to <span className="font-medium text-fg">{email}</span>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <label className="block text-sm font-medium text-fg mb-1.5">
             Your full name
           </label>
           <input
@@ -125,15 +125,15 @@ export default function InviteAcceptClient({ token, email, hotelName, roleName, 
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="e.g. Rahul Sharma"
-            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="w-full px-3 py-2.5 border border-line-strong rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus focus:border-transparent"
           />
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-fg-muted">
             Leave blank to use your email username
           </p>
         </div>
 
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+          <p className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-lg">
             {error}
           </p>
         )}

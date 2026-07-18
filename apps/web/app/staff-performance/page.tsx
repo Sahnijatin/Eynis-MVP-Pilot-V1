@@ -36,7 +36,7 @@ export default async function StaffPerformancePage({
 
       {!hasData && (
         <div className="card mb-5" style={{ background: "#f8fafc" }}>
-          <p className="text-sm text-slate-500">No team activity in this window yet. Metrics populate as requests are assigned and resolved.</p>
+          <p className="text-sm text-fg-muted">No team activity in this window yet. Metrics populate as requests are assigned and resolved.</p>
         </div>
       )}
 
@@ -54,12 +54,12 @@ export default async function StaffPerformancePage({
         <div className="card">
           <div className="kpi-label">Avg. Customer Rating</div>
           <div className="kpi-value mt-1.5">{summary.avgGuestRating === null ? "—" : `${summary.avgGuestRating.toFixed(1)}/5`}</div>
-          <div className="text-xs text-slate-500 mt-1">{summary.avgGuestRating === null ? "No feedback yet" : "from sentiment feedback"}</div>
+          <div className="text-xs text-fg-muted mt-1">{summary.avgGuestRating === null ? "No feedback yet" : "from sentiment feedback"}</div>
         </div>
         <div className="card">
           <div className="kpi-label">Staff Utilization</div>
           <div className="kpi-value mt-1.5">{Math.round(summary.utilizationRate)}%</div>
-          <div className="text-xs text-slate-500 mt-1">Active vs available staff</div>
+          <div className="text-xs text-fg-muted mt-1">Active vs available staff</div>
         </div>
       </div>
 
@@ -67,7 +67,7 @@ export default async function StaffPerformancePage({
       <div className="card mb-4">
         <h3 className="card-title">Performance Leaderboard</h3>
         {leaderboard.length === 0 ? (
-          <p className="text-sm text-slate-500">No resolved tasks in this window.</p>
+          <p className="text-sm text-fg-muted">No resolved tasks in this window.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -77,16 +77,16 @@ export default async function StaffPerformancePage({
               <tbody>
                 {leaderboard.map((s, i) => (
                   <tr key={s.userId}>
-                    <td><span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center">{i + 1}</span></td>
+                    <td><span className="w-6 h-6 rounded-full bg-warn-bg text-warn text-xs font-bold flex items-center justify-center">{i + 1}</span></td>
                     <td>
                       <span className="flex items-center gap-2">
-                        <span className="w-7 h-7 rounded-full bg-teal-700 flex items-center justify-center text-white text-[10px] font-semibold">{initials(s.fullName)}</span>
-                        <span className="font-medium text-slate-800 text-sm">{s.fullName}</span>
+                        <span className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-accent-contrast text-[10px] font-semibold">{initials(s.fullName)}</span>
+                        <span className="font-medium text-fg text-sm">{s.fullName}</span>
                       </span>
                     </td>
-                    <td className="text-slate-500 text-sm">{prettyRole(s.role)}</td>
-                    <td className="font-semibold text-slate-800">{s.completedTasks}</td>
-                    <td className="font-mono text-sm text-slate-600">{s.avgResolutionMinutes > 0 ? mins(s.avgResolutionMinutes) : "—"}</td>
+                    <td className="text-fg-muted text-sm">{prettyRole(s.role)}</td>
+                    <td className="font-semibold text-fg">{s.completedTasks}</td>
+                    <td className="font-mono text-sm text-fg-muted">{s.avgResolutionMinutes > 0 ? mins(s.avgResolutionMinutes) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -100,7 +100,7 @@ export default async function StaffPerformancePage({
         <div className="card lg:col-span-2">
           <h3 className="card-title">Workload by Role</h3>
           {workloadByRole.length === 0 ? (
-            <p className="text-sm text-slate-500">No workload data.</p>
+            <p className="text-sm text-fg-muted">No workload data.</p>
           ) : (
             <div className="space-y-3 mt-2">
               {workloadByRole.map((w) => {
@@ -110,10 +110,10 @@ export default async function StaffPerformancePage({
                 return (
                   <div key={w.role}>
                     <div className="flex justify-between mb-1.5">
-                      <span className="text-sm font-medium text-slate-700">{prettyRole(w.role)}</span>
-                      <span className="text-xs text-slate-500">{w.resolvedTasks} / {total} tasks</span>
+                      <span className="text-sm font-medium text-fg">{prettyRole(w.role)}</span>
+                      <span className="text-xs text-fg-muted">{w.resolvedTasks} / {total} tasks</span>
                     </div>
-                    <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden flex">
+                    <div className="w-full h-2.5 rounded-full bg-surface-inset overflow-hidden flex">
                       <div className="h-full rounded-full" style={{ width: `${resolvedPct}%`, background: "var(--color-primary, #0f766e)" }} />
                       <div className="h-full" style={{ width: `${openPct}%`, background: "#e2e8f0" }} />
                     </div>
@@ -122,9 +122,9 @@ export default async function StaffPerformancePage({
               })}
             </div>
           )}
-          <div className="flex gap-4 mt-3 text-xs text-slate-500">
+          <div className="flex gap-4 mt-3 text-xs text-fg-muted">
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: "var(--color-primary, #0f766e)" }} />Completed</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-200 inline-block" />Open / pending</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-surface-inset inline-block" />Open / pending</span>
           </div>
         </div>
 
@@ -132,13 +132,13 @@ export default async function StaffPerformancePage({
         <div className="card">
           <h3 className="card-title">Staffing Alerts</h3>
           {alerts.length === 0 ? (
-            <p className="text-sm text-slate-500">No alerts — workload looks balanced.</p>
+            <p className="text-sm text-fg-muted">No alerts — workload looks balanced.</p>
           ) : (
             <div className="space-y-2 mt-2">
               {alerts.map((a, i) => (
-                <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-100">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="text-sm text-amber-800">{a}</div>
+                <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-warn-bg border border-warn-border">
+                  <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+                  <div className="text-sm text-warn">{a}</div>
                 </div>
               ))}
             </div>

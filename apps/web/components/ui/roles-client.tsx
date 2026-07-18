@@ -178,7 +178,7 @@ export default function RolesClient({
         </div>
       </div>
 
-      <div className="flex border-b border-slate-200 mb-6">
+      <div className="flex border-b border-line mb-6">
         {SETTINGS_TABS.map(tab => {
           const active = tab.href === "/settings/roles";
           return (
@@ -199,8 +199,8 @@ export default function RolesClient({
 
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-base font-semibold text-slate-800">Roles & Permissions</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-semibold text-fg">Roles & Permissions</h2>
+          <p className="text-xs text-fg-muted mt-0.5">
             System roles cannot be deleted. Display names are customisable per property. Custom roles require Growth plan.
           </p>
         </div>
@@ -233,46 +233,46 @@ export default function RolesClient({
                           value={editName}
                           onChange={e => setEditName(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") void saveRename(role.key); if (e.key === "Escape") { setEditingKey(null); setSaveError(null); } }}
-                          className="border border-slate-200 rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 w-44"
+                          className="border border-line rounded px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent-focus w-44"
                           autoFocus
                         />
-                        <button onClick={() => void saveRename(role.key)} disabled={saveLoading} className="text-teal-700 hover:text-teal-800"><Check className="w-4 h-4" /></button>
-                        <button onClick={() => { setEditingKey(null); setSaveError(null); }} className="text-slate-500 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                        <button onClick={() => void saveRename(role.key)} disabled={saveLoading} className="text-accent-text hover:text-accent-text"><Check className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditingKey(null); setSaveError(null); }} className="text-fg-muted hover:text-fg-muted"><X className="w-4 h-4" /></button>
                       </div>
-                      {saveError && <div className="text-[11px] text-red-600 mt-1">{saveError}</div>}
+                      {saveError && <div className="text-[11px] text-danger mt-1">{saveError}</div>}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-slate-800">{role.displayName}</span>
+                      <span className="text-sm font-semibold text-fg">{role.displayName}</span>
                       {role.isCustom && <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">CUSTOM</span>}
                       {role.isSystemRole && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-medium flex items-center gap-0.5">
+                        <span className="text-[10px] px-1.5 py-0.5 bg-surface-inset text-fg-muted rounded font-medium flex items-center gap-0.5">
                           <Lock className="w-2.5 h-2.5" />SYSTEM
                         </span>
                       )}
-                      <button onClick={e => { e.stopPropagation(); startEdit(role); }} className="text-slate-300 hover:text-slate-500 transition-colors" title="Rename">
+                      <button onClick={e => { e.stopPropagation(); startEdit(role); }} className="text-slate-300 hover:text-fg-muted transition-colors" title="Rename">
                         <Pencil className="w-3 h-3" />
                       </button>
                     </div>
                   )}
                   <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    <span className="text-[11px] font-mono text-slate-500">{role.key}</span>
-                    <span className="flex items-center gap-0.5 text-xs text-slate-500"><Users className="w-3 h-3" />{role.userCount} user{role.userCount !== 1 ? "s" : ""}</span>
-                    <span className="text-xs text-slate-500">{role.permissions.length}/{ALL_PERMISSIONS.length} permissions</span>
+                    <span className="text-[11px] font-mono text-fg-muted">{role.key}</span>
+                    <span className="flex items-center gap-0.5 text-xs text-fg-muted"><Users className="w-3 h-3" />{role.userCount} user{role.userCount !== 1 ? "s" : ""}</span>
+                    <span className="text-xs text-fg-muted">{role.permissions.length}/{ALL_PERMISSIONS.length} permissions</span>
                   </div>
                 </div>
 
-                <div className="hidden md:block text-xs text-slate-500 max-w-xs text-right shrink-0">
+                <div className="hidden md:block text-xs text-fg-muted max-w-xs text-right shrink-0">
                   {role.description}
                 </div>
                 <span className="text-slate-300 text-xs shrink-0">{isExpanded ? "▲" : "▼"}</span>
               </div>
 
               {isExpanded && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
+                <div className="mt-4 pt-4 border-t border-line">
                   <div className="flex items-center gap-1.5 mb-3">
-                    <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Permissions</span>
+                    <ShieldCheck className="w-3.5 h-3.5 text-accent-text" />
+                    <span className="text-xs font-semibold text-fg-muted uppercase tracking-wide">Permissions</span>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {ALL_PERMISSIONS.map(perm => {
@@ -290,7 +290,7 @@ export default function RolesClient({
                     })}
                   </div>
                   {role.isSystemRole && (
-                    <p className="text-[11px] text-slate-500 mt-3 flex items-center gap-1">
+                    <p className="text-[11px] text-fg-muted mt-3 flex items-center gap-1">
                       <Lock className="w-3 h-3" />
                       System role — cannot be deleted. Only the display name can be customised.
                     </p>
@@ -315,7 +315,7 @@ export default function RolesClient({
             </>
           }
         >
-          <p className="text-xs text-slate-500 mb-3">Custom roles belong to your workspace and can be deleted.</p>
+          <p className="text-xs text-fg-muted mb-3">Custom roles belong to your workspace and can be deleted.</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Display name">
               <Input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Housekeeping" />
@@ -327,14 +327,14 @@ export default function RolesClient({
           <Field label="Permissions">
             <div className="grid grid-cols-2 gap-2">
               {ALL_PERMISSIONS.map(perm => (
-                <label key={perm} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-50">
-                  <input type="checkbox" checked={customPerms.includes(perm)} onChange={() => toggleCustomPerm(perm)} className="rounded text-teal-600 focus:ring-teal-500" />
-                  <span className="text-xs text-slate-700">{PERMISSION_LABELS[perm]}</span>
+                <label key={perm} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-surface-inset">
+                  <input type="checkbox" checked={customPerms.includes(perm)} onChange={() => toggleCustomPerm(perm)} className="rounded text-accent-text focus:ring-accent-focus" />
+                  <span className="text-xs text-fg">{PERMISSION_LABELS[perm]}</span>
                 </label>
               ))}
             </div>
           </Field>
-          {customError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{customError}</p>}
+          {customError && <p className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-lg">{customError}</p>}
         </Modal>
       )}
     </div>

@@ -77,7 +77,7 @@ export function ReportShareModal({ reportId, onClose }: { reportId: string; onCl
       width={448}
       footer={
         <>
-          <button onClick={onClose} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50">Cancel</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm border border-line rounded-lg text-fg-muted bg-surface hover:bg-surface-inset">Cancel</button>
           <button onClick={save} disabled={loading || saving} className="px-4 py-2 text-sm font-semibold text-white rounded-lg inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: "var(--color-primary, #0f766e)" }}>
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save sharing
           </button>
@@ -85,50 +85,50 @@ export function ReportShareModal({ reportId, onClose }: { reportId: string; onCl
       }
     >
       <div>
-          <p className="text-xs text-slate-500 mb-4">
+          <p className="text-xs text-fg-muted mb-4">
             Grant read-only access to specific people or roles. They can open, run, and export this
             report — only you can edit or delete it. (Use “Everyone in workspace” on the report itself
             to share tenant-wide.)
           </p>
 
-          {error && <div className="mb-3 p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">{error}</div>}
+          {error && <div className="mb-3 p-2.5 bg-danger-bg border border-danger-border text-danger rounded-lg text-xs">{error}</div>}
 
           {loading ? (
-            <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
+            <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div>
           ) : (
             <>
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-fg-muted uppercase tracking-wider mb-2">
                 <Users className="w-3.5 h-3.5" /> Roles
               </div>
-              {roles.length === 0 ? <p className="text-xs text-slate-400 mb-4">No roles.</p> : (
+              {roles.length === 0 ? <p className="text-xs text-fg-subtle mb-4">No roles.</p> : (
                 <div className="grid gap-1.5 mb-4">
                   {roles.map((r) => {
                     const k = key("role", r.key);
                     const on = selected.has(k);
                     return (
-                      <label key={k} className={`${rowCls} ${on ? "border-teal-300 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                      <label key={k} className={`${rowCls} ${on ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
                         <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-teal-600" />
-                        <span className="text-slate-700">{r.displayName}</span>
+                        <span className="text-fg">{r.displayName}</span>
                       </label>
                     );
                   })}
                 </div>
               )}
 
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-fg-muted uppercase tracking-wider mb-2">
                 <UserRound className="w-3.5 h-3.5" /> People
               </div>
-              {users.length === 0 ? <p className="text-xs text-slate-400">No other members in this workspace.</p> : (
+              {users.length === 0 ? <p className="text-xs text-fg-subtle">No other members in this workspace.</p> : (
                 <div className="grid gap-1.5">
                   {users.map((u) => {
                     const k = key("user", u.id);
                     const on = selected.has(k);
                     return (
-                      <label key={k} className={`${rowCls} ${on ? "border-teal-300 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                      <label key={k} className={`${rowCls} ${on ? "border-accent-border bg-accent-bg" : "border-line hover:bg-surface-inset"}`}>
                         <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-teal-600" />
                         <span className="min-w-0">
-                          <span className="text-slate-700">{u.fullName || u.email}</span>
-                          {u.fullName && <span className="text-slate-400 ml-1.5 text-xs">{u.email}</span>}
+                          <span className="text-fg">{u.fullName || u.email}</span>
+                          {u.fullName && <span className="text-fg-subtle ml-1.5 text-xs">{u.email}</span>}
                         </span>
                       </label>
                     );

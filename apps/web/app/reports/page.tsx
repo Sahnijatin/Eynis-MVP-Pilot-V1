@@ -34,8 +34,8 @@ export default async function ReportsPage() {
               <FileText className="w-5 h-5" style={{ color: accent }} />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-slate-800">Reports</h1>
-              <p className="text-sm text-slate-500">Build custom reports over your data, or open a system report.</p>
+              <h1 className="text-xl font-semibold text-fg">Reports</h1>
+              <p className="text-sm text-fg-muted">Build custom reports over your data, or open a system report.</p>
             </div>
           </div>
           <Link href="/reports/new" className="px-4 py-2 text-sm font-semibold rounded-lg text-white inline-flex items-center gap-1.5" style={{ background: accent }}>
@@ -45,12 +45,12 @@ export default async function ReportsPage() {
       </div>
 
       {/* Saved (custom) reports */}
-      <h2 className="text-sm font-semibold text-slate-700 mb-3">Saved reports</h2>
+      <h2 className="text-sm font-semibold text-fg mb-3">Saved reports</h2>
       {reports.length === 0 ? (
         <div className="card mb-8 text-center py-10">
           <Table2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <div className="text-slate-500 font-medium mb-1">No saved reports yet</div>
-          <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">Build a report over Service Requests, Deals or Contacts — pick columns, filters and grouping, then save it.</p>
+          <div className="text-fg-muted font-medium mb-1">No saved reports yet</div>
+          <p className="text-sm text-fg-muted mb-5 max-w-sm mx-auto">Build a report over Service Requests, Deals or Contacts — pick columns, filters and grouping, then save it.</p>
           <Link href="/reports/new" className="px-4 py-2 text-sm font-semibold rounded-lg text-white inline-flex items-center gap-1.5" style={{ background: accent }}>
             <Plus className="w-4 h-4" /> Build your first report
           </Link>
@@ -65,11 +65,11 @@ export default async function ReportsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1">
-                    <h3 className="font-semibold text-slate-800 truncate">{r.name}</h3>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors ml-auto shrink-0" />
+                    <h3 className="font-semibold text-fg truncate">{r.name}</h3>
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-fg-muted transition-colors ml-auto shrink-0" />
                   </div>
-                  <p className="text-xs text-slate-500 mt-1 truncate">{r.description || SOURCE_LABELS[r.source] || r.source}</p>
-                  <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-500">
+                  <p className="text-xs text-fg-muted mt-1 truncate">{r.description || SOURCE_LABELS[r.source] || r.source}</p>
+                  <div className="flex items-center gap-2 mt-2 text-[11px] text-fg-muted">
                     <span className="inline-flex items-center gap-1">{r.shared ? <><Users className="w-3 h-3" /> Shared</> : <><Lock className="w-3 h-3" /> Private</>}</span>
                     <span>·</span>
                     <span>{SOURCE_LABELS[r.source] ?? r.source}</span>
@@ -82,7 +82,7 @@ export default async function ReportsPage() {
       )}
 
       {/* System reports */}
-      <h2 className="text-sm font-semibold text-slate-700 mb-3">System reports</h2>
+      <h2 className="text-sm font-semibold text-fg mb-3">System reports</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {systemCards.map((c) => {
           const Icon = c.icon;
@@ -94,10 +94,10 @@ export default async function ReportsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1">
-                    <h3 className="font-semibold text-slate-800">{c.label}</h3>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors ml-auto" />
+                    <h3 className="font-semibold text-fg">{c.label}</h3>
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-fg-muted transition-colors ml-auto" />
                   </div>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">{c.description}</p>
+                  <p className="text-xs text-fg-muted mt-1 leading-relaxed">{c.description}</p>
                 </div>
               </div>
             </Link>

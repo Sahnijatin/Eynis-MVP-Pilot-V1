@@ -117,7 +117,7 @@ export function SmartInsights({ industry }: { industry?: string | null }) {
           </div>
           <span className="text-xs font-semibold text-teal-400 uppercase tracking-wider">Smart Insights</span>
           {generatedAt && (
-            <span className="text-[10px] text-slate-500">· updated {formatTimestamp(generatedAt)}</span>
+            <span className="text-[10px] text-fg-muted">· updated {formatTimestamp(generatedAt)}</span>
           )}
         </div>
 
@@ -137,13 +137,13 @@ export function SmartInsights({ industry }: { industry?: string | null }) {
                   title={isAvailable ? `Use ${pm.label}` : `${pm.label} not configured`}
                   className={[
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors",
-                    isActive ? "bg-teal-700 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-700",
+                    isActive ? "bg-accent text-accent-contrast" : "text-fg-subtle hover:text-slate-200 hover:bg-slate-700",
                     !isAvailable ? "opacity-50 cursor-not-allowed" : ""
                   ].join(" ")}
                 >
                   <span className="text-[10px] font-bold tracking-tight">{pm.glyph}</span>
                   {pm.label}
-                  {!isAvailable && <span className="text-[9px] text-slate-500 font-normal">(off)</span>}
+                  {!isAvailable && <span className="text-[9px] text-fg-muted font-normal">(off)</span>}
                 </button>
               );
             })}
@@ -167,7 +167,7 @@ export function SmartInsights({ industry }: { industry?: string | null }) {
       {loading ? (
         <InsightsSkeleton />
       ) : error ? (
-        <div className="mt-3 px-1 py-3 text-xs text-amber-300/90 flex items-start gap-1.5">
+        <div className="mt-3 px-1 py-3 text-xs text-warn/90 flex items-start gap-1.5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           {error}
         </div>
@@ -178,13 +178,13 @@ export function SmartInsights({ industry }: { industry?: string | null }) {
             {/* Operational Alerts */}
             <div>
               <div className="flex items-center gap-1 mb-1.5">
-                <AlertCircle className="w-3 h-3 text-amber-400" />
-                <span className="text-[10px] text-amber-400 uppercase tracking-wide font-semibold">Operational</span>
+                <AlertCircle className="w-3 h-3 text-warn" />
+                <span className="text-[10px] text-warn uppercase tracking-wide font-semibold">Operational</span>
               </div>
               <ul className="space-y-1">
                 {insights.operationalAlerts.map((alert, i) => (
                   <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
-                    <span className="text-amber-500 mt-0.5 shrink-0">•</span>
+                    <span className="text-warn mt-0.5 shrink-0">•</span>
                     {alert}
                   </li>
                 ))}
@@ -195,15 +195,15 @@ export function SmartInsights({ industry }: { industry?: string | null }) {
             <div className="space-y-3">
               <div>
                 <div className="flex items-center gap-1 mb-1.5">
-                  <TrendingUp className="w-3 h-3 text-emerald-400" />
-                  <span className="text-[10px] text-emerald-400 uppercase tracking-wide font-semibold">Revenue</span>
+                  <TrendingUp className="w-3 h-3 text-ok" />
+                  <span className="text-[10px] text-ok uppercase tracking-wide font-semibold">Revenue</span>
                 </div>
                 <p className="text-xs text-slate-300">{insights.revenueHighlight}</p>
               </div>
               <div>
                 <div className="flex items-center gap-1 mb-1.5">
-                  <Star className="w-3 h-3 text-blue-400" />
-                  <span className="text-[10px] text-blue-400 uppercase tracking-wide font-semibold">{entity} Experience</span>
+                  <Star className="w-3 h-3 text-info" />
+                  <span className="text-[10px] text-info uppercase tracking-wide font-semibold">{entity} Experience</span>
                 </div>
                 <p className="text-xs text-slate-300">{insights.experienceNote}</p>
               </div>
@@ -220,7 +220,7 @@ export function SmartInsights({ industry }: { industry?: string | null }) {
           </div>
         </div>
       ) : (
-        <div className="mt-3 px-1 py-3 text-xs text-slate-400">
+        <div className="mt-3 px-1 py-3 text-xs text-fg-subtle">
           Generate AI insights from your live operational data — open requests, sentiment, and revenue when a source is connected.
         </div>
       )}

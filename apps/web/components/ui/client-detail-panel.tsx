@@ -127,25 +127,25 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
       />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 bottom-0 w-[480px] bg-white shadow-2xl z-50 flex flex-col">
+      <div className="fixed right-0 top-0 bottom-0 w-[480px] bg-surface shadow-2xl z-50 flex flex-col">
         {/* Header */}
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-slate-100">
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-line">
           <Avatar name={name} color={accentColor} />
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-slate-800 text-base leading-tight truncate">{name}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
+            <h2 className="font-bold text-fg text-base leading-tight truncate">{name}</h2>
+            <p className="text-xs text-fg-muted mt-0.5">{subtitle}</p>
             {headerChildren && <div className="mt-1.5">{headerChildren}</div>}
           </div>
           <button
             onClick={onClose}
-            className="text-slate-500 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors shrink-0"
+            className="text-fg-muted hover:text-fg-muted p-1 rounded-lg hover:bg-surface-inset transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-100 px-5 gap-1">
+        <div className="flex border-b border-line px-5 gap-1">
           {tabs.map(t => (
             <button
               key={t.id}
@@ -153,7 +153,7 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
               className={`px-3 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
                 activeTab === t.id
                   ? "border-current"
-                  : "border-transparent text-slate-500 hover:text-slate-600"
+                  : "border-transparent text-fg-muted hover:text-fg-muted"
               }`}
               style={activeTab === t.id ? { color: accentColor, borderColor: accentColor } : {}}
             >
@@ -171,9 +171,9 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
               {/* KPIs */}
               <div className="grid grid-cols-2 gap-3">
                 {kpis.map((k, i) => (
-                  <div key={i} className="bg-slate-50 rounded-xl p-3.5">
-                    <div className="text-xs text-slate-500 font-medium">{k.label}</div>
-                    <div className="text-lg font-bold text-slate-800 mt-0.5">{k.value}</div>
+                  <div key={i} className="bg-surface-inset rounded-xl p-3.5">
+                    <div className="text-xs text-fg-muted font-medium">{k.label}</div>
+                    <div className="text-lg font-bold text-fg mt-0.5">{k.value}</div>
                   </div>
                 ))}
               </div>
@@ -181,7 +181,7 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
               {/* Recent activity */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
                     Recent {detail.historyLabel}
                   </h3>
                   <button
@@ -194,19 +194,19 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
                 </div>
                 <div className="space-y-2">
                   {detail.history.slice(0, 3).map((item, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 hover:bg-slate-50">
+                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-line hover:bg-surface-inset">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${accentColor}15` }}>
                         <Clock className="w-4 h-4" style={{ color: accentColor }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-800 truncate">{item.title}</div>
+                        <div className="text-sm font-medium text-fg truncate">{item.title}</div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span className="text-xs text-slate-500">{item.date}</span>
-                          {item.subtitle && <span className="text-xs text-slate-500">{item.subtitle}</span>}
+                          <span className="text-xs text-fg-muted">{item.date}</span>
+                          {item.subtitle && <span className="text-xs text-fg-muted">{item.subtitle}</span>}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        {item.amount && <div className="text-sm font-bold text-slate-700">{item.amount}</div>}
+                        {item.amount && <div className="text-sm font-bold text-fg">{item.amount}</div>}
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
                           style={{ background: item.statusBg, color: item.statusColor }}>
                           {item.status}
@@ -223,18 +223,18 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
           {activeTab === "history" && (
             <div className="space-y-2">
               {detail.history.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 text-sm">No {detail.historyLabel.toLowerCase()} recorded yet</div>
+                <div className="text-center py-12 text-fg-muted text-sm">No {detail.historyLabel.toLowerCase()} recorded yet</div>
               ) : (
                 detail.history.map((item, i) => (
-                  <div key={i} className="p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+                  <div key={i} className="p-4 rounded-xl border border-line hover:bg-surface-inset transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs text-slate-500 font-mono mb-0.5">{item.id}</div>
-                        <div className="text-sm font-semibold text-slate-800">{item.title}</div>
-                        {item.subtitle && <div className="text-xs text-slate-500 mt-0.5">{item.subtitle}</div>}
+                        <div className="text-xs text-fg-muted font-mono mb-0.5">{item.id}</div>
+                        <div className="text-sm font-semibold text-fg">{item.title}</div>
+                        {item.subtitle && <div className="text-xs text-fg-muted mt-0.5">{item.subtitle}</div>}
                       </div>
                       <div className="text-right shrink-0">
-                        {item.amount && <div className="text-sm font-bold text-slate-800">{item.amount}</div>}
+                        {item.amount && <div className="text-sm font-bold text-fg">{item.amount}</div>}
                         <span
                           className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                           style={{ background: item.statusBg, color: item.statusColor }}
@@ -243,7 +243,7 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-slate-500">
+                    <div className="flex items-center gap-1 mt-2 text-xs text-fg-muted">
                       <Clock className="w-3 h-3" />
                       {item.date}
                     </div>
@@ -257,58 +257,58 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
           {activeTab === "contact" && (
             <div className="space-y-3">
               {detail.contact.person && (
-                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50">
+                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-inset">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${accentColor}15` }}>
                     <User className="w-4 h-4" style={{ color: accentColor }} />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500">Contact Person</div>
-                    <div className="text-sm font-semibold text-slate-800">{detail.contact.person}</div>
-                    {detail.contact.role && <div className="text-xs text-slate-500">{detail.contact.role}</div>}
+                    <div className="text-xs text-fg-muted">Contact Person</div>
+                    <div className="text-sm font-semibold text-fg">{detail.contact.person}</div>
+                    {detail.contact.role && <div className="text-xs text-fg-muted">{detail.contact.role}</div>}
                   </div>
                 </div>
               )}
               {detail.contact.phone && (
-                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50">
+                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-inset">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${accentColor}15` }}>
                     <Phone className="w-4 h-4" style={{ color: accentColor }} />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500">Phone</div>
-                    <div className="text-sm font-semibold text-slate-800">{detail.contact.phone}</div>
+                    <div className="text-xs text-fg-muted">Phone</div>
+                    <div className="text-sm font-semibold text-fg">{detail.contact.phone}</div>
                   </div>
                 </div>
               )}
               {detail.contact.email && (
-                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50">
+                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-inset">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${accentColor}15` }}>
                     <Mail className="w-4 h-4" style={{ color: accentColor }} />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500">Email</div>
-                    <div className="text-sm font-semibold text-slate-800">{detail.contact.email}</div>
+                    <div className="text-xs text-fg-muted">Email</div>
+                    <div className="text-sm font-semibold text-fg">{detail.contact.email}</div>
                   </div>
                 </div>
               )}
               {detail.contact.address && (
-                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50">
+                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-inset">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${accentColor}15` }}>
                     <MapPin className="w-4 h-4" style={{ color: accentColor }} />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500">Address</div>
-                    <div className="text-sm font-semibold text-slate-800">{detail.contact.address}</div>
+                    <div className="text-xs text-fg-muted">Address</div>
+                    <div className="text-sm font-semibold text-fg">{detail.contact.address}</div>
                   </div>
                 </div>
               )}
               {detail.contact.extras?.map((e, i) => (
-                <div key={i} className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50">
+                <div key={i} className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-inset">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${accentColor}15` }}>
                     <FileText className="w-4 h-4" style={{ color: accentColor }} />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500">{e.label}</div>
-                    <div className="text-sm font-semibold text-slate-800">{e.value}</div>
+                    <div className="text-xs text-fg-muted">{e.label}</div>
+                    <div className="text-sm font-semibold text-fg">{e.value}</div>
                   </div>
                 </div>
               ))}
@@ -321,14 +321,14 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
               <div className="space-y-3">
                 <textarea
                   rows={10}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 resize-none"
+                  className="w-full border border-line rounded-xl px-4 py-3 text-sm text-fg focus:outline-none focus:ring-2 resize-none"
                   style={{ "--tw-ring-color": accentColor } as React.CSSProperties}
                   placeholder="Add internal notes about this client…"
                   value={notes}
                   onChange={e => { setNotes(e.target.value); setNotesDirty(true); }}
                 />
                 {saveError && (
-                  <p className="text-xs text-red-600">Could not save notes — please try again.</p>
+                  <p className="text-xs text-danger">Could not save notes — please try again.</p>
                 )}
                 <button
                   onClick={saveNotes}
@@ -340,7 +340,7 @@ export function ClientDetailPanel({ open, onClose, name, subtitle, kpis, detail,
                 </button>
               </div>
             ) : (
-              <p className="text-sm text-slate-600 whitespace-pre-wrap">
+              <p className="text-sm text-fg-muted whitespace-pre-wrap">
                 {detail.notes || "No notes recorded."}
               </p>
             )

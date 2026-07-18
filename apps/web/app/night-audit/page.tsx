@@ -137,26 +137,26 @@ export default function NightAuditPage() {
   };
 
   const scoreColor = (score: number) => {
-    if (score >= 8) return "text-teal-600";
-    if (score >= 6) return "text-amber-600";
-    return "text-red-600";
+    if (score >= 8) return "text-accent-text";
+    if (score >= 6) return "text-warn";
+    return "text-danger";
   };
 
   const scoreBg = (score: number) => {
-    if (score >= 8) return "bg-teal-50 border-teal-200";
-    if (score >= 6) return "bg-amber-50 border-amber-200";
-    return "bg-red-50 border-red-200";
+    if (score >= 8) return "bg-accent-bg border-accent-line";
+    if (score >= 6) return "bg-warn-bg border-warn-border";
+    return "bg-danger-bg border-danger-border";
   };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-teal-700" />
+          <h1 className="text-xl font-bold text-fg flex items-center gap-2">
+            <FileText className="w-5 h-5 text-accent-text" />
             Night Audit Report
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">AI-generated daily operations summary</p>
+          <p className="text-sm text-fg-muted mt-0.5">AI-generated daily operations summary</p>
         </div>
         <div className="flex items-center gap-2">
           {/* History browser (E-15): jump to any past report by date. */}
@@ -164,7 +164,7 @@ export default function NightAuditPage() {
             <select
               value={reportDate ?? ""}
               onChange={(e) => void handleSelectDate(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
+              className="text-xs border border-line rounded-lg px-2 py-1.5 text-fg-muted bg-surface"
               disabled={loading || generating}
               aria-label="Select report date"
             >
@@ -178,13 +178,13 @@ export default function NightAuditPage() {
               {/* Branded exports (E-9): real binary PDF + CSV, for the viewed date (E-15). */}
               <a
                 href={`/api/night-audit/export?format=pdf${reportDate ? `&date=${reportDate}` : ""}`}
-                className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 text-sm border border-line rounded-lg px-2.5 py-1.5 text-fg-muted bg-surface hover:bg-surface-inset"
               >
                 <Printer className="w-3.5 h-3.5" /> PDF
               </a>
               <a
                 href={`/api/night-audit/export?format=csv${reportDate ? `&date=${reportDate}` : ""}`}
-                className="inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 bg-white hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 text-sm border border-line rounded-lg px-2.5 py-1.5 text-fg-muted bg-surface hover:bg-surface-inset"
               >
                 <Download className="w-3.5 h-3.5" /> CSV
               </a>
@@ -193,7 +193,7 @@ export default function NightAuditPage() {
           <select
             value={selectedProvider}
             onChange={(e) => setSelectedProvider(e.target.value as "claude" | "openai")}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
+            className="text-xs border border-line rounded-lg px-2 py-1.5 text-fg-muted bg-surface"
             disabled={generating}
           >
             <option value="claude">Claude (Anthropic)</option>
@@ -220,19 +220,19 @@ export default function NightAuditPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
+        <div className="mb-4 p-3 bg-danger-bg border border-danger-border text-danger rounded-lg text-sm">{error}</div>
       )}
 
       {loading ? (
-        <div className="card text-center py-16 text-slate-500">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-teal-600" />
+        <div className="card text-center py-16 text-fg-muted">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-accent-text" />
           <div className="text-sm">Loading report...</div>
         </div>
       ) : !report ? (
         <div className="card text-center py-16">
           <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <div className="text-slate-500 font-medium mb-2">No report yet</div>
-          <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
+          <div className="text-fg-muted font-medium mb-2">No report yet</div>
+          <p className="text-sm text-fg-muted mb-6 max-w-sm mx-auto">
             Generate your first AI night audit report for today's operations summary.
           </p>
           <button
@@ -250,13 +250,13 @@ export default function NightAuditPage() {
           <ReportBrandHeader title="Night Audit Report" subtitle={reportDate ?? undefined} />
 
           {/* Report metadata */}
-          <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">
+          <div className="flex items-center gap-4 mb-4 text-xs text-fg-muted">
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
               {generatedAt ? new Date(generatedAt).toLocaleString("en-IN") : "Unknown time"}
             </span>
             <span>Report date: {reportDate ?? "—"}</span>
-            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium capitalize">
+            <span className="px-2 py-0.5 rounded-full bg-surface-inset text-fg-muted font-medium capitalize">
               {provider ?? "—"}
             </span>
           </div>
@@ -265,12 +265,12 @@ export default function NightAuditPage() {
           <div className={`card mb-4 border ${scoreBg(report.operationalScore)}`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Tonight's Headline</div>
-                <div className="text-lg font-semibold text-slate-800 leading-snug">{report.headline}</div>
+                <div className="text-xs font-medium text-fg-muted uppercase tracking-wider mb-1">Tonight's Headline</div>
+                <div className="text-lg font-semibold text-fg leading-snug">{report.headline}</div>
               </div>
               <div className="shrink-0 text-center">
                 <div className={`text-4xl font-black ${scoreColor(report.operationalScore)}`}>{report.operationalScore}</div>
-                <div className="text-xs text-slate-500 mt-0.5">/ 10</div>
+                <div className="text-xs text-fg-muted mt-0.5">/ 10</div>
                 <div className="flex items-center justify-center gap-0.5 mt-1">
                   {Array.from({ length: 5 }, (_, i) => (
                     <Star
@@ -287,20 +287,20 @@ export default function NightAuditPage() {
           {/* Executive summary */}
           <div className="card mb-4">
             <h3 className="card-title mb-2">Executive Summary</h3>
-            <p className="text-sm text-slate-600 leading-relaxed">{report.executiveSummary}</p>
+            <p className="text-sm text-fg-muted leading-relaxed">{report.executiveSummary}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             {/* Highlights */}
             <div className="card">
               <h3 className="card-title mb-3 flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4 text-teal-600" />
+                <CheckCircle className="w-4 h-4 text-accent-text" />
                 Highlights
               </h3>
               <ul className="space-y-2">
                 {report.highlights.map((h, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="w-5 h-5 rounded-full bg-teal-100 text-teal-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                  <li key={i} className="flex items-start gap-2 text-sm text-fg">
+                    <span className="w-5 h-5 rounded-full bg-accent-bg text-accent-text text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
                     {h}
                   </li>
                 ))}
@@ -310,16 +310,16 @@ export default function NightAuditPage() {
             {/* Concerns */}
             <div className="card">
               <h3 className="card-title mb-3 flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <AlertTriangle className="w-4 h-4 text-warn" />
                 Concerns
               </h3>
               {report.concerns.length === 0 ? (
-                <div className="text-sm text-slate-500">No concerns flagged for today.</div>
+                <div className="text-sm text-fg-muted">No concerns flagged for today.</div>
               ) : (
                 <ul className="space-y-2">
                   {report.concerns.map((c, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                      <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">!</span>
+                    <li key={i} className="flex items-start gap-2 text-sm text-fg">
+                      <span className="w-5 h-5 rounded-full bg-warn-bg text-warn text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">!</span>
                       {c}
                     </li>
                   ))}
@@ -331,15 +331,15 @@ export default function NightAuditPage() {
           {/* Tomorrow recommendations */}
           <div className="card">
             <h3 className="card-title mb-3 flex items-center gap-1.5">
-              <Lightbulb className="w-4 h-4 text-blue-600" />
+              <Lightbulb className="w-4 h-4 text-info" />
               Tomorrow's Action Plan
             </h3>
             <div className="space-y-3">
               {report.tomorrowRecommendations.map((rec, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-100">
-                  <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
-                  <div className="text-sm text-slate-700 leading-relaxed">{rec}</div>
-                  <TrendingUp className="w-4 h-4 text-blue-400 shrink-0 mt-0.5 ml-auto" />
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-info-bg border border-info-border">
+                  <div className="w-6 h-6 rounded-full bg-info-solid text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</div>
+                  <div className="text-sm text-fg leading-relaxed">{rec}</div>
+                  <TrendingUp className="w-4 h-4 text-info shrink-0 mt-0.5 ml-auto" />
                 </div>
               ))}
             </div>

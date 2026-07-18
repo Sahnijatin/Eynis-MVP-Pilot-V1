@@ -82,11 +82,11 @@ export function PatientsClient({ initialItems }: { initialItems: PatientRow[] })
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Patient Records</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Your patient directory and follow-up status.</p>
+          <h1 className="text-xl font-bold text-fg">Patient Records</h1>
+          <p className="text-sm text-fg-muted mt-0.5">Your patient directory and follow-up status.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => csvExport(items)} disabled={items.length === 0} className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40"><Download className="w-3.5 h-3.5" /> Export CSV</button>
+          <button onClick={() => csvExport(items)} disabled={items.length === 0} className="px-3 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5 disabled:opacity-40"><Download className="w-3.5 h-3.5" /> Export CSV</button>
           <button onClick={openAdd} className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5" style={{ background: ACCENT }}><Plus className="w-4 h-4" /> Add Patient</button>
         </div>
       </div>
@@ -108,22 +108,22 @@ export function PatientsClient({ initialItems }: { initialItems: PatientRow[] })
                 const s = STATUS_META[p.status] ?? STATUS_META.active;
                 return (
                   <tr key={p.id}>
-                    <td className="font-medium text-slate-800">{p.name}</td>
-                    <td className="text-slate-600">{p.age != null ? p.age : "—"}</td>
-                    <td className="text-slate-600 text-xs">{p.condition || "—"}</td>
-                    <td className="text-slate-500 text-xs">{p.phone || "—"}</td>
-                    <td className="text-slate-500 text-xs">{p.bloodGroup || "—"}</td>
+                    <td className="font-medium text-fg">{p.name}</td>
+                    <td className="text-fg-muted">{p.age != null ? p.age : "—"}</td>
+                    <td className="text-fg-muted text-xs">{p.condition || "—"}</td>
+                    <td className="text-fg-muted text-xs">{p.phone || "—"}</td>
+                    <td className="text-fg-muted text-xs">{p.bloodGroup || "—"}</td>
                     <td><span className="badge" style={{ background: s.bg, color: s.color }}>{s.label}</span></td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => openEdit(p)} className="text-slate-400 hover:text-slate-600" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => remove(p)} className="text-slate-400 hover:text-red-600" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEdit(p)} className="text-fg-subtle hover:text-fg-muted" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => remove(p)} className="text-fg-subtle hover:text-danger" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {items.length === 0 && (<tr><td colSpan={7} className="text-center py-10 text-slate-400">No patients yet — add your first patient.</td></tr>)}
+              {items.length === 0 && (<tr><td colSpan={7} className="text-center py-10 text-fg-subtle">No patients yet — add your first patient.</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -133,25 +133,25 @@ export function PatientsClient({ initialItems }: { initialItems: PatientRow[] })
         <Modal title={editingId ? "Edit Patient" : "Add Patient"} onClose={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }}>
           <form onSubmit={save} className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Full Name *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Rahul Sharma" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Full Name *</label>
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Rahul Sharma" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Phone</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} /></div>
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Email</label><input type="email" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Phone</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Email</label><input type="email" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date of Birth</label><input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.dateOfBirth} onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))} /></div>
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Blood Group</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="B+" value={form.bloodGroup} onChange={(e) => setForm((f) => ({ ...f, bloodGroup: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Date of Birth</label><input type="date" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.dateOfBirth} onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Blood Group</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="B+" value={form.bloodGroup} onChange={(e) => setForm((f) => ({ ...f, bloodGroup: e.target.value }))} /></div>
             </div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Primary Condition</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Hypertension" value={form.condition} onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))} /></div>
+            <div><label className="block text-xs font-semibold text-fg-muted mb-1">Primary Condition</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Hypertension" value={form.condition} onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Insurance</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.insurance} onChange={(e) => setForm((f) => ({ ...f, insurance: e.target.value }))} /></div>
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Status</label><select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>{STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}</select></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Insurance</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.insurance} onChange={(e) => setForm((f) => ({ ...f, insurance: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Status</label><select className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>{STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}</select></div>
             </div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Notes</label><textarea rows={2} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+            <div><label className="block text-xs font-semibold text-fg-muted mb-1">Notes</label><textarea rows={2} className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
             <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-line text-fg-muted hover:bg-surface-inset">Cancel</button>
               <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: ACCENT }}>{saving ? "Saving…" : editingId ? "Save changes" : "Add Patient"}</button>
             </div>
           </form>

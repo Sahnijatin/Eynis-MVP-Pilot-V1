@@ -139,7 +139,7 @@ export default function TeamClient({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 mb-6">
+      <div className="flex border-b border-line mb-6">
         {settingsTabs.map((tab) => {
           const active = tab.href === "/settings/team";
           return (
@@ -163,8 +163,8 @@ export default function TeamClient({
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-sm font-semibold text-slate-800">Seat Usage</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <h3 className="text-sm font-semibold text-fg">Seat Usage</h3>
+              <p className="text-xs text-fg-muted mt-0.5">
                 {usedSeats} of {maxSeats} seats used
               </p>
             </div>
@@ -172,7 +172,7 @@ export default function TeamClient({
               Manage plan →
             </a>
           </div>
-          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-surface-inset rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{
@@ -187,8 +187,8 @@ export default function TeamClient({
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-base font-semibold text-slate-800">{teamLabel} Members</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Invite {teamLabel.toLowerCase()} and manage their access levels.</p>
+              <h3 className="text-base font-semibold text-fg">{teamLabel} Members</h3>
+              <p className="text-xs text-fg-muted mt-0.5">Invite {teamLabel.toLowerCase()} and manage their access levels.</p>
             </div>
             <button
               onClick={() => setShowInviteModal(true)}
@@ -218,8 +218,8 @@ export default function TeamClient({
                           {u.fullName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                         </span>
                         <div>
-                          <div className="text-sm font-medium text-slate-800">{u.fullName}</div>
-                          <div className="text-xs text-slate-500">{u.email}</div>
+                          <div className="text-sm font-medium text-fg">{u.fullName}</div>
+                          <div className="text-xs text-fg-muted">{u.email}</div>
                         </div>
                       </div>
                     </td>
@@ -229,14 +229,14 @@ export default function TeamClient({
                           <select
                             defaultValue={u.roleId ?? ""}
                             onChange={(e) => void changeRole(u.id, e.target.value)}
-                            className="text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            className="text-xs border border-line rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-accent-focus"
                             autoFocus
                           >
                             {roles.map(r => (
                               <option key={r.id} value={r.id}>{r.displayName}</option>
                             ))}
                           </select>
-                          <button onClick={() => setChangingRoleFor(null)} className="text-slate-500 hover:text-slate-600">
+                          <button onClick={() => setChangingRoleFor(null)} className="text-fg-muted hover:text-fg-muted">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -255,14 +255,14 @@ export default function TeamClient({
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => setChangingRoleFor(u.id)}
-                          className="text-xs text-slate-500 hover:text-teal-700 font-medium"
+                          className="text-xs text-fg-muted hover:text-accent-text font-medium"
                         >
                           Change role
                         </button>
                         <button
                           onClick={() => void toggleActive(u)}
                           disabled={actionLoading === u.id}
-                          className={`text-xs font-medium ${u.isActive ? "text-slate-500 hover:text-red-500" : "text-slate-500 hover:text-teal-700"} disabled:opacity-40`}
+                          className={`text-xs font-medium ${u.isActive ? "text-fg-muted hover:text-danger" : "text-fg-muted hover:text-accent-text"} disabled:opacity-40`}
                         >
                           {actionLoading === u.id ? "…" : u.isActive ? "Deactivate" : "Reactivate"}
                         </button>
@@ -287,7 +287,7 @@ export default function TeamClient({
               {!inviteLink ? (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">
                       Email Address
                     </label>
                     <input
@@ -295,34 +295,34 @@ export default function TeamClient({
                       value={inviteEmail}
                       onChange={e => setInviteEmail(e.target.value)}
                       placeholder={`${teamLabel.toLowerCase().replace(/\s+/g, "")}@${industryName.toLowerCase().replace(/\s+/g, "").replace(/&/g, "")}.com`}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+                      className="w-full px-3 py-2.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2"
                       style={{ "--tw-ring-color": accentColor } as React.CSSProperties}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">
                       Assign Role
                     </label>
                     <div className="relative">
                       <select
                         value={inviteRoleId}
                         onChange={e => setInviteRoleId(e.target.value)}
-                        className="w-full appearance-none px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 pr-8"
+                        className="w-full appearance-none px-3 py-2.5 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 pr-8"
                         style={{ "--tw-ring-color": accentColor } as React.CSSProperties}
                       >
                         {roles.map(r => (
                           <option key={r.id} value={r.id}>{r.displayName}</option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-2.5 top-3 w-4 h-4 text-slate-500 pointer-events-none" />
+                      <ChevronDown className="absolute right-2.5 top-3 w-4 h-4 text-fg-muted pointer-events-none" />
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-fg-muted mt-1">
                       {roles.find(r => r.id === inviteRoleId)?.permissions.length ?? 0} permissions granted
                     </p>
                   </div>
 
                   {inviteError && (
-                    <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{inviteError}</p>
+                    <p className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-lg">{inviteError}</p>
                   )}
 
                   <button
@@ -336,32 +336,32 @@ export default function TeamClient({
                 </>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+                  <div className="flex items-center gap-2 text-ok bg-ok-bg px-3 py-2 rounded-lg">
                     <Check className="w-4 h-4 shrink-0" />
                     <span className="text-sm font-medium">Invite link generated!</span>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">
                       Share this link
                     </label>
                     <div className="flex items-center gap-2">
                       <input
                         readOnly
                         value={inviteLink}
-                        className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-xs text-slate-600 bg-slate-50 truncate"
+                        className="flex-1 px-3 py-2.5 border border-line rounded-lg text-xs text-fg-muted bg-surface-inset truncate"
                       />
                       <button
                         onClick={copyLink}
-                        className="px-3 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                        className="px-3 py-2.5 border border-line rounded-lg hover:bg-surface-inset transition-colors"
                       >
-                        {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+                        {copied ? <Check className="w-4 h-4 text-ok" /> : <Copy className="w-4 h-4 text-fg-muted" />}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1.5">Link expires in 48 hours. Share it with the invitee directly.</p>
+                    <p className="text-xs text-fg-muted mt-1.5">Link expires in 48 hours. Share it with the invitee directly.</p>
                   </div>
                   <button
                     onClick={closeInviteModal}
-                    className="w-full py-2.5 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50"
+                    className="w-full py-2.5 text-sm font-medium border border-line rounded-lg text-fg-muted hover:bg-surface-inset"
                   >
                     Done
                   </button>

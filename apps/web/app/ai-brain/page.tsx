@@ -59,14 +59,14 @@ export default function AIBrainPage() {
       {/* Chat panel */}
       <div className="card col-span-2 flex flex-col" style={{ maxHeight: "calc(100vh - 140px)" }}>
         {/* Header */}
-        <div className="flex items-center gap-3 pb-4 border-b border-slate-100 mb-4">
+        <div className="flex items-center gap-3 pb-4 border-b border-line mb-4">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#1d4ed808" }}>
-            <Brain className="w-5 h-5 text-blue-700" />
+            <Brain className="w-5 h-5 text-info" />
           </div>
           <div>
             {/* Neutral wordmark — never the platform brand (white-label, 3.2). */}
-            <div className="font-semibold text-slate-800">AI Brain</div>
-            <div className="text-xs text-slate-500">Answers sourced from your own data — orders, clients, materials, reports</div>
+            <div className="font-semibold text-fg">AI Brain</div>
+            <div className="text-xs text-fg-muted">Answers sourced from your own data — orders, clients, materials, reports</div>
           </div>
           <span className="ml-auto"><PreviewBadge /></span>
         </div>
@@ -76,7 +76,7 @@ export default function AIBrainPage() {
           {messages.length === 0 && (
             <div className="text-center py-12">
               <Brain className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-              <div className="text-slate-500 text-sm">Ask anything about your business</div>
+              <div className="text-fg-muted text-sm">Ask anything about your business</div>
               <div className="text-slate-300 text-xs mt-1">Orders · Clients · Materials · Quotes · Reports</div>
             </div>
           )}
@@ -101,18 +101,18 @@ export default function AIBrainPage() {
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                <span className="text-sm text-slate-500">Searching your data...</span>
+              <div className="px-4 py-3 rounded-2xl bg-surface-inset border border-line flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-info" />
+                <span className="text-sm text-fg-muted">Searching your data...</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Input */}
-        <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 border border-line rounded-xl px-3 py-2">
           <input
-            className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder-slate-400"
+            className="flex-1 text-sm outline-none bg-transparent text-fg placeholder-fg-subtle"
             placeholder="Ask anything about your orders, clients, materials..."
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -139,7 +139,7 @@ export default function AIBrainPage() {
               <button
                 key={q}
                 onClick={() => sendMessage(q)}
-                className="w-full text-left text-xs px-3 py-2.5 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 text-slate-600 transition-colors"
+                className="w-full text-left text-xs px-3 py-2.5 rounded-lg border border-line hover:border-info-border hover:bg-info-bg hover:text-info text-fg-muted transition-colors"
               >
                 {q}
               </button>
@@ -150,17 +150,17 @@ export default function AIBrainPage() {
         {/* Data sources */}
         <div className="card">
           <h3 className="card-title mb-1">Data Sources</h3>
-          <p className="text-xs text-slate-500 mb-3">Categories the AI Brain will draw on once connected to your live data.</p>
+          <p className="text-xs text-fg-muted mb-3">Categories the AI Brain will draw on once connected to your live data.</p>
           <div className="space-y-3">
             {DATA_SOURCES.map((s) => {
               const Icon = s.icon;
               return (
                 <div key={s.label} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50">
-                    <Icon className="w-4 h-4 text-slate-400" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-surface-inset">
+                    <Icon className="w-4 h-4 text-fg-subtle" />
                   </div>
-                  <div className="text-sm font-medium text-slate-700">{s.label}</div>
-                  <span className="ml-auto text-[10px] font-medium text-slate-400 uppercase tracking-wide">Not connected</span>
+                  <div className="text-sm font-medium text-fg">{s.label}</div>
+                  <span className="ml-auto text-[10px] font-medium text-fg-subtle uppercase tracking-wide">Not connected</span>
                 </div>
               );
             })}

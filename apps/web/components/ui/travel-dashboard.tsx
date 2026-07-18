@@ -55,19 +55,19 @@ export async function TravelDashboard() {
             <Link href="/bookings" className="text-xs text-purple-600 font-medium flex items-center gap-1 hover:underline">View all <ChevronRight className="w-3 h-3" /></Link>
           </div>
           {upcoming.length === 0 ? (
-            <div className="py-6 text-center text-sm text-slate-400">No upcoming departures — new bookings appear here.</div>
+            <div className="py-6 text-center text-sm text-fg-subtle">No upcoming departures — new bookings appear here.</div>
           ) : (
             <div className="space-y-2">
               {upcoming.map((b) => {
                 const s = STATUS_META[b.status] ?? STATUS_META.in_progress;
                 return (
-                  <div key={b.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-100">
+                  <div key={b.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-line">
                     <Plane className="w-4 h-4 text-purple-400 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-slate-800">{b.clientName}</div>
-                      <div className="text-xs text-slate-500">{b.destination || "—"} · {b.pax} pax</div>
+                      <div className="font-medium text-sm text-fg">{b.clientName}</div>
+                      <div className="text-xs text-fg-muted">{b.destination || "—"} · {b.pax} pax</div>
                     </div>
-                    <span className="text-xs font-medium text-slate-500">{fmtDate(b.departureDate)}</span>
+                    <span className="text-xs font-medium text-fg-muted">{fmtDate(b.departureDate)}</span>
                     <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.label}</span>
                   </div>
                 );
@@ -79,20 +79,20 @@ export async function TravelDashboard() {
         <div className="card">
           <h3 className="card-title mb-3">Bookings by Status</h3>
           {statusRows.length === 0 ? (
-            <div className="py-4 text-sm text-slate-400">No active bookings yet.</div>
+            <div className="py-4 text-sm text-fg-subtle">No active bookings yet.</div>
           ) : (
             statusRows.map(([status, count]) => {
               const s = STATUS_META[status] ?? STATUS_META.in_progress;
               const pct = live.length ? Math.round((count / live.length) * 100) : 0;
               return (
                 <div key={status} className="mb-3">
-                  <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">{s.label}</span><span className="font-semibold">{count}</span></div>
+                  <div className="flex justify-between text-sm mb-1"><span className="text-fg-muted">{s.label}</span><span className="font-semibold">{count}</span></div>
                   <div className="progress-track"><div className="progress-fill" style={{ width: `${pct}%`, background: s.color }} /></div>
                 </div>
               );
             })
           )}
-          <Link href="/quotes" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+          <Link href="/quotes" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
             <Calculator className="w-4 h-4" /> Build a trip quote <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>

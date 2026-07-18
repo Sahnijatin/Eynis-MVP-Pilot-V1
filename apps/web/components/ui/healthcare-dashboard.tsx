@@ -46,17 +46,17 @@ export async function HealthcareDashboard() {
             <Link href="/appointments" className="text-xs font-medium flex items-center gap-1 hover:underline" style={{ color: "#0891b2" }}>View all <ChevronRight className="w-3 h-3" /></Link>
           </div>
           {upcoming.length === 0 ? (
-            <div className="py-6 text-center text-sm text-slate-400">No appointments left today — add one from the Appointments page.</div>
+            <div className="py-6 text-center text-sm text-fg-subtle">No appointments left today — add one from the Appointments page.</div>
           ) : (
             <div className="space-y-2">
               {upcoming.map((a) => {
                 const s = STATUS_META[a.status] ?? STATUS_META.scheduled;
                 return (
-                  <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-100">
-                    <span className="text-sm font-semibold text-slate-600 w-16">{fmtTime(a.scheduledAt)}</span>
+                  <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-line">
+                    <span className="text-sm font-semibold text-fg-muted w-16">{fmtTime(a.scheduledAt)}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-slate-800">{a.patientName}</div>
-                      <div className="text-xs text-slate-500">{a.type || "Appointment"}{a.provider ? ` · ${a.provider}` : ""}</div>
+                      <div className="font-medium text-sm text-fg">{a.patientName}</div>
+                      <div className="text-xs text-fg-muted">{a.type || "Appointment"}{a.provider ? ` · ${a.provider}` : ""}</div>
                     </div>
                     <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.label}</span>
                   </div>
@@ -67,20 +67,20 @@ export async function HealthcareDashboard() {
         </div>
 
         <div className="card">
-          <div className="flex items-center gap-2 mb-3"><AlertCircle className="w-4 h-4 text-red-500" /><h3 className="card-title mb-0">Follow-up Alerts</h3></div>
+          <div className="flex items-center gap-2 mb-3"><AlertCircle className="w-4 h-4 text-danger" /><h3 className="card-title mb-0">Follow-up Alerts</h3></div>
           {followUps.length === 0 ? (
-            <div className="py-4 text-sm text-slate-400">No overdue follow-ups.</div>
+            <div className="py-4 text-sm text-fg-subtle">No overdue follow-ups.</div>
           ) : (
             <div className="space-y-2">
               {followUps.slice(0, 6).map((p) => (
-                <div key={p.id} className="p-2.5 rounded-lg bg-red-50 border border-red-100">
-                  <div className="text-sm font-semibold text-red-800">{p.name}</div>
-                  <div className="text-xs text-red-600 mt-0.5">{p.condition || "Follow-up"}{p.status === "lost_follow_up" ? " · lost to follow-up" : " · overdue"}</div>
+                <div key={p.id} className="p-2.5 rounded-lg bg-danger-bg border border-danger-border">
+                  <div className="text-sm font-semibold text-danger">{p.name}</div>
+                  <div className="text-xs text-danger mt-0.5">{p.condition || "Follow-up"}{p.status === "lost_follow_up" ? " · lost to follow-up" : " · overdue"}</div>
                 </div>
               ))}
             </div>
           )}
-          <Link href="/patients" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+          <Link href="/patients" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
             <Users className="w-4 h-4" /> Open patient records <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>

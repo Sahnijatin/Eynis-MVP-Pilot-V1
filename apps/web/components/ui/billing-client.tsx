@@ -35,8 +35,8 @@ const ENTERPRISE_FEATURES = [
 function getPlans(industry: string) {
   const features = INDUSTRY_PLAN_FEATURES[industry] ?? INDUSTRY_PLAN_FEATURES.hospitality;
   return [
-    { key: "starter",    name: "Starter",    price: "₹2,999",  period: "/mo", color: "border-slate-200", badge: null,      features: features.starter },
-    { key: "growth",     name: "Growth",     price: "₹7,999",  period: "/mo", color: "border-teal-500",  badge: "Popular", features: features.growth  },
+    { key: "starter",    name: "Starter",    price: "₹2,999",  period: "/mo", color: "border-line", badge: null,      features: features.starter },
+    { key: "growth",     name: "Growth",     price: "₹7,999",  period: "/mo", color: "border-accent-border",  badge: "Popular", features: features.growth  },
     { key: "enterprise", name: "Enterprise", price: "Custom",   period: "",    color: "border-slate-800", badge: null,      features: ENTERPRISE_FEATURES },
   ];
 }
@@ -80,7 +80,7 @@ export default function BillingClient({ license, industry = "hospitality", suppo
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 mb-6">
+      <div className="flex border-b border-line mb-6">
         {SETTINGS_TABS.map((tab) => {
           const active = tab.href === "/settings/billing";
           return (
@@ -104,17 +104,17 @@ export default function BillingClient({ license, industry = "hospitality", suppo
         <div className="card">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
-                <CreditCard className="w-5 h-5 text-teal-700" />
+              <div className="w-10 h-10 rounded-xl bg-accent-bg flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-accent-text" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-slate-800 capitalize">{plan} Plan</h3>
-                  <span className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded font-medium uppercase tracking-wide">
+                  <h3 className="text-sm font-semibold text-fg capitalize">{plan} Plan</h3>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-accent-bg text-accent-text rounded font-medium uppercase tracking-wide">
                     Active
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-fg-muted mt-0.5">
                   {renewsAt ? `Renews ${formatDate(renewsAt)}` : "No renewal date set"}
                 </p>
               </div>
@@ -122,78 +122,78 @@ export default function BillingClient({ license, industry = "hospitality", suppo
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4">
-            <div className="bg-slate-50 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Seat Usage</div>
-              <div className="text-xl font-bold text-slate-800">
-                {usedSeats} <span className="text-sm font-normal text-slate-500">/ {maxSeats}</span>
+            <div className="bg-surface-inset rounded-lg p-3">
+              <div className="text-xs text-fg-muted mb-1">Seat Usage</div>
+              <div className="text-xl font-bold text-fg">
+                {usedSeats} <span className="text-sm font-normal text-fg-muted">/ {maxSeats}</span>
               </div>
-              <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div className="mt-2 h-1.5 bg-surface-inset rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${seatPct >= 90 ? "bg-red-500" : seatPct >= 70 ? "bg-amber-500" : "bg-teal-600"}`}
+                  className={`h-full rounded-full ${seatPct >= 90 ? "bg-danger-solid" : seatPct >= 70 ? "bg-warn-solid" : "bg-accent"}`}
                   style={{ width: `${seatPct}%` }}
                 />
               </div>
-              <div className="text-xs text-slate-500 mt-1">{maxSeats - usedSeats} seats remaining</div>
+              <div className="text-xs text-fg-muted mt-1">{maxSeats - usedSeats} seats remaining</div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Next Renewal</div>
-              <div className="text-sm font-bold text-slate-800">
+            <div className="bg-surface-inset rounded-lg p-3">
+              <div className="text-xs text-fg-muted mb-1">Next Renewal</div>
+              <div className="text-sm font-bold text-fg">
                 {renewsAt ? formatDate(renewsAt) : "—"}
               </div>
-              <div className="text-xs text-slate-500 mt-1 capitalize">Auto-renews via Razorpay</div>
+              <div className="text-xs text-fg-muted mt-1 capitalize">Auto-renews via Razorpay</div>
             </div>
           </div>
         </div>
 
         {/* Plan cards */}
         <div>
-          <h3 className="text-sm font-semibold text-slate-800 mb-3">Available Plans</h3>
+          <h3 className="text-sm font-semibold text-fg mb-3">Available Plans</h3>
           <div className="grid grid-cols-3 gap-4">
             {PLANS.map((p) => {
               const isCurrent = p.key === plan;
               return (
                 <div
                   key={p.key}
-                  className={`rounded-xl border-2 p-5 relative ${p.color} ${isCurrent ? "bg-teal-50/40" : "bg-white"}`}
+                  className={`rounded-xl border-2 p-5 relative ${p.color} ${isCurrent ? "bg-accent-bg/40" : "bg-surface"}`}
                 >
                   {p.badge && (
-                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] px-2 py-0.5 bg-teal-600 text-white rounded-full font-semibold uppercase tracking-wide">
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] px-2 py-0.5 bg-accent text-accent-contrast rounded-full font-semibold uppercase tracking-wide">
                       {p.badge}
                     </span>
                   )}
                   {isCurrent && (
-                    <span className="absolute -top-2.5 right-4 text-[10px] px-2 py-0.5 bg-teal-700 text-white rounded-full font-semibold uppercase tracking-wide">
+                    <span className="absolute -top-2.5 right-4 text-[10px] px-2 py-0.5 bg-accent text-accent-contrast rounded-full font-semibold uppercase tracking-wide">
                       Current
                     </span>
                   )}
 
                   <div className="flex items-center gap-2 mb-1">
-                    {p.key === "starter" && <Zap className="w-4 h-4 text-slate-500" />}
-                    {p.key === "growth" && <Zap className="w-4 h-4 text-teal-600" />}
-                    {p.key === "enterprise" && <Building2 className="w-4 h-4 text-slate-700" />}
-                    <span className="text-sm font-bold text-slate-800">{p.name}</span>
+                    {p.key === "starter" && <Zap className="w-4 h-4 text-fg-muted" />}
+                    {p.key === "growth" && <Zap className="w-4 h-4 text-accent-text" />}
+                    {p.key === "enterprise" && <Building2 className="w-4 h-4 text-fg" />}
+                    <span className="text-sm font-bold text-fg">{p.name}</span>
                   </div>
 
                   <div className="mb-4">
-                    <span className="text-2xl font-bold text-slate-900">{p.price}</span>
-                    <span className="text-xs text-slate-500">{p.period}</span>
+                    <span className="text-2xl font-bold text-fg">{p.price}</span>
+                    <span className="text-xs text-fg-muted">{p.period}</span>
                   </div>
 
                   <ul className="space-y-1.5 mb-5">
                     {p.features.map((f) => (
-                      <li key={f} className="flex items-start gap-1.5 text-xs text-slate-600">
-                        <CheckCircle className="w-3.5 h-3.5 text-teal-600 shrink-0 mt-0.5" />
+                      <li key={f} className="flex items-start gap-1.5 text-xs text-fg-muted">
+                        <CheckCircle className="w-3.5 h-3.5 text-accent-text shrink-0 mt-0.5" />
                         {f}
                       </li>
                     ))}
                   </ul>
 
                   {isCurrent ? (
-                    <button disabled className="w-full py-2 text-xs font-medium rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed">
+                    <button disabled className="w-full py-2 text-xs font-medium rounded-lg bg-surface-inset text-fg-muted cursor-not-allowed">
                       Current Plan
                     </button>
                   ) : p.key === "enterprise" ? (
-                    <button className="w-full py-2 text-xs font-medium rounded-lg border border-slate-800 text-slate-800 hover:bg-slate-50 transition-colors">
+                    <button className="w-full py-2 text-xs font-medium rounded-lg border border-slate-800 text-fg hover:bg-surface-inset transition-colors">
                       Contact Sales
                     </button>
                   ) : (
@@ -214,20 +214,20 @@ export default function BillingClient({ license, industry = "hospitality", suppo
         </div>
 
         {/* Payment section */}
-        <div className="card bg-slate-50">
+        <div className="card bg-surface-inset">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-info-solid rounded-lg flex items-center justify-center">
               <CreditCard className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-800">Razorpay Billing</h3>
-              <p className="text-xs text-slate-500">Subscriptions managed via Razorpay</p>
+              <h3 className="text-sm font-semibold text-fg">Razorpay Billing</h3>
+              <p className="text-xs text-fg-muted">Subscriptions managed via Razorpay</p>
             </div>
           </div>
-          <p className="text-xs text-slate-500 leading-relaxed">
+          <p className="text-xs text-fg-muted leading-relaxed">
             All plan changes are processed through Razorpay. Your subscription will be billed monthly
             in INR. To modify your subscription, upgrade/downgrade above or contact{" "}
-            <span className="text-teal-700 font-medium">{billingContact}</span>.
+            <span className="text-accent-text font-medium">{billingContact}</span>.
           </p>
         </div>
       </div>

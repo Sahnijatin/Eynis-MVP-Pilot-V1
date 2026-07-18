@@ -32,7 +32,7 @@ export function ReportResultView({ result }: { result: RunResult }) {
     return (
       <div className="py-10 text-center">
         <div className="text-5xl font-black" style={{ color: "var(--color-primary, #0f766e)" }}>{total.toLocaleString("en-IN")}</div>
-        <div className="text-sm text-slate-500 mt-2">total records</div>
+        <div className="text-sm text-fg-muted mt-2">total records</div>
       </div>
     );
   }
@@ -43,7 +43,7 @@ export function ReportResultView({ result }: { result: RunResult }) {
     if (data.length === 0) {
       return (
         <div>
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          <p className="text-sm text-warn bg-warn-bg border border-warn-border rounded-lg px-3 py-2 mb-3">
             Charts need a “Group by” field — showing the table instead.
           </p>
           <ReportResultTable result={result} />

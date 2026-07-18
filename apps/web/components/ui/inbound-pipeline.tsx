@@ -3,21 +3,21 @@ import { MessageSquare, CheckCircle2, XCircle, Clock, Zap, ChevronRight } from "
 import { fetchConnectorEvents } from "../../lib/data";
 
 const SENTIMENT_COLORS: Record<string, string> = {
-  positive: "text-emerald-400",
-  negative: "text-red-400",
-  neutral: "text-slate-500"
+  positive: "text-ok",
+  negative: "text-danger",
+  neutral: "text-fg-muted"
 };
 
 const SENTIMENT_DOTS: Record<string, string> = {
-  positive: "bg-emerald-400",
-  negative: "bg-red-400",
+  positive: "bg-ok-solid",
+  negative: "bg-danger-solid",
   neutral: "bg-slate-400"
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  urgent: "text-red-500 font-bold",
-  high: "text-amber-500 font-semibold",
-  normal: "text-slate-500"
+  urgent: "text-danger font-bold",
+  high: "text-warn font-semibold",
+  normal: "text-fg-muted"
 };
 
 const PRIORITY_BADGES: Record<string, string> = {
@@ -57,15 +57,15 @@ async function PipelineContent() {
     events = data.items ?? [];
     total = data.page?.total ?? 0;
   } catch {
-    return <div className="text-xs text-slate-500 py-4 text-center">Unable to load pipeline data</div>;
+    return <div className="text-xs text-fg-muted py-4 text-center">Unable to load pipeline data</div>;
   }
 
   if (events.length === 0) {
     return (
       <div className="text-center py-8">
         <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-        <p className="text-sm text-slate-500">No inbound events yet</p>
-        <p className="text-xs text-slate-500 mt-1">Events appear here when customers message via WhatsApp</p>
+        <p className="text-sm text-fg-muted">No inbound events yet</p>
+        <p className="text-xs text-fg-muted mt-1">Events appear here when customers message via WhatsApp</p>
       </div>
     );
   }
@@ -78,7 +78,7 @@ async function PipelineContent() {
         const replyFailed = ev.replyStatus?.startsWith("failed") || ev.replyStatus?.startsWith("error");
 
         return (
-          <div key={ev.id} className="flex items-start gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+          <div key={ev.id} className="flex items-start gap-3 p-3 rounded-xl border border-line hover:bg-surface-inset transition-colors">
             {/* Source icon */}
             <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
               style={{ background: `${connector.color}18` }}>
@@ -88,12 +88,12 @@ async function PipelineContent() {
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-xs font-semibold text-slate-700 truncate">{ev.guestName ?? ev.guestPhone ?? "Unknown"}</span>
-                <span className="text-[9px] text-slate-500 shrink-0">{timeAgo(ev.createdAt)}</span>
+                <span className="text-xs font-semibold text-fg truncate">{ev.guestName ?? ev.guestPhone ?? "Unknown"}</span>
+                <span className="text-[9px] text-fg-muted shrink-0">{timeAgo(ev.createdAt)}</span>
               </div>
 
               {ev.aiSummary && (
-                <p className="text-xs text-slate-600 truncate mb-1.5">{ev.aiSummary}</p>
+                <p className="text-xs text-fg-muted truncate mb-1.5">{ev.aiSummary}</p>
               )}
 
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -119,7 +119,7 @@ async function PipelineContent() {
 
                 {/* AI provider badge */}
                 {ev.aiProvider && ev.aiProvider !== "keyword" && (
-                  <span className="text-[9px] text-slate-500">via {ev.aiProvider === "openai" ? "OpenAI" : "Claude"}</span>
+                  <span className="text-[9px] text-fg-muted">via {ev.aiProvider === "openai" ? "OpenAI" : "Claude"}</span>
                 )}
               </div>
             </div>
@@ -127,18 +127,18 @@ async function PipelineContent() {
             {/* Right: SR + reply status */}
             <div className="flex flex-col items-end gap-1 shrink-0">
               {ev.serviceRequestId && (
-                <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">SR created</span>
+                <span className="text-[9px] font-mono text-accent-text bg-accent-bg px-1.5 py-0.5 rounded">SR created</span>
               )}
               {replySent ? (
-                <span className="flex items-center gap-1 text-[9px] text-emerald-600">
+                <span className="flex items-center gap-1 text-[9px] text-ok">
                   <CheckCircle2 className="w-3 h-3" /> replied
                 </span>
               ) : replyFailed ? (
-                <span className="flex items-center gap-1 text-[9px] text-red-400">
+                <span className="flex items-center gap-1 text-[9px] text-danger">
                   <XCircle className="w-3 h-3" /> no reply
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[9px] text-slate-500">
+                <span className="flex items-center gap-1 text-[9px] text-fg-muted">
                   <Clock className="w-3 h-3" /> pending
                 </span>
               )}
@@ -149,7 +149,7 @@ async function PipelineContent() {
 
       {total > 8 && (
         <div className="text-center pt-1">
-          <span className="text-xs text-slate-500">{total - 8} more events not shown</span>
+          <span className="text-xs text-fg-muted">{total - 8} more events not shown</span>
         </div>
       )}
     </div>
@@ -160,14 +160,14 @@ function PipelineSkeleton() {
   return (
     <div className="space-y-2 animate-pulse">
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-slate-100 shrink-0" />
+        <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-line">
+          <div className="w-8 h-8 rounded-lg bg-surface-inset shrink-0" />
           <div className="flex-1 space-y-1.5">
-            <div className="h-3 w-24 bg-slate-200 rounded" />
-            <div className="h-2.5 w-4/5 bg-slate-100 rounded" />
+            <div className="h-3 w-24 bg-surface-inset rounded" />
+            <div className="h-2.5 w-4/5 bg-surface-inset rounded" />
             <div className="flex gap-1.5">
-              <div className="h-4 w-20 bg-slate-100 rounded-full" />
-              <div className="h-4 w-16 bg-slate-100 rounded-full" />
+              <div className="h-4 w-20 bg-surface-inset rounded-full" />
+              <div className="h-4 w-16 bg-surface-inset rounded-full" />
             </div>
           </div>
         </div>

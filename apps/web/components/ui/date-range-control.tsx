@@ -89,16 +89,16 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
       </div>
 
       {showCustom && (
-        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+        <div className="flex items-center gap-3 p-3 bg-surface-inset rounded-xl border border-line">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-slate-500">From</label>
+            <label className="text-xs font-semibold text-fg-muted">From</label>
             <input type="date" value={cFrom} max={cTo || undefined} onChange={(e) => setCFrom(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-teal-400" />
+              className="border border-line rounded-lg px-3 py-1.5 text-sm text-fg outline-none focus:border-accent-border" />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-slate-500">To</label>
+            <label className="text-xs font-semibold text-fg-muted">To</label>
             <input type="date" value={cTo} min={cFrom || undefined} onChange={(e) => setCTo(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-teal-400" />
+              className="border border-line rounded-lg px-3 py-1.5 text-sm text-fg outline-none focus:border-accent-border" />
           </div>
           <button
             onClick={() => { push(cFrom, cTo); setShowCustom(false); }}
@@ -108,7 +108,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
           >
             Apply
           </button>
-          <button onClick={() => setShowCustom(false)} className="text-slate-500 hover:text-slate-600">
+          <button onClick={() => setShowCustom(false)} className="text-fg-muted hover:text-fg-muted">
             <X className="w-4 h-4" />
           </button>
         </div>

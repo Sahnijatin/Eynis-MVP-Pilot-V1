@@ -35,30 +35,30 @@ export function StaffLogin() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <div className="flex items-center gap-2 mb-1 text-slate-800">
-          <ShieldCheck className="w-5 h-5 text-teal-700" />
+    <div className="min-h-screen flex items-center justify-center bg-surface-inset p-6">
+      <form onSubmit={submit} className="w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-line p-8">
+        <div className="flex items-center gap-2 mb-1 text-fg">
+          <ShieldCheck className="w-5 h-5 text-accent-text" />
           <h1 className="text-lg font-semibold">Provisioning Console</h1>
         </div>
-        <p className="text-sm text-slate-500 mb-6">Internal staff only. Enter the platform admin secret to continue.</p>
+        <p className="text-sm text-fg-muted mb-6">Internal staff only. Enter the platform admin secret to continue.</p>
 
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Platform admin secret</label>
+        <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">Platform admin secret</label>
         <input
           type="password"
           autoFocus
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
-          className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-4"
+          className="w-full px-3 py-2.5 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus mb-4"
           placeholder="••••••••••••••••"
         />
 
-        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+        {error && <p className="text-sm text-danger mb-4">{error}</p>}
 
         <button
           type="submit"
           disabled={busy || secret.length === 0}
-          className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg text-white flex items-center justify-center gap-2 bg-teal-700 disabled:opacity-50"
+          className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg text-accent-contrast flex items-center justify-center gap-2 bg-accent disabled:opacity-50"
         >
           {busy && <Loader2 className="w-4 h-4 animate-spin" />}
           {busy ? "Verifying…" : "Sign in"}

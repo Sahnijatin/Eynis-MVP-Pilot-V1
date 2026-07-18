@@ -58,7 +58,7 @@ export function ReportView({ reportId }: { reportId: string }) {
 
   return (
     <div>
-      <a href="/reports" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-3">
+      <a href="/reports" className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg mb-3">
         <ArrowLeft className="w-4 h-4" /> Reports
       </a>
       <div className="page-header">
@@ -68,21 +68,21 @@ export function ReportView({ reportId }: { reportId: string }) {
             {meta?.description && <p className="page-subtitle">{meta.description}</p>}
           </div>
           <div className="flex items-center gap-2">
-            <a href={`/api/reports/${reportId}/export?format=pdf`} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
+            <a href={`/api/reports/${reportId}/export?format=pdf`} className="px-3 py-2 text-sm border border-line rounded-lg text-fg-muted bg-surface hover:bg-surface-inset inline-flex items-center gap-1.5">
               <Printer className="w-3.5 h-3.5" /> PDF
             </a>
-            <a href={`/api/reports/${reportId}/export?format=csv`} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
+            <a href={`/api/reports/${reportId}/export?format=csv`} className="px-3 py-2 text-sm border border-line rounded-lg text-fg-muted bg-surface hover:bg-surface-inset inline-flex items-center gap-1.5">
               <Download className="w-3.5 h-3.5" /> CSV
             </a>
             {meta?.isOwner && (
               <>
-                <button onClick={() => setSharing(true)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
+                <button onClick={() => setSharing(true)} className="px-3 py-2 text-sm border border-line rounded-lg text-fg-muted bg-surface hover:bg-surface-inset inline-flex items-center gap-1.5">
                   <Share2 className="w-3.5 h-3.5" /> Share
                 </button>
-                <a href={`/reports/${reportId}/edit`} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5">
+                <a href={`/reports/${reportId}/edit`} className="px-3 py-2 text-sm border border-line rounded-lg text-fg-muted bg-surface hover:bg-surface-inset inline-flex items-center gap-1.5">
                   <Pencil className="w-3.5 h-3.5" /> Edit
                 </a>
-                <button onClick={onDelete} disabled={deleting} className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-red-600 bg-white hover:bg-red-50 inline-flex items-center gap-1.5 disabled:opacity-50">
+                <button onClick={onDelete} disabled={deleting} className="px-3 py-2 text-sm border border-line rounded-lg text-danger bg-surface hover:bg-danger-bg inline-flex items-center gap-1.5 disabled:opacity-50">
                   {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete
                 </button>
               </>
@@ -91,19 +91,19 @@ export function ReportView({ reportId }: { reportId: string }) {
         </div>
       </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+      {error && <div className="mb-4 p-3 bg-danger-bg border border-danger-border text-danger rounded-lg text-sm">{error}</div>}
 
       <div className="card">
         <div className="flex items-center justify-between mb-3">
           <h3 className="card-title">Results</h3>
-          {result && <span className="text-xs text-slate-500">{result.grouped ? `${result.total} groups` : `${result.total} rows`}</span>}
+          {result && <span className="text-xs text-fg-muted">{result.grouped ? `${result.total} groups` : `${result.total} rows`}</span>}
         </div>
         {loading ? (
-          <p className="text-sm text-slate-500 py-8 text-center">Running report…</p>
+          <p className="text-sm text-fg-muted py-8 text-center">Running report…</p>
         ) : result ? (
           <ReportResultView result={result} />
         ) : (
-          <p className="text-sm text-slate-500 py-8 text-center">No results.</p>
+          <p className="text-sm text-fg-muted py-8 text-center">No results.</p>
         )}
       </div>
 

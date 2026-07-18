@@ -84,8 +84,8 @@ export function AppointmentsClient({ initialItems, dateLabel }: { initialItems: 
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Appointments</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{dateLabel} · patient flow &amp; no-show tracking</p>
+          <h1 className="text-xl font-bold text-fg">Appointments</h1>
+          <p className="text-sm text-fg-muted mt-0.5">{dateLabel} · patient flow &amp; no-show tracking</p>
         </div>
         <button onClick={() => setModalOpen(true)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5" style={{ background: ACCENT }}><Plus className="w-4 h-4" /> New Appointment</button>
       </div>
@@ -107,21 +107,21 @@ export function AppointmentsClient({ initialItems, dateLabel }: { initialItems: 
                 const s = STATUS_META[a.status] ?? STATUS_META.scheduled;
                 return (
                   <tr key={a.id}>
-                    <td className="font-medium text-slate-700">{fmtTime(a.scheduledAt)}</td>
-                    <td className="font-medium text-slate-800">{a.patientName}</td>
-                    <td className="text-slate-600 text-xs">{a.type || "—"}</td>
-                    <td className="text-slate-600 text-xs">{a.provider || "—"}</td>
-                    <td className="text-slate-500 text-xs">{a.durationMin} min</td>
+                    <td className="font-medium text-fg">{fmtTime(a.scheduledAt)}</td>
+                    <td className="font-medium text-fg">{a.patientName}</td>
+                    <td className="text-fg-muted text-xs">{a.type || "—"}</td>
+                    <td className="text-fg-muted text-xs">{a.provider || "—"}</td>
+                    <td className="text-fg-muted text-xs">{a.durationMin} min</td>
                     <td>
                       <select value={a.status} disabled={busyId === a.id} onChange={(e) => changeStatus(a, e.target.value)} className="text-xs rounded px-1.5 py-1 border" style={{ color: s.color, background: s.bg, borderColor: s.bg }}>
                         {STATUSES.map((st) => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
                       </select>
                     </td>
-                    <td><button onClick={() => remove(a)} className="text-slate-400 hover:text-red-600" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button></td>
+                    <td><button onClick={() => remove(a)} className="text-fg-subtle hover:text-danger" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button></td>
                   </tr>
                 );
               })}
-              {items.length === 0 && (<tr><td colSpan={7} className="text-center py-10 text-slate-400">No appointments for {dateLabel.toLowerCase()} — add one to get started.</td></tr>)}
+              {items.length === 0 && (<tr><td colSpan={7} className="text-center py-10 text-fg-subtle">No appointments for {dateLabel.toLowerCase()} — add one to get started.</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -130,18 +130,18 @@ export function AppointmentsClient({ initialItems, dateLabel }: { initialItems: 
       {modalOpen && (
         <Modal title="New Appointment" onClose={() => { setModalOpen(false); setForm(EMPTY); }}>
           <form onSubmit={save} className="space-y-3">
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Patient *</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Rahul Sharma" value={form.patientName} onChange={(e) => setForm((f) => ({ ...f, patientName: e.target.value }))} required /></div>
+            <div><label className="block text-xs font-semibold text-fg-muted mb-1">Patient *</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Rahul Sharma" value={form.patientName} onChange={(e) => setForm((f) => ({ ...f, patientName: e.target.value }))} required /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date &amp; Time *</label><input type="datetime-local" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.scheduledAt} onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))} required /></div>
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Duration (min)</label><input type="number" min="5" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.durationMin} onChange={(e) => setForm((f) => ({ ...f, durationMin: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Date &amp; Time *</label><input type="datetime-local" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.scheduledAt} onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))} required /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Duration (min)</label><input type="number" min="5" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" value={form.durationMin} onChange={(e) => setForm((f) => ({ ...f, durationMin: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Type</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Consultation" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} /></div>
-              <div><label className="block text-xs font-semibold text-slate-500 mb-1">Provider</label><input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Dr. Patel" value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Type</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Consultation" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} /></div>
+              <div><label className="block text-xs font-semibold text-fg-muted mb-1">Provider</label><input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" placeholder="Dr. Patel" value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))} /></div>
             </div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Notes</label><textarea rows={2} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+            <div><label className="block text-xs font-semibold text-fg-muted mb-1">Notes</label><textarea rows={2} className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 resize-none" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
             <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-line text-fg-muted hover:bg-surface-inset">Cancel</button>
               <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: ACCENT }}>{saving ? "Saving…" : "Create Appointment"}</button>
             </div>
           </form>

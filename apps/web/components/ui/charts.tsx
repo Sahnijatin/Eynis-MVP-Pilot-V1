@@ -92,8 +92,8 @@ export function DonutChart({ data, total, label }: DonutChartProps) {
         </PieChart>
       </ResponsiveContainer>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        {label && <div className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</div>}
-        <div className="text-lg font-bold text-slate-800">{total}</div>
+        {label && <div className="text-[10px] text-fg-muted uppercase tracking-wider">{label}</div>}
+        <div className="text-lg font-bold text-fg">{total}</div>
       </div>
     </div>
   );

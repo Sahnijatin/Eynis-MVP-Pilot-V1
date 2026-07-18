@@ -37,7 +37,7 @@ export default async function RevenueIntelligencePage({
 
       {!hasData && (
         <div className="card mb-5" style={{ background: "#f8fafc" }}>
-          <p className="text-sm text-slate-500">No offer activity in this window yet. Figures populate as upsell offers are sent and accepted.</p>
+          <p className="text-sm text-fg-muted">No offer activity in this window yet. Figures populate as upsell offers are sent and accepted.</p>
         </div>
       )}
 
@@ -49,7 +49,7 @@ export default async function RevenueIntelligencePage({
         </div>
         <div className="card">
           <div className="kpi-label">Offers Accepted</div>
-          <div className="kpi-value mt-1.5">{totals.acceptedOffers}<span className="text-lg text-slate-500 font-normal"> / {totals.sentOffers}</span></div>
+          <div className="kpi-value mt-1.5">{totals.acceptedOffers}<span className="text-lg text-fg-muted font-normal"> / {totals.sentOffers}</span></div>
           <div className="kpi-label mt-1">offers sent</div>
         </div>
         <div className="card">
@@ -58,10 +58,10 @@ export default async function RevenueIntelligencePage({
         </div>
         <div className="card" style={{ borderLeft: "3px solid #ef4444" }}>
           <div className="flex items-start justify-between">
-            <div className="kpi-label text-red-500">Left on Table</div>
-            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <div className="kpi-label text-danger">Left on Table</div>
+            <AlertTriangle className="w-4 h-4 text-danger" />
           </div>
-          <div className="kpi-value mt-1.5 text-red-600">{inr(totals.leftOnTableInr)}</div>
+          <div className="kpi-value mt-1.5 text-danger">{inr(totals.leftOnTableInr)}</div>
         </div>
       </div>
 
@@ -70,14 +70,14 @@ export default async function RevenueIntelligencePage({
         <div className="card lg:col-span-2">
           <h3 className="card-title">Revenue by Automation Type</h3>
           {byAutomationType.length === 0 ? (
-            <p className="text-sm text-slate-500">No revenue recorded in this window.</p>
+            <p className="text-sm text-fg-muted">No revenue recorded in this window.</p>
           ) : (
             <div className="space-y-3 mt-2">
               {byAutomationType.map((a) => (
                 <div key={a.key}>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{prettyType(a.key)}</span>
-                    <span className="text-sm text-slate-500">{inr(a.revenueInr)} · {a.accepted}/{a.sent}</span>
+                    <span className="text-sm font-medium text-fg">{prettyType(a.key)}</span>
+                    <span className="text-sm text-fg-muted">{inr(a.revenueInr)} · {a.accepted}/{a.sent}</span>
                   </div>
                   <div className="progress-track">
                     <div className="progress-fill" style={{ width: `${(a.revenueInr / maxRevenue) * 100}%` }} />
@@ -92,13 +92,13 @@ export default async function RevenueIntelligencePage({
         <div className="card">
           <h3 className="card-title">Top Converting Offers</h3>
           {topConvertingOffers.length === 0 ? (
-            <p className="text-sm text-slate-500">No offers yet.</p>
+            <p className="text-sm text-fg-muted">No offers yet.</p>
           ) : (
             <div className="space-y-3 mt-2">
               {topConvertingOffers.map((o) => (
                 <div key={o.offerType} className="flex items-center justify-between">
-                  <span className="text-sm text-slate-700">{prettyType(o.offerType)}</span>
-                  <span className="text-sm font-semibold text-emerald-600">{o.conversionRate}%</span>
+                  <span className="text-sm text-fg">{prettyType(o.offerType)}</span>
+                  <span className="text-sm font-semibold text-ok">{o.conversionRate}%</span>
                 </div>
               ))}
             </div>
@@ -108,7 +108,7 @@ export default async function RevenueIntelligencePage({
 
       {/* Conversion funnel */}
       <div className="card mt-4">
-        <h3 className="card-title flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-teal-600" /> Conversion Funnel</h3>
+        <h3 className="card-title flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-accent-text" /> Conversion Funnel</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-2">
           {[
             { label: "Triggered", value: funnel.triggered.toLocaleString("en-IN") },
@@ -117,9 +117,9 @@ export default async function RevenueIntelligencePage({
             { label: "Accepted", value: funnel.accepted.toLocaleString("en-IN") },
             { label: "Revenue", value: inr(funnel.revenueInr) },
           ].map((f) => (
-            <div key={f.label} className="text-center p-4 rounded-lg bg-teal-50 border border-teal-100">
-              <div className="text-[10px] font-semibold text-teal-600 uppercase tracking-wider mb-1">{f.label}</div>
-              <div className="text-lg font-bold text-slate-800">{f.value}</div>
+            <div key={f.label} className="text-center p-4 rounded-lg bg-accent-bg border border-accent-line">
+              <div className="text-[10px] font-semibold text-accent-text uppercase tracking-wider mb-1">{f.label}</div>
+              <div className="text-lg font-bold text-fg">{f.value}</div>
             </div>
           ))}
         </div>

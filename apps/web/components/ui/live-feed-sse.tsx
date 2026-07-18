@@ -122,8 +122,8 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
         <div className="flex items-center gap-2">
           <h3 className="card-title mb-0">Live Request Feed</h3>
           <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
-            <span className="text-[10px] text-slate-500 uppercase tracking-wide">{connected ? "Live" : "Connecting..."}</span>
+            <span className={`w-2 h-2 rounded-full ${connected ? "bg-ok-solid animate-pulse" : "bg-slate-300"}`} />
+            <span className="text-[10px] text-fg-muted uppercase tracking-wide">{connected ? "Live" : "Connecting..."}</span>
           </div>
           {newCount > 0 && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold text-white" style={{ background: "var(--color-primary, #0f766e)" }}>
@@ -140,17 +140,17 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
         {items.slice(0, 4).map((item) => {
           const guestName = item.guest?.fullName ?? item.guestName;
           return (
-            <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors">
-              <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
+            <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg border border-line hover:bg-surface-inset transition-colors">
+              <div className="w-10 h-10 rounded-lg bg-surface-inset flex items-center justify-center text-xs font-bold text-fg-muted shrink-0">
                 {getInitials(guestName)}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-800 truncate">{item.summary}</div>
+                <div className="text-sm font-medium text-fg truncate">{item.summary}</div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={`badge text-[10px] ${categoryColor[item.category] ?? "badge-slate"}`}>
                     {categoryLabel[item.category] ?? item.category.toUpperCase()}
                   </span>
-                  <span className="text-xs text-slate-500">{timeAgo(item.createdAt)}</span>
+                  <span className="text-xs text-fg-muted">{timeAgo(item.createdAt)}</span>
                 </div>
               </div>
               <span className={`badge ${statusColor[item.status] ?? "badge-slate"}`}>
@@ -160,7 +160,7 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
           );
         })}
         {items.length === 0 && (
-          <div className="text-center py-8 text-slate-500 text-sm flex flex-col items-center gap-2">
+          <div className="text-center py-8 text-fg-muted text-sm flex flex-col items-center gap-2">
             <Clock className="w-5 h-5" />
             No active requests right now
           </div>
@@ -168,7 +168,7 @@ export function LiveFeedSSE({ initialItems }: { initialItems: FeedItem[] }) {
       </div>
 
       {items.length === 0 && connected && (
-        <div className="mt-3 p-2 rounded-lg bg-emerald-50 border border-emerald-100 text-xs text-emerald-700 text-center">
+        <div className="mt-3 p-2 rounded-lg bg-ok-bg border border-ok-border text-xs text-ok text-center">
           Watching for new requests — WhatsApp messages will appear here instantly
         </div>
       )}

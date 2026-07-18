@@ -153,8 +153,8 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">{heading?.title ?? "Inventory Management"}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{heading?.subtitle ?? "Real-time stock levels · reorder alerts · waste tracking"}</p>
+          <h1 className="text-xl font-bold text-fg">{heading?.title ?? "Inventory Management"}</h1>
+          <p className="text-sm text-fg-muted mt-0.5">{heading?.subtitle ?? "Real-time stock levels · reorder alerts · waste tracking"}</p>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
@@ -169,7 +169,7 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
       </div>
 
       {importStatus && (
-        <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${importStatus.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+        <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${importStatus.type === "success" ? "bg-ok-bg text-ok border border-ok-border" : "bg-danger-bg text-danger border border-danger-border"}`}>
           {importStatus.type === "success" ? `✓ Imported ${importStatus.count} item(s).` : `✗ ${importStatus.message}`}
         </div>
       )}
@@ -205,34 +205,34 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
         {items.length === 0 ? (
           <div className="py-10 text-center">
             <div className="text-2xl mb-2">📦</div>
-            <div className="font-semibold text-slate-700">No items yet</div>
-            <p className="text-sm text-slate-500 mt-1 mb-4">Use “Log Stock” or “Import CSV” to add inventory.</p>
+            <div className="font-semibold text-fg">No items yet</div>
+            <p className="text-sm text-fg-muted mt-1 mb-4">Use “Log Stock” or “Import CSV” to add inventory.</p>
             <Button variant="primary" onClick={() => setShowModal(true)}>Log Stock</Button>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100">
+              <tr className="border-b border-line">
                 {["Item", "Category", "In Stock", "Reorder At", "Unit Cost", "Status", ""].map((h) => (
-                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  <th key={h} className="text-left py-2 px-2 text-xs font-semibold text-fg-muted uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className={`border-b border-slate-50 ${item.status === "critical" ? "bg-red-50" : item.status === "warning" ? "bg-amber-50" : "hover:bg-slate-50"}`}>
-                  <td className="py-2.5 px-2 font-medium text-slate-800">{item.name}</td>
-                  <td className="py-2.5 px-2 text-xs text-slate-500">{item.category}</td>
-                  <td className="py-2.5 px-2"><span className={`font-bold ${item.stock <= item.reorderLevel ? "text-red-600" : "text-slate-700"}`}>{item.stock} {item.unit}</span></td>
-                  <td className="py-2.5 px-2 text-slate-500">{item.reorderLevel} {item.unit}</td>
-                  <td className="py-2.5 px-2 text-slate-600">₹{item.unitCostInr.toLocaleString("en-IN")}</td>
+                <tr key={item.id} className={`border-b border-line ${item.status === "critical" ? "bg-danger-bg" : item.status === "warning" ? "bg-warn-bg" : "hover:bg-surface-inset"}`}>
+                  <td className="py-2.5 px-2 font-medium text-fg">{item.name}</td>
+                  <td className="py-2.5 px-2 text-xs text-fg-muted">{item.category}</td>
+                  <td className="py-2.5 px-2"><span className={`font-bold ${item.stock <= item.reorderLevel ? "text-danger" : "text-fg"}`}>{item.stock} {item.unit}</span></td>
+                  <td className="py-2.5 px-2 text-fg-muted">{item.reorderLevel} {item.unit}</td>
+                  <td className="py-2.5 px-2 text-fg-muted">₹{item.unitCostInr.toLocaleString("en-IN")}</td>
                   <td className="py-2.5 px-2">
                     {item.status === "critical" && <span className="badge" style={{ background: "#fee2e2", color: "#dc2626" }}>Critical</span>}
                     {item.status === "warning" && <span className="badge" style={{ background: "#fef3c7", color: "#d97706" }}>Low Stock</span>}
                     {item.status === "ok" && <span className="badge" style={{ background: "#d1fae5", color: "#059669" }}>OK</span>}
                   </td>
                   <td className="py-2.5 px-2">
-                    <button onClick={() => handleDelete(item)} disabled={busy} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 disabled:opacity-50">
+                    <button onClick={() => handleDelete(item)} disabled={busy} className="w-7 h-7 rounded-lg flex items-center justify-center text-fg-muted hover:bg-danger-bg hover:text-danger disabled:opacity-50">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
@@ -254,7 +254,7 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
             </>
           }
         >
-          <p className="text-xs text-slate-500 mb-3">Update an existing item or add a new one.</p>
+          <p className="text-xs text-fg-muted mb-3">Update an existing item or add a new one.</p>
           <form id="inventory-form" onSubmit={handleSubmit} className="space-y-3">
             <Field label="Item name">
               <Input placeholder="e.g. Truffle Oil (250ml)" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
@@ -268,7 +268,7 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
               <div className="flex gap-2">
                 {TX_TYPES.map((t) => (
                   <button key={t} type="button" onClick={() => setForm((f) => ({ ...f, txType: t }))}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border capitalize transition-colors ${form.txType === t ? (t === "received" ? "bg-emerald-500 text-white border-emerald-500" : t === "used" ? "bg-blue-500 text-white border-blue-500" : "bg-red-400 text-white border-red-400") : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border capitalize transition-colors ${form.txType === t ? (t === "received" ? "bg-ok-solid text-white border-ok-border" : t === "used" ? "bg-info-solid text-white border-info-border" : "bg-danger-solid text-white border-danger-border") : "border-line text-fg-muted hover:bg-surface-inset"}`}>
                     {t}
                   </button>
                 ))}

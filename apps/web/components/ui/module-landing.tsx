@@ -15,10 +15,10 @@ export function ModuleLanding({ module, accentColor }: { module: NavModule; acce
         <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: accentColor + "18" }}>
           <Icon className="w-5 h-5" style={{ color: accentColor }} />
         </div>
-        <h1 className="text-xl font-semibold text-slate-800">{module.label}</h1>
+        <h1 className="text-xl font-semibold text-fg">{module.label}</h1>
       </div>
       {module.description && (
-        <p className="text-sm text-slate-500 mb-5 max-w-2xl">{module.description}</p>
+        <p className="text-sm text-fg-muted mb-5 max-w-2xl">{module.description}</p>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -32,10 +32,10 @@ export function ModuleLanding({ module, accentColor }: { module: NavModule; acce
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1">
-                    <h3 className="font-semibold text-slate-800">{c.label}</h3>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors ml-auto" />
+                    <h3 className="font-semibold text-fg">{c.label}</h3>
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-fg-muted transition-colors ml-auto" />
                   </div>
-                  {c.description && <p className="text-xs text-slate-500 mt-1 leading-relaxed">{c.description}</p>}
+                  {c.description && <p className="text-xs text-fg-muted mt-1 leading-relaxed">{c.description}</p>}
                 </div>
               </div>
             </Link>

@@ -14,9 +14,9 @@ interface SendingDomain {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  verified: "bg-teal-50 text-teal-700 border-teal-200",
-  pending: "bg-amber-50 text-amber-700 border-amber-200",
-  failed: "bg-red-50 text-red-700 border-red-200"
+  verified: "bg-accent-bg text-accent-text border-accent-line",
+  pending: "bg-warn-bg text-warn border-warn-border",
+  failed: "bg-danger-bg text-danger border-danger-border"
 };
 
 // Staff editor for a tenant's white-label sending domain (E-9). Lives inside the
@@ -85,10 +85,10 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
     finally { setVerifying(false); }
   }
 
-  if (loading) return <div className="text-sm text-slate-500 py-3">Loading sending domain…</div>;
+  if (loading) return <div className="text-sm text-fg-muted py-3">Loading sending domain…</div>;
   if (loadFailed) {
     return (
-      <div className="text-sm text-red-600 py-3">
+      <div className="text-sm text-danger py-3">
         Couldn&apos;t load this tenant&apos;s current sending-domain config. The form is hidden so an existing domain isn&apos;t overwritten — reload to try again.
       </div>
     );
@@ -97,60 +97,60 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
   const status = current?.status ?? "none";
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+    <div className="bg-surface-inset border border-line rounded-lg p-4 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <label className="block">
-          <span className="block text-xs font-semibold text-slate-500 mb-1">Domain</span>
+          <span className="block text-xs font-semibold text-fg-muted mb-1">Domain</span>
           <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="mail.acme.com"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            className="w-full px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus" />
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold text-slate-500 mb-1">From (local part)</span>
+          <span className="block text-xs font-semibold text-fg-muted mb-1">From (local part)</span>
           <input value={localPart} onChange={(e) => setLocalPart(e.target.value)} placeholder="campaigns"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            className="w-full px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus" />
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold text-slate-500 mb-1">From name (optional)</span>
+          <span className="block text-xs font-semibold text-fg-muted mb-1">From name (optional)</span>
           <input value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Acme Co"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            className="w-full px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus" />
         </label>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={save} disabled={saving || !domain}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white inline-flex items-center gap-1.5 bg-teal-700 disabled:opacity-40">
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg text-accent-contrast inline-flex items-center gap-1.5 bg-accent disabled:opacity-40">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           {current ? "Update domain" : "Register domain"}
         </button>
         {current && (
           <button onClick={verify} disabled={verifying}
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-600 disabled:opacity-40">
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 border border-line bg-surface text-fg-muted disabled:opacity-40">
             {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Check verification
           </button>
         )}
         {status !== "none" && (
-          <span className={`text-xs font-semibold px-2 py-1 rounded-full border ${STATUS_STYLE[status] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+          <span className={`text-xs font-semibold px-2 py-1 rounded-full border ${STATUS_STYLE[status] ?? "bg-surface-inset text-fg-muted border-line"}`}>
             {status}
           </span>
         )}
         {current && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-fg-muted">
             Sends as {current.fromName ? `${current.fromName} ` : ""}&lt;{current.fromLocalPart}@{current.domain}&gt;
             {status !== "verified" ? " — used only once verified" : ""}
           </span>
         )}
       </div>
 
-      {error && <div className="text-xs text-red-600">{error}</div>}
+      {error && <div className="text-xs text-danger">{error}</div>}
 
       {current && current.dnsRecords.length > 0 && (
         <div>
-          <div className="text-xs font-semibold text-slate-500 mb-1">DNS records the tenant must publish</div>
+          <div className="text-xs font-semibold text-fg-muted mb-1">DNS records the tenant must publish</div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs bg-white rounded-lg border border-slate-200">
+            <table className="w-full text-xs bg-surface rounded-lg border border-line">
               <thead>
-                <tr className="text-left text-slate-500 border-b border-slate-100">
+                <tr className="text-left text-fg-muted border-b border-line">
                   <th className="px-2 py-1.5">Type</th>
                   <th className="px-2 py-1.5">Name</th>
                   <th className="px-2 py-1.5">Value</th>
@@ -158,7 +158,7 @@ export function SendingDomainPanel({ tenantId }: { tenantId: string }) {
               </thead>
               <tbody>
                 {current.dnsRecords.map((r, i) => (
-                  <tr key={i} className="border-b border-slate-50 last:border-0 align-top">
+                  <tr key={i} className="border-b border-line last:border-0 align-top">
                     <td className="px-2 py-1.5 font-mono">{r.type}</td>
                     <td className="px-2 py-1.5 font-mono break-all">{r.name}</td>
                     <td className="px-2 py-1.5 font-mono break-all">{r.value}</td>

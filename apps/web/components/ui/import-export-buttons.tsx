@@ -113,7 +113,7 @@ export function ImportExportButtons<T>({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-line bg-surface text-fg-muted hover:bg-surface-inset transition-colors"
           >
             <Upload className="w-3.5 h-3.5" /> Import
           </button>
@@ -122,17 +122,17 @@ export function ImportExportButtons<T>({
       <button
         type="button"
         onClick={handleExport}
-        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-line bg-surface text-fg-muted hover:bg-surface-inset transition-colors"
         style={{ color: accentColor }}
       >
         <Download className="w-3.5 h-3.5" /> Export
       </button>
 
       {toast && (
-        <div className={`absolute right-0 top-12 z-50 min-w-[260px] max-w-sm px-3 py-2 rounded-lg shadow-lg flex items-start gap-2 border ${toast.type === "success" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-          {toast.type === "success" ? <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />}
-          <span className={`text-xs ${toast.type === "success" ? "text-emerald-700" : "text-red-600"} flex-1`}>{toast.message}</span>
-          <button onClick={() => setToast(null)} className="text-slate-500 hover:text-slate-600">
+        <div className={`absolute right-0 top-12 z-50 min-w-[260px] max-w-sm px-3 py-2 rounded-lg shadow-lg flex items-start gap-2 border ${toast.type === "success" ? "bg-ok-bg border-ok-border" : "bg-danger-bg border-danger-border"}`}>
+          {toast.type === "success" ? <CheckCircle className="w-4 h-4 text-ok shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />}
+          <span className={`text-xs ${toast.type === "success" ? "text-ok" : "text-danger"} flex-1`}>{toast.message}</span>
+          <button onClick={() => setToast(null)} className="text-fg-muted hover:text-fg-muted">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>

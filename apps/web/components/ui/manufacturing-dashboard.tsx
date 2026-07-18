@@ -74,14 +74,14 @@ export async function ManufacturingDashboard() {
               const row = stageOf(s.id);
               return (
                 <div key={s.id} className="rounded-lg p-3" style={{ background: s.color + "10", borderTop: `3px solid ${s.color}` }}>
-                  <div className="text-2xl font-bold text-slate-800">{row?.count ?? 0}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{s.label}</div>
+                  <div className="text-2xl font-bold text-fg">{row?.count ?? 0}</div>
+                  <div className="text-xs text-fg-muted mt-0.5">{s.label}</div>
                   <div className="text-xs font-medium mt-1" style={{ color: s.color }}>{lakh(row?.valuePaise ?? 0)}</div>
                 </div>
               );
             })}
           </div>
-          <Link href="/orders" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+          <Link href="/orders" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
             <ClipboardList className="w-4 h-4" /> Open the order board <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -89,18 +89,18 @@ export async function ManufacturingDashboard() {
         <div className="card">
           <h3 className="card-title">Top Open Orders</h3>
           {topOrders.length === 0 ? (
-            <div className="py-6 text-center text-sm text-slate-400">No open orders — accepted quotes land here.</div>
+            <div className="py-6 text-center text-sm text-fg-subtle">No open orders — accepted quotes land here.</div>
           ) : (
             <div className="space-y-2">
               {topOrders.map((o) => (
-                <div key={o.id} className="flex items-center justify-between text-sm border-b border-slate-100 pb-2 last:border-0">
+                <div key={o.id} className="flex items-center justify-between text-sm border-b border-line pb-2 last:border-0">
                   <div>
-                    <div className="font-medium text-slate-700">{o.companyName ?? o.contactName ?? o.title}</div>
-                    <div className="text-xs text-slate-400 font-mono">{o.number}</div>
+                    <div className="font-medium text-fg">{o.companyName ?? o.contactName ?? o.title}</div>
+                    <div className="text-xs text-fg-subtle font-mono">{o.number}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">{lakh(o.valuePaise)}</div>
-                    <div className="text-xs text-slate-400">{o.stage}</div>
+                    <div className="text-xs text-fg-subtle">{o.stage}</div>
                   </div>
                 </div>
               ))}
@@ -112,22 +112,22 @@ export async function ManufacturingDashboard() {
       {/* Material alerts */}
       <div className="card">
         <div className="flex items-center gap-2 mb-3">
-          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <AlertTriangle className="w-4 h-4 text-warn" />
           <h3 className="card-title mb-0">Material Reorder Alerts</h3>
         </div>
         {reorderAlerts.length === 0 ? (
-          <div className="py-4 text-sm text-slate-400">All materials above reorder level.</div>
+          <div className="py-4 text-sm text-fg-subtle">All materials above reorder level.</div>
         ) : (
           <div className="grid grid-cols-3 gap-3">
             {reorderAlerts.slice(0, 6).map((i) => (
-              <div key={i.id} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-                <div className="font-medium text-amber-800">{i.name}</div>
-                <div className="text-xs text-amber-600">{i.stock} {i.unit} on hand · reorder at {i.reorderLevel}</div>
+              <div key={i.id} className="rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-sm">
+                <div className="font-medium text-warn">{i.name}</div>
+                <div className="text-xs text-warn">{i.stock} {i.unit} on hand · reorder at {i.reorderLevel}</div>
               </div>
             ))}
           </div>
         )}
-        <Link href="/quotes" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+        <Link href="/quotes" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg">
           <Calculator className="w-4 h-4" /> Build a quote <ChevronRight className="w-3.5 h-3.5" />
         </Link>
       </div>
