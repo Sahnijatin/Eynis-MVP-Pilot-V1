@@ -30,18 +30,18 @@ export function RequestTrendChart({ data }: RequestTrendChartProps) {
         <AreaChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="reqGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.02} />
+              <stop offset="5%" stopColor="var(--accent-solid, var(--color-primary, #0f766e))" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="var(--accent-solid, var(--color-primary, #0f766e))" stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
           <Tooltip
-            contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
+            contentStyle={{ background: "var(--chart-tooltip-bg)", border: "1px solid var(--chart-tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--text)" }}
           />
-          <Area type="monotone" dataKey="created" name="Created" stroke="var(--color-primary, #0f766e)" strokeWidth={2.5} fill="url(#reqGrad)" dot={{ fill: "var(--color-primary, #0f766e)", r: 3 }} activeDot={{ r: 5 }} />
-          <Area type="monotone" dataKey="resolved" name="Resolved" stroke="#f59e0b" strokeWidth={2} fill="transparent" dot={{ fill: "#f59e0b", r: 2.5 }} activeDot={{ r: 4 }} />
+          <Area type="monotone" dataKey="created" name="Created" stroke="var(--accent-solid, var(--color-primary, #0f766e))" strokeWidth={2.5} fill="url(#reqGrad)" dot={{ fill: "var(--accent-solid, var(--color-primary, #0f766e))", r: 3 }} activeDot={{ r: 5 }} />
+          <Area type="monotone" dataKey="resolved" name="Resolved" stroke="var(--cat-4)" strokeWidth={2} fill="transparent" dot={{ fill: "var(--cat-4)", r: 2.5 }} activeDot={{ r: 4 }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -58,16 +58,16 @@ export function RevenueBarChart({ data }: RevenueBarProps) {
     <div className="h-52">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-          <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+          <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
           <Tooltip
-            contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
+            contentStyle={{ background: "var(--chart-tooltip-bg)", border: "1px solid var(--chart-tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--text)" }}
             formatter={(val) => [`₹${(val as number).toLocaleString()}`, ""]}
           />
-          <Bar dataKey="upgrades" stackId="a" fill="var(--color-primary, #0f766e)" radius={[0, 0, 0, 0]} name="Upgrades" />
-          <Bar dataKey="lateCO" stackId="a" fill="#14b8a6" name="Late C/O" />
-          <Bar dataKey="fnb" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name="F&B Offers" />
+          <Bar dataKey="upgrades" stackId="a" fill="var(--accent-solid, var(--color-primary, #0f766e))" radius={[0, 0, 0, 0]} name="Upgrades" />
+          <Bar dataKey="lateCO" stackId="a" fill="var(--cat-1)" name="Late C/O" />
+          <Bar dataKey="fnb" stackId="a" fill="var(--cat-4)" radius={[3, 3, 0, 0]} name="F&B Offers" />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -109,16 +109,16 @@ export function SentimentLineChart({ data }: SentimentLineProps) {
     <div className="h-44">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false}
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false}
             tickFormatter={(v: number) => `DAY ${v}`}
             ticks={[1, 5, 10, 15, 20, 25, 30]}
           />
-          <YAxis domain={[40, 100]} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }} />
-          <Line type="monotone" dataKey="score" stroke="var(--color-primary, #0f766e)" strokeWidth={2} dot={false} name="Current Period" />
+          <YAxis domain={[40, 100]} tick={{ fontSize: 10, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={{ background: "var(--chart-tooltip-bg)", border: "1px solid var(--chart-tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--text)" }} />
+          <Line type="monotone" dataKey="score" stroke="var(--accent-solid, var(--color-primary, #0f766e))" strokeWidth={2} dot={false} name="Current Period" />
           {data[0]?.prev !== undefined && (
-            <Line type="monotone" dataKey="prev" stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Previous Period" />
+            <Line type="monotone" dataKey="prev" stroke="var(--chart-compare)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Previous Period" />
           )}
         </LineChart>
       </ResponsiveContainer>
@@ -138,17 +138,17 @@ export function EfficiencyChart({ data }: EfficiencyChartProps) {
         <AreaChart data={data} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
           <defs>
             <linearGradient id="effGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0.2} />
-              <stop offset="95%" stopColor="var(--color-primary, #0f766e)" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--accent-solid, var(--color-primary, #0f766e))" stopOpacity={0.2} />
+              <stop offset="95%" stopColor="var(--accent-solid, var(--color-primary, #0f766e))" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={{ background: "var(--chart-tooltip-bg)", border: "1px solid var(--chart-tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--text)" }}
             formatter={(v) => [`${v as number}m`, "Avg Resolution"]}
           />
-          <Area type="monotone" dataKey="minutes" stroke="var(--color-primary, #0f766e)" strokeWidth={2} fill="url(#effGrad)" dot={false} />
+          <Area type="monotone" dataKey="minutes" stroke="var(--accent-solid, var(--color-primary, #0f766e))" strokeWidth={2} fill="url(#effGrad)" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -166,12 +166,12 @@ export function CampaignBarChart({ data, names = ["Executions", "Conversions"] }
     <div className="h-44">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }} />
-          <Bar dataKey="executions" fill="var(--color-primary, #0f766e)" radius={[3, 3, 0, 0]} name={names[0]} />
-          <Bar dataKey="conversions" fill="#f59e0b" radius={[3, 3, 0, 0]} name={names[1]} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: "var(--chart-axis)" }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={{ background: "var(--chart-tooltip-bg)", border: "1px solid var(--chart-tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--text)" }} />
+          <Bar dataKey="executions" fill="var(--accent-solid, var(--color-primary, #0f766e))" radius={[3, 3, 0, 0]} name={names[0]} />
+          <Bar dataKey="conversions" fill="var(--cat-4)" radius={[3, 3, 0, 0]} name={names[1]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -116,6 +116,32 @@ paired with an icon/shape so it survives color‑blindness (see `migration-map.m
 | `--info-border` | `#C9D3F6` | `#2A3357` |
 | `--info-text` | `#3B4F9E` | `#8CA0FF` |
 
+## 5b. Categorical `--cat-1..8` (series / identity — Phase 7)
+
+For **chart series and category identity only** — never status, never the brand
+accent. A colour-blind-safe 8-hue set (Tailwind keys `cat.1..8` → `bg-cat-1`,
+`text-cat-1`, …). Assign in **fixed order, never cycled**; a 9th series folds into
+"Other"/facets, never a generated hue. Always pair with a legend/label/shape so
+hue never carries meaning alone. Validated against the chart surfaces
+(`--surface` #FFFFFF / #16181F) — worst adjacent CVD ΔE 9.1 light / 8.4 dark;
+three light slots sit <3:1 (relief rule → legend/label required).
+
+| Token | Hue | Light | Dark |
+|---|---|---|---|
+| `--cat-1` | blue | `#2a78d6` | `#3987e5` |
+| `--cat-2` | green | `#008300` | `#008300` |
+| `--cat-3` | magenta | `#e87ba4` | `#d55181` |
+| `--cat-4` | yellow | `#eda100` | `#c98500` |
+| `--cat-5` | aqua | `#1baf7a` | `#199e70` |
+| `--cat-6` | orange | `#eb6834` | `#d95926` |
+| `--cat-7` | violet | `#4a3aa7` | `#9085e9` |
+| `--cat-8` | red | `#e34948` | `#e66767` |
+
+**Chart chrome** aliases theme tokens so charts flip with no dark override:
+`--chart-grid` (=`--border`), `--chart-axis` (=`--text-subtle`),
+`--chart-tooltip-bg` (=`--surface`), `--chart-tooltip-border` (=`--border`),
+`--chart-compare` (=`--text-faint`, muted prior-period line).
+
 ## 6. Elevation (Fintech flat + optional Soft Depth glass)
 
 Ambient shadows carry a faint accent tint (~6% alpha) so depth reads warm, not gray.

@@ -526,7 +526,7 @@ export function CustomersClient({ terminology, industry }: Props) {
               {isFnb ? (
                 <>
                   {fnbClients.map((c, i) => (
-                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-orange-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-warn-bg" : ""}`}>
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-accent-bg transition-colors cursor-pointer ${c.status === "dormant" ? "bg-warn-bg" : ""}`}>
                       <td className="font-semibold text-fg">{c.name}</td>
                       <td><FnbTierBadge tier={c.tier} /></td>
                       <td className="font-semibold text-fg">{c.spend}</td>
@@ -543,8 +543,8 @@ export function CustomersClient({ terminology, industry }: Props) {
               ) : isTravel ? (
                 <>
                   {travelClients.map((c, i) => (
-                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-purple-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-warn-bg" : c.status === "pending" ? "bg-warn-bg" : ""}`}>
-                      <td className="font-semibold text-fg flex items-center gap-1.5"><Plane className="w-3 h-3 text-purple-400" />{c.name}</td>
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-accent-bg transition-colors cursor-pointer ${c.status === "dormant" ? "bg-warn-bg" : c.status === "pending" ? "bg-warn-bg" : ""}`}>
+                      <td className="font-semibold text-fg flex items-center gap-1.5"><Plane className="w-3 h-3 text-accent-text" />{c.name}</td>
                       <td className="text-xs text-fg-muted">{c.type}</td>
                       <td className="font-semibold text-fg">{c.revenue}</td>
                       <td className="text-fg-muted">{c.bookings}</td>

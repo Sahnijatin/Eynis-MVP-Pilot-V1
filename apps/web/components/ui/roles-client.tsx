@@ -244,7 +244,7 @@ export default function RolesClient({
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-fg">{role.displayName}</span>
-                      {role.isCustom && <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">CUSTOM</span>}
+                      {role.isCustom && <span className="text-[10px] px-1.5 py-0.5 bg-accent-bg text-accent-text rounded font-medium">CUSTOM</span>}
                       {role.isSystemRole && (
                         <span className="text-[10px] px-1.5 py-0.5 bg-surface-inset text-fg-muted rounded font-medium flex items-center gap-0.5">
                           <Lock className="w-2.5 h-2.5" />SYSTEM

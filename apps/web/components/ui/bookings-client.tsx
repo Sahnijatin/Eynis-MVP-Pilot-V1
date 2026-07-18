@@ -129,7 +129,7 @@ export function BookingsClient({ initialItems }: { initialItems: BookingRow[] })
                 const s = STATUS_META[b.status] ?? STATUS_META.in_progress;
                 return (
                   <tr key={b.id}>
-                    <td className="font-mono text-xs text-purple-600 font-semibold">{b.number}</td>
+                    <td className="font-mono text-xs text-accent-text font-semibold">{b.number}</td>
                     <td className="font-medium text-fg">{b.clientName}</td>
                     <td className="text-fg-muted text-xs">{b.destination || "—"}</td>
                     <td className="text-sm text-fg-muted">{fmtDate(b.departureDate)}</td>
@@ -159,41 +159,41 @@ export function BookingsClient({ initialItems }: { initialItems: BookingRow[] })
           <form onSubmit={save} className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-fg-muted mb-1">Client / Lead traveller *</label>
-              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Arora Family" value={form.clientName} onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))} required />
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" placeholder="Arora Family" value={form.clientName} onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))} required />
             </div>
             <div>
               <label className="block text-xs font-semibold text-fg-muted mb-1">Destination</label>
-              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Maldives — 5N/6D" value={form.destination} onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))} />
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" placeholder="Maldives — 5N/6D" value={form.destination} onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-fg-muted mb-1">Departure</label>
-                <input type="date" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.departureDate} onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))} />
+                <input type="date" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" value={form.departureDate} onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-fg-muted mb-1">Pax</label>
-                <input type="number" min="1" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.pax} onChange={(e) => setForm((f) => ({ ...f, pax: e.target.value }))} />
+                <input type="number" min="1" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" value={form.pax} onChange={(e) => setForm((f) => ({ ...f, pax: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-fg-muted mb-1">Booking Value (₹)</label>
-                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="0" value={form.valueInr} onChange={(e) => setForm((f) => ({ ...f, valueInr: e.target.value }))} />
+                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" placeholder="0" value={form.valueInr} onChange={(e) => setForm((f) => ({ ...f, valueInr: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-fg-muted mb-1">Paid so far (₹)</label>
-                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="0" value={form.paidInr} onChange={(e) => setForm((f) => ({ ...f, paidInr: e.target.value }))} />
+                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" placeholder="0" value={form.paidInr} onChange={(e) => setForm((f) => ({ ...f, paidInr: e.target.value }))} />
               </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-fg-muted mb-1">Status</label>
-              <select className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+              <select className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
                 {STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-fg-muted mb-1">Notes</label>
-              <textarea rows={2} className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" placeholder="Itinerary notes, visa status, reminders…" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+              <textarea rows={2} className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus resize-none" placeholder="Itinerary notes, visa status, reminders…" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-line text-fg-muted hover:bg-surface-inset">Cancel</button>
