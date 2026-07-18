@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode } from "./quotation";
+import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName } from "./quotation";
 
 // A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
 const DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
@@ -43,6 +43,40 @@ test("gstStateCode: extracts the leading 2-digit state code, else null", () => {
   assert.equal(gstStateCode("ABCDE1234F"), null); // no leading numeric state code
   assert.equal(gstStateCode(""), null);
   assert.equal(gstStateCode(null), null);
+});
+
+test("cleanHsnByGroup: keeps 4–8 digit codes, strips non-digits, drops the rest", () => {
+  const out = cleanHsnByGroup({
+    "Dining Table": "9403",
+    "Chair": " 94 01 60 ", // non-digits stripped → "940160" (6 digits, ok)
+    "Bad": "12", // too short
+    "TooLong": "1234567890", // >8 digits
+    "Empty": "",
+  });
+  assert.equal(out["Dining Table"], "9403");
+  assert.equal(out["Chair"], "940160");
+  assert.equal(out["Bad"], undefined);
+  assert.equal(out["TooLong"], undefined);
+  assert.equal(out["Empty"], undefined);
+  assert.equal(serializeHsnByGroup({}), null);
+});
+
+test("gstStateName: maps GST state codes to names", () => {
+  assert.equal(gstStateName("07"), "Delhi");
+  assert.equal(gstStateName("27"), "Maharashtra");
+  assert.equal(gstStateName("99"), "Centre Jurisdiction");
+  assert.equal(gstStateName("00"), null);
+  assert.equal(gstStateName(null), null);
+});
+
+test("buildQuotationView: attaches HSN/SAC to the matching piece by groupName", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Dining Table", "Top", 8000), line("Wardrobe", "Carcass", 2000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    hsnByGroup: { "Dining Table": "9403", "Wardrobe": "abc" }, // invalid code dropped
+  });
+  assert.equal(view.items.find((i) => i.name === "Dining Table")!.hsn, "9403");
+  assert.equal(view.items.find((i) => i.name === "Wardrobe")!.hsn, undefined);
 });
 
 test("buildQuotationView: intra-state → CGST+SGST, no IGST", () => {

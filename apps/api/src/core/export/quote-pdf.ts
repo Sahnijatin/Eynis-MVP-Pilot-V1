@@ -8,6 +8,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import type { SellerDetails, BillTo, QuotationView } from "../quotes/quotation";
+import { gstStateCode, gstStateName } from "../quotes/quotation";
 import { tryEmbedLogo } from "./report-pdf";
 
 const A4: [number, number] = [595.28, 841.89];
@@ -190,6 +191,10 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   }
   const subject = (data.subject ?? "").trim();
   if (subject) metaRow("Subject:", subject);
+  // Place of supply — the buyer's GST state, printed on GST documents.
+  const posCode = gstStateCode(data.billTo.gstin);
+  const posName = gstStateName(posCode);
+  if (posName) metaRow("Place of Supply:", `${posName} (${posCode})`);
 
   y = Math.min(ly, ry) - 6;
   page.drawLine({ start: { x: midX, y: top + 2 }, end: { x: midX, y: y + 6 }, thickness: 0.75, color: LINE });
@@ -247,17 +252,20 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const specColW = (cQty - cItem) - 12; // Items column inner width (name + wrapped spec)
   for (const it of data.view.items) {
     const imgCount = it.imageIndices?.length ?? 0;
-    // Wrap the spec to at most 2 lines instead of hard-truncating a single line, so
-    // multi-component pieces read fully. Row height clears whichever is taller: the
-    // name+spec stack or the stacked image links.
-    const specLines = it.spec ? wrap(it.spec, font, 8, specColW).slice(0, 2) : [];
-    const textH = specLines.length === 0 ? 22 : 30 + (specLines.length - 1) * 10;
+    // Muted sub-lines under the item name: HSN/SAC code (if any) then the spec, which
+    // wraps to at most 2 lines instead of hard-truncating so multi-component pieces read
+    // fully. Row height clears whichever is taller: this stack or the image links.
+    const subLines = [
+      ...(it.hsn ? [`HSN/SAC: ${it.hsn}`] : []),
+      ...(it.spec ? wrap(it.spec, font, 8, specColW).slice(0, 2) : []),
+    ];
+    const textH = subLines.length === 0 ? 22 : 30 + (subLines.length - 1) * 10;
     const imgH = imgCount ? Math.max(30, 14 + imgCount * 12) : 0;
     const rowH = Math.max(22, textH, imgH);
     if (y - rowH < bottomLimit) { page = doc.addPage(A4); y = A4[1] - MARGIN; drawTableHeader(); }
     const ty = y - 15;
     T(truncate(it.name, bold, 10, specColW), cItem + 8, ty, 10, bold, INK);
-    specLines.forEach((ln, k) => T(ln, cItem + 8, ty - 11 - k * 10, 8, font, MUTED));
+    subLines.forEach((ln, k) => T(ln, cItem + 8, ty - 11 - k * 10, 8, font, MUTED));
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
     if (imgCount) drawRowImageLinks(it.imageIndices, y);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
