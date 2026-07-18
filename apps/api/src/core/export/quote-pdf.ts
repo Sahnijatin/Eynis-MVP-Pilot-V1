@@ -100,7 +100,17 @@ export interface QuotationPdfData {
 
 // Item table column layout (fractions of content width). Numeric columns are right-aligned.
 // The Image(s) column (clickable "Image N" links) sits right after Quantity.
-const COLS = { item: 0.30, qty: 0.10, images: 0.18, price: 0.16, tax: 0.14, amount: 0.12 };
+const COLS = { item: 0.35, qty: 0.08, images: 0.16, price: 0.15, tax: 0.14, amount: 0.12 };
+
+// Neutral, industry-agnostic boilerplate shown when the quote carries no terms of its
+// own, so the document is never blank there. Kept generic (no payment/advance terms) so
+// it's safe for any tenant; a tenant that sets its own terms overrides this entirely.
+const DEFAULT_TERMS = [
+  "This is a quotation and not a tax invoice.",
+  "Prices are valid until the validity date shown above; if no validity is stated, this quotation is valid for 15 days from the date of issue.",
+  "Applicable taxes are as shown above and subject to the prevailing rates at the time of billing.",
+  "This quotation does not constitute a confirmed order until accepted in writing.",
+].join("\n");
 
 export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -137,6 +147,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const sellerLines: string[] = [];
   if (data.seller.address) sellerLines.push(...wrap(data.seller.address, font, 9, midX - LEFT - 8));
   if (data.seller.phone) sellerLines.push(`Phone: ${data.seller.phone}`);
+  if (data.seller.email) sellerLines.push(`Email: ${data.seller.email}`);
   if (data.seller.gstin) sellerLines.push(`GSTIN: ${data.seller.gstin}`);
   if (data.seller.pan) sellerLines.push(`PAN Number: ${data.seller.pan}`);
   for (const line of sellerLines) { T(truncate(line, font, 9, midX - LEFT - 8), LEFT, ly, 9, font, INK); ly -= 13; }
@@ -186,7 +197,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     page.drawRectangle({ x: LEFT, y: y - headerH, width: CONTENT_W, height: headerH, color: accent });
     const hy = y - 15;
     T("Items", cItem + 8, hy, 9, bold, WHITE);
-    T("Quantity", cQty + 6, hy, 9, bold, WHITE);
+    T("Qty", cQty + 6, hy, 9, bold, WHITE);
     T("Image(s)", cImg + 4, hy, 9, bold, WHITE);
     T("Price/Unit", cPrice + 4, hy, 9, bold, WHITE);
     T("Tax/Unit", cTax + 4, hy, 9, bold, WHITE);
@@ -216,13 +227,20 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   };
 
   const bottomLimit = MARGIN + 150; // reserve room for the summary + signatures
+  const specColW = (cQty - cItem) - 12; // Items column inner width (name + wrapped spec)
   for (const it of data.view.items) {
     const imgCount = it.imageIndices?.length ?? 0;
-    const rowH = imgCount ? Math.max(30, 14 + imgCount * 12) : it.spec ? 30 : 22;
+    // Wrap the spec to at most 2 lines instead of hard-truncating a single line, so
+    // multi-component pieces read fully. Row height clears whichever is taller: the
+    // name+spec stack or the stacked image links.
+    const specLines = it.spec ? wrap(it.spec, font, 8, specColW).slice(0, 2) : [];
+    const textH = specLines.length === 0 ? 22 : 30 + (specLines.length - 1) * 10;
+    const imgH = imgCount ? Math.max(30, 14 + imgCount * 12) : 0;
+    const rowH = Math.max(22, textH, imgH);
     if (y - rowH < bottomLimit) { page = doc.addPage(A4); y = A4[1] - MARGIN; drawTableHeader(); }
     const ty = y - 15;
-    T(truncate(it.name, bold, 10, (cQty - cItem) - 12), cItem + 8, ty, 10, bold, INK);
-    if (it.spec) T(truncate(it.spec, font, 8, (cQty - cItem) - 12), cItem + 8, ty - 11, 8, font, MUTED);
+    T(truncate(it.name, bold, 10, specColW), cItem + 8, ty, 10, bold, INK);
+    specLines.forEach((ln, k) => T(ln, cItem + 8, ty - 11 - k * 10, 8, font, MUTED));
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
     if (imgCount) drawRowImageLinks(it.imageIndices, y);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
@@ -286,10 +304,15 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const bodyLines = (lines: string[], size = 9) => { for (const l of lines) { T(truncate(l, font, size, leftColW), LEFT, lyL, size, font, INK); lyL -= size + 4; } };
   if (bankLines.length) { heading("Bank Details"); bodyLines(bankLines); lyL -= 8; }
   if (data.notes) { heading("Notes"); bodyLines(wrap(data.notes, font, 9, leftColW)); lyL -= 8; }
-  if (data.terms) { heading("Terms & Conditions"); bodyLines(wrap(data.terms, font, 9, leftColW)); lyL -= 8; }
+  const termsText = (data.terms && data.terms.trim()) ? data.terms : DEFAULT_TERMS;
+  { heading("Terms & Conditions"); bodyLines(wrap(termsText, font, 9, leftColW)); lyL -= 8; }
 
   // ── Signatures ────────────────────────────────────────────────────────────────
-  const footY = Math.max(MARGIN + 24, Math.min(lyL, lyR) - 24);
+  // Anchor the signature block to the bottom of the page (standard document layout).
+  // If the content already reaches too far down to fit it, move to a fresh page so the
+  // signatures never overlap the tax summary / terms.
+  const footY = MARGIN + 36;
+  if (Math.min(lyL, lyR) < footY + 24) { page = doc.addPage(A4); y = A4[1] - MARGIN; }
   page.drawLine({ start: { x: LEFT, y: footY + 14 }, end: { x: LEFT + 150, y: footY + 14 }, thickness: 0.5, color: LINE });
   T("Customer Signature", LEFT, footY, 9, font, MUTED);
   page.drawLine({ start: { x: RIGHT - 170, y: footY + 14 }, end: { x: RIGHT, y: footY + 14 }, thickness: 0.5, color: LINE });
