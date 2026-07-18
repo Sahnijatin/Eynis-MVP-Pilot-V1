@@ -2,6 +2,7 @@ import { prisma } from "../../db/prisma";
 import { AI_AVAILABLE, type AIProvider, classifyInboundEvent } from "../ai/intelligence";
 import { sendWhatsAppReply, buildReplyMessage } from "./whatsapp-outbound";
 import { broadcastSSEEvent } from "../../sse/clients";
+import { getIntakePack, DEFAULT_INTAKE_PACK, type IntakePack } from "../industry-pack";
 
 export interface IngestInput {
   tenantId: string;
@@ -50,26 +51,32 @@ async function upsertGuest(tenantId: string, guestName: string, phoneE164: strin
   return g.id;
 }
 
-// Keyword fallback when AI is unavailable
-export function keywordClassify(text: string): ClassificationResult {
+// Keyword fallback when AI is unavailable. Category, routing and SLA come from the
+// tenant's industry pack (#159) — the ordered keyword rules make the first matching
+// category win, exactly as the old hardcoded hospitality ladder did. Priority
+// detection stays industry-neutral (urgent/asap wording), but the resulting SLA
+// window is pack-driven.
+export function keywordClassify(text: string, pack: IntakePack = DEFAULT_INTAKE_PACK): ClassificationResult {
   const lower = text.toLowerCase();
-  const category =
-    lower.includes("towel") || lower.includes("clean") || lower.includes("housekeep") ? "housekeeping"
-    : lower.includes("ac") || lower.includes("maintenance") || lower.includes("broken") || lower.includes("repair") ? "maintenance"
-    : lower.includes("food") || lower.includes("room service") || lower.includes("dining") || lower.includes("drink") ? "fnb"
-    : lower.includes("checkout") || lower.includes("check-out") || lower.includes("bill") || lower.includes("invoice") ? "front_desk"
-    : lower.includes("taxi") || lower.includes("tour") || lower.includes("recommend") ? "concierge"
-    : "front_desk";
+
+  let category = pack.defaultCategory;
+  for (const rule of pack.keywordRules) {
+    if (rule.keywords.some((k) => lower.includes(k))) {
+      category = rule.category;
+      break;
+    }
+  }
 
   const priority =
     lower.includes("urgent") || lower.includes("emergency") || lower.includes("medical") ? "urgent"
     : lower.includes("asap") || lower.includes("quickly") || lower.includes("soon") ? "high"
     : "normal";
 
-  const slaMinutes = priority === "urgent" ? 10 : priority === "high" ? 20 : 45;
+  const slaMinutes = pack.sla.byPriority[priority] ?? pack.sla.defaultMinutes;
   const summary = text.length > 80 ? text.slice(0, 77) + "..." : text;
+  const routingHint = pack.routing[category] ?? category;
 
-  return { category, priority, summary, sentiment: "neutral", routingHint: category, slaMinutes };
+  return { category, priority, summary, sentiment: "neutral", routingHint, slaMinutes };
 }
 
 const VALID_PRIORITIES = new Set(["low", "normal", "medium", "high", "urgent"]);
@@ -79,19 +86,20 @@ const SLA_MAX = 7 * 24 * 60;    // never more than 7 days
 
 // Clamp a (possibly AI-produced, injection-influenced) classification into safe,
 // well-typed values before it drives an SLA deadline and downstream filtering.
-export function sanitizeClassification(c: ClassificationResult): ClassificationResult {
+export function sanitizeClassification(c: ClassificationResult, pack: IntakePack = DEFAULT_INTAKE_PACK): ClassificationResult {
   const cleanStr = (v: unknown, max: number, dflt: string) => {
     const s = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim() : "";
     return s ? s.slice(0, max) : dflt;
   };
   const sla = Number(c.slaMinutes);
+  const fallbackRoute = pack.routing[pack.defaultCategory] ?? pack.defaultCategory;
   return {
-    category: cleanStr(c.category, 40, "front_desk").toLowerCase(),
+    category: cleanStr(c.category, 40, pack.defaultCategory).toLowerCase(),
     priority: VALID_PRIORITIES.has(String(c.priority).toLowerCase()) ? String(c.priority).toLowerCase() : "normal",
     summary: cleanStr(c.summary, 500, "Request received"),
     sentiment: VALID_SENTIMENTS.has(String(c.sentiment).toLowerCase()) ? String(c.sentiment).toLowerCase() : "neutral",
-    routingHint: cleanStr(c.routingHint, 40, "front_desk").toLowerCase(),
-    slaMinutes: Number.isFinite(sla) ? Math.min(SLA_MAX, Math.max(SLA_MIN, Math.round(sla))) : 45,
+    routingHint: cleanStr(c.routingHint, 40, fallbackRoute).toLowerCase(),
+    slaMinutes: Number.isFinite(sla) ? Math.min(SLA_MAX, Math.max(SLA_MIN, Math.round(sla))) : pack.sla.defaultMinutes,
   };
 }
 
@@ -128,6 +136,16 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
   let replyMessage: string | null = null;
 
   try {
+    // Resolve the tenant's industry pack once — it drives categories, keyword
+    // routing and SLA for the rest of the pipeline (#159). Unknown/missing
+    // industry falls back to the generic pack inside getIntakePack.
+    const tenantRow = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { industry: true },
+    });
+    const industry = tenantRow?.industry ?? null;
+    const pack = getIntakePack(industry);
+
     // 2. Upsert guest
     if (guestPhone) {
       guestId = await upsertGuest(tenantId, guestName, guestPhone);
@@ -136,7 +154,10 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
     // 3. Classify via AI (or keyword fallback)
     if (AI_AVAILABLE && messageText) {
       try {
-        const aiResult = await classifyInboundEvent(tenantId, messageText, aiProvider);
+        const aiResult = await classifyInboundEvent(tenantId, messageText, aiProvider, {
+          categories: pack.categories,
+          industry,
+        });
         classification = {
           category: aiResult.category,
           priority: aiResult.priority,
@@ -146,17 +167,17 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
           slaMinutes: aiResult.slaMinutes
         };
       } catch {
-        classification = keywordClassify(messageText);
+        classification = keywordClassify(messageText, pack);
       }
     } else {
-      classification = keywordClassify(messageText);
+      classification = keywordClassify(messageText, pack);
     }
 
     // 3b. Clamp/validate the classification — the AI output is derived from an
     // untrusted inbound message, so never trust its shape. An unbounded slaMinutes
     // could push the SLA centuries out (never breaches); a non-enum priority/sentiment
     // breaks downstream filters; a NaN slaMinutes makes `new Date(NaN)` throw (F-…).
-    classification = sanitizeClassification(classification);
+    classification = sanitizeClassification(classification, pack);
 
     // 4. Create service request
     if (guestId) {

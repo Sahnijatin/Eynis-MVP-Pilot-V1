@@ -31,6 +31,7 @@ import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
 import { hashToken as hashInviteToken, assertSecretsEncryptionConfigured } from "./core/crypto/secrets";
 import { seedIndustryDefaults, backfillIndustryDefaults } from "./core/quotes/provision";
+import { seedAutomationRulesForTenant } from "./core/automations/provision";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -1097,6 +1098,14 @@ const handleRequest = async (
         await seedIndustryDefaults(tenantId, industry, propertyName);
       } catch (err) {
         console.warn("[workspace-create] seedIndustryDefaults failed:", err instanceof Error ? err.message : err);
+      }
+
+      // Seed the industry pack's operational automation rules (#160). Best-effort:
+      // a seeding hiccup must not block workspace creation.
+      try {
+        await seedAutomationRulesForTenant(tenantId, industry);
+      } catch (err) {
+        console.warn("[workspace-create] seedAutomationRulesForTenant failed:", err instanceof Error ? err.message : err);
       }
 
       const adminRole = await prisma.role.findUnique({
