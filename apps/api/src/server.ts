@@ -14,6 +14,7 @@ import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
 import { assertSecretsEncryptionConfigured } from "./core/crypto/secrets";
 import { seedIndustryDefaults, backfillIndustryDefaults } from "./core/quotes/provision";
+import { seedAutomationRulesForTenant } from "./core/automations/provision";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -64,6 +65,7 @@ import { handleAIRoutes } from "./core/ai/routes";
 import { handleTeamRoutes } from "./core/team/routes";
 import { handleAnalyticsRoutes } from "./core/analytics/routes";
 import { handleAutomationRoutes } from "./core/automations/routes";
+import { handleIntakeRoutes } from "./core/connectors/intake-routes";
 import { ensureTenantAccess } from "./core/authz";
 // Compat re-exports: tests (authz-matrix) and any older imports keep working.
 export { permissionMap } from "./core/authz";
@@ -1050,6 +1052,14 @@ const handleRequest = async (
         await seedIndustryDefaults(tenantId, industry, propertyName);
       } catch (err) {
         console.warn("[workspace-create] seedIndustryDefaults failed:", err instanceof Error ? err.message : err);
+      }
+
+      // Seed the industry pack's operational automation rules (#160). Best-effort:
+      // a seeding hiccup must not block workspace creation.
+      try {
+        await seedAutomationRulesForTenant(tenantId, industry);
+      } catch (err) {
+        console.warn("[workspace-create] seedAutomationRulesForTenant failed:", err instanceof Error ? err.message : err);
       }
 
       const adminRole = await prisma.role.findUnique({
@@ -2722,6 +2732,7 @@ const handleRequest = async (
     if (await handleAutomationRoutes(req, res)) return;
 
     // ── Extracted domain routers (5.1): each returns true when it handled ─────
+    if (await handleIntakeRoutes(req, res)) return;
     if (await handleReportRoutes(req, res)) return;
     if (await handleResearchRoutes(req, res)) return;
 
