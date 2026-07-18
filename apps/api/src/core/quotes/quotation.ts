@@ -167,10 +167,19 @@ export interface QuotationView {
   subTotalPaise: number; // Σ item amounts (incl. tax)
   taxablePaise: number; // ex-GST taxable value (pre-discount)
   gstPct: number;
-  cgstPaise: number;
-  sgstPaise: number;
+  interState: boolean; // true → GST charged as IGST; false → split CGST+SGST
+  cgstPaise: number; // 0 when interState
+  sgstPaise: number; // 0 when interState
+  igstPaise: number; // 0 when NOT interState
   discountPaise: number;
   grandTotalPaise: number; // taxable + gst − discount
+}
+
+// The 2-digit GST state code is the leading pair of a GSTIN (e.g. "07" = Delhi). Returns
+// null when the value isn't a GSTIN with a leading numeric state code.
+export function gstStateCode(gstin: string | undefined | null): string | null {
+  const m = /^(\d{2})/.exec(String(gstin ?? "").trim());
+  return m ? m[1] : null;
 }
 
 interface ViewLine {
@@ -197,6 +206,8 @@ export function buildQuotationView(q: {
   discountPaise: number;
   gstPercent: number;
   images?: LineImages; // per-piece images keyed by groupName
+  sellerGstin?: string | null; // issuer GSTIN — place of supply origin
+  buyerGstin?: string | null; // customer GSTIN — determines intra- vs inter-state
 }): QuotationView {
   const images = cleanLineImages(q.images);
   const idxByGroup = lineImageIndexByGroup(images);
@@ -238,8 +249,15 @@ export function buildQuotationView(q: {
     items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax, images: [], imageIndices: [] });
   }
 
-  const cgstPaise = Math.round(gstTotal / 2);
-  const sgstPaise = gstTotal - cgstPaise; // remainder on SGST so the two halves sum exactly
+  // Place of supply: inter-state ONLY when both GSTINs are known and their state codes
+  // differ → GST is charged as a single IGST line. Otherwise intra-state (CGST+SGST),
+  // which also covers the common case of an unregistered/unknown buyer (no GSTIN).
+  const sellerState = gstStateCode(q.sellerGstin);
+  const buyerState = gstStateCode(q.buyerGstin);
+  const interState = !!sellerState && !!buyerState && sellerState !== buyerState;
+  const igstPaise = interState ? gstTotal : 0;
+  const cgstPaise = interState ? 0 : Math.round(gstTotal / 2);
+  const sgstPaise = interState ? 0 : gstTotal - cgstPaise; // remainder on SGST so the two halves sum exactly
   const subTotalPaise = items.reduce((s, it) => s + it.amountPaise, 0);
 
   return {
@@ -248,8 +266,10 @@ export function buildQuotationView(q: {
     subTotalPaise,
     taxablePaise,
     gstPct,
+    interState,
     cgstPaise,
     sgstPaise,
+    igstPaise,
     discountPaise,
     grandTotalPaise: taxablePaise + gstTotal - discountPaise,
   };

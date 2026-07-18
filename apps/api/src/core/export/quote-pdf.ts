@@ -238,7 +238,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const sy = y - 15;
   T("Sub Total", cItem + 8, sy, 9, bold, WHITE);
   T(String(data.view.totalQuantity), cQty + 6, sy, 9, bold, WHITE);
-  T(money(data.view.cgstPaise + data.view.sgstPaise), cTax + 4, sy, 9, bold, WHITE);
+  T(money(data.view.cgstPaise + data.view.sgstPaise + data.view.igstPaise), cTax + 4, sy, 9, bold, WHITE);
   TR(money(data.view.subTotalPaise), RIGHT - 8, sy, 9, bold, WHITE);
   y -= subH + 16;
 
@@ -260,8 +260,13 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const halfPct = data.view.gstPct / 2;
   sumRow("Taxable Amount", money(data.view.taxablePaise));
   if (data.view.gstPct > 0) {
-    sumRow(`CGST @${halfPct}%`, money(data.view.cgstPaise));
-    sumRow(`SGST @${halfPct}%`, money(data.view.sgstPaise));
+    if (data.view.interState) {
+      // Inter-state supply → single IGST line at the full rate.
+      sumRow(`IGST @${data.view.gstPct}%`, money(data.view.igstPaise));
+    } else {
+      sumRow(`CGST @${halfPct}%`, money(data.view.cgstPaise));
+      sumRow(`SGST @${halfPct}%`, money(data.view.sgstPaise));
+    }
   }
   if (data.view.discountPaise > 0) sumRow("Discount", `- ${money(data.view.discountPaise)}`);
   page.drawLine({ start: { x: rightX, y: lyR + 6 }, end: { x: RIGHT, y: lyR + 6 }, thickness: 0.75, color: LINE });

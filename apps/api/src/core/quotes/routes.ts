@@ -431,6 +431,9 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           discountPaise: Number(quote.discountPaise) || 0,
           gstPercent: Number(quote.gstPercent) || 0,
           images: quote.lineImages,
+          // Place of supply: seller vs buyer GSTIN state code decides CGST/SGST vs IGST.
+          sellerGstin: quote.seller?.gstin ?? null,
+          buyerGstin: quote.billTo?.gstin ?? null,
         });
         // If the quote has images AND a public base URL is configured, mint (once) a
         // read-only image token and build the link prefix the PDF's "Image N" links use.

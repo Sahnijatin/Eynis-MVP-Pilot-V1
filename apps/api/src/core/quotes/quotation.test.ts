@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages } from "./quotation";
+import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode } from "./quotation";
 
 // A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
 const DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
@@ -34,6 +34,55 @@ test("buildQuotationView: one line per piece with selling price allocated by cos
   assert.equal(view.grandTotalPaise, 100000 + 18000);
   // Spec carries the piece's components + dimensions.
   assert.match(view.items[0].spec, /Table top \(1800 × 900 mm\)/);
+});
+
+test("gstStateCode: extracts the leading 2-digit state code, else null", () => {
+  assert.equal(gstStateCode("07ABCDE1234F1Z5"), "07");
+  assert.equal(gstStateCode("27AAAAA0000A1Z5"), "27");
+  assert.equal(gstStateCode("  08AALCR2857A1ZD "), "08");
+  assert.equal(gstStateCode("ABCDE1234F"), null); // no leading numeric state code
+  assert.equal(gstStateCode(""), null);
+  assert.equal(gstStateCode(null), null);
+});
+
+test("buildQuotationView: intra-state → CGST+SGST, no IGST", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Item", "A", 1000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    sellerGstin: "07AAAAA0000A1Z5", // Delhi
+    buyerGstin: "07BBBBB1111B1Z5", // Delhi (same state)
+  });
+  assert.equal(view.interState, false);
+  assert.equal(view.igstPaise, 0);
+  assert.equal(view.cgstPaise, 9000);
+  assert.equal(view.sgstPaise, 9000);
+  assert.equal(view.cgstPaise + view.sgstPaise, 18000);
+});
+
+test("buildQuotationView: inter-state → single IGST, no CGST/SGST", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Item", "A", 1000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    sellerGstin: "07AAAAA0000A1Z5", // Delhi
+    buyerGstin: "27BBBBB1111B1Z5", // Maharashtra (different state)
+  });
+  assert.equal(view.interState, true);
+  assert.equal(view.igstPaise, 18000);
+  assert.equal(view.cgstPaise, 0);
+  assert.equal(view.sgstPaise, 0);
+  assert.equal(view.grandTotalPaise, 100000 + 18000);
+});
+
+test("buildQuotationView: unknown/missing buyer GSTIN defaults to intra-state (CGST+SGST)", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Item", "A", 1000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    sellerGstin: "07AAAAA0000A1Z5",
+    buyerGstin: null, // unregistered / B2C
+  });
+  assert.equal(view.interState, false);
+  assert.equal(view.igstPaise, 0);
+  assert.equal(view.cgstPaise + view.sgstPaise, 18000);
 });
 
 test("cleanLineImages: caps at 3 per row, rejects non-image / oversized, drops empty groups", () => {
