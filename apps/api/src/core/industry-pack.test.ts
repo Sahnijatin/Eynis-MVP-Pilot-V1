@@ -79,6 +79,35 @@ test("getIndustryPack composes vocabulary, intake and automation set per industr
   }
 });
 
+// #166 — the IT helpdesk pack: incident/access/hardware/software/facilities/hr_ops.
+test("it_services pack classifies helpdesk tickets by category and desk", () => {
+  const it = getIntakePack("it_services");
+  assert.equal(it.industry, "it_services");
+  assert.equal(it.defaultCategory, "incident");
+
+  const access = keywordClassify("I'm locked out, need a password reset and MFA", it);
+  assert.equal(access.category, "access");
+  assert.equal(access.routingHint, "it");
+
+  const hardware = keywordClassify("my laptop won't power on, charger seems dead", it);
+  assert.equal(hardware.category, "hardware");
+
+  const facilities = keywordClassify("meeting room air conditioning is broken", it);
+  assert.equal(facilities.category, "facilities");
+  assert.equal(facilities.routingHint, "facilities");
+
+  const hr = keywordClassify("payroll question about my leave balance", it);
+  assert.equal(hr.category, "hr_ops");
+  assert.equal(hr.routingHint, "hr");
+
+  // Unmatched / outage wording defaults to incident; urgent gets the tight SLA.
+  assert.equal(keywordClassify("everything is on fire please help", it).category, "incident");
+  assert.equal(keywordClassify("URGENT: email server outage", it).slaMinutes, 15);
+
+  // Vocabulary: the unit of work is a "ticket".
+  assert.equal(getIndustryPack("it_services").vocabulary.request, "ticket");
+});
+
 test("getIndustryTerms ignores prototype-chain keys and falls back neutrally", () => {
   assert.equal(getIndustryTerms("__proto__").label, "Operations");
   assert.equal(getIndustryTerms(null).contactPlural, "contacts");

@@ -3,6 +3,7 @@ import { ManufacturingDashboard } from "../../components/ui/manufacturing-dashbo
 import { FnbDashboard } from "../../components/ui/fnb-dashboard";
 import { TravelDashboard } from "../../components/ui/travel-dashboard";
 import { HealthcareDashboard } from "../../components/ui/healthcare-dashboard";
+import { ItServicesDashboard } from "../../components/ui/it-services-dashboard";
 import { fetchDashboardData } from "../../lib/data";
 import Link from "next/link";
 import {
@@ -33,6 +34,7 @@ export default async function DashboardPage() {
   if (industry === "fnb") return <FnbDashboard />;
   if (industry === "travel") return <TravelDashboard />;
   if (industry === "healthcare") return <HealthcareDashboard />;
+  if (industry === "it_services") return <ItServicesDashboard />;
 
   // Default: Hospitality dashboard
   let data: Awaited<ReturnType<typeof fetchDashboardData>> | null = null;

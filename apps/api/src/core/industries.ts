@@ -4,7 +4,7 @@
 // the customer. The API is the gatekeeper for persistence, so this list — not the
 // web's `industry-config.ts` — is what actually constrains `Tenant.industry`.
 // Keep the two in sync when adding a vertical.
-export const VALID_INDUSTRIES = ["hospitality", "manufacturing", "fnb", "travel", "healthcare"] as const;
+export const VALID_INDUSTRIES = ["hospitality", "manufacturing", "fnb", "travel", "healthcare", "it_services"] as const;
 
 export type IndustryKey = (typeof VALID_INDUSTRIES)[number];
 
@@ -13,7 +13,8 @@ export const INDUSTRY_LABELS: Record<IndustryKey, string> = {
   manufacturing: "Manufacturing",
   fnb: "Food & Beverage",
   travel: "Travel",
-  healthcare: "Healthcare"
+  healthcare: "Healthcare",
+  it_services: "IT / Tech Corporate"
 };
 
 export const isValidIndustry = (value: unknown): value is IndustryKey =>
