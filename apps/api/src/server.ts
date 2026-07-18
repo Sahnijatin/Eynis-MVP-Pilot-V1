@@ -9,8 +9,6 @@ import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConf
 import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
 import { ingestConnectorEvent } from "./core/connectors/ingest";
 import { startAutomationWorker } from "./core/automations/engine";
-import { computeSentimentAnalytics } from "./core/analytics/sentiment";
-import { computeUpsellAnalytics } from "./core/analytics/upsell";
 import { listInventory, applyMovement, updateItem, deleteItem, listMovements, yieldSummary, toPaise, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
 import type { FollowupResult } from "./core/quotes/followup";
@@ -64,6 +62,8 @@ import { handleCrmRoutes } from "./core/crm/routes";
 import { handleCampaignRoutes } from "./core/campaigns/routes";
 import { handleAIRoutes } from "./core/ai/routes";
 import { handleTeamRoutes } from "./core/team/routes";
+import { handleAnalyticsRoutes } from "./core/analytics/routes";
+import { handleAutomationRoutes } from "./core/automations/routes";
 import { ensureTenantAccess } from "./core/authz";
 // Compat re-exports: tests (authz-matrix) and any older imports keep working.
 export { permissionMap } from "./core/authz";
@@ -76,28 +76,9 @@ eventBus.subscribe("service_request.created", (event) => {
   void event;
 });
 
-// Parse a from/to reporting window from the query string (E-15). Returns null
-// when NEITHER param is present so each endpoint keeps its own default window
-// (preserving prior behaviour). Accepts YYYY-MM-DD (date-only — `to` is treated
-// as end-of-day, inclusive) or full ISO timestamps. If only one bound is given,
-// the other defaults (to=now, from=to−30d). Swaps if from > to.
+// Date-only guard, still used by the branded-export routes below. (The reporting
+// -window parser moved to core/analytics/routes.ts with the analytics routes, #164.)
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const parseDateRange = (req: IncomingMessage): { from: Date; to: Date } | null => {
-  const sp = parseUrl(req.url).searchParams;
-  const fromRaw = sp.get("from");
-  const toRaw = sp.get("to");
-  if (!fromRaw && !toRaw) return null;
-  const parse = (v: string | null, endOfDay: boolean): Date | null => {
-    if (!v) return null;
-    const iso = DATE_ONLY_RE.test(v) ? `${v}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z` : v;
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-  let to = parse(toRaw, true) ?? new Date();
-  let from = parse(fromRaw, false) ?? new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-  if (from.getTime() > to.getTime()) { const t = from; from = to; to = t; }
-  return { from, to };
-};
 
 
 // ── Tenant branding (white-label) ──────────────────────────────────────────────
@@ -2219,195 +2200,8 @@ const handleRequest = async (
       return;
     }
 
-    if (parseUrl(req.url).pathname === "/analytics/revenue-intelligence" && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /analytics/revenue-intelligence");
-      if (!auth.ok) return;
-      const context = auth.context;
-      // Optional reporting window (E-15); null → all-time (prior behaviour).
-      const revRange = parseDateRange(req);
-      const revCreatedAt = revRange ? { createdAt: { gte: revRange.from, lte: revRange.to } } : {};
-
-      const [offerEvents, openRequests] = await Promise.all([
-        prisma.offerEvent.findMany({
-          where: { tenantId: context.tenantId, ...revCreatedAt },
-          select: { offerType: true, status: true, revenueInr: true }
-        }),
-        prisma.serviceRequest.count({
-          where: { tenantId: context.tenantId, status: { not: "resolved" }, ...revCreatedAt }
-        })
-      ]);
-
-      const grouped = new Map<string, { sent: number; accepted: number; revenueInr: number }>();
-      let sentOffers = 0;
-      let acceptedOffers = 0;
-      let totalUpsellInr = 0;
-      let lateCheckoutInr = 0;
-      for (const ev of offerEvents) {
-        const key = ev.offerType || "unknown";
-        const current = grouped.get(key) ?? { sent: 0, accepted: 0, revenueInr: 0 };
-        current.sent += 1;
-        sentOffers += 1;
-        if (ev.status === "accepted" || ev.status === "converted") {
-          current.accepted += 1;
-          current.revenueInr += ev.revenueInr;
-          acceptedOffers += 1;
-          totalUpsellInr += ev.revenueInr;
-          if (key.toLowerCase().includes("late_checkout")) {
-            lateCheckoutInr += ev.revenueInr;
-          }
-        }
-        grouped.set(key, current);
-      }
-
-      const byAutomationType = Array.from(grouped.entries())
-        .map(([key, value]) => ({ key, ...value }))
-        .sort((a, b) => b.revenueInr - a.revenueInr);
-      const topConvertingOffers = byAutomationType
-        .filter((x) => x.sent > 0)
-        .map((x) => ({
-          offerType: x.key,
-          sent: x.sent,
-          accepted: x.accepted,
-          conversionRate: Number(((x.accepted / x.sent) * 100).toFixed(2))
-        }))
-        .sort((a, b) => b.conversionRate - a.conversionRate)
-        .slice(0, 6);
-
-      const leftOnTableInr = Math.max(0, (sentOffers - acceptedOffers) * 700 + openRequests * 400);
-      json(res, 200, {
-        ok: true,
-        totals: {
-          totalUpsellInr,
-          acceptedOffers,
-          sentOffers,
-          lateCheckoutInr,
-          leftOnTableInr
-        },
-        byAutomationType,
-        topConvertingOffers,
-        funnel: {
-          triggered: sentOffers,
-          sent: sentOffers,
-          opened: sentOffers,
-          accepted: acceptedOffers,
-          revenueInr: totalUpsellInr
-        }
-      });
-      return;
-    }
-
-    if (parseUrl(req.url).pathname === "/analytics/staff-performance" && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /analytics/staff-performance");
-      if (!auth.ok) return;
-      const context = auth.context;
-      // Optional reporting window (E-15); null → all-time (prior behaviour).
-      const staffRange = parseDateRange(req);
-      const staffCreatedAt = staffRange ? { createdAt: { gte: staffRange.from, lte: staffRange.to } } : {};
-
-      const [users, requests, staffSentiment] = await Promise.all([
-        prisma.user.findMany({
-          where: { tenantId: context.tenantId, isActive: true },
-          select: { id: true, fullName: true, role: true }
-        }),
-        prisma.serviceRequest.findMany({
-          where: { tenantId: context.tenantId, ...staffCreatedAt },
-          select: { status: true, assignedToUserId: true, createdAt: true, resolvedAt: true }
-        }),
-        computeSentimentAnalytics(context.tenantId, staffRange ?? undefined)
-      ]);
-      // Real guest rating derived from sentiment feedback (0..100 net score → 0..5),
-      // or null when there's no feedback — never a hardcoded 0 (F-17).
-      const avgGuestRating = staffSentiment.totalFeedback > 0
-        ? Math.round((staffSentiment.netScore / 20) * 10) / 10
-        : null;
-
-      const byUser = new Map<string, { completed: number; minutesTotal: number; open: number }>();
-      for (const u of users) byUser.set(u.id, { completed: 0, minutesTotal: 0, open: 0 });
-
-      let resolvedCount = 0;
-      let totalMinutes = 0;
-      let openCount = 0;
-      for (const reqRow of requests) {
-        const isResolved = reqRow.status === "resolved" && reqRow.resolvedAt;
-        if (isResolved && reqRow.resolvedAt) {
-          const minutes = Math.max(
-            1,
-            Math.round((reqRow.resolvedAt.getTime() - reqRow.createdAt.getTime()) / 60000)
-          );
-          resolvedCount += 1;
-          totalMinutes += minutes;
-          if (reqRow.assignedToUserId && byUser.has(reqRow.assignedToUserId)) {
-            const current = byUser.get(reqRow.assignedToUserId)!;
-            current.completed += 1;
-            current.minutesTotal += minutes;
-            byUser.set(reqRow.assignedToUserId, current);
-          }
-        } else {
-          openCount += 1;
-          if (reqRow.assignedToUserId && byUser.has(reqRow.assignedToUserId)) {
-            const current = byUser.get(reqRow.assignedToUserId)!;
-            current.open += 1;
-            byUser.set(reqRow.assignedToUserId, current);
-          }
-        }
-      }
-
-      const completionRate =
-        requests.length === 0 ? 0 : Number(((resolvedCount / requests.length) * 100).toFixed(2));
-      const avgResolutionMinutes = resolvedCount === 0 ? 0 : Math.round(totalMinutes / resolvedCount);
-      const utilizationRate =
-        users.length === 0 ? 0 : Number((Math.min(100, (openCount / users.length) * 22)).toFixed(2));
-
-      const leaderboard = users
-        .map((u) => {
-          const row = byUser.get(u.id)!;
-          return {
-            userId: u.id,
-            fullName: u.fullName,
-            role: u.role,
-            completedTasks: row.completed,
-            avgResolutionMinutes:
-              row.completed === 0 ? 0 : Number((row.minutesTotal / row.completed).toFixed(2))
-          };
-        })
-        .sort((a, b) => b.completedTasks - a.completedTasks)
-        .slice(0, 10);
-
-      const roleMap = new Map<string, { openTasks: number; resolvedTasks: number }>();
-      for (const u of users) {
-        const row = byUser.get(u.id)!;
-        const current = roleMap.get(u.role) ?? { openTasks: 0, resolvedTasks: 0 };
-        current.openTasks += row.open;
-        current.resolvedTasks += row.completed;
-        roleMap.set(u.role, current);
-      }
-      const workloadByRole = Array.from(roleMap.entries()).map(([role, value]) => ({
-        role,
-        ...value
-      }));
-
-      const alerts: string[] = [];
-      if (openCount > resolvedCount) alerts.push("Open requests exceed resolved requests in current window");
-      for (const [role, value] of roleMap.entries()) {
-        if (value.openTasks > value.resolvedTasks * 1.5 && value.openTasks >= 3) {
-          alerts.push(role + " workload imbalance detected");
-        }
-      }
-
-      json(res, 200, {
-        ok: true,
-        summary: {
-          avgResolutionMinutes,
-          completionRate,
-          avgGuestRating,
-          utilizationRate
-        },
-        leaderboard,
-        workloadByRole,
-        alerts
-      });
-      return;
-    }
+    // ── Analytics router (#164): extracted to core/analytics/routes.ts ───────
+    if (await handleAnalyticsRoutes(req, res)) return;
 
     if (req.url === "/connectors/registry" && req.method === "GET") {
       const auth = await authorize(req, res, "GET /connectors/registry");
@@ -2924,136 +2718,8 @@ const handleRequest = async (
       return;
     }
 
-    // ── PATCH /automations/:id — pause / resume a rule ───────────────────────
-    // The automation engine only fires rules with isActive: true, so toggling
-    // this genuinely starts/stops the rule on the next 60s cycle.
-    const autoPatchMatch = req.method === "PATCH" ? /^\/automations\/([^/]+)$/.exec(parseUrl(req.url).pathname) : null;
-    if (autoPatchMatch) {
-      const auth = await authorize(req, res, "PATCH /automations/:id");
-      if (!auth.ok) return;
-      const context = auth.context;
-      const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
-      if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
-      const ruleId = decodeURIComponent(autoPatchMatch[1] as string);
-      const body = (await parseBody(req)) as { isActive?: unknown };
-      if (typeof body.isActive !== "boolean") { json(res, 400, { ok: false, error: "isActive (boolean) is required" }); return; }
-      const existing = await prisma.automationRule.findFirst({ where: { id: ruleId, tenantId: context.tenantId }, select: { id: true } });
-      if (!existing) { json(res, 404, { ok: false, error: "Automation not found" }); return; }
-      const updated = await prisma.automationRule.update({ where: { id: ruleId }, data: { isActive: body.isActive }, select: { id: true, isActive: true } });
-      json(res, 200, { ok: true, rule: updated });
-      return;
-    }
-
-    // ── GET /automations/executions ──────────────────────────────────────────
-    if (req.url?.startsWith("/automations/executions") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /automations/executions");
-      if (!auth.ok) return;
-      const licExec = await enforceLicenseFeature(auth.context.tenantId, "automations");
-      if (!licExec.ok) { json(res, 403, { ok: false, error: licExec.error }); return; }
-      const u = parseUrl(req.url);
-      const limit = asSafeLimit(u.searchParams.get("limit"), 20, 100);
-      const offset = asSafeOffset(u.searchParams.get("offset"));
-      const [execs, total] = await Promise.all([
-        prisma.automationExecution.findMany({
-          where: { tenantId: auth.context.tenantId },
-          orderBy: { executedAt: "desc" },
-          skip: offset,
-          take: limit
-        }),
-        prisma.automationExecution.count({ where: { tenantId: auth.context.tenantId } })
-      ]);
-      json(res, 200, {
-        ok: true,
-        items: execs.map((e) => ({
-          id: e.id, ruleId: e.ruleId, ruleCode: e.ruleCode,
-          triggerType: e.triggerType, triggerEntityId: e.triggerEntityId,
-          actionType: e.actionType, actionResult: e.actionResult,
-          resultDetail: e.resultDetail, executedAt: e.executedAt
-        })),
-        page: { limit, offset, total, hasMore: offset + execs.length < total }
-      });
-      return;
-    }
-
-    // ── GET /automations ─────────────────────────────────────────────────────
-    if (req.url?.startsWith("/automations") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /automations");
-      if (!auth.ok) return;
-      const context = auth.context;
-      const licAuto = await enforceLicenseFeature(context.tenantId, "automations");
-      if (!licAuto.ok) { json(res, 403, { ok: false, error: licAuto.error }); return; }
-      const rules = await prisma.automationRule.findMany({
-        where: { tenantId: context.tenantId },
-        orderBy: { createdAt: "asc" },
-        include: {
-          automationExecutions: {
-            orderBy: { executedAt: "desc" },
-            take: 1,
-            select: { executedAt: true }
-          }
-        }
-      });
-      // Execution counts per rule
-      const execCounts = await prisma.automationExecution.groupBy({
-        by: ["ruleId"],
-        where: { tenantId: context.tenantId },
-        _count: { id: true }
-      });
-      const successCounts = await prisma.automationExecution.groupBy({
-        by: ["ruleId"],
-        where: { tenantId: context.tenantId, actionResult: "success" },
-        _count: { id: true }
-      });
-      const execMap = Object.fromEntries(execCounts.map((e) => [e.ruleId, e._count.id]));
-      const successMap = Object.fromEntries(successCounts.map((e) => [e.ruleId, e._count.id]));
-
-      const items = rules.map((r) => {
-        let config: Record<string, unknown> = {};
-        try { config = JSON.parse(r.configJson) as Record<string, unknown>; } catch { /**/ }
-        const isMarketing = (config.ruleType as string) === "marketing";
-        const stats = (config.stats as Record<string, number> | undefined) ?? {};
-        const liveExecs = execMap[r.id] ?? 0;
-        const liveSuccess = successMap[r.id] ?? 0;
-        const executions = isMarketing ? (stats.executions ?? 0) + liveExecs : liveExecs;
-        const conversions = isMarketing ? (stats.conversions ?? 0) + liveSuccess : liveSuccess;
-        const revenueInr = isMarketing ? (stats.revenueInr ?? 0) : 0;
-        const lastFiredAt = r.automationExecutions[0]?.executedAt ?? null;
-        return {
-          id: r.id, code: r.code, name: r.name, isActive: r.isActive,
-          ruleType: isMarketing ? "marketing" : "operational",
-          executions, conversions, revenueInr, lastFiredAt, createdAt: r.createdAt
-        };
-      });
-      const totalExecutions = items.reduce((s, i) => s + i.executions, 0);
-      const totalRevenue = items.reduce((s, i) => s + i.revenueInr, 0);
-      const avgConversion = items.length > 0
-        ? Math.round(items.reduce((s, i) => s + (i.executions > 0 ? i.conversions / i.executions : 0), 0) / items.length * 1000) / 10
-        : 0;
-      json(res, 200, {
-        ok: true,
-        items,
-        summary: { totalAutomations: items.length, activeFlows: items.filter(i => i.isActive).length, avgConversion, revenueAttributed: totalRevenue, totalExecutions }
-      });
-      return;
-    }
-
-    // ── GET /analytics/sentiment ─────────────────────────────────────────────
-    if (req.url?.startsWith("/analytics/sentiment") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /analytics/sentiment");
-      if (!auth.ok) return;
-      const context = auth.context;
-      json(res, 200, await computeSentimentAnalytics(context.tenantId, parseDateRange(req) ?? undefined));
-      return;
-    }
-
-    // ── GET /analytics/upsell-campaigns ─────────────────────────────────────
-    if (req.url?.startsWith("/analytics/upsell-campaigns") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /analytics/upsell-campaigns");
-      if (!auth.ok) return;
-      const context = auth.context;
-      json(res, 200, await computeUpsellAnalytics(context.tenantId, parseDateRange(req) ?? undefined));
-      return;
-    }
+    // ── Automations router (#164): extracted to core/automations/routes.ts ───
+    if (await handleAutomationRoutes(req, res)) return;
 
     // ── Extracted domain routers (5.1): each returns true when it handled ─────
     if (await handleReportRoutes(req, res)) return;
