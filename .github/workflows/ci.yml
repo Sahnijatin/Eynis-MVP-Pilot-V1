@@ -75,5 +75,8 @@ jobs:
         working-directory: apps/api
         run: npx prisma migrate deploy
 
+      - name: Web tests (design-token ramp AA guarantee, formatting utils)
+        run: npm run test -w @eynis/web
+
       - name: API tests
         run: npm run test -w @eynis/api

@@ -7,6 +7,7 @@ import { Bell, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Me
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
+import { buildAccentRamp, accentRampToVars } from "../../lib/color/ramp";
 import {
   type OrgRole,
   ORG_ROLE_LABELS,
@@ -282,6 +283,14 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
     root.setProperty("--color-industry", theme.primaryColor);
     root.setProperty("--color-primary", theme.primaryColor);
     root.setProperty("--color-accent", theme.accentColor);
+    // Generated 12-step accent ramp (design-system Phase 1): --accent-1..12 +
+    // --accent-contrast + role aliases, derived from the tenant hue with a
+    // WCAG-AA guarantee (see lib/color/ramp.ts). Additive — no existing consumer
+    // reads these yet; the migration (Phases 4-6) moves components onto them, and
+    // Phase 2 emits the dark ramp + moves this injection server-side. Currently
+    // emits the light ramp (the app is light-only until Phase 2).
+    const ramp = accentRampToVars(buildAccentRamp(theme.primaryColor, "light"));
+    for (const [k, v] of Object.entries(ramp)) root.setProperty(k, v);
     // Deep white-label tokens (E-9, white_label tier). Removing the property when
     // null lets the default theme/font win — no stale override lingers.
     if (theme.sidebarColor) root.setProperty("--color-sidebar", theme.sidebarColor);
