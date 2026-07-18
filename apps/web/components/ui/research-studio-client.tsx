@@ -101,8 +101,8 @@ export default function ResearchStudioClient(props: Props) {
             <Telescope className="w-5 h-5" style={{ color: accent }} />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-slate-800">Research Studio</h1>
-            <p className="text-sm text-slate-500">Define what to research and how the report looks, then run it on any prospect, deal or company.</p>
+            <h1 className="text-xl font-semibold text-fg">Research Studio</h1>
+            <p className="text-sm text-fg-muted">Define what to research and how the report looks, then run it on any prospect, deal or company.</p>
           </div>
         </div>
         {view.mode === "home" && (
@@ -233,7 +233,7 @@ function HomeView(props: {
         </div>
       )}
 
-      <h2 className="text-sm font-semibold text-slate-700 mb-3">Templates</h2>
+      <h2 className="text-sm font-semibold text-fg mb-3">Templates</h2>
       {templates.length === 0 ? (
         <EmptyState
           icon={<Telescope className="w-7 h-7 mx-auto" style={{ color: accent }} />}
@@ -281,7 +281,7 @@ function HomeView(props: {
         </div>
       )}
 
-      <h2 className="text-sm font-semibold text-slate-700 mb-3" style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap className="w-4 h-4" style={{ color: accent }} /> Auto-run on deal stage</h2>
+      <h2 className="text-sm font-semibold text-fg mb-3" style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap className="w-4 h-4" style={{ color: accent }} /> Auto-run on deal stage</h2>
       <TriggersCard
         accent={accent}
         triggers={props.triggers}
@@ -292,7 +292,7 @@ function HomeView(props: {
       />
       <div style={{ height: 28 }} />
 
-      <h2 className="text-sm font-semibold text-slate-700 mb-3">Recent runs</h2>
+      <h2 className="text-sm font-semibold text-fg mb-3">Recent runs</h2>
       {runs.length === 0 ? (
         <Card style={{ color: t.color.textMuted, fontSize: t.font.sm }}>No runs yet — pick a template and hit Run.</Card>
       ) : (

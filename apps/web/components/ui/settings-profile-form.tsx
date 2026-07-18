@@ -107,8 +107,8 @@ export function SettingsProfileForm({
 
       {/* Account Information */}
       <div className="card">
-        <h3 className="text-base font-semibold text-slate-800 mb-1">Account Information</h3>
-        <p className="text-sm text-slate-500 mb-4">Update your personal details.</p>
+        <h3 className="text-base font-semibold text-fg mb-1">Account Information</h3>
+        <p className="text-sm text-fg-muted mb-4">Update your personal details.</p>
 
         <div className="flex items-center gap-4 mb-5">
           <div className="relative">
@@ -121,11 +121,11 @@ export function SettingsProfileForm({
               <button
                 type="button"
                 onClick={() => clerk.openUserProfile()}
-                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white shadow border border-slate-200 flex items-center justify-center hover:bg-slate-50"
+                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-surface shadow border border-line flex items-center justify-center hover:bg-surface-inset"
                 aria-label="Change photo"
                 title="Change your photo"
               >
-                <Camera className="w-3 h-3 text-slate-500" />
+                <Camera className="w-3 h-3 text-fg-muted" />
               </button>
             )}
           </div>
@@ -152,14 +152,14 @@ export function SettingsProfileForm({
       {/* Property Details */}
       <div className="card">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-base font-semibold text-slate-800">{propertyName || propertyLabel} Details</h3>
+          <h3 className="text-base font-semibold text-fg">{propertyName || propertyLabel} Details</h3>
           {!canEditProperty && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
               <Lock className="w-3 h-3" /> Admins only
             </span>
           )}
         </div>
-        <p className="text-sm text-slate-500 mb-4">{propertyLabel} configuration for all staff and integrations.</p>
+        <p className="text-sm text-fg-muted mb-4">{propertyLabel} configuration for all staff and integrations.</p>
 
         <Field label={`${propertyLabel} Name`}>
           <Input value={propertyName} onChange={e => setPropertyName(e.target.value)} disabled={!canEditProperty} placeholder={`Your ${propertyLabel.toLowerCase()} name`} />
@@ -170,13 +170,13 @@ export function SettingsProfileForm({
         <div className="grid grid-cols-2 gap-4">
           <Field label={`${propertyLabel} Phone`}>
             <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+              <Phone className="w-4 h-4 text-fg-muted shrink-0" />
               <Input value={phone} onChange={e => setPhone(e.target.value)} disabled={!canEditProperty} placeholder="Contact number" />
             </div>
           </Field>
           <Field label="Timezone">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-500 shrink-0" />
+              <Clock className="w-4 h-4 text-fg-muted shrink-0" />
               <Input value={timezone} onChange={e => setTimezone(e.target.value)} disabled={!canEditProperty} placeholder="e.g. Asia/Kolkata" />
             </div>
           </Field>

@@ -27,8 +27,8 @@ export default async function AutomationsPage() {
         <PreviewBanner>These flows and their numbers are illustrative — automations for this industry are not yet wired to your live data.</PreviewBanner>
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Customer Journey Automations</h1>
-            <p className="text-sm text-slate-500 mt-0.5">AI-built flows · triggered by data · personalised by AI · tracked end-to-end</p>
+            <h1 className="text-xl font-bold text-fg">Customer Journey Automations</h1>
+            <p className="text-sm text-fg-muted mt-0.5">AI-built flows · triggered by data · personalised by AI · tracked end-to-end</p>
           </div>
           <button className="px-4 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: config.accentColor }}>
             <Plus className="w-4 h-4" /> New Flow
@@ -65,19 +65,19 @@ export default async function AutomationsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Trigger</span>
-                    <span className="text-sm font-semibold text-slate-800">{flow.trigger}</span>
+                    <span className="text-xs font-semibold text-fg-muted uppercase tracking-wide">Trigger</span>
+                    <span className="text-sm font-semibold text-fg">{flow.trigger}</span>
                   </div>
                   <div className="flex items-center gap-2 mb-1">
                     {/* Neutral label — never the platform brand (white-label, 3.2). */}
                     <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: config.accentColor }}>Action</span>
-                    <span className="text-sm font-medium text-slate-700">{flow.action}</span>
+                    <span className="text-sm font-medium text-fg">{flow.action}</span>
                   </div>
-                  <p className="text-xs text-slate-500">{flow.detail}</p>
+                  <p className="text-xs text-fg-muted">{flow.detail}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-lg font-bold text-slate-800">{flow.executions}</div>
-                  <div className="text-xs text-slate-500">executions</div>
+                  <div className="text-lg font-bold text-fg">{flow.executions}</div>
+                  <div className="text-xs text-fg-muted">executions</div>
                   <div className="text-sm font-semibold mt-1" style={{ color: config.accentColor }}>{flow.conversions} converted</div>
                 </div>
                 <span className="badge shrink-0" style={{ background: config.accentColor + "12", color: config.accentColor }}>● Active</span>

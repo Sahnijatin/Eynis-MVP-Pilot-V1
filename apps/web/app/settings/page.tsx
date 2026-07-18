@@ -66,7 +66,7 @@ export default async function SettingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 mb-6">
+      <div className="flex border-b border-line mb-6">
         {tabs.map((tab) => {
           const active = tab.href === "/settings";
           return (
@@ -92,11 +92,11 @@ export default async function SettingsPage() {
               onboarding and re-shapes nav/terminology/features, so it is not a
               self-service setting. Customers see it, but can't change it. */}
           <div className="card">
-            <h3 className="text-base font-semibold text-slate-800 mb-1">Industry Workspace</h3>
-            <p className="text-sm text-slate-500 mb-3">Your nav, modules, and terminology are tailored to your industry.</p>
+            <h3 className="text-base font-semibold text-fg mb-1">Industry Workspace</h3>
+            <p className="text-sm text-fg-muted mb-3">Your nav, modules, and terminology are tailored to your industry.</p>
             <div className="flex items-center gap-3">
               <Badge tone="accent">{config.name}</Badge>
-              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+              <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
                 <Lock className="w-3 h-3" /> Managed for you — contact support to change your industry.
               </span>
             </div>
@@ -123,27 +123,27 @@ export default async function SettingsPage() {
 
           {/* Quick links to sub-pages */}
           <div className="grid grid-cols-3 gap-3">
-            <a href="/settings/team" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
-              <div className="text-sm font-semibold text-slate-800 mb-1">Team Members</div>
-              <p className="text-xs text-slate-500">Invite staff, assign roles, manage access.</p>
+            <a href="/settings/team" className="card hover:border-accent-line hover:bg-accent-bg/30 transition-colors cursor-pointer border border-transparent">
+              <div className="text-sm font-semibold text-fg mb-1">Team Members</div>
+              <p className="text-xs text-fg-muted">Invite staff, assign roles, manage access.</p>
               <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Manage team →</span>
             </a>
-            <a href="/settings/roles" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
-              <div className="text-sm font-semibold text-slate-800 mb-1">Roles & Permissions</div>
-              <p className="text-xs text-slate-500">Rename roles, view permissions, create custom roles.</p>
+            <a href="/settings/roles" className="card hover:border-accent-line hover:bg-accent-bg/30 transition-colors cursor-pointer border border-transparent">
+              <div className="text-sm font-semibold text-fg mb-1">Roles & Permissions</div>
+              <p className="text-xs text-fg-muted">Rename roles, view permissions, create custom roles.</p>
               <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Manage roles →</span>
             </a>
-            <a href="/settings/billing" className="card hover:border-teal-200 hover:bg-teal-50/30 transition-colors cursor-pointer border border-transparent">
-              <div className="text-sm font-semibold text-slate-800 mb-1">License & Billing</div>
-              <p className="text-xs text-slate-500">Seat usage, plan details, and Razorpay billing.</p>
+            <a href="/settings/billing" className="card hover:border-accent-line hover:bg-accent-bg/30 transition-colors cursor-pointer border border-transparent">
+              <div className="text-sm font-semibold text-fg mb-1">License & Billing</div>
+              <p className="text-xs text-fg-muted">Seat usage, plan details, and Razorpay billing.</p>
               <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Manage billing →</span>
             </a>
           </div>
 
           {/* Integrations moved to their own module (E-5) */}
-          <a href="/integrations" className="card block hover:bg-slate-50 transition-colors">
-            <h3 className="text-base font-semibold text-slate-800 mb-1">Integrations</h3>
-            <p className="text-sm text-slate-500">WhatsApp, PMS/POS, payments, voice and email connectors now live in their own Integrations module.</p>
+          <a href="/integrations" className="card block hover:bg-surface-inset transition-colors">
+            <h3 className="text-base font-semibold text-fg mb-1">Integrations</h3>
+            <p className="text-sm text-fg-muted">WhatsApp, PMS/POS, payments, voice and email connectors now live in their own Integrations module.</p>
             <span className="text-xs font-medium mt-2 block" style={{ color: BRAND }}>Open Integrations →</span>
           </a>
         </div>
@@ -160,10 +160,10 @@ export default async function SettingsPage() {
               <MapPin className="w-4 h-4" style={{ color: BRAND }} />
               <h3 className="card-title mb-0">{propertyLabel} Location</h3>
             </div>
-            <div className="text-sm font-semibold text-slate-800">{propertyName}</div>
+            <div className="text-sm font-semibold text-fg">{propertyName}</div>
             {profile?.address ? (
               <>
-                <div className="text-sm text-slate-500 mt-0.5">{profile.address}</div>
+                <div className="text-sm text-fg-muted mt-0.5">{profile.address}</div>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}`}
                   target="_blank" rel="noopener noreferrer"
@@ -173,7 +173,7 @@ export default async function SettingsPage() {
                 </a>
               </>
             ) : (
-              <div className="text-xs text-slate-400 mt-1">
+              <div className="text-xs text-fg-subtle mt-1">
                 {isAdmin ? "Add an address above to show it here with a map link." : "No address on file."}
               </div>
             )}

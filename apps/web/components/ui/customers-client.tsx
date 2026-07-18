@@ -274,11 +274,11 @@ function TravelSegmentBadge({ segment }: { segment: string }) {
 }
 
 function StatusDot({ status }: { status: string }) {
-  if (status === "active") return <span className="flex items-center gap-1 text-xs text-emerald-600"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Active</span>;
-  if (status === "dormant_60" || status === "dormant") return <span className="flex items-center gap-1 text-xs text-amber-600"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Dormant</span>;
-  if (status === "dormant_90") return <span className="flex items-center gap-1 text-xs text-red-600"><span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse" />90d+ dormant</span>;
-  if (status === "pending") return <span className="flex items-center gap-1 text-xs text-amber-600"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse" />Pending</span>;
-  return <span className="flex items-center gap-1 text-xs text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />{status}</span>;
+  if (status === "active") return <span className="flex items-center gap-1 text-xs text-ok"><span className="w-2 h-2 rounded-full bg-ok-solid inline-block" />Active</span>;
+  if (status === "dormant_60" || status === "dormant") return <span className="flex items-center gap-1 text-xs text-warn"><span className="w-2 h-2 rounded-full bg-warn-solid inline-block" />Dormant</span>;
+  if (status === "dormant_90") return <span className="flex items-center gap-1 text-xs text-danger"><span className="w-2 h-2 rounded-full bg-danger-solid inline-block animate-pulse" />90d+ dormant</span>;
+  if (status === "pending") return <span className="flex items-center gap-1 text-xs text-warn"><span className="w-2 h-2 rounded-full bg-warn-solid inline-block animate-pulse" />Pending</span>;
+  return <span className="flex items-center gap-1 text-xs text-fg-muted"><span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />{status}</span>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -394,10 +394,10 @@ export function CustomersClient({ terminology, industry }: Props) {
       <PreviewBanner />
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">
+          <h1 className="text-xl font-bold text-fg">
             {isFnb ? "Customer Loyalty" : isTravel ? "Client Database" : `${terminology.entityPlural} & Channel Intelligence`}
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-fg-muted mt-0.5">
             {isFnb
               ? "Diner profiles · loyalty tiers · visit history · win-back"
               : isTravel
@@ -502,7 +502,7 @@ export function CustomersClient({ terminology, industry }: Props) {
       <div className="card">
         <h3 className="card-title mb-4">
           {isFnb ? "Loyalty Members" : isTravel ? "Client Directory" : `${terminology.entityPlural} Directory`}
-          <span className="text-xs font-normal text-slate-500 ml-2">Click a row to view full profile</span>
+          <span className="text-xs font-normal text-fg-muted ml-2">Click a row to view full profile</span>
         </h3>
         <div className="table-wrap">
           <table className="data-table no-row-hover">
@@ -526,13 +526,13 @@ export function CustomersClient({ terminology, industry }: Props) {
               {isFnb ? (
                 <>
                   {fnbClients.map((c, i) => (
-                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-orange-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-amber-50" : ""}`}>
-                      <td className="font-semibold text-slate-800">{c.name}</td>
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-orange-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-warn-bg" : ""}`}>
+                      <td className="font-semibold text-fg">{c.name}</td>
                       <td><FnbTierBadge tier={c.tier} /></td>
-                      <td className="font-semibold text-slate-700">{c.spend}</td>
-                      <td className="text-slate-600">{c.visits}</td>
-                      <td className="text-xs text-slate-500">{c.lastVisit}</td>
-                      <td className="text-slate-600">{c.avgBill}</td>
+                      <td className="font-semibold text-fg">{c.spend}</td>
+                      <td className="text-fg-muted">{c.visits}</td>
+                      <td className="text-xs text-fg-muted">{c.lastVisit}</td>
+                      <td className="text-fg-muted">{c.avgBill}</td>
                       <td><StatusDot status={c.status} /></td>
                     </tr>
                   ))}
@@ -543,12 +543,12 @@ export function CustomersClient({ terminology, industry }: Props) {
               ) : isTravel ? (
                 <>
                   {travelClients.map((c, i) => (
-                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-purple-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-amber-50" : c.status === "pending" ? "bg-amber-50" : ""}`}>
-                      <td className="font-semibold text-slate-800 flex items-center gap-1.5"><Plane className="w-3 h-3 text-purple-400" />{c.name}</td>
-                      <td className="text-xs text-slate-500">{c.type}</td>
-                      <td className="font-semibold text-slate-700">{c.revenue}</td>
-                      <td className="text-slate-600">{c.bookings}</td>
-                      <td className="text-xs text-slate-500">{c.lastBooking}</td>
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-purple-50 transition-colors cursor-pointer ${c.status === "dormant" ? "bg-warn-bg" : c.status === "pending" ? "bg-warn-bg" : ""}`}>
+                      <td className="font-semibold text-fg flex items-center gap-1.5"><Plane className="w-3 h-3 text-purple-400" />{c.name}</td>
+                      <td className="text-xs text-fg-muted">{c.type}</td>
+                      <td className="font-semibold text-fg">{c.revenue}</td>
+                      <td className="text-fg-muted">{c.bookings}</td>
+                      <td className="text-xs text-fg-muted">{c.lastBooking}</td>
                       <td><TravelSegmentBadge segment={c.segment} /></td>
                       <td><StatusDot status={c.status} /></td>
                     </tr>
@@ -560,12 +560,12 @@ export function CustomersClient({ terminology, industry }: Props) {
               ) : (
                 <>
                   {mfgClients.map((c, i) => (
-                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-blue-50 transition-colors cursor-pointer ${c.status === "dormant_90" ? "bg-red-50" : c.status === "dormant_60" ? "bg-amber-50" : ""}`}>
-                      <td className="font-semibold text-slate-800">{c.name}</td>
-                      <td className="text-xs text-slate-500">{c.type}</td>
-                      <td className="font-semibold text-slate-700">{c.ltv}</td>
-                      <td className="text-xs text-slate-500">{c.lastOrder}</td>
-                      <td className="text-slate-600">{c.orders}</td>
+                    <tr key={i} onClick={() => setSelectedName(c.name)} className={`hover:bg-info-bg transition-colors cursor-pointer ${c.status === "dormant_90" ? "bg-danger-bg" : c.status === "dormant_60" ? "bg-warn-bg" : ""}`}>
+                      <td className="font-semibold text-fg">{c.name}</td>
+                      <td className="text-xs text-fg-muted">{c.type}</td>
+                      <td className="font-semibold text-fg">{c.ltv}</td>
+                      <td className="text-xs text-fg-muted">{c.lastOrder}</td>
+                      <td className="text-fg-muted">{c.orders}</td>
                       <td><MfgSegmentBadge segment={c.segment} /></td>
                       <td><StatusDot status={c.status} /></td>
                     </tr>
@@ -602,7 +602,7 @@ export function CustomersClient({ terminology, industry }: Props) {
           onClose={closeModal}
           footer={formSuccess ? undefined : (
             <>
-              <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-line text-sm font-semibold text-fg-muted hover:bg-surface-inset">Cancel</button>
               <button
                 onClick={() => {
                   if (!formName.trim()) return;
@@ -620,13 +620,13 @@ export function CustomersClient({ terminology, industry }: Props) {
         >
           {formSuccess ? (
             <div className="py-8 text-center">
-              <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-              <div className="font-semibold text-emerald-700 text-sm">{terminology.entity} added successfully</div>
+              <CheckCircle className="w-10 h-10 text-ok mx-auto mb-3" />
+              <div className="font-semibold text-ok text-sm">{terminology.entity} added successfully</div>
             </div>
           ) : (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">{terminology.entity} Name <span className="text-red-500">*</span></label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder={isFnb ? "e.g. Rahul Sharma" : isTravel ? "e.g. Grandview Group" : "e.g. Grandview Hotels Ltd."} value={formName} onChange={e => setFormName(e.target.value)} />
+              <label className="block text-xs font-semibold text-fg-muted mb-1.5">{terminology.entity} Name <span className="text-danger">*</span></label>
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-info-border focus:ring-1 focus:ring-blue-100" placeholder={isFnb ? "e.g. Rahul Sharma" : isTravel ? "e.g. Grandview Group" : "e.g. Grandview Hotels Ltd."} value={formName} onChange={e => setFormName(e.target.value)} />
             </div>
           )}
         </Modal>
@@ -639,30 +639,30 @@ export function CustomersClient({ terminology, industry }: Props) {
           <div className="flex flex-col gap-4">
             <div className="card">
               <div className="flex items-center gap-2 mb-3">
-                <AlertCircle className="w-4 h-4 text-red-500" />
+                <AlertCircle className="w-4 h-4 text-danger" />
                 <h3 className="card-title mb-0">Re-engagement Needed</h3>
               </div>
               {mfgClients.filter(c => c.status !== "active").length === 0 ? (
-                <div className="text-sm text-emerald-600 text-center py-4">All clients active</div>
+                <div className="text-sm text-ok text-center py-4">All clients active</div>
               ) : mfgClients.filter(c => c.status !== "active").map((c, i) => (
-                <div key={i} onClick={() => setSelectedName(c.name)} className={`p-2.5 mb-2 rounded-lg cursor-pointer ${c.status === "dormant_90" ? "bg-red-50 border border-red-100" : "bg-amber-50 border border-amber-100"}`}>
-                  <div className={`text-xs font-semibold ${c.status === "dormant_90" ? "text-red-800" : "text-amber-800"}`}>{c.name}</div>
-                  <div className={`text-xs mt-0.5 ${c.status === "dormant_90" ? "text-red-600" : "text-amber-600"}`}>LTV: {c.ltv} · Last: {c.lastOrder}</div>
+                <div key={i} onClick={() => setSelectedName(c.name)} className={`p-2.5 mb-2 rounded-lg cursor-pointer ${c.status === "dormant_90" ? "bg-danger-bg border border-danger-border" : "bg-warn-bg border border-warn-border"}`}>
+                  <div className={`text-xs font-semibold ${c.status === "dormant_90" ? "text-danger" : "text-warn"}`}>{c.name}</div>
+                  <div className={`text-xs mt-0.5 ${c.status === "dormant_90" ? "text-danger" : "text-warn"}`}>LTV: {c.ltv} · Last: {c.lastOrder}</div>
                 </div>
               ))}
             </div>
             <div className="card">
               <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-4 h-4 text-blue-500" />
+                <TrendingUp className="w-4 h-4 text-info" />
                 <h3 className="card-title mb-0">Top by LTV</h3>
               </div>
               {mfgClients.filter(c => c.segment === "key").map((c, i) => (
-                <div key={i} onClick={() => setSelectedName(c.name)} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1">
+                <div key={i} onClick={() => setSelectedName(c.name)} className="flex items-center justify-between py-2 border-b border-line last:border-0 cursor-pointer hover:bg-surface-inset rounded px-1">
                   <div>
-                    <div className="text-sm font-semibold text-slate-700">{c.name}</div>
-                    <div className="text-xs text-slate-500">{c.orders} orders</div>
+                    <div className="text-sm font-semibold text-fg">{c.name}</div>
+                    <div className="text-xs text-fg-muted">{c.orders} orders</div>
                   </div>
-                  <div className="text-sm font-bold text-slate-800">{c.ltv}</div>
+                  <div className="text-sm font-bold text-fg">{c.ltv}</div>
                 </div>
               ))}
             </div>

@@ -51,41 +51,41 @@ export function RoutingDomainPanel({
   }
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+    <div className="bg-surface-inset border border-line rounded-lg p-4 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="block">
-          <span className="block text-xs font-semibold text-slate-500 mb-1">Workspace subdomain</span>
+          <span className="block text-xs font-semibold text-fg-muted mb-1">Workspace subdomain</span>
           <div className="flex items-center gap-1.5">
             <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="tempus"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
-            <span className="text-xs text-slate-500 whitespace-nowrap">.{PLATFORM}</span>
+              className="w-full px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus" />
+            <span className="text-xs text-fg-muted whitespace-nowrap">.{PLATFORM}</span>
           </div>
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold text-slate-500 mb-1">Custom domain</span>
+          <span className="block text-xs font-semibold text-fg-muted mb-1">Custom domain</span>
           <input value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="app.acme.com"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            className="w-full px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus" />
         </label>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={save} disabled={saving}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white inline-flex items-center gap-1.5 bg-teal-700 disabled:opacity-40">
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg text-accent-contrast inline-flex items-center gap-1.5 bg-accent disabled:opacity-40">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           Save domains
         </button>
-        {ok && <span className="text-xs font-medium text-teal-700">Saved</span>}
-        {error && <span className="text-xs text-red-600">{error}</span>}
+        {ok && <span className="text-xs font-medium text-accent-text">Saved</span>}
+        {error && <span className="text-xs text-danger">{error}</span>}
       </div>
 
       {/* DNS / SSL setup steps for the custom domain (provider-owned ops). */}
       {saved && (
-        <div className="text-xs text-slate-500 space-y-1">
-          <div className="font-semibold text-slate-500">DNS the tenant must publish</div>
+        <div className="text-xs text-fg-muted space-y-1">
+          <div className="font-semibold text-fg-muted">DNS the tenant must publish</div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs bg-white rounded-lg border border-slate-200">
+            <table className="w-full text-xs bg-surface rounded-lg border border-line">
               <thead>
-                <tr className="text-left text-slate-500 border-b border-slate-100">
+                <tr className="text-left text-fg-muted border-b border-line">
                   <th className="px-2 py-1.5">Type</th>
                   <th className="px-2 py-1.5">Name</th>
                   <th className="px-2 py-1.5">Value</th>

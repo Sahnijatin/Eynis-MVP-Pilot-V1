@@ -4,9 +4,9 @@
 export default function Loading() {
   return (
     <div className="flex items-center justify-center" style={{ minHeight: "60vh" }}>
-      <div className="flex flex-col items-center gap-3 text-slate-500">
+      <div className="flex flex-col items-center gap-3 text-fg-muted">
         <div
-          className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin"
+          className="w-8 h-8 rounded-full border-2 border-line animate-spin"
           style={{ borderTopColor: "var(--color-primary, #0f766e)" }}
         />
         <span className="text-sm">Loading your workspace…</span>

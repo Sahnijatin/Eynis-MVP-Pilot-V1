@@ -444,7 +444,7 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
             <span className="topbar-dot" style={{ background: config.accentColor }} />
             <span className="topbar-name">{config.name} Dashboard</span>
             <span className="text-slate-300 text-sm">|</span>
-            <CalendarDays className="w-4 h-4 text-slate-500" />
+            <CalendarDays className="w-4 h-4 text-fg-muted" />
             <TopbarClock />
           </div>
           <div className="topbar-right">
@@ -458,10 +458,10 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 top-11 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                <div className="absolute right-0 top-11 w-80 bg-surface rounded-xl shadow-2xl border border-line z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-line">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-800 text-sm">Notifications</span>
+                      <span className="font-semibold text-fg text-sm">Notifications</span>
                       {unreadCount > 0 && (
                         <span className="text-xs px-1.5 py-0.5 rounded-full font-medium text-white" style={{ background: config.accentColor }}>
                           {unreadCount} new
@@ -469,24 +469,24 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="text-xs text-slate-500 hover:text-slate-600" onClick={() => setReadIds(new Set(notifs.map(n => n.id)))}>
+                      <button className="text-xs text-fg-muted hover:text-fg-muted" onClick={() => setReadIds(new Set(notifs.map(n => n.id)))}>
                         Mark all read
                       </button>
-                      <button onClick={() => setNotifOpen(false)} className="text-slate-500 hover:text-slate-600">
+                      <button onClick={() => setNotifOpen(false)} className="text-fg-muted hover:text-fg-muted">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
 
-                  <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                  <div className="divide-y divide-line max-h-80 overflow-y-auto">
                     {notifLoading && notifs.length === 0 && (
-                      <div className="px-4 py-8 text-center text-sm text-slate-400">Loading…</div>
+                      <div className="px-4 py-8 text-center text-sm text-fg-subtle">Loading…</div>
                     )}
                     {!notifLoading && notifError && notifs.length === 0 && (
-                      <div className="px-4 py-8 text-center text-sm text-slate-400">Couldn&apos;t load notifications. Try again shortly.</div>
+                      <div className="px-4 py-8 text-center text-sm text-fg-subtle">Couldn&apos;t load notifications. Try again shortly.</div>
                     )}
                     {!notifLoading && !notifError && notifLoaded && notifs.length === 0 && (
-                      <div className="px-4 py-8 text-center text-sm text-slate-400">You&apos;re all caught up.</div>
+                      <div className="px-4 py-8 text-center text-sm text-fg-subtle">You&apos;re all caught up.</div>
                     )}
                     {notifs.map(n => {
                       const unread = !readIds.has(n.id);
@@ -495,23 +495,23 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
                           key={n.id}
                           href={n.href}
                           onClick={() => { setReadIds(prev => new Set([...prev, n.id])); setNotifOpen(false); }}
-                          className={`block px-4 py-3 cursor-pointer transition-colors hover:bg-slate-50 ${unread ? "bg-blue-50/30" : ""}`}
+                          className={`block px-4 py-3 cursor-pointer transition-colors hover:bg-surface-inset ${unread ? "bg-info-bg/30" : ""}`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === "alert" ? "bg-red-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"}`} />
+                            <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === "alert" ? "bg-danger-solid" : n.type === "success" ? "bg-ok-solid" : "bg-info-solid"}`} />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-slate-800 capitalize">{n.title}</div>
-                              <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{n.body}</div>
-                              <div className="text-xs text-slate-500 mt-1">{relativeTime(n.at)}</div>
+                              <div className="text-sm font-semibold text-fg capitalize">{n.title}</div>
+                              <div className="text-xs text-fg-muted mt-0.5 leading-relaxed">{n.body}</div>
+                              <div className="text-xs text-fg-muted mt-1">{relativeTime(n.at)}</div>
                             </div>
-                            {unread && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-2" />}
+                            {unread && <div className="w-1.5 h-1.5 rounded-full bg-info-solid shrink-0 mt-2" />}
                           </div>
                         </Link>
                       );
                     })}
                   </div>
 
-                  <div className="px-4 py-2.5 border-t border-slate-100 text-center">
+                  <div className="px-4 py-2.5 border-t border-line text-center">
                     <Link href="/dashboard" onClick={() => setNotifOpen(false)} className="text-xs font-medium hover:underline" style={{ color: config.accentColor }}>
                       View all activity
                     </Link>
@@ -555,7 +555,7 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
             <button
               onClick={stopImpersonation}
               disabled={stoppingImp}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-white/20 hover:bg-white/30 disabled:opacity-60"
+              className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-surface/20 hover:bg-surface/30 disabled:opacity-60"
             >
               <ShieldOff className="w-3.5 h-3.5" />
               {stoppingImp ? "Stopping…" : "Stop impersonating"}
@@ -565,13 +565,13 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
 
         {/* Access denied banner */}
         {accessDenied && (
-          <div className="flex items-center gap-3 px-5 py-3 text-sm text-red-800 bg-red-50 border-b border-red-100">
-            <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
+          <div className="flex items-center gap-3 px-5 py-3 text-sm text-danger bg-danger-bg border-b border-danger-border">
+            <ShieldAlert className="w-4 h-4 text-danger shrink-0" />
             <span>
               Access restricted — <strong>{ORG_ROLE_LABELS[orgRole]}</strong> role cannot view that page.
               Redirected to Dashboard.
             </span>
-            <button onClick={() => setAccessDenied(false)} className="ml-auto text-red-400 hover:text-red-600">
+            <button onClick={() => setAccessDenied(false)} className="ml-auto text-danger hover:text-danger">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -579,8 +579,8 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
 
         {/* Honest "Preview" banner for vertical pages not yet backed by the API (F-19) */}
         {!isPublicRoute && isPreviewRoute(pathname) && (
-          <div className="flex items-center gap-3 px-5 py-2.5 text-xs text-amber-800 bg-amber-50 border-b border-amber-100">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+          <div className="flex items-center gap-3 px-5 py-2.5 text-xs text-warn bg-warn-bg border-b border-warn-border">
+            <span className="w-1.5 h-1.5 rounded-full bg-warn-solid shrink-0" />
             <span>
               <strong>Preview</strong> — this page shows demonstration data and does not yet persist
               changes to your account. The Inventory module is the live template the rest are built on.

@@ -269,13 +269,13 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={busy}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5 disabled:opacity-50"
             >
               <Upload className="w-3.5 h-3.5" /> Import
             </button>
             <button
               onClick={exportCSV}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" /> Export
             </button>
@@ -292,7 +292,7 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
 
       {/* Import status toast */}
       {importStatus && (
-        <div className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${importStatus.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+        <div className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${importStatus.type === "success" ? "bg-ok-bg text-ok border border-ok-border" : "bg-danger-bg text-danger border border-danger-border"}`}>
           {importStatus.type === "success"
             ? <><CheckCircle className="w-4 h-4 shrink-0" /> {importStatus.count} guest{importStatus.count !== 1 ? "s" : ""} imported{importStatus.failed ? ` · ${importStatus.failed} failed` : ""}</>
             : <><AlertCircle className="w-4 h-4 shrink-0" /> {importStatus.message}</>
@@ -303,13 +303,13 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
       {/* Search */}
       <div className="card mb-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted" />
           <form method="GET">
             <input
               name="search"
               defaultValue={search ?? ""}
               placeholder="Search by name or phone..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus focus:border-transparent"
             />
           </form>
         </div>
@@ -331,18 +331,18 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
             </thead>
             <tbody>
               {guests.map((g) => (
-                <tr key={g.id} onClick={() => setSelected(g)} className="cursor-pointer hover:bg-teal-50 transition-colors">
+                <tr key={g.id} onClick={() => setSelected(g)} className="cursor-pointer hover:bg-accent-bg transition-colors">
                   <td>
                     <div className="flex items-center gap-2.5">
-                      <span className="w-8 h-8 rounded-full bg-teal-700 flex items-center justify-center text-white text-xs font-semibold">
+                      <span className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-contrast text-xs font-semibold">
                         {g.fullName.split(" ").map(w => w[0]).join("").slice(0, 2)}
                       </span>
                       <div>
-                        <div className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
+                        <div className="text-sm font-medium text-fg flex items-center gap-1.5">
                           {g.fullName}
-                          {g.segment === "VIP" && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                          {g.segment === "VIP" && <Star className="w-3 h-3 text-warn fill-amber-400" />}
                         </div>
-                        <div className="text-xs text-slate-500">{g.phoneE164}</div>
+                        <div className="text-xs text-fg-muted">{g.phoneE164}</div>
                       </div>
                     </div>
                   </td>
@@ -353,8 +353,8 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
                       {g.segment}
                     </span>
                   </td>
-                  <td className="text-slate-600 text-sm">{formatDate(g.lastStay)}</td>
-                  <td className="font-semibold text-slate-700">{g.visitCount}</td>
+                  <td className="text-fg-muted text-sm">{formatDate(g.lastStay)}</td>
+                  <td className="font-semibold text-fg">{g.visitCount}</td>
                   <td>
                     <button
                       onClick={(e) => { e.stopPropagation(); setSelected(g); }}
@@ -363,7 +363,7 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
                     >
                       View Profile
                     </button>
-                    <Link href={`/guest-database/${g.id}`} className="ml-3 text-xs text-slate-500 hover:underline" onClick={(e) => e.stopPropagation()}>
+                    <Link href={`/guest-database/${g.id}`} className="ml-3 text-xs text-fg-muted hover:underline" onClick={(e) => e.stopPropagation()}>
                       Full page →
                     </Link>
                   </td>
@@ -377,8 +377,8 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
           </table>
         </div>
         {total > 0 && (
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
-            <span className="text-sm text-slate-500">Showing {from.toLocaleString()} to {to.toLocaleString()} of {total.toLocaleString()} guests</span>
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-line">
+            <span className="text-sm text-fg-muted">Showing {from.toLocaleString()} to {to.toLocaleString()} of {total.toLocaleString()} guests</span>
             {totalPages > 1 && (
               <div className="flex items-center gap-1">
                 {pageNumbers.map((p, i) => {
@@ -386,10 +386,10 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
                   const gap = prev !== undefined && p - prev > 1;
                   return (
                     <span key={p} className="flex items-center gap-1">
-                      {gap && <span className="text-slate-500 px-1">…</span>}
+                      {gap && <span className="text-fg-muted px-1">…</span>}
                       <Link
                         href={pageHref((p - 1) * pageSize, search)}
-                        className={`w-8 h-8 rounded-lg text-sm font-medium flex items-center justify-center ${p === currentPage ? "text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                        className={`w-8 h-8 rounded-lg text-sm font-medium flex items-center justify-center ${p === currentPage ? "text-white" : "text-fg-muted hover:bg-surface-inset"}`}
                         style={p === currentPage ? { background: "var(--color-primary, #0f766e)" } : {}}
                       >
                         {p}
@@ -408,54 +408,54 @@ export function GuestDatabaseClient({ items: guests, total, search, offset, page
         <Modal title="Add New Guest" onClose={closeModal} width={448}>
             {success ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3">
-                <CheckCircle className="w-12 h-12 text-emerald-500" />
-                <p className="text-sm font-semibold text-slate-700">Guest added successfully!</p>
+                <CheckCircle className="w-12 h-12 text-ok" />
+                <p className="text-sm font-semibold text-fg">Guest added successfully!</p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
-                <p className="text-xs text-slate-500 -mt-1">Create a new guest profile in the database</p>
+                <p className="text-xs text-fg-muted -mt-1">Create a new guest profile in the database</p>
                 {submitError && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-danger-bg text-danger border border-danger-border">
                     <AlertCircle className="w-4 h-4 shrink-0" /> {submitError}
                   </div>
                 )}
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Full Name *</label>
+                  <label className="text-xs font-semibold text-fg-muted uppercase tracking-wider">Full Name *</label>
                   <input
                     required
                     type="text"
                     placeholder="e.g. Rajesh Mehra"
                     value={form.fullName}
                     onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
-                    className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="mt-1.5 w-full px-3 py-2 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Phone</label>
+                    <label className="text-xs font-semibold text-fg-muted uppercase tracking-wider">Phone</label>
                     <input
                       type="tel"
                       placeholder="+91 98765 43210"
                       value={form.phone}
                       onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                      className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      className="mt-1.5 w-full px-3 py-2 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Email</label>
+                    <label className="text-xs font-semibold text-fg-muted uppercase tracking-wider">Email</label>
                     <input
                       type="email"
                       placeholder="guest@email.com"
                       value={form.email}
                       onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                      className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      className="mt-1.5 w-full px-3 py-2 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus"
                     />
                   </div>
                 </div>
 
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={closeModal}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50">
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-line text-fg-muted hover:bg-surface-inset">
                     Cancel
                   </button>
                   <button type="submit" disabled={busy}

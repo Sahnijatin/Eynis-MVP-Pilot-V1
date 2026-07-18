@@ -146,7 +146,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
         </div>
       </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+      {error && <div className="mb-4 p-3 bg-danger-bg text-danger rounded-lg text-sm">{error}</div>}
 
       {/* KPIs */}
       <div className="kpi-grid mb-5">
@@ -180,12 +180,12 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
           </div>
           <div className="space-y-3">
             {templateLibrary.map((t) => (
-              <div key={t.code} className="p-3 rounded-lg border border-slate-100 bg-slate-50 hover:bg-teal-50 hover:border-teal-100 transition-colors">
+              <div key={t.code} className="p-3 rounded-lg border border-line bg-surface-inset hover:bg-accent-bg hover:border-accent-line transition-colors">
                 <div className="flex items-center gap-2 mb-1">
-                  <t.Icon className="w-4 h-4 text-slate-500" />
-                  <span className="text-sm font-semibold text-slate-800">{t.name}</span>
+                  <t.Icon className="w-4 h-4 text-fg-muted" />
+                  <span className="text-sm font-semibold text-fg">{t.name}</span>
                 </div>
-                <p className="text-xs text-slate-500 mb-2">{t.desc}</p>
+                <p className="text-xs text-fg-muted mb-2">{t.desc}</p>
                 <button onClick={() => setInfoOpen(true)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "var(--color-teal)" }}>
                   Use Template →
                 </button>
@@ -198,16 +198,16 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="card-title mb-0">Engine Activity</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Executions per day · last 14 days</p>
+              <p className="text-xs text-fg-muted mt-0.5">Executions per day · last 14 days</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-700 inline-block" />EXECUTIONS</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />SUCCESSFUL</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-accent inline-block" />EXECUTIONS</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-warn-solid inline-block" />SUCCESSFUL</span>
             </div>
           </div>
           {hasChartData
             ? <CampaignBarChart data={weeklyData} names={["Executions", "Successful"]} />
-            : <div className="py-14 text-center text-sm text-slate-400">No engine activity in the last 14 days — this chart fills in as rules fire.</div>}
+            : <div className="py-14 text-center text-sm text-fg-subtle">No engine activity in the last 14 days — this chart fills in as rules fire.</div>}
         </div>
       </div>
 
@@ -216,31 +216,31 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
         <div className="flex items-center justify-between mb-4">
           <h3 className="card-title mb-0">All Automation Rules</h3>
           <div className="flex gap-2">
-            <button onClick={() => setFilterOpen(v => !v)} className={`px-3 py-1.5 text-sm font-medium rounded-lg border flex items-center gap-1.5 ${filterOpen || typeFilter !== "all" || statusFilter !== "all" ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}><Filter className="w-3.5 h-3.5" /> Filter</button>
-            <button onClick={() => downloadCsv(filtered)} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> Export CSV</button>
+            <button onClick={() => setFilterOpen(v => !v)} className={`px-3 py-1.5 text-sm font-medium rounded-lg border flex items-center gap-1.5 ${filterOpen || typeFilter !== "all" || statusFilter !== "all" ? "border-accent-border bg-accent-bg text-accent-text" : "border-line text-fg-muted hover:bg-surface-inset"}`}><Filter className="w-3.5 h-3.5" /> Filter</button>
+            <button onClick={() => downloadCsv(filtered)} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> Export CSV</button>
           </div>
         </div>
 
         {filterOpen && (
-          <div className="flex items-center gap-4 mb-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
+          <div className="flex items-center gap-4 mb-3 p-3 rounded-lg bg-surface-inset border border-line">
+            <label className="text-xs font-medium text-fg-muted flex items-center gap-1.5">
               Type
-              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)} className="text-sm border border-slate-200 rounded px-2 py-1">
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)} className="text-sm border border-line rounded px-2 py-1">
                 <option value="all">All</option>
                 <option value="operational">Engine</option>
                 <option value="marketing">Marketing</option>
               </select>
             </label>
-            <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
+            <label className="text-xs font-medium text-fg-muted flex items-center gap-1.5">
               Status
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} className="text-sm border border-slate-200 rounded px-2 py-1">
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} className="text-sm border border-line rounded px-2 py-1">
                 <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
               </select>
             </label>
             {(typeFilter !== "all" || statusFilter !== "all") && (
-              <button onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }} className="text-xs text-slate-500 hover:text-slate-700 ml-auto">Clear filters</button>
+              <button onClick={() => { setTypeFilter("all"); setStatusFilter("all"); }} className="text-xs text-fg-muted hover:text-fg ml-auto">Clear filters</button>
             )}
           </div>
         )}
@@ -259,8 +259,8 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
                   <tr key={item.id}>
                     <td>
                       <span className="flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-teal-600" />
-                        <span className="font-medium text-slate-800">{item.name}</span>
+                        <Zap className="w-4 h-4 text-accent-text" />
+                        <span className="font-medium text-fg">{item.name}</span>
                       </span>
                     </td>
                     <td>
@@ -279,12 +279,12 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
                         {item.isActive ? "Active" : "Paused"}
                       </button>
                     </td>
-                    <td className="font-semibold text-slate-700">{item.executions.toLocaleString()}</td>
-                    <td className={`font-semibold ${parseFloat(sr) >= 80 ? "text-emerald-600" : parseFloat(sr) >= 50 ? "text-amber-600" : "text-slate-500"}`}>{sr}%</td>
-                    <td className="font-semibold text-slate-700">
-                      {item.revenueInr > 0 ? `₹${item.revenueInr.toLocaleString("en-IN")}` : <span className="text-slate-500">—</span>}
+                    <td className="font-semibold text-fg">{item.executions.toLocaleString()}</td>
+                    <td className={`font-semibold ${parseFloat(sr) >= 80 ? "text-ok" : parseFloat(sr) >= 50 ? "text-warn" : "text-fg-muted"}`}>{sr}%</td>
+                    <td className="font-semibold text-fg">
+                      {item.revenueInr > 0 ? `₹${item.revenueInr.toLocaleString("en-IN")}` : <span className="text-fg-muted">—</span>}
                     </td>
-                    <td className="text-slate-500 text-xs">
+                    <td className="text-fg-muted text-xs">
                       {item.lastFiredAt ? (
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{timeAgo(item.lastFiredAt)}</span>
                       ) : <span className="text-slate-300">Never</span>}
@@ -293,7 +293,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-500">{items.length === 0 ? "No automations configured yet" : "No automations match these filters"}</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-fg-muted">{items.length === 0 ? "No automations configured yet" : "No automations match these filters"}</td></tr>
               )}
             </tbody>
           </table>
@@ -303,32 +303,32 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
       {/* Engine Execution Log — real-time events from the automation worker */}
       <div className="card">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-ok-solid animate-pulse" />
           <h3 className="card-title mb-0">Engine Execution Log</h3>
-          <span className="text-xs text-slate-500 ml-auto">Live — 60s cycle</span>
+          <span className="text-xs text-fg-muted ml-auto">Live — 60s cycle</span>
         </div>
         {executions.length === 0 ? (
-          <div className="text-center py-10 text-slate-500 text-sm">No executions yet — engine will fire on next cycle</div>
+          <div className="text-center py-10 text-fg-muted text-sm">No executions yet — engine will fire on next cycle</div>
         ) : (
           <div className="space-y-2">
             {executions.map((ex) => (
-              <div key={ex.id} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors">
+              <div key={ex.id} className="flex items-start gap-3 p-3 rounded-lg border border-line hover:bg-surface-inset transition-colors">
                 <div className="mt-0.5 shrink-0">
-                  {ex.actionResult === "success" ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    : ex.actionResult === "failed" ? <XCircle className="w-4 h-4 text-red-400" />
-                    : <AlertCircle className="w-4 h-4 text-amber-400" />}
+                  {ex.actionResult === "success" ? <CheckCircle2 className="w-4 h-4 text-ok" />
+                    : ex.actionResult === "failed" ? <XCircle className="w-4 h-4 text-danger" />
+                    : <AlertCircle className="w-4 h-4 text-warn" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">{triggerLabel[ex.triggerType] ?? ex.triggerType}</span>
+                    <span className="text-xs font-semibold text-fg uppercase tracking-wide">{triggerLabel[ex.triggerType] ?? ex.triggerType}</span>
                     <span className="text-slate-300">→</span>
-                    <span className="text-xs font-medium text-teal-700">{actionLabel[ex.actionType] ?? ex.actionType}</span>
+                    <span className="text-xs font-medium text-accent-text">{actionLabel[ex.actionType] ?? ex.actionType}</span>
                     <span className={`badge text-[10px] ${ex.actionResult === "success" ? "badge-green" : ex.actionResult === "failed" ? "badge-red" : "badge-amber"}`}>{ex.actionResult.toUpperCase()}</span>
                   </div>
-                  {ex.resultDetail && <div className="text-xs text-slate-500 mt-0.5 truncate">{ex.resultDetail}</div>}
-                  <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{ex.ruleCode}</div>
+                  {ex.resultDetail && <div className="text-xs text-fg-muted mt-0.5 truncate">{ex.resultDetail}</div>}
+                  <div className="text-[10px] text-fg-muted mt-0.5 font-mono">{ex.ruleCode}</div>
                 </div>
-                <div className="text-xs text-slate-500 shrink-0 whitespace-nowrap">{timeAgo(ex.executedAt)}</div>
+                <div className="text-xs text-fg-muted shrink-0 whitespace-nowrap">{timeAgo(ex.executedAt)}</div>
               </div>
             ))}
           </div>
@@ -345,15 +345,15 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
           rather than fake a builder we explain how automations work today. */}
       {infoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setInfoOpen(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface rounded-xl shadow-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-base font-semibold text-slate-800">Custom workflows</h3>
-              <button onClick={() => setInfoOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+              <h3 className="text-base font-semibold text-fg">Custom workflows</h3>
+              <button onClick={() => setInfoOpen(false)} className="text-fg-subtle hover:text-fg-muted"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-sm text-slate-600 mb-3">
+            <p className="text-sm text-fg-muted mb-3">
               Your operational automations already run automatically on a 60-second cycle — you can <strong>pause or resume</strong> any rule from the table below, and export the list to CSV.
             </p>
-            <p className="text-sm text-slate-600 mb-4">
+            <p className="text-sm text-fg-muted mb-4">
               Building brand-new custom workflows (your own triggers and actions) is on the roadmap. Want a specific flow set up in the meantime? Reach out to your account team and we&apos;ll configure it for you.
             </p>
             <div className="flex justify-end">

@@ -61,13 +61,13 @@ export function NotificationPrefsCard() {
   return (
     <div className="card">
       <h3 className="card-title">Notifications</h3>
-      <p className="text-xs text-slate-500 mb-3 -mt-1">Choose which alerts show in your notification bell.</p>
+      <p className="text-xs text-fg-muted mb-3 -mt-1">Choose which alerts show in your notification bell.</p>
       <div className="space-y-3">
         {ROWS.map(row => {
           const on = prefs[row.key];
           return (
             <div key={row.key} className="flex items-center justify-between">
-              <span className="text-sm text-slate-700">{row.label}</span>
+              <span className="text-sm text-fg">{row.label}</span>
               <button
                 onClick={() => toggle(row.key)}
                 disabled={!loaded || busy === row.key}
@@ -76,7 +76,7 @@ export function NotificationPrefsCard() {
                 aria-pressed={on}
                 aria-label={`${row.label}: ${on ? "on" : "off"}`}
               >
-                <span className="w-4 h-4 rounded-full bg-white shadow-sm block" />
+                <span className="w-4 h-4 rounded-full bg-surface shadow-sm block" />
               </button>
             </div>
           );

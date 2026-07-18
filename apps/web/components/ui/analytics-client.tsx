@@ -55,8 +55,8 @@ export default function AnalyticsClient({ terminology }: Props) {
     <div>
       <PreviewBanner />
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-slate-800">Revenue Analytics</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <h1 className="text-xl font-bold text-fg">Revenue Analytics</h1>
+        <p className="text-sm text-fg-muted mt-0.5">
           Performance trends · {terminology.requestPlural.toLowerCase()} · {terminology.entityPlural.toLowerCase()} insights
         </p>
       </div>
@@ -97,7 +97,7 @@ export default function AnalyticsClient({ terminology }: Props) {
                 onClick={() => setRange(r)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${range === r
                   ? "text-white border-orange-500"
-                  : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                  : "border-line text-fg-muted hover:bg-surface-inset"}`}
                 style={range === r ? { background: "#ea580c" } : {}}
               >
                 {r === "24h" ? "Last 24h" : r === "7d" ? "Last 7 Days" : "Custom Range"}
@@ -109,31 +109,31 @@ export default function AnalyticsClient({ terminology }: Props) {
         {range === "custom" && (
           <div className="flex items-center gap-3 mb-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-500">From</label>
+              <label className="text-xs font-semibold text-fg-muted">From</label>
               <input
                 type="date"
                 value={customFrom}
                 onChange={e => setCustomFrom(e.target.value)}
-                className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="border border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-500">To</label>
+              <label className="text-xs font-semibold text-fg-muted">To</label>
               <input
                 type="date"
                 value={customTo}
                 onChange={e => setCustomTo(e.target.value)}
-                className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="border border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
               />
             </div>
-            <span className="text-xs text-slate-500 italic">Showing 6-month sample data</span>
+            <span className="text-xs text-fg-muted italic">Showing 6-month sample data</span>
           </div>
         )}
 
         <div className="flex items-end gap-4" style={{ height: 160 }}>
           {chartData.map((d, i) => (
             <div key={d.label} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-xs font-semibold text-slate-600">₹{d.value}L</span>
+              <span className="text-xs font-semibold text-fg-muted">₹{d.value}L</span>
               <div
                 className="w-full rounded-t-md transition-all duration-300"
                 style={{
@@ -142,7 +142,7 @@ export default function AnalyticsClient({ terminology }: Props) {
                   minHeight: 8
                 }}
               />
-              <span className="text-xs text-slate-500">{d.label}</span>
+              <span className="text-xs text-fg-muted">{d.label}</span>
             </div>
           ))}
         </div>
@@ -160,8 +160,8 @@ export default function AnalyticsClient({ terminology }: Props) {
             ].map(c => (
               <div key={c.label}>
                 <div className="flex justify-between mb-1 text-sm">
-                  <span className="text-slate-600">{c.label}</span>
-                  <span className="font-semibold text-slate-700">{c.value} <span className="text-slate-500">({c.pct}%)</span></span>
+                  <span className="text-fg-muted">{c.label}</span>
+                  <span className="font-semibold text-fg">{c.value} <span className="text-fg-muted">({c.pct}%)</span></span>
                 </div>
                 <div className="progress-track">
                   <div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: "#ea580c" }} />
@@ -173,14 +173,14 @@ export default function AnalyticsClient({ terminology }: Props) {
         <div className="card">
           <h3 className="card-title mb-3">Monthly Target Tracker</h3>
           <div className="text-center py-4">
-            <div className="text-4xl font-black text-slate-800">78%</div>
-            <div className="text-sm text-slate-500 mt-1">of ₹40L monthly target</div>
+            <div className="text-4xl font-black text-fg">78%</div>
+            <div className="text-sm text-fg-muted mt-1">of ₹40L monthly target</div>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-3">
+          <div className="w-full bg-surface-inset rounded-full h-3">
             <div className="h-3 rounded-full" style={{ width: "78%", background: "#ea580c" }} />
           </div>
-          <div className="flex justify-between mt-2 text-xs text-slate-500">
-            <span>₹0</span><span className="font-semibold text-slate-700">₹31.4L achieved</span><span>₹40L target</span>
+          <div className="flex justify-between mt-2 text-xs text-fg-muted">
+            <span>₹0</span><span className="font-semibold text-fg">₹31.4L achieved</span><span>₹40L target</span>
           </div>
         </div>
       </div>

@@ -74,7 +74,7 @@ export function WorkspaceSwitcher({ workspaces, activeTenantId, accentColor }: {
                   key={w.tenantId}
                   onClick={() => switchTo(w.tenantId)}
                   disabled={!!switching}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 disabled:opacity-60"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface/5 disabled:opacity-60"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-semibold text-slate-200 truncate">{w.propertyName ?? "Workspace"}</div>
@@ -89,7 +89,7 @@ export function WorkspaceSwitcher({ workspaces, activeTenantId, accentColor }: {
           </div>
           <a
             href="/onboarding?new=1"
-            className="flex items-center gap-2 px-3 py-2 border-t hover:bg-white/5"
+            className="flex items-center gap-2 px-3 py-2 border-t hover:bg-surface/5"
             style={{ borderColor: "rgba(255,255,255,0.1)", color: "#9ab0c8" }}
           >
             <Plus className="w-3.5 h-3.5" />

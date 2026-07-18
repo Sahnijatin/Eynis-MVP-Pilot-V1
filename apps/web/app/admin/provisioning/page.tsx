@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
 export default async function ProvisioningPage() {
   if (!isStaffConsoleConfigured()) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+      <div className="min-h-screen flex items-center justify-center bg-surface-inset p-6">
         <div className="max-w-md text-center">
-          <h1 className="text-lg font-semibold text-slate-800 mb-2">Provisioning console not configured</h1>
-          <p className="text-sm text-slate-500">
-            Set <code className="px-1 py-0.5 rounded bg-slate-100">PLATFORM_ADMIN_SECRET</code> (16+ characters) in the
+          <h1 className="text-lg font-semibold text-fg mb-2">Provisioning console not configured</h1>
+          <p className="text-sm text-fg-muted">
+            Set <code className="px-1 py-0.5 rounded bg-surface-inset">PLATFORM_ADMIN_SECRET</code> (16+ characters) in the
             web server environment to enable the internal provisioning console.
           </p>
         </div>

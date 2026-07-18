@@ -35,7 +35,7 @@ interface Definition {
 }
 
 const ACCENT = "var(--color-primary, #0f766e)";
-const inputCls = "w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500";
+const inputCls = "w-full px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus";
 
 export function ReportBuilder({ reportId }: { reportId?: string }) {
   const router = useRouter();
@@ -164,7 +164,7 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
     finally { setSaving(false); }
   }
 
-  if (loading) return <div className="card text-sm text-slate-500">Loading report builder…</div>;
+  if (loading) return <div className="card text-sm text-fg-muted">Loading report builder…</div>;
 
   return (
     <div>
@@ -175,21 +175,21 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Untitled report"
-              className="text-xl font-semibold text-slate-800 bg-transparent outline-none w-full"
+              className="text-xl font-semibold text-fg bg-transparent outline-none w-full"
             />
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a description (optional)"
-              className="text-sm text-slate-500 bg-transparent outline-none w-full mt-1"
+              className="text-sm text-fg-muted bg-transparent outline-none w-full mt-1"
             />
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <label className="flex items-center gap-1.5 text-sm text-slate-600 mr-1">
+            <label className="flex items-center gap-1.5 text-sm text-fg-muted mr-1">
               <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} />
               Shared
             </label>
-            <button onClick={runPreview} disabled={running} className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 bg-white inline-flex items-center gap-1.5 disabled:opacity-50">
+            <button onClick={runPreview} disabled={running} className="px-3 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted bg-surface inline-flex items-center gap-1.5 disabled:opacity-50">
               {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Run preview
             </button>
             <button onClick={save} disabled={saving} className="px-4 py-2 text-sm font-semibold rounded-lg text-white inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: ACCENT }}>
@@ -199,13 +199,13 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
         </div>
       </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+      {error && <div className="mb-4 p-3 bg-danger-bg border border-danger-border text-danger rounded-lg text-sm">{error}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Config */}
         <div className="space-y-4">
           <div className="card">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Data source</label>
+            <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">Data source</label>
             <select value={sourceKey} onChange={(e) => { const s = sources.find((x) => x.key === e.target.value); if (s) selectSource(s); }} className={inputCls}>
               {sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
@@ -213,10 +213,10 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
 
           {source && (
             <div className="card">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Columns</div>
+              <div className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">Columns</div>
               <div className="space-y-1.5 max-h-52 overflow-y-auto">
                 {source.columns.map((c) => (
-                  <label key={c.key} className="flex items-center gap-2 text-sm text-slate-700">
+                  <label key={c.key} className="flex items-center gap-2 text-sm text-fg">
                     <input type="checkbox" checked={columns.includes(c.key)} onChange={() => toggleColumn(c.key)} />
                     {c.label}
                   </label>
@@ -228,24 +228,24 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
           {source && (
             <div className="card">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Filters</span>
-                <button onClick={() => setFilters((f) => [...f, { field: source.columns[0].key, op: "contains", value: "" }])} className="text-xs text-teal-700 font-medium inline-flex items-center gap-1">
+                <span className="text-xs font-semibold text-fg-muted uppercase tracking-wider">Filters</span>
+                <button onClick={() => setFilters((f) => [...f, { field: source.columns[0].key, op: "contains", value: "" }])} className="text-xs text-accent-text font-medium inline-flex items-center gap-1">
                   <Plus className="w-3 h-3" /> Add
                 </button>
               </div>
-              {filters.length === 0 && <p className="text-xs text-slate-500">No filters.</p>}
+              {filters.length === 0 && <p className="text-xs text-fg-muted">No filters.</p>}
               <div className="space-y-2">
                 {filters.map((f, i) => (
                   <div key={i} className="flex items-center gap-1.5">
-                    <select value={f.field} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, field: e.target.value } : x))} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1 min-w-0">
+                    <select value={f.field} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, field: e.target.value } : x))} className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface flex-1 min-w-0">
                       {source.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                     </select>
-                    <select value={f.op} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, op: e.target.value as "eq" | "contains" } : x))} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white">
+                    <select value={f.op} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, op: e.target.value as "eq" | "contains" } : x))} className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface">
                       <option value="contains">contains</option>
                       <option value="eq">equals</option>
                     </select>
-                    <input value={f.value} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} placeholder="value" className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1 min-w-0" />
-                    <button onClick={() => setFilters((cur) => cur.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <input value={f.value} onChange={(e) => setFilters((cur) => cur.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} placeholder="value" className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface flex-1 min-w-0" />
+                    <button onClick={() => setFilters((cur) => cur.filter((_, j) => j !== i))} className="text-fg-muted hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
               </div>
@@ -255,38 +255,38 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
           {source && (
             <div className="card space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Date range ({source.columns.find((c) => c.key === source.dateField)?.label ?? source.dateField})</label>
+                <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">Date range ({source.columns.find((c) => c.key === source.dateField)?.label ?? source.dateField})</label>
                 <div className="flex items-center gap-2">
-                  <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1" />
-                  <span className="text-xs text-slate-500">to</span>
-                  <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1" />
+                  <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface flex-1" />
+                  <span className="text-xs text-fg-muted">to</span>
+                  <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface flex-1" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Group by</label>
+                <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">Group by</label>
                 <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} className={inputCls}>
                   <option value="">No grouping (rows)</option>
                   {source.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Visualization</label>
+                <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">Visualization</label>
                 <select value={visualization} onChange={(e) => setVisualization(e.target.value as Visualization)} className={inputCls}>
                   {VISUALIZATIONS.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
                 </select>
                 {visualization !== "table" && visualization !== "number" && !groupBy && (
-                  <p className="text-[11px] text-amber-600 mt-1">Charts need a “Group by” field.</p>
+                  <p className="text-[11px] text-warn mt-1">Charts need a “Group by” field.</p>
                 )}
               </div>
               {!groupBy && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Sort by</label>
+                  <label className="block text-xs font-semibold text-fg-muted uppercase tracking-wider mb-1.5">Sort by</label>
                   <div className="flex items-center gap-2">
-                    <select value={sortField} onChange={(e) => setSortField(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white flex-1">
+                    <select value={sortField} onChange={(e) => setSortField(e.target.value)} className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface flex-1">
                       <option value="">Default ({source.dateField})</option>
                       {source.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                     </select>
-                    <select value={sortDir} onChange={(e) => setSortDir(e.target.value as "asc" | "desc")} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white">
+                    <select value={sortDir} onChange={(e) => setSortDir(e.target.value as "asc" | "desc")} className="px-2 py-1.5 rounded-lg border border-line text-xs bg-surface">
                       <option value="desc">Desc</option>
                       <option value="asc">Asc</option>
                     </select>
@@ -302,10 +302,10 @@ export function ReportBuilder({ reportId }: { reportId?: string }) {
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="card-title">Preview</h3>
-              {preview && <span className="text-xs text-slate-500">{preview.grouped ? `${preview.total} groups` : `${preview.total} rows`}</span>}
+              {preview && <span className="text-xs text-fg-muted">{preview.grouped ? `${preview.total} groups` : `${preview.total} rows`}</span>}
             </div>
             {!preview ? (
-              <p className="text-sm text-slate-500 py-8 text-center">Run a preview to see results.</p>
+              <p className="text-sm text-fg-muted py-8 text-center">Run a preview to see results.</p>
             ) : (
               <ReportResultView result={preview} />
             )}

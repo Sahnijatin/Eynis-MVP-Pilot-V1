@@ -38,7 +38,7 @@ export default async function InvitePage({
   const brandLabel = theme.isTenant ? theme.brandName : invite.hotelName ?? theme.brandName;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-surface-inset flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden" style={{ background: theme.primaryColor }}>
@@ -46,19 +46,19 @@ export default async function InvitePage({
               ? <img src={theme.logoUrl} alt="" className="w-full h-full object-contain" />
               : <Building2 className="w-5 h-5 text-white" />}
           </div>
-          <span className="text-xl font-bold text-gray-900">{brandLabel}</span>
+          <span className="text-xl font-bold text-fg">{brandLabel}</span>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+        <div className="bg-surface rounded-2xl shadow-sm border border-line p-8">
           {!invite.ok && (
             <div className="text-center">
-              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 bg-danger-bg rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">✗</span>
               </div>
-              <h1 className="text-xl font-semibold text-gray-900 mb-2">
+              <h1 className="text-xl font-semibold text-fg mb-2">
                 Invitation not found
               </h1>
-              <p className="text-gray-500 text-sm">
+              <p className="text-fg-muted text-sm">
                 {invite.error ?? "This invitation link is invalid or has been removed."}
               </p>
             </div>
@@ -66,13 +66,13 @@ export default async function InvitePage({
 
           {invite.ok && invite.accepted && (
             <div className="text-center">
-              <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 bg-ok-bg rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">✓</span>
               </div>
-              <h1 className="text-xl font-semibold text-gray-900 mb-2">
+              <h1 className="text-xl font-semibold text-fg mb-2">
                 Already accepted
               </h1>
-              <p className="text-gray-500 text-sm">
+              <p className="text-fg-muted text-sm">
                 This invitation has already been accepted. Sign in to continue.
               </p>
               <a
@@ -87,13 +87,13 @@ export default async function InvitePage({
 
           {invite.ok && invite.expired && !invite.accepted && (
             <div className="text-center">
-              <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 bg-warn-bg rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">⏰</span>
               </div>
-              <h1 className="text-xl font-semibold text-gray-900 mb-2">
+              <h1 className="text-xl font-semibold text-fg mb-2">
                 Invitation expired
               </h1>
-              <p className="text-gray-500 text-sm">
+              <p className="text-fg-muted text-sm">
                 This invitation link has expired. Ask your admin to send a new one.
               </p>
             </div>

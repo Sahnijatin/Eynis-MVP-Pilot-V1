@@ -63,7 +63,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
   if (!isLoaded || isIdentifying) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-3 text-slate-500">
+        <div className="flex flex-col items-center gap-3 text-fg-muted">
           <Loader2 className="w-7 h-7 animate-spin" />
           <span className="text-sm">Setting up your workspace...</span>
         </div>
@@ -224,7 +224,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
               value={propertyName}
               onChange={(e) => setPropertyName(e.target.value)}
               placeholder={`e.g. The Grand ${config?.name ?? "Hotel"}`}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
+              className="w-full px-3 py-2.5 border border-line-strong rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
               style={{ "--tw-ring-color": config?.accentColor ?? "var(--color-primary, #0f766e)" } as React.CSSProperties}
             />
           </div>
@@ -236,7 +236,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
               value={ownerName}
               onChange={(e) => setOwnerName(e.target.value)}
               placeholder="e.g. Rajnandni Khokar"
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
+              className="w-full px-3 py-2.5 border border-line-strong rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent mt-2"
               style={{ "--tw-ring-color": config?.accentColor ?? "var(--color-primary, #0f766e)" } as React.CSSProperties}
             />
           </div>
@@ -306,7 +306,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
           </div>
 
           {registerError && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg text-center mb-2">
+            <p className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-lg text-center mb-2">
               {registerError}
             </p>
           )}

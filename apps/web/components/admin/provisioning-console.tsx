@@ -132,7 +132,7 @@ export function ProvisioningConsole({
         <select
           value={cell?.selected ?? ""}
           onChange={(e) => setCell(key, { selected: e.target.value, saved: false, error: null })}
-          className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="px-3 py-2 rounded-lg border border-line text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent-focus"
         >
           {options.map((o) => (
             <option key={o.key} value={o.key}>{o.label}</option>
@@ -142,56 +142,56 @@ export function ProvisioningConsole({
           )}
         </select>
         {cell?.saved ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-700">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-accent-text">
             <Check className="w-4 h-4" /> Saved
           </span>
         ) : (
           <button
             onClick={() => save(tenantId, field)}
             disabled={!dirty || cell?.saving}
-            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg text-white inline-flex items-center gap-1.5 bg-teal-700 disabled:opacity-40"
+            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg text-accent-contrast inline-flex items-center gap-1.5 bg-accent disabled:opacity-40"
           >
             {cell?.saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {cell?.saving ? "Saving…" : "Save"}
           </button>
         )}
-        {cell?.error && <span className="text-xs text-red-600">{cell.error}</span>}
+        {cell?.error && <span className="text-xs text-danger">{cell.error}</span>}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen bg-surface-inset p-8">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-xl font-semibold text-slate-800">Provisioning Console</h1>
-          <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
+          <h1 className="text-xl font-semibold text-fg">Provisioning Console</h1>
+          <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg">
             <LogOut className="w-4 h-4" /> Sign out
           </button>
         </div>
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-fg-muted mb-6">
           Internal staff surface. Set each tenant&apos;s industry, white-label tier, and custom domain — these
           re-shape the tenant&apos;s experience or need DNS/SSL we own, so they are provisioned by us, not the customer.
         </p>
 
         {error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">{error}</div>
+          <div className="bg-danger-bg border border-danger-border text-danger rounded-xl p-4 text-sm">{error}</div>
         ) : (
           <>
             <div className="relative mb-4 max-w-sm">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by name, id or slug…"
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-line text-sm focus:outline-none focus:ring-2 focus:ring-accent-focus bg-surface"
               />
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-surface rounded-xl border border-line overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                  <tr className="text-left text-xs font-semibold text-fg-muted uppercase tracking-wider border-b border-line">
                     <th className="px-4 py-3">Tenant</th>
                     <th className="px-4 py-3">Industry</th>
                     <th className="px-4 py-3">White-label tier</th>
@@ -203,18 +203,18 @@ export function ProvisioningConsole({
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No tenants match your search.</td>
+                      <td colSpan={6} className="px-4 py-8 text-center text-fg-muted">No tenants match your search.</td>
                     </tr>
                   )}
                   {filtered.map((t) => (
                     <Fragment key={t.id}>
-                      <tr className="border-b border-slate-50 align-top">
+                      <tr className="border-b border-line align-top">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
                             <div className="min-w-0">
-                              <div className="font-medium text-slate-800 truncate">{t.name}</div>
-                              <div className="text-xs text-slate-500 truncate">
+                              <div className="font-medium text-fg truncate">{t.name}</div>
+                              <div className="text-xs text-fg-muted truncate">
                                 {t.id}
                                 {t.slug ? ` · ${t.slug}` : ""}
                               </div>
@@ -227,7 +227,7 @@ export function ProvisioningConsole({
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setExpanded(expanded === `${t.id}:routing` ? null : `${t.id}:routing`)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface text-fg-muted hover:bg-surface-inset"
                           >
                             <Globe className="w-3.5 h-3.5" /> {t.customDomain ?? "Set up"}
                             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded === `${t.id}:routing` ? "rotate-180" : ""}`} />
@@ -236,7 +236,7 @@ export function ProvisioningConsole({
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setExpanded(expanded === `${t.id}:sending` ? null : `${t.id}:sending`)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-line bg-surface text-fg-muted hover:bg-surface-inset"
                           >
                             <Mail className="w-3.5 h-3.5" /> Sending domain
                             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded === `${t.id}:sending` ? "rotate-180" : ""}`} />
@@ -244,14 +244,14 @@ export function ProvisioningConsole({
                         </td>
                       </tr>
                       {expanded === `${t.id}:routing` && (
-                        <tr className="border-b border-slate-50">
+                        <tr className="border-b border-line">
                           <td colSpan={6} className="px-4 pb-4 pt-0">
                             <RoutingDomainPanel tenantId={t.id} initialSlug={t.slug} initialCustomDomain={t.customDomain} />
                           </td>
                         </tr>
                       )}
                       {expanded === `${t.id}:sending` && (
-                        <tr className="border-b border-slate-50">
+                        <tr className="border-b border-line">
                           <td colSpan={6} className="px-4 pb-4 pt-0"><SendingDomainPanel tenantId={t.id} /></td>
                         </tr>
                       )}

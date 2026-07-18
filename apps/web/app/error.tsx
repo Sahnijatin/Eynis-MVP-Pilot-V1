@@ -22,13 +22,13 @@ export default function ErrorBoundary({
   return (
     <div className="flex items-center justify-center" style={{ minHeight: "60vh" }}>
       <div className="max-w-md w-full text-center p-8">
-        <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-          <AlertTriangle className="w-7 h-7 text-amber-500" />
+        <div className="w-14 h-14 rounded-full bg-warn-bg flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-7 h-7 text-warn" />
         </div>
-        <h1 className="text-lg font-semibold text-slate-800 mb-2">
+        <h1 className="text-lg font-semibold text-fg mb-2">
           Couldn&apos;t load this page
         </h1>
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-fg-muted mb-6">
           Something went wrong while loading your workspace. Your data is safe.
         </p>
         <div className="flex items-center justify-center gap-2">
@@ -41,7 +41,7 @@ export default function ErrorBoundary({
           </button>
           <a
             href="/dashboard"
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5"
           >
             <LayoutDashboard className="w-3.5 h-3.5" /> Back to dashboard
           </a>

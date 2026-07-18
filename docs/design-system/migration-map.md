@@ -16,6 +16,30 @@ Captured on the `main` head this branch was cut from. Re‑run the commands to m
 | Hardcoded hex in `.ts`/`.tsx` | **~642** |
 | Existing `--color-*` vars in `globals.css` | 10 |
 
+### Phase 6 progress (feature-file codemod)
+
+The semantic palette is registered in `tailwind.config.ts` (keys `canvas` /
+`surface[-2|-inset]` / `line[-strong]` / `fg[-muted|-subtle|-faint]` / `accent[-*]`
+/ `ok|warn|danger|info[-bg|-border|-solid]`), each resolving to a token var.
+Neutrals + status read the static `:root` tokens; the accent family carries a
+hardcoded teal fallback (= the exact shade it replaced) so first paint and
+out-of-shell public pages are unchanged.
+
+The Phase 6 codemod rewrote **~1,373 Tier‑A occurrences across all 62 files**
+(context-independent neutrals, the teal accent family, and the red/amber/
+emerald+green/blue status ramps), plus 11 `text-white` → `text-accent-contrast`
+on accent surfaces (white-label AA). What remains is **deferred by design**:
+
+| Residual bucket | Examples | Deferred to |
+|---|---|---|
+| On-dark `text-white` / `text-slate-300`·`-200` | sidebar rails, dark heroes, colored badges | Phase 8 (dark-mode QA) |
+| Dark neutral fills `bg-slate-300…800`·`bg-black`·`border-slate-800` | dark chips, overlays | Phase 8 |
+| Categorical (`ring-cyan/purple/orange-400`, `text/bg-purple-*`, `*-orange-*`, `accent-teal-600`, `fill-amber-400`, chart series) | industry chips, avatars, chart fills | **Phase 7** (`--cat-*`) |
+
+Enabling the dark theme by **default** (flip `NEXT_PUBLIC_ENABLE_THEME_TOGGLE`
++ honor OS) stays gated until the categorical pass (Phase 7) and dark-mode
+visual QA (Phase 8) land, so the toggle remains opt-in for now.
+
 ```bash
 # files
 grep -rlE '(bg|text|border|ring)-(slate|gray|teal|red|amber|emerald|blue|indigo|cyan|purple|orange)-[0-9]' apps/web/components apps/web/app --include=*.tsx | wc -l

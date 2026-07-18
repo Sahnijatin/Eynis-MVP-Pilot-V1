@@ -71,7 +71,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+      {error && <div className="mb-4 p-3 bg-danger-bg text-danger rounded-lg text-sm">{error}</div>}
 
       <SmartInsights industry={industry} />
 
@@ -83,8 +83,8 @@ export default async function DashboardPage() {
               <div className="kpi-value mt-1.5">74%</div>
               <div className="kpi-delta up mt-2">↑ +6% vs yesterday</div>
             </div>
-            <div className="kpi-icon bg-teal-50">
-              <LayoutDashboard className="w-4.5 h-4.5 text-teal-700" />
+            <div className="kpi-icon bg-accent-bg">
+              <LayoutDashboard className="w-4.5 h-4.5 text-accent-text" />
             </div>
           </div>
           <div className="flex items-end gap-0.5 mt-3 h-8">
@@ -101,8 +101,8 @@ export default async function DashboardPage() {
               <div className="kpi-value mt-1.5">52</div>
               <div className="kpi-delta neutral mt-2">● 8 check-ins remaining</div>
             </div>
-            <div className="kpi-icon bg-blue-50">
-              <Users className="w-4.5 h-4.5 text-blue-600" />
+            <div className="kpi-icon bg-info-bg">
+              <Users className="w-4.5 h-4.5 text-info" />
             </div>
           </div>
         </div>
@@ -120,10 +120,10 @@ export default async function DashboardPage() {
               )}
             </div>
             <div className="relative">
-              <div className="kpi-icon bg-amber-50">
-                <Bell className="w-4.5 h-4.5 text-amber-600" />
+              <div className="kpi-icon bg-warn-bg">
+                <Bell className="w-4.5 h-4.5 text-warn" />
               </div>
-              <div className="absolute -bottom-2 -right-2 text-xs font-semibold text-slate-500">{openCount}/{openCount + resolvedToday}</div>
+              <div className="absolute -bottom-2 -right-2 text-xs font-semibold text-fg-muted">{openCount}/{openCount + resolvedToday}</div>
             </div>
           </div>
         </div>
@@ -136,10 +136,10 @@ export default async function DashboardPage() {
               <div className="mt-2 flex items-center gap-1.5">
                 <span className="badge badge-teal text-xs">+₹4,200 UPSELLS</span>
               </div>
-              <div className="text-xs text-slate-500 mt-1">3 upgrades, 2 late C/O</div>
+              <div className="text-xs text-fg-muted mt-1">3 upgrades, 2 late C/O</div>
             </div>
-            <div className="kpi-icon bg-emerald-50">
-              <DollarSign className="w-4.5 h-4.5 text-emerald-600" />
+            <div className="kpi-icon bg-ok-bg">
+              <DollarSign className="w-4.5 h-4.5 text-ok" />
             </div>
           </div>
         </div>
@@ -154,19 +154,19 @@ export default async function DashboardPage() {
             <h3 className="card-title flex items-center gap-2">Upsell Performance <PreviewBadge label="Sample" /></h3>
             <div className="flex items-center justify-center py-2 mb-3">
               <div className="w-24 h-24 rounded-xl border-4 flex flex-col items-center justify-center" style={{ borderColor: "#0f766e" }}>
-                <div className="text-xs text-slate-500">TOTAL</div>
-                <div className="text-lg font-bold text-slate-800">₹9.8k</div>
+                <div className="text-xs text-fg-muted">TOTAL</div>
+                <div className="text-lg font-bold text-fg">₹9.8k</div>
               </div>
             </div>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-700 inline-block" />Upgrades</span><span className="font-medium">₹4,800</span></div>
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Late C/O</span><span className="font-medium">₹1,860</span></div>
-              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />F&amp;B</span><span className="font-medium">₹3,140</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent inline-block" />Upgrades</span><span className="font-medium">₹4,800</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-warn-solid inline-block" />Late C/O</span><span className="font-medium">₹1,860</span></div>
+              <div className="flex justify-between"><span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-ok-solid inline-block" />F&amp;B</span><span className="font-medium">₹3,140</span></div>
             </div>
-            <div className="mt-3 pt-3 border-t border-slate-100">
+            <div className="mt-3 pt-3 border-t border-line">
               <div className="flex justify-between text-sm">
-                <span className="text-red-500 font-medium">Potential missed:</span>
-                <span className="text-red-600 font-bold">₹3,630</span>
+                <span className="text-danger font-medium">Potential missed:</span>
+                <span className="text-danger font-bold">₹3,630</span>
               </div>
             </div>
           </div>
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="card col-span-2">
           <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-4 h-4 text-teal-700" />
+            <Zap className="w-4 h-4 text-accent-text" />
             <h3 className="card-title mb-0">Today&apos;s Automation Activity</h3>
             <PreviewBadge label="Sample" />
           </div>
@@ -184,8 +184,8 @@ export default async function DashboardPage() {
             {automationItems.map((a) => (
               <div key={a.label}>
                 <div className="flex justify-between mb-1">
-                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{a.label}</span>
-                  <span className="text-xs font-semibold text-slate-700">{a.value}</span>
+                  <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">{a.label}</span>
+                  <span className="text-xs font-semibold text-fg">{a.value}</span>
                 </div>
                 <div className="progress-track">
                   <div className="progress-fill" style={{ width: `${a.pct}%` }} />
@@ -200,17 +200,17 @@ export default async function DashboardPage() {
             <h3 className="card-title flex items-center gap-2">Critical Alerts <PreviewBadge label="Sample" /></h3>
             <div className="space-y-2">
               <div className="alert-card error">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm font-semibold text-red-700">Delayed Service Room 302</div>
-                  <div className="text-xs text-red-500">Request open for &gt;45 mins</div>
+                  <div className="text-sm font-semibold text-danger">Delayed Service Room 302</div>
+                  <div className="text-xs text-danger">Request open for &gt;45 mins</div>
                 </div>
               </div>
               <div className="alert-card warning">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm font-semibold text-amber-700">PMS Sync Lag</div>
-                  <div className="text-xs text-amber-600">Inventory sync delayed by 4m</div>
+                  <div className="text-sm font-semibold text-warn">PMS Sync Lag</div>
+                  <div className="text-xs text-warn">Inventory sync delayed by 4m</div>
                 </div>
               </div>
             </div>
@@ -219,7 +219,7 @@ export default async function DashboardPage() {
             <div className="text-xs text-teal-200 uppercase tracking-wider font-medium mb-1">Night Audit</div>
             <div className="text-white font-semibold text-sm mb-1">AI-generated operations report</div>
             <div className="text-teal-100 text-xs mb-3">Generate an end-of-day summary of requests, resolutions and revenue.</div>
-            <Link href="/night-audit" className="w-full text-center text-xs text-teal-100 font-medium flex items-center justify-center gap-1 py-1.5 rounded-lg border border-teal-500 hover:bg-teal-600 transition-colors">
+            <Link href="/night-audit" className="w-full text-center text-xs text-teal-100 font-medium flex items-center justify-center gap-1 py-1.5 rounded-lg border border-accent-border hover:bg-accent transition-colors">
               View &amp; Generate Report <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
@@ -232,16 +232,16 @@ export default async function DashboardPage() {
         <div className="flex items-center justify-between mb-1">
           <div>
             <h3 className="card-title mb-0">Request Volume</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Created vs resolved · last 14 days</p>
+            <p className="text-xs text-fg-muted mt-0.5">Created vs resolved · last 14 days</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-700 inline-block" />CREATED</span>
-            <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />RESOLVED</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-accent inline-block" />CREATED</span>
+            <span className="flex items-center gap-1.5 text-fg-muted"><span className="w-2.5 h-2.5 rounded-full bg-warn-solid inline-block" />RESOLVED</span>
           </div>
         </div>
         {chartData.length > 0
           ? <RequestTrendChart data={chartData} />
-          : <div className="py-10 text-center text-sm text-slate-400">No trend data yet — this chart fills in as requests come through.</div>}
+          : <div className="py-10 text-center text-sm text-fg-subtle">No trend data yet — this chart fills in as requests come through.</div>}
       </div>
     </div>
   );

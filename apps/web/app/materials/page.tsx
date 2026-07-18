@@ -25,12 +25,12 @@ export default async function MaterialsPage() {
       <div className="mt-4">
         <Card>
           <h3 className="card-title">Yield — last {yieldData.windowDays} days</h3>
-          <p className="text-xs text-slate-500 mb-3">
+          <p className="text-xs text-fg-muted mb-3">
             Movement from the stock ledger plus demand committed by accepted quotes. Log usage and waste
             against materials to build up waste-ratio history.
           </p>
           {rows.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">
+            <div className="py-8 text-center text-sm text-fg-subtle">
               No movement or committed demand yet — this fills in as you receive, use and quote materials.
             </div>
           ) : (

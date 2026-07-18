@@ -99,11 +99,11 @@ export function BookingsClient({ initialItems }: { initialItems: BookingRow[] })
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Booking Pipeline</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Active bookings · departures · payment status.</p>
+          <h1 className="text-xl font-bold text-fg">Booking Pipeline</h1>
+          <p className="text-sm text-fg-muted mt-0.5">Active bookings · departures · payment status.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => csvExport(items)} disabled={items.length === 0} className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40">
+          <button onClick={() => csvExport(items)} disabled={items.length === 0} className="px-3 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5 disabled:opacity-40">
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>
           <button onClick={openAdd} className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5" style={{ background: ACCENT }}>
@@ -130,24 +130,24 @@ export function BookingsClient({ initialItems }: { initialItems: BookingRow[] })
                 return (
                   <tr key={b.id}>
                     <td className="font-mono text-xs text-purple-600 font-semibold">{b.number}</td>
-                    <td className="font-medium text-slate-800">{b.clientName}</td>
-                    <td className="text-slate-600 text-xs">{b.destination || "—"}</td>
-                    <td className="text-sm text-slate-500">{fmtDate(b.departureDate)}</td>
-                    <td className="text-slate-600">{b.pax}</td>
+                    <td className="font-medium text-fg">{b.clientName}</td>
+                    <td className="text-fg-muted text-xs">{b.destination || "—"}</td>
+                    <td className="text-sm text-fg-muted">{fmtDate(b.departureDate)}</td>
+                    <td className="text-fg-muted">{b.pax}</td>
                     <td className="font-semibold">{lakh(b.valuePaise)}</td>
-                    <td><span className={`font-semibold ${b.paidPct >= 100 ? "text-emerald-600" : b.paidPct === 0 ? "text-red-600" : "text-amber-600"}`}>{b.paidPct}%</span></td>
+                    <td><span className={`font-semibold ${b.paidPct >= 100 ? "text-ok" : b.paidPct === 0 ? "text-danger" : "text-warn"}`}>{b.paidPct}%</span></td>
                     <td><span className="badge" style={{ background: s.bg, color: s.color }}>{s.label}</span></td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => openEdit(b)} className="text-slate-400 hover:text-slate-600" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => remove(b)} className="text-slate-400 hover:text-red-600" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEdit(b)} className="text-fg-subtle hover:text-fg-muted" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => remove(b)} className="text-fg-subtle hover:text-danger" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
               {items.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-10 text-slate-400">No bookings yet — create your first booking.</td></tr>
+                <tr><td colSpan={9} className="text-center py-10 text-fg-subtle">No bookings yet — create your first booking.</td></tr>
               )}
             </tbody>
           </table>
@@ -158,45 +158,45 @@ export function BookingsClient({ initialItems }: { initialItems: BookingRow[] })
         <Modal title={editingId ? "Edit Booking" : "New Booking"} onClose={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }}>
           <form onSubmit={save} className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Client / Lead traveller *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Arora Family" value={form.clientName} onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))} required />
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Client / Lead traveller *</label>
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Arora Family" value={form.clientName} onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))} required />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Destination</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Maldives — 5N/6D" value={form.destination} onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))} />
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Destination</label>
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Maldives — 5N/6D" value={form.destination} onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Departure</label>
-                <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.departureDate} onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))} />
+                <label className="block text-xs font-semibold text-fg-muted mb-1">Departure</label>
+                <input type="date" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.departureDate} onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Pax</label>
-                <input type="number" min="1" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.pax} onChange={(e) => setForm((f) => ({ ...f, pax: e.target.value }))} />
+                <label className="block text-xs font-semibold text-fg-muted mb-1">Pax</label>
+                <input type="number" min="1" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.pax} onChange={(e) => setForm((f) => ({ ...f, pax: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Booking Value (₹)</label>
-                <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="0" value={form.valueInr} onChange={(e) => setForm((f) => ({ ...f, valueInr: e.target.value }))} />
+                <label className="block text-xs font-semibold text-fg-muted mb-1">Booking Value (₹)</label>
+                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="0" value={form.valueInr} onChange={(e) => setForm((f) => ({ ...f, valueInr: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Paid so far (₹)</label>
-                <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="0" value={form.paidInr} onChange={(e) => setForm((f) => ({ ...f, paidInr: e.target.value }))} />
+                <label className="block text-xs font-semibold text-fg-muted mb-1">Paid so far (₹)</label>
+                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="0" value={form.paidInr} onChange={(e) => setForm((f) => ({ ...f, paidInr: e.target.value }))} />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
-              <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Status</label>
+              <select className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
                 {STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Notes</label>
-              <textarea rows={2} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" placeholder="Itinerary notes, visa status, reminders…" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Notes</label>
+              <textarea rows={2} className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" placeholder="Itinerary notes, visa status, reminders…" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
             <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-line text-fg-muted hover:bg-surface-inset">Cancel</button>
               <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: ACCENT }}>{saving ? "Saving…" : editingId ? "Save changes" : "Create Booking"}</button>
             </div>
           </form>

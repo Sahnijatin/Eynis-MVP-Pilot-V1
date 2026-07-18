@@ -99,11 +99,11 @@ export function MenuClient({ initialItems }: { initialItems: MenuItemRow[] }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Menu &amp; Pricing</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Your live menu — items, pricing and margins.</p>
+          <h1 className="text-xl font-bold text-fg">Menu &amp; Pricing</h1>
+          <p className="text-sm text-fg-muted mt-0.5">Your live menu — items, pricing and margins.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => csvExport(items)} disabled={items.length === 0} className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40">
+          <button onClick={() => csvExport(items)} disabled={items.length === 0} className="px-3 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5 disabled:opacity-40">
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>
           <button onClick={openAdd} className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5" style={{ background: ACCENT }}>
@@ -128,28 +128,28 @@ export function MenuClient({ initialItems }: { initialItems: MenuItemRow[] }) {
               {items.map((m) => (
                 <tr key={m.id}>
                   <td>
-                    <div className="font-medium text-slate-800">{m.name}</div>
-                    {m.description && <div className="text-xs text-slate-400 mt-0.5">{m.description}</div>}
+                    <div className="font-medium text-fg">{m.name}</div>
+                    {m.description && <div className="text-xs text-fg-subtle mt-0.5">{m.description}</div>}
                   </td>
-                  <td className="text-xs text-slate-500">{m.category}</td>
+                  <td className="text-xs text-fg-muted">{m.category}</td>
                   <td className="font-medium">{rupees(m.pricePaise)}</td>
-                  <td className="text-slate-600">{rupees(m.costPaise)}</td>
-                  <td><span className={`font-bold ${m.marginPct < 50 ? "text-red-600" : m.marginPct >= 75 ? "text-emerald-600" : "text-amber-600"}`}>{m.marginPct}%</span></td>
+                  <td className="text-fg-muted">{rupees(m.costPaise)}</td>
+                  <td><span className={`font-bold ${m.marginPct < 50 ? "text-danger" : m.marginPct >= 75 ? "text-ok" : "text-warn"}`}>{m.marginPct}%</span></td>
                   <td>
                     <button onClick={() => toggleAvailable(m)} className={`w-10 h-5 rounded-full transition-colors flex items-center ${m.isAvailable ? "justify-end" : "justify-start"}`} style={{ background: m.isAvailable ? ACCENT : "#e2e8f0", padding: "2px" }} aria-pressed={m.isAvailable} aria-label={`${m.name} available`}>
-                      <span className="w-4 h-4 rounded-full bg-white shadow-sm block" />
+                      <span className="w-4 h-4 rounded-full bg-surface shadow-sm block" />
                     </button>
                   </td>
                   <td>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(m)} className="text-slate-400 hover:text-slate-600" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => remove(m)} className="text-slate-400 hover:text-red-600" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => openEdit(m)} className="text-fg-subtle hover:text-fg-muted" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => remove(m)} className="text-fg-subtle hover:text-danger" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>
               ))}
               {items.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-400">No menu items yet — add your first item.</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-fg-subtle">No menu items yet — add your first item.</td></tr>
               )}
             </tbody>
           </table>
@@ -160,38 +160,38 @@ export function MenuClient({ initialItems }: { initialItems: MenuItemRow[] }) {
         <Modal title={editingId ? "Edit Menu Item" : "Add Menu Item"} onClose={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }}>
           <form onSubmit={save} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Item Name *</label>
-              <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="e.g. Grilled Salmon" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Item Name *</label>
+              <input className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="e.g. Grilled Salmon" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Category</label>
-              <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Category</label>
+              <select className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
                 {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Selling Price (₹)</label>
-                <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" value={form.priceInr} onChange={(e) => setForm((f) => ({ ...f, priceInr: e.target.value }))} />
+                <label className="block text-xs font-semibold text-fg-muted mb-1">Selling Price (₹)</label>
+                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" value={form.priceInr} onChange={(e) => setForm((f) => ({ ...f, priceInr: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Cost Price (₹)</label>
-                <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" value={form.costInr} onChange={(e) => setForm((f) => ({ ...f, costInr: e.target.value }))} />
+                <label className="block text-xs font-semibold text-fg-muted mb-1">Cost Price (₹)</label>
+                <input type="number" min="0" className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" value={form.costInr} onChange={(e) => setForm((f) => ({ ...f, costInr: e.target.value }))} />
               </div>
             </div>
             {computedMargin !== null && (
-              <div className={`text-sm px-3 py-2 rounded-lg font-semibold ${computedMargin < 50 ? "bg-red-50 text-red-700" : computedMargin >= 75 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>Gross Margin: {computedMargin}%</div>
+              <div className={`text-sm px-3 py-2 rounded-lg font-semibold ${computedMargin < 50 ? "bg-danger-bg text-danger" : computedMargin >= 75 ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}>Gross Margin: {computedMargin}%</div>
             )}
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Description</label>
-              <textarea rows={2} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none" placeholder="Optional description or notes" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+              <label className="block text-xs font-semibold text-fg-muted mb-1">Description</label>
+              <textarea rows={2} className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none" placeholder="Optional description or notes" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-fg">
               <input type="checkbox" checked={form.isAvailable} onChange={(e) => setForm((f) => ({ ...f, isAvailable: e.target.checked }))} />
               Available on the menu
             </label>
             <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={() => { setModalOpen(false); setForm(EMPTY); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-line text-fg-muted hover:bg-surface-inset">Cancel</button>
               <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: ACCENT }}>{saving ? "Saving…" : editingId ? "Save changes" : "Add to Menu"}</button>
             </div>
           </form>
