@@ -1,37 +1,48 @@
-// Design tokens — kept in lockstep with the CSS variables in app/globals.css
-// (--color-*), so the design-system primitives share ONE palette with the rest
-// of the app (dark-teal sidebar shell, stat cards, charts) — no drift.
+// Design tokens — now thin references to the semantic CSS variables defined in
+// app/globals.css (the design-system token layer, Phases 2-3). Every primitive
+// and every component that reads `t.color.*` inline therefore shares ONE
+// token layer with the rest of the app AND flips correctly in dark mode —
+// no hardcoded hex, no drift. See docs/design-system/tokens.md.
 
 export const tokens = {
   color: {
-    bg: "#f4f6fa", // --color-bg
-    surface: "#ffffff", // --color-surface
-    surfaceMuted: "#f1f5f9", // slate-100 (hover/fills)
-    border: "#e6eaf0", // --color-border
-    borderStrong: "#cbd5e1", // slate-300 (input borders)
-    text: "#0f172a", // --color-text
-    textMuted: "#64748b", // --color-muted
-    // Bumped slate-400 (#94a3b8, ~2.6:1 on white — fails WCAG AA) → slate-500
-    // (#64748b, ~4.6:1 — passes AA for normal text). This collapses faint into
-    // muted on light surfaces: there is no slate step between 400 and 500 that
-    // clears 4.5:1, so accessibility wins over the muted/faint distinction here.
-    textFaint: "#64748b", // slate-500 (AA-compliant; was slate-400)
-    // Accent reads the white-label CSS var set by the app shell (resolved theme),
-    // falling back to the teal default for SSR / pre-hydration. accentHover/Soft
-    // stay static for now — a follow-up can derive them from the live accent.
-    accent: "var(--color-accent, #0f766e)",
-    accentHover: "#0e6b63",
-    accentSoft: "#f0fdfa", // teal-50
-    danger: "#b91c1c",
-    dangerSoft: "#fef2f2",
-    success: "#15803d",
-    warning: "#b45309",
+    bg: "var(--bg)",
+    surface: "var(--surface)",
+    surfaceMuted: "var(--surface-inset)",
+    border: "var(--border)",
+    borderStrong: "var(--border-strong)",
+    text: "var(--text)",
+    textMuted: "var(--text-muted)",
+    textFaint: "var(--text-subtle)", // AA-safe subtle tier
+    // Text colour for use ON the accent solid — the ramp computes white or dark
+    // ink per hue so a coloured button label is always legible.
+    onAccent: "var(--accent-contrast, #ffffff)",
+    // Accent reads the generated ramp (step 9 = solid), falling back to the
+    // legacy white-label var then the teal default for SSR / non-shell surfaces.
+    accent: "var(--accent-solid, var(--color-accent, #0f766e))",
+    accentHover: "var(--accent-solid-hover, var(--color-accent, #0f766e))",
+    accentSoft: "var(--accent-bg, #f0fdfa)",
+    // AA-guaranteed accent TEXT (ramp step 11) — for links/labels/badge text on a
+    // light or tinted surface, where the solid (step 9) would be too low-contrast.
+    accentText: "var(--accent-text, var(--color-accent, #0f766e))",
+    danger: "var(--danger-text)",
+    dangerSoft: "var(--danger-bg)",
+    dangerSolid: "var(--danger-solid)",
+    success: "var(--ok-text)",
+    successSoft: "var(--ok-bg)",
+    successSolid: "var(--ok-solid)",
+    warning: "var(--warn-text)",
+    warningSoft: "var(--warn-bg)",
+    warningSolid: "var(--warn-solid)",
+    info: "var(--info-text)",
+    infoSoft: "var(--info-bg)",
+    infoSolid: "var(--info-solid)",
   },
   radius: { sm: 6, md: 8, lg: 12, pill: 999 },
   shadow: {
-    sm: "0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06)",
-    md: "0 4px 12px rgba(15,23,42,0.08)",
-    lg: "0 10px 30px rgba(15,23,42,0.12)",
+    sm: "var(--shadow-1)",
+    md: "var(--shadow-2)",
+    lg: "var(--shadow-3)",
   },
   font: {
     xs: 12, sm: 13, base: 14, lg: 16, xl: 20, xxl: 26,

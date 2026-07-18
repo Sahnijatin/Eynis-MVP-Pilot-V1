@@ -22,7 +22,7 @@ export function Button({
     textDecoration: "none", whiteSpace: "nowrap",
   };
   const variants: Record<BtnVariant, React.CSSProperties> = {
-    primary: { background: hover && !disabled ? t.color.accentHover : t.color.accent, color: "#fff", boxShadow: t.shadow.sm },
+    primary: { background: hover && !disabled ? t.color.accentHover : t.color.accent, color: t.color.onAccent, boxShadow: t.shadow.sm },
     secondary: { background: hover && !disabled ? t.color.surfaceMuted : t.color.surface, color: t.color.text, borderColor: t.color.border },
     ghost: { background: hover && !disabled ? t.color.surfaceMuted : "transparent", color: t.color.textMuted },
     danger: { background: hover && !disabled ? t.color.dangerSoft : "transparent", color: t.color.danger, borderColor: hover ? t.color.danger : "transparent" },
@@ -38,7 +38,7 @@ export function Button({
 // LinkButton — anchor styled as a button (for hrefs / downloads).
 export function LinkButton({ variant = "secondary", size = "md", style, className, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { variant?: BtnVariant; size?: BtnSize }) {
   const map: Record<BtnVariant, React.CSSProperties> = {
-    primary: { background: t.color.accent, color: "#fff" },
+    primary: { background: t.color.accent, color: t.color.onAccent },
     secondary: { background: t.color.surface, color: t.color.text, border: `1px solid ${t.color.border}` },
     ghost: { background: "transparent", color: t.color.textMuted },
     danger: { background: "transparent", color: t.color.danger },
@@ -105,10 +105,10 @@ type Tone = "neutral" | "success" | "warning" | "danger" | "accent";
 export function Badge({ children, tone = "neutral", style }: { children: React.ReactNode; tone?: Tone; style?: React.CSSProperties }) {
   const map: Record<Tone, React.CSSProperties> = {
     neutral: { background: t.color.surfaceMuted, color: t.color.textMuted },
-    success: { background: "#dcfce7", color: t.color.success },
-    warning: { background: "#fef3c7", color: t.color.warning },
+    success: { background: t.color.successSoft, color: t.color.success },
+    warning: { background: t.color.warningSoft, color: t.color.warning },
     danger: { background: t.color.dangerSoft, color: t.color.danger },
-    accent: { background: t.color.accentSoft, color: t.color.accent },
+    accent: { background: t.color.accentSoft, color: t.color.accentText },
   };
   return <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 9px", borderRadius: t.radius.pill, fontSize: t.font.xs, fontWeight: 600, ...map[tone], ...style }}>{children}</span>;
 }
@@ -197,8 +197,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", flexDirection: "column", gap: 8, zIndex: 1100 }}>
         {toasts.map((t2) => (
           <div key={t2.id} style={{
-            background: t.color.text, color: "#fff", padding: "10px 14px", borderRadius: t.radius.md, boxShadow: t.shadow.lg,
-            fontSize: t.font.sm, fontWeight: 500, minWidth: 220, borderLeft: `3px solid ${t2.tone === "success" ? "#22c55e" : t2.tone === "error" ? "#ef4444" : "#38bdf8"}`,
+            // Inverted chip: ink-on-paper in light, paper-on-ink in dark — both legible.
+            background: t.color.text, color: t.color.bg, padding: "10px 14px", borderRadius: t.radius.md, boxShadow: t.shadow.lg,
+            fontSize: t.font.sm, fontWeight: 500, minWidth: 220,
+            borderLeft: `3px solid ${t2.tone === "success" ? t.color.successSolid : t2.tone === "error" ? t.color.dangerSolid : t.color.infoSolid}`,
           }}>{t2.text}</div>
         ))}
       </div>
