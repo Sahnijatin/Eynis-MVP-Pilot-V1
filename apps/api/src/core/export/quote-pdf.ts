@@ -43,8 +43,20 @@ const hexToRgb = (hex: string): RGB => {
   return rgb(parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255);
 };
 
-// Helvetica is WinAnsi — map ₹ and drop anything unencodable so drawText never throws.
-const safe = (s: unknown): string => String(s ?? "").replace(/₹/g, "Rs.").replace(/[^\x00-\xFF]/g, "");
+// Helvetica is WinAnsi (Latin-1). Map ₹ and the common "smart" punctuation that
+// copy-paste from Word/email/browsers inserts (em/en dashes, curly quotes, ellipsis,
+// bullets) to Latin-1 equivalents so they RENDER instead of being silently deleted.
+// Anything still outside Latin-1 (e.g. Devanagari/Tamil names) is dropped — rendering
+// those needs an embedded Unicode font, tracked separately. drawText never throws.
+const safe = (s: unknown): string =>
+  String(s ?? "")
+    .replace(/₹/g, "Rs.")
+    .replace(/[‒-―]/g, "-") // figure/en/em/horizontal dashes → hyphen
+    .replace(/[‘’‚‛]/g, "'") // curly single quotes/low-9 → '
+    .replace(/[“”„‟]/g, '"') // curly double quotes/low-9 → "
+    .replace(/…/g, "...") // horizontal ellipsis
+    .replace(/•/g, "-") // bullet → hyphen
+    .replace(/[^\x00-\xFF]/g, "");
 const money = (paise: number): string => `Rs. ${(Math.round(paise) / 100).toFixed(2)}`;
 
 function truncate(s: string, font: PDFFont, size: number, maxW: number): string {
@@ -70,6 +82,7 @@ function wrap(text: string, font: PDFFont, size: number, maxW: number): string[]
 
 export interface QuotationPdfData {
   number: string;
+  subject?: string | null; // the quote title, shown as its own "Subject" line (not jammed into the number)
   date: Date;
   seller: SellerDetails;
   billTo: BillTo;
@@ -128,22 +141,27 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   if (data.seller.pan) sellerLines.push(`PAN Number: ${data.seller.pan}`);
   for (const line of sellerLines) { T(truncate(line, font, 9, midX - LEFT - 8), LEFT, ly, 9, font, INK); ly -= 13; }
 
-  // Right column.
+  // Right column. This is a QUOTATION, not a tax invoice — so the meta labels read
+  // "Quotation No/Date", and the quote subject gets its OWN labelled line rather than
+  // being concatenated into the number.
   let ry = y - 6;
+  const rightMaxW = RIGHT - (midX + 8);
+  const metaRow = (label: string, value: string) => {
+    T(label, midX + 8, ry, 9, bold, INK);
+    const lw = bold.widthOfTextAtSize(`${label} `, 9);
+    T(truncate(value, font, 9, rightMaxW - lw), midX + 8 + lw, ry, 9, font, INK);
+    ry -= 14;
+  };
   T("QUOTATION", midX + 8, ry - 14, 20, bold, INK);
   ry -= 34;
-  T("Invoice No:", midX + 8, ry, 9, bold, INK);
-  T(safe(data.number), midX + 8 + bold.widthOfTextAtSize("Invoice No: ", 9), ry, 9, font, INK);
-  ry -= 14;
+  metaRow("Quotation No:", safe(data.number));
   const dateStr = data.date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
-  T("Invoice Date:", midX + 8, ry, 9, bold, INK);
-  T(dateStr, midX + 8 + bold.widthOfTextAtSize("Invoice Date: ", 9), ry, 9, font, INK);
-  ry -= 14;
+  metaRow("Quotation Date:", dateStr);
   if (data.validUntil) {
-    T("Valid Until:", midX + 8, ry, 9, bold, INK);
-    T(data.validUntil.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), midX + 8 + bold.widthOfTextAtSize("Valid Until: ", 9), ry, 9, font, INK);
-    ry -= 14;
+    metaRow("Valid Until:", data.validUntil.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
   }
+  const subject = (data.subject ?? "").trim();
+  if (subject) metaRow("Subject:", subject);
 
   y = Math.min(ly, ry) - 6;
   page.drawLine({ start: { x: midX, y: top + 2 }, end: { x: midX, y: y + 6 }, thickness: 0.75, color: LINE });

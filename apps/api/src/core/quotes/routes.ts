@@ -443,7 +443,8 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           if (token) imageLinkBase = `${publicBase}/api/public/quote-image/${token}`;
         }
         const pdf = await renderQuotationPdf({
-          number: `${String(quote.number)} — ${String(quote.title)}`,
+          number: String(quote.number),
+          subject: String(quote.title),
           date: quote.sentAt ? new Date(quote.sentAt as unknown as string) : new Date(quote.createdAt as unknown as string),
           seller: quote.seller,
           billTo,
