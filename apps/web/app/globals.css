@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -690,4 +690,115 @@
   .app-sidebar.open { transform: translateX(0); }
   .nav-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 55; }
   .topbar { padding-left: 1rem; padding-right: 1rem; }
+}
+
+/* ============================================================================
+   DESIGN-SYSTEM TOKEN LAYER (Phase 2 dual-tone · Phase 3 Fintech Trust personality)
+   ----------------------------------------------------------------------------
+   The semantic tokens every migrated component reads. Defined for BOTH themes.
+   Light values here MATCH the current look, so migrating a component onto tokens
+   changes nothing in light mode; Phase 3 swaps the light values to the Fintech
+   personality. Nothing reads most of these yet (migration is Phases 4-6), so
+   this block is additive and has no visual effect on the un-migrated app.
+   Contract + final target values: docs/design-system/tokens.md
+   ========================================================================== */
+@layer base {
+  :root {
+    /* ── Personality: 02 Fintech Trust (Phase 3) ──────────────────────────────
+       Warm paper canvas (never pure white), ink-navy text, warm hairlines. These
+       are the LIGHT values migrated components adopt; the dark set below is the
+       designed counterpart. Text tokens verified ≥ 4.5:1 (see docs/design-system).*/
+    /* surfaces */
+    --bg: #FBFAF8;              /* warm paper */
+    --surface: #FFFFFF;
+    --surface-2: #FFFFFF;       /* elevation distinguishes it, not colour */
+    --surface-inset: #F5F3F0;   /* wells, zebra, hover */
+    --sidebar: #FFFFFF;         /* Fintech: light rail (adopted when the shell migrates) */
+    /* lines */
+    --border: #ECE9E4;          /* warm hairline */
+    --border-strong: #DAD5CD;
+    --ring: var(--accent-focus, #A395D8);
+    /* text — ink-navy family */
+    --text: #1A1D29;
+    --text-muted: #545869;
+    --text-subtle: #6B6E79;     /* darkened from spec #7E8291 to clear AA on white */
+    --text-faint: #A9ACB8;      /* placeholder/disabled only (AA-exempt) */
+    --text-on-accent: var(--accent-contrast, #FFFFFF);
+    /* status — warm-tuned tints */
+    --ok-bg: #E7F4EE; --ok-border: #BFE3D2; --ok-text: #0E7C66; --ok-solid: #12936F;
+    --warn-bg: #FBF3E2; --warn-border: #F0DCB0; --warn-text: #8A5A0B; --warn-solid: #D9922B;
+    --danger-bg: #FCECEC; --danger-border: #F6C9C9; --danger-text: #C0362C; --danger-solid: #DC4438;
+    --info-bg: #ECEFFC; --info-border: #C9D3F6; --info-text: #3B4F9E; --info-solid: #3B82F6;
+    /* elevation — ambient shadows carry a faint warm tint */
+    --shadow-1: 0 1px 2px rgba(26,29,41,.05);
+    --shadow-2: 0 1px 2px rgba(26,29,41,.04), 0 4px 12px -4px rgba(26,29,41,.10);
+    --shadow-3: 0 2px 4px rgba(26,29,41,.05), 0 12px 28px -10px rgba(26,29,41,.14);
+    --shadow-4: 0 4px 8px rgba(26,29,41,.06), 0 24px 48px -16px rgba(26,29,41,.18);
+    --shadow-5: 0 8px 16px rgba(26,29,41,.08), 0 40px 80px -24px rgba(26,29,41,.24);
+    /* radius — Fintech default 8px */
+    --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-full: 9999px;
+    /* type — Inter body, Inter Tight display, system mono for data */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --font-display: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  }
+
+  /* Designed dark theme (not an inversion): elevated surfaces get LIGHTER, borders
+     lighten, text/accents raise perceived contrast. Explicit attribute wins over OS. */
+  :root[data-theme="dark"] {
+    --bg: #0E0F14;
+    --surface: #16181F;
+    --surface-2: #1C1F27;
+    --surface-inset: #101218;
+    --sidebar: #121319;
+    --border: #262A33;
+    --border-strong: #333844;
+    --text: #ECEEF4;
+    --text-muted: #A0A6B4;
+    --text-subtle: #757C8B;
+    --text-faint: #565C6B;
+    --ok-bg: #122820; --ok-border: #1E4938; --ok-text: #4ADE9B; --ok-solid: #12936F;
+    --warn-bg: #2A2113; --warn-border: #4A3B1C; --warn-text: #E0A83B; --warn-solid: #D9922B;
+    --danger-bg: #2A1616; --danger-border: #4A2626; --danger-text: #F0757A; --danger-solid: #DC4438;
+    --info-bg: #171B2E; --info-border: #2A3357; --info-text: #8CA0FF; --info-solid: #3B82F6;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 2px 10px -4px rgba(0,0,0,.6);
+    --shadow-3: 0 8px 26px -12px rgba(0,0,0,.7);
+    --shadow-4: 0 14px 40px -16px rgba(0,0,0,.75);
+    --shadow-5: 0 24px 60px -20px rgba(0,0,0,.8);
+
+    /* Retro-fit the legacy --color-* vars so the existing var-driven shell (body,
+       sidebar, cards, borders) already flips to dark before component migration.
+       Tailwind-hardcoded surfaces stay light until Phase 6 — which is why the
+       user-facing toggle stays behind NEXT_PUBLIC_ENABLE_THEME_TOGGLE for now. */
+    --color-bg: #0E0F14;
+    --color-surface: #16181F;
+    --color-surface-muted: #101218;
+    --color-border: #262A33;
+    --color-text: #ECEEF4;
+    --color-muted: #A0A6B4;
+    --color-sidebar: #121319;
+  }
+
+  /* OS preference, honored only when no explicit choice has been stamped. The app
+     currently always stamps data-theme (default light) until Phase 6, so this is
+     for correctness/parity rather than an active path today. */
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="system"] {
+      --bg: #0E0F14; --surface: #16181F; --surface-2: #1C1F27; --surface-inset: #101218;
+      --sidebar: #121319; --border: #262A33; --border-strong: #333844;
+      --text: #ECEEF4; --text-muted: #A0A6B4; --text-subtle: #757C8B; --text-faint: #565C6B;
+      --color-bg: #0E0F14; --color-surface: #16181F; --color-surface-muted: #101218;
+      --color-border: #262A33; --color-text: #ECEEF4; --color-muted: #A0A6B4; --color-sidebar: #121319;
+    }
+  }
+}
+
+/* Design-system utilities (Phase 3). Opt-in helpers migrated components use. */
+@layer utilities {
+  /* Tabular figures — every metric, money and timer column aligns its digits. */
+  .tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
+  /* Display face for headings and big numbers (Fintech). */
+  .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+  .font-mono-data { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 }

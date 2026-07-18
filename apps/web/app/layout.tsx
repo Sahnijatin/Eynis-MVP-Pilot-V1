@@ -3,9 +3,11 @@ import type { ReactNode } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AppShell } from "../components/ui/app-shell";
 import { ToastProvider } from "../components/ds";
+import { cookies } from "next/headers";
 import { resolveUserContext } from "../lib/user-context";
 import { resolveHostTheme } from "../lib/host-theme";
 import { platformBrand } from "../lib/platform";
+import { THEME_COOKIE, resolveThemeMode } from "../lib/theme-mode";
 import type { Industry } from "../lib/industry-config";
 import type { OrgRole } from "../lib/rbac";
 import "./globals.css";
@@ -36,9 +38,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     ctx = await resolveUserContext();
   } catch { /* keep AppShell defaults */ }
 
+  // Stamp the theme server-side from the cookie so there's no flash and no
+  // hydration mismatch (Phase 2). Defaults to light until the component color
+  // migration completes — see lib/theme-mode.ts.
+  let themeMode: "light" | "dark" = "light";
+  try {
+    themeMode = resolveThemeMode((await cookies()).get(THEME_COOKIE)?.value);
+  } catch { /* cookies unavailable — keep light */ }
+
   return (
     <ClerkProvider>
-      <html lang="en">
+      <html lang="en" data-theme={themeMode} suppressHydrationWarning>
         <body style={{ margin: 0, fontFamily: "var(--font-brand, Inter, system-ui, Segoe UI, Arial, sans-serif)", background: "var(--color-bg)" }}>
           <ToastProvider>
             <AppShell

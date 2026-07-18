@@ -7,6 +7,9 @@ import { Bell, CalendarDays, X, ShieldAlert, ChevronDown, UserCog, ShieldOff, Me
 import { useUser, UserButton } from "@clerk/nextjs";
 import { getIndustryConfig, type Industry, type NavModule } from "../../lib/industry-config";
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
+import { buildAccentRamp, accentRampToVars } from "../../lib/color/ramp";
+import { ThemeToggle } from "./theme-toggle";
+import type { ThemeMode } from "../../lib/theme-mode";
 import {
   type OrgRole,
   ORG_ROLE_LABELS,
@@ -186,6 +189,21 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
   const { user, isLoaded } = useUser();
   const notifRef = useRef<HTMLDivElement>(null);
 
+  // Active light/dark theme (Phase 2). Initialised from the server-stamped
+  // data-theme attribute and updated live when the toggle broadcasts a change,
+  // so the accent ramp re-injects for the right theme.
+  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+  useEffect(() => {
+    const read = () => setThemeMode(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    read();
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setThemeMode(detail === "dark" ? "dark" : "light");
+    };
+    window.addEventListener("eynis-theme-change", onChange);
+    return () => window.removeEventListener("eynis-theme-change", onChange);
+  }, []);
+
   const [navOpen, setNavOpen] = useState(false); // mobile sidebar drawer (E-13e)
   const [notifOpen, setNotifOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -282,13 +300,19 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
     root.setProperty("--color-industry", theme.primaryColor);
     root.setProperty("--color-primary", theme.primaryColor);
     root.setProperty("--color-accent", theme.accentColor);
+    // Generated 12-step accent ramp (design-system Phase 1): --accent-1..12 +
+    // --accent-contrast + role aliases, derived from the tenant hue with a
+    // WCAG-AA guarantee (see lib/color/ramp.ts). Emitted for the ACTIVE theme
+    // (Phase 2). Additive — the migration (Phases 4-6) moves components onto these.
+    const ramp = accentRampToVars(buildAccentRamp(theme.primaryColor, themeMode));
+    for (const [k, v] of Object.entries(ramp)) root.setProperty(k, v);
     // Deep white-label tokens (E-9, white_label tier). Removing the property when
     // null lets the default theme/font win — no stale override lingers.
     if (theme.sidebarColor) root.setProperty("--color-sidebar", theme.sidebarColor);
     else root.removeProperty("--color-sidebar");
     if (theme.fontFamily) root.setProperty("--font-brand", theme.fontFamily);
     else root.removeProperty("--font-brand");
-  }, [theme.primaryColor, theme.accentColor, theme.sidebarColor, theme.fontFamily]);
+  }, [theme.primaryColor, theme.accentColor, theme.sidebarColor, theme.fontFamily, themeMode]);
 
   // White-label the browser tab: favicon (falls back to the logo) + brand title.
   useEffect(() => {
@@ -424,6 +448,9 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
             <TopbarClock />
           </div>
           <div className="topbar-right">
+            {/* Dark-mode toggle — gated until the component migration (Phase 6)
+                makes dark mode complete for every surface, not just the shell. */}
+            {process.env.NEXT_PUBLIC_ENABLE_THEME_TOGGLE === "true" && <ThemeToggle />}
             <div className="relative" ref={notifRef}>
               <button className="topbar-icon-btn" onClick={() => setNotifOpen(v => !v)}>
                 <Bell className="w-4.5 h-4.5" />
