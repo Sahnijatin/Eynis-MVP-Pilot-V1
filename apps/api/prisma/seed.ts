@@ -28,6 +28,145 @@ const LEGACY_TO_KEY: Record<string, string> = {
   owner: "admin", front_desk: "manager", fnb_manager: "supervisor", housekeeping: "agent"
 };
 
+// ── Demo manufacturing plant (#165) ──────────────────────────────────────────
+// A second demo tenant that exercises the manufacturing pack end-to-end with REAL
+// rows (not mock UI): downtime/maintenance/quality/safety ServiceRequests plus the
+// ConnectorEvents that would have produced them via the webhook/CSV intake doors.
+const PLANT_ID = "eynis-apex-plant-1";
+
+async function seedPlant() {
+  // Idempotent: wipe this tenant's rows first (children before parent).
+  await prisma.serviceRequest.deleteMany({ where: { tenantId: PLANT_ID } });
+  await prisma.connectorEvent.deleteMany({ where: { tenantId: PLANT_ID } });
+  await prisma.automationRule.deleteMany({ where: { tenantId: PLANT_ID } });
+  await prisma.contact.deleteMany({ where: { tenantId: PLANT_ID } });
+  await prisma.user.deleteMany({ where: { tenantId: PLANT_ID } });
+  await prisma.role.deleteMany({ where: { tenantId: PLANT_ID } });
+  await prisma.license.deleteMany({ where: { tenantId: PLANT_ID } });
+
+  await prisma.tenant.upsert({
+    where: { id: PLANT_ID },
+    update: { name: "Apex Components", industry: "manufacturing", timezone: "Asia/Kolkata" },
+    create: { id: PLANT_ID, name: "Apex Components", industry: "manufacturing", timezone: "Asia/Kolkata" },
+  });
+  await prisma.license.create({ data: { tenantId: PLANT_ID, plan: "growth", maxSeats: 25 } });
+
+  // Roles (reuse the shared permission sets) so users can authenticate.
+  const roleIdByKey: Record<string, string> = {};
+  for (const [key, permissions] of Object.entries(ROLE_PERMISSIONS)) {
+    const r = await prisma.role.create({
+      data: { tenantId: PLANT_ID, key, displayName: key[0].toUpperCase() + key.slice(1), permissions: JSON.stringify(permissions), isSystem: true, isCustom: false },
+    });
+    roleIdByKey[key] = r.id;
+  }
+
+  const userDefs = [
+    { email: "plant.admin@apexcomponents.in", fullName: "Plant Admin", legacy: "owner", key: "admin" },
+    { email: "maint.lead@apexcomponents.in", fullName: "Maintenance Lead", legacy: "fnb_manager", key: "supervisor" },
+    { email: "tech@apexcomponents.in", fullName: "Floor Technician", legacy: "housekeeping", key: "agent" },
+  ];
+  const userIdByEmail: Record<string, string> = {};
+  for (const u of userDefs) {
+    const created = await prisma.user.create({
+      data: { tenantId: PLANT_ID, email: u.email, fullName: u.fullName, role: u.legacy, roleId: roleIdByKey[u.key], isActive: true },
+    });
+    userIdByEmail[u.email] = created.id;
+  }
+
+  // Assets / lines as contacts, keyed the way the webhook/CSV intake doors (#162)
+  // dedupe them (real phone → ext:<source>:<id>).
+  const assetDefs = [
+    { key: "ext:webhook:l2-press", name: "Line 2 — Hydraulic Press" },
+    { key: "ext:webhook:l1-conv", name: "Line 1 — Conveyor" },
+    { key: "ext:webhook:cnc-5", name: "CNC-5 Machining Cell" },
+    { key: "ext:csv:qa-a", name: "QA Station A" },
+    { key: "ext:webhook:pack-3", name: "Packaging Line 3" },
+  ];
+  const contactIdByKey: Record<string, string> = {};
+  for (const a of assetDefs) {
+    const c = await prisma.contact.create({
+      data: { tenantId: PLANT_ID, fullName: a.name, phoneE164: a.key, source: "connector" },
+    });
+    contactIdByKey[a.key] = c.id;
+  }
+
+  const now = new Date();
+  const ago = (m: number) => new Date(now.getTime() - m * 60000);
+
+  type PlantSR = {
+    asset: string; category: string; summary: string;
+    status: "open" | "accepted" | "resolved" | "escalated";
+    priority: "normal" | "high" | "urgent";
+    createdMinsAgo: number; slaMinutes: number; resolvedMinsAgo?: number; breached?: boolean; assignEmail?: string;
+  };
+  const srDefs: PlantSR[] = [
+    { asset: "ext:webhook:l2-press", category: "downtime", summary: "Hydraulic Press on Line 2 tripped and is offline — production halted", status: "escalated", priority: "urgent", createdMinsAgo: 90, slaMinutes: 10, breached: true },
+    { asset: "ext:webhook:l1-conv", category: "maintenance", summary: "Conveyor motor on Line 1 overheating with abnormal vibration", status: "open", priority: "high", createdMinsAgo: 40, slaMinutes: 30 },
+    { asset: "ext:csv:qa-a", category: "quality", summary: "Batch #4471 out of spec — 12% reject rate flagged at QA Station A", status: "open", priority: "high", createdMinsAgo: 25, slaMinutes: 30 },
+    { asset: "ext:webhook:cnc-5", category: "safety", summary: "Coolant leak near CNC-5 — floor hazard flagged", status: "accepted", priority: "urgent", createdMinsAgo: 15, slaMinutes: 10, assignEmail: "maint.lead@apexcomponents.in" },
+    { asset: "ext:webhook:pack-3", category: "maintenance", summary: "Routine lubrication and belt check on Packaging Line 3", status: "resolved", priority: "normal", createdMinsAgo: 300, slaMinutes: 60, resolvedMinsAgo: 200 },
+    { asset: "ext:webhook:l1-conv", category: "downtime", summary: "Sensor fault briefly stopped Line 1 — reset and back online", status: "resolved", priority: "high", createdMinsAgo: 600, slaMinutes: 30, resolvedMinsAgo: 560 },
+    { asset: "ext:webhook:l2-press", category: "maintenance", summary: "Spare bearing request for Line 2 gearbox", status: "open", priority: "normal", createdMinsAgo: 8, slaMinutes: 60 },
+  ];
+
+  const srIdByAssetCat: Record<string, string> = {};
+  for (const s of srDefs) {
+    const createdAt = ago(s.createdMinsAgo);
+    const sr = await prisma.serviceRequest.create({
+      data: {
+        tenantId: PLANT_ID,
+        guestId: contactIdByKey[s.asset],
+        category: s.category,
+        summary: s.summary,
+        status: s.status,
+        priority: s.priority,
+        source: "webhook",
+        slaDueAt: new Date(createdAt.getTime() + s.slaMinutes * 60000),
+        slaBreachedAt: s.breached ? new Date(createdAt.getTime() + s.slaMinutes * 60000) : null,
+        assignedToUserId: s.assignEmail ? (userIdByEmail[s.assignEmail] ?? null) : null,
+        createdAt,
+        resolvedAt: s.resolvedMinsAgo !== undefined ? ago(s.resolvedMinsAgo) : null,
+      },
+      select: { id: true },
+    });
+    srIdByAssetCat[`${s.asset}:${s.category}`] = sr.id;
+  }
+
+  // ConnectorEvents — the real intake that produced two of the SRs (webhook + CSV).
+  await prisma.connectorEvent.create({
+    data: {
+      tenantId: PLANT_ID, connectorKey: "webhook", eventType: "inbound_signal",
+      guestPhone: "ext:webhook:l2-press", guestName: "Line 2 — Hydraulic Press",
+      guestId: contactIdByKey["ext:webhook:l2-press"],
+      aiProvider: "keyword", aiCategory: "downtime", aiPriority: "urgent",
+      aiSummary: "Hydraulic Press on Line 2 tripped and is offline", aiSentiment: "negative",
+      aiRoutingHint: "maintenance", aiSlaMinutes: 10,
+      serviceRequestId: srIdByAssetCat["ext:webhook:l2-press:downtime"],
+      replyStatus: "no_reply_needed",
+      rawPayload: JSON.stringify({ tenantId: PLANT_ID, message: "Press line 2 tripped, machine down, production halted", contact: { externalId: "l2-press", name: "Line 2 — Hydraulic Press" } }),
+    },
+  });
+  await prisma.connectorEvent.create({
+    data: {
+      tenantId: PLANT_ID, connectorKey: "csv_import", eventType: "inbound_signal",
+      guestPhone: "ext:csv:qa-a", guestName: "QA Station A",
+      guestId: contactIdByKey["ext:csv:qa-a"],
+      aiProvider: "keyword", aiCategory: "quality", aiPriority: "high",
+      aiSummary: "Batch #4471 out of spec — 12% reject rate", aiSentiment: "neutral",
+      aiRoutingHint: "quality", aiSlaMinutes: 30,
+      serviceRequestId: srIdByAssetCat["ext:csv:qa-a:quality"],
+      replyStatus: "no_reply_needed",
+      rawPayload: JSON.stringify({ message: "Batch 4471 defect, out of spec, 12% reject", name: "QA Station A", reference: "qa-a" }),
+    },
+  });
+
+  // Manufacturing pack's operational automations.
+  await prisma.automationRule.create({ data: { tenantId: PLANT_ID, code: "sla_breach_escalate", name: "SLA Breach → Auto-Escalate", isActive: true, configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sla_breach" }, action: { type: "escalate_sr" } }) } });
+  await prisma.automationRule.create({ data: { tenantId: PLANT_ID, code: "sentiment_low_flag", name: "Negative Sentiment → Flag for Review", isActive: true, configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sentiment_low", params: { threshold: 2 } }, action: { type: "create_sr" } }) } });
+
+  console.log("✓ Seed complete — Apex Components plant loaded (manufacturing demo).");
+}
+
 async function main() {
   // ── Clear existing data for clean seed ────────────────────────────────────
   await prisma.automationExecution.deleteMany({ where: { tenantId: HOTEL_ID } });
@@ -96,7 +235,7 @@ async function main() {
   for (const s of staff) {
     const key = LEGACY_TO_KEY[s.role] ?? "agent";
     const u = await prisma.user.upsert({
-      where: { email: s.email },
+      where: { tenantId_email: { tenantId: hotel.id, email: s.email } },
       update: { roleId: roleIdMap[key] },
       create: {
         tenantId: hotel.id,
@@ -620,6 +759,9 @@ async function main() {
   }
 
   console.log("✓ Seed complete — The Riviera hotel loaded with full demo data.");
+
+  // Second demo tenant: a manufacturing plant on the same pipeline (#165).
+  await seedPlant();
 }
 
 main()

@@ -107,8 +107,46 @@ const GENERIC_PACK: IntakePack = {
   },
 };
 
+// ── Manufacturing (#165) — first real non-hospitality vertical. ────────────────
+// Subject = machine / line / asset; signals = downtime, maintenance, quality and
+// safety events arriving via the cross-vertical webhook/CSV doors (#162). Keyword
+// rules are ordered by urgency so a safety-critical or downtime message wins over a
+// generic maintenance match; routing sends each category to its owning department.
+const MANUFACTURING_PACK: IntakePack = {
+  industry: "manufacturing",
+  categories: ["safety", "downtime", "quality", "maintenance", "general"],
+  defaultCategory: "maintenance",
+  keywordRules: [
+    { category: "safety", keywords: ["hazard", "injury", "unsafe", "leak", "fire", "gas", "accident", "spill"] },
+    { category: "downtime", keywords: ["down", "stopped", "halt", "offline", "breakdown", "not running", "jam", "tripped"] },
+    { category: "quality", keywords: ["defect", "reject", "scrap", "out of spec", "quality", "rework", "tolerance"] },
+    { category: "maintenance", keywords: ["repair", "service", "broken", "worn", "lubricat", "spare", "vibration", "noise", "overheat"] },
+  ],
+  routing: {
+    safety: "safety",
+    downtime: "maintenance",
+    quality: "quality",
+    maintenance: "maintenance",
+    general: "supervisor",
+  },
+  sla: {
+    // Downtime/safety come in as urgent/high wording → tight response; a routine
+    // maintenance note (normal) gets an hour.
+    byPriority: { urgent: 10, high: 30, normal: 60 },
+    defaultMinutes: 60,
+    autoMinutes: 30,
+  },
+  offerRouting: {
+    // No upsell flow on the plant floor; automations for manufacturing don't queue
+    // offers, so this is never consulted, but kept well-formed.
+    byCategory: {},
+    default: "follow_up",
+  },
+};
+
 const PACKS: Record<string, IntakePack> = {
   hospitality: HOSPITALITY_PACK,
+  manufacturing: MANUFACTURING_PACK,
   generic: GENERIC_PACK,
 };
 
