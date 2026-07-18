@@ -65,6 +65,7 @@ import { handleCampaignRoutes } from "./core/campaigns/routes";
 import { handleAIRoutes } from "./core/ai/routes";
 import { handleTeamRoutes } from "./core/team/routes";
 import { handleAnalyticsRoutes } from "./core/analytics/routes";
+import { computeScoreboard } from "./core/analytics/scoreboard";
 import { handleAutomationRoutes } from "./core/automations/routes";
 import { handleIntakeRoutes } from "./core/connectors/intake-routes";
 import { ensureTenantAccess } from "./core/authz";
@@ -450,6 +451,16 @@ const handleRequest = async (
         });
         const items = tenants.map(({ license, ...rest }) => ({ ...rest, plan: license?.plan ?? "starter" }));
         json(res, 200, { ok: true, items, industries: industryOptions(), tiers: tierOptions(), plans: planOptions() });
+        return;
+      }
+
+      // GET /internal/scoreboard — the experiment scoreboard (#163). Cross-tenant,
+      // per-vertical rollup of the five lock-decision metrics (activation, weekly
+      // active operators, attributed value, willingness-to-pay, sales-cycle length)
+      // so "lock 1 primary vertical + shadow 1" becomes a data call. Staff-only.
+      if (internalPath === "/internal/scoreboard" && req.method === "GET") {
+        if (!requirePlatformAdmin(req, res)) return;
+        json(res, 200, await computeScoreboard());
         return;
       }
 
