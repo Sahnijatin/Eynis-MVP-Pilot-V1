@@ -5,9 +5,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { prisma } from "../../db/prisma";
 import { authorize } from "../authz";
-import { json, parseUrl } from "../../http/helpers";
+import { json, sendDoc, parseUrl } from "../../http/helpers";
 import { computeSentimentAnalytics } from "./sentiment";
 import { computeUpsellAnalytics } from "./upsell";
+import { computeAttributionAnalytics } from "../attribution/compute";
+import { VALUE_TYPE_LABELS, type ValueType } from "../attribution/value-model";
+import { brandedCsv } from "../export/csv";
+import { loadReportBrand } from "../export/brand";
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -238,6 +242,37 @@ export async function handleAnalyticsRoutes(req: IncomingMessage, res: ServerRes
     if (!auth.ok) return true;
     const context = auth.context;
     json(res, 200, await computeUpsellAnalytics(context.tenantId, parseDateRange(req) ?? undefined));
+    return true;
+  }
+
+  // ── GET /analytics/attribution/export — auditable CSV of value events (#167) ──
+  if (parseUrl(req.url).pathname === "/analytics/attribution/export" && req.method === "GET") {
+    const auth = await authorize(req, res, "GET /analytics/attribution/export");
+    if (!auth.ok) return true;
+    const context = auth.context;
+    const range = parseDateRange(req);
+    const events = await prisma.valueEvent.findMany({
+      where: range ? { tenantId: context.tenantId, occurredAt: { gte: range.from, lte: range.to } } : { tenantId: context.tenantId },
+      orderBy: { occurredAt: "desc" },
+      select: { occurredAt: true, sourceType: true, sourceId: true, trigger: true, outcome: true, valueType: true, valueAmount: true, unit: true },
+    });
+    const brand = await loadReportBrand(context.tenantId);
+    const header = ["Occurred At", "Source", "Source ID", "Trigger", "Outcome", "Value Type", "Amount", "Unit"];
+    const rows = events.map((e) => [
+      e.occurredAt.toISOString(), e.sourceType, e.sourceId, e.trigger, e.outcome,
+      VALUE_TYPE_LABELS[e.valueType as ValueType] ?? e.valueType, e.valueAmount, e.unit,
+    ]);
+    const csv = brandedCsv(brand, "Value Attribution", { header, rows });
+    sendDoc(res, "text/csv; charset=utf-8", csv, `attribution-${new Date().toISOString().slice(0, 10)}.csv`);
+    return true;
+  }
+
+  // ── GET /analytics/attribution — per-vertical attributed-value summary (#167) ──
+  if (parseUrl(req.url).pathname === "/analytics/attribution" && req.method === "GET") {
+    const auth = await authorize(req, res, "GET /analytics/attribution");
+    if (!auth.ok) return true;
+    const context = auth.context;
+    json(res, 200, await computeAttributionAnalytics(context.tenantId, parseDateRange(req) ?? undefined));
     return true;
   }
 

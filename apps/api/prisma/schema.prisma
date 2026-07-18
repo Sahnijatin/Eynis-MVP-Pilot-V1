@@ -32,6 +32,7 @@ model Tenant {
   stays                 Stay[]
   serviceRequests       ServiceRequest[]
   offerEvents           OfferEvent[]
+  valueEvents           ValueEvent[]
   automationRules       AutomationRule[]
   automationExecutions  AutomationExecution[]
   nightAuditReports     NightAuditReport[]
@@ -1464,4 +1465,30 @@ model QuoteLineItem {
   quote             Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([quoteId])
+}
+
+// Attribution (#167) — a persisted, generalized "value event": every triggered
+// outcome (a resolved request, an accepted offer) credited with an attributed value
+// and its per-vertical unit (revenue in INR, downtime-avoided or time-saved in
+// minutes). This is the auditable record behind the attribution dashboard/export
+// and the input to the experiment scoreboard (#163). Idempotent per source outcome.
+model ValueEvent {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("hotelId")
+  sourceType  String // "service_request" | "offer"
+  sourceId    String // the SR / OfferEvent id
+  trigger     String // category / offerType that produced the outcome
+  outcome     String // "resolved" | "accepted"
+  valueType   String // "revenue" | "downtime_avoided" | "time_saved"
+  valueAmount Int // INR (revenue) or minutes (downtime_avoided / time_saved)
+  unit        String // "INR" | "minutes"
+  segment     String? // optional contact/segment context
+  contextJson String   @default("{}")
+  occurredAt  DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sourceType, sourceId, outcome])
+  @@index([tenantId, valueType, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("ValueEvent")
 }
