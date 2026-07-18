@@ -8,6 +8,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import type { SellerDetails, BillTo, QuotationView } from "../quotes/quotation";
+import { tryEmbedLogo } from "./report-pdf";
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 34;
@@ -92,6 +93,9 @@ export interface QuotationPdfData {
   validUntil?: Date | null;
   accentColor: string;
   brandName: string;
+  // Tenant brand logo (best-effort). Fetched + embedded server-side via the shared
+  // SSRF-guarded helper; null/unreachable → text seller name only (no logo).
+  logoUrl?: string | null;
   // Absolute URL prefix for image links, e.g. "https://demo.eynis.com/api/public/
   // quote-image/<token>". The Image(s) column renders "Image N" links to `${base}/<idx>`
   // (opens) and `${base}/<idx>?download=1` (downloads). Null → plain text, no links.
@@ -118,6 +122,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const accent = hexToRgb(data.accentColor);
   const linkBase = (data.imageLinkBase ?? "").trim().replace(/\/$/, "") || null;
+  const logo = await tryEmbedLogo(doc, data.logoUrl ?? null);
 
   let page: PDFPage = doc.addPage(A4);
   const top = A4[1] - MARGIN;
@@ -141,9 +146,21 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   // ── Header: seller (left) | QUOTATION + meta (right) ──────────────────────────
   const midX = LEFT + CONTENT_W * 0.52;
   const sellerName = data.seller.name || data.brandName || "Your Company";
+  const leftMaxW = midX - LEFT - 8;
   let ly = y - 6;
-  T(truncate(sellerName, bold, 20, midX - LEFT - 8), LEFT, ly - 14, 20, bold, accent);
-  ly -= 30;
+  // Letterhead: brand logo (if any) above the seller name, else the name at full size.
+  if (logo) {
+    const logoH = 40;
+    const logoW = Math.min((logo.width / logo.height) * logoH, leftMaxW, 200);
+    const drawH = logoW / (logo.width / logo.height);
+    page.drawImage(logo, { x: LEFT, y: ly - drawH, width: logoW, height: drawH });
+    ly -= drawH + 8;
+    T(truncate(sellerName, bold, 13, leftMaxW), LEFT, ly - 11, 13, bold, accent);
+    ly -= 22;
+  } else {
+    T(truncate(sellerName, bold, 20, leftMaxW), LEFT, ly - 14, 20, bold, accent);
+    ly -= 30;
+  }
   const sellerLines: string[] = [];
   if (data.seller.address) sellerLines.push(...wrap(data.seller.address, font, 9, midX - LEFT - 8));
   if (data.seller.phone) sellerLines.push(`Phone: ${data.seller.phone}`);
