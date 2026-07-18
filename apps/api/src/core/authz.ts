@@ -46,6 +46,8 @@ export const permissionMap: Record<string, Permission | null> = {
   "GET /analytics/staff-performance":     "view_reports",
   "GET /analytics/sentiment":             "view_reports",
   "GET /analytics/upsell-campaigns":      "manage_campaigns",
+  "GET /analytics/attribution":           "view_reports",
+  "GET /analytics/attribution/export":    "view_reports",
   "GET /inventory/items":                 "view_reports",
   "POST /inventory/items":                "manage_inventory",
   "PUT /inventory/items/:id":             "manage_inventory",

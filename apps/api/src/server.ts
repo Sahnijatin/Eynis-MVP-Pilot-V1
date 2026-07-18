@@ -15,6 +15,7 @@ import type { FollowupResult } from "./core/quotes/followup";
 import { assertSecretsEncryptionConfigured } from "./core/crypto/secrets";
 import { seedIndustryDefaults, backfillIndustryDefaults } from "./core/quotes/provision";
 import { seedAutomationRulesForTenant } from "./core/automations/provision";
+import { recordServiceRequestResolution, backfillAllTenantsValueEvents } from "./core/attribution/recorder";
 import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
@@ -2008,6 +2009,19 @@ const handleRequest = async (
         }
       });
 
+      // Attribution (#167): a resolved request is an attributed outcome. Best-effort
+      // — a recording hiccup must never fail the status change. Idempotent by source.
+      if (nextStatus === "resolved") {
+        const tRow = await prisma.tenant.findUnique({ where: { id: context.tenantId }, select: { industry: true } });
+        await recordServiceRequestResolution({
+          tenantId: context.tenantId,
+          industry: tRow?.industry ?? null,
+          serviceRequestId: updated.id,
+          category: updated.category,
+          occurredAt: updated.resolvedAt ?? undefined,
+        }).catch((e) => console.warn("[attribution] record resolution failed:", e instanceof Error ? e.message : e));
+      }
+
       broadcastSSEEvent(context.tenantId, { type: "sr_updated", data: { id: updated.id, status: nextStatus } });
       json(res, 200, { ok: true, item: updated });
       return;
@@ -2874,6 +2888,11 @@ export const startServer = (port = Number(process.env.PORT ?? 4000)) => {
     void backfillIndustryDefaults()
       .then((n) => { if (n) console.log(`Eynis provisioned quote templates for ${n} existing tenant(s)`); })
       .catch((err) => console.error("industry defaults backfill failed", err));
+    // Back-fill attribution value events from already-resolved requests / accepted
+    // offers, so the attribution number reflects historical data (#167). Idempotent.
+    void backfillAllTenantsValueEvents()
+      .then(() => console.log("Eynis attribution value events backfilled"))
+      .catch((err) => console.error("attribution backfill failed", err));
     startAutomationWorker(60_000);
     console.log("Eynis AutomationEngine started — 60s cycle");
     startCampaignDispatchWorker();
