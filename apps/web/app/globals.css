@@ -22,9 +22,9 @@
   }
 
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    color: var(--color-text);
-    background: var(--color-bg);
+    font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+    color: var(--text);
+    background: var(--bg);
     -webkit-font-smoothing: antialiased;
   }
 
@@ -132,13 +132,13 @@
   /* Topbar */
   .app-main {
     @apply flex-1 flex flex-col min-w-0;
-    background: var(--color-bg);
+    background: var(--bg);
   }
 
   .topbar {
     @apply h-14 border-b flex items-center justify-between px-6 shrink-0;
-    background: #fff;
-    border-color: var(--color-border);
+    background: var(--surface);
+    border-color: var(--border);
   }
 
   .topbar-property {
@@ -151,11 +151,13 @@
   }
 
   .topbar-name {
-    @apply font-semibold text-sm text-slate-800;
+    @apply font-semibold text-sm;
+    color: var(--text);
   }
 
   .topbar-date {
-    @apply text-sm text-slate-500;
+    @apply text-sm;
+    color: var(--text-muted);
   }
 
   .topbar-right {
@@ -163,7 +165,13 @@
   }
 
   .topbar-icon-btn {
-    @apply relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors text-slate-500 hover:bg-slate-100 hover:text-slate-700;
+    @apply relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors;
+    color: var(--text-muted);
+  }
+
+  .topbar-icon-btn:hover {
+    background: var(--surface-inset);
+    color: var(--text);
   }
 
   .topbar-badge {
@@ -172,7 +180,8 @@
   }
 
   .topbar-avatar {
-    @apply flex items-center gap-2.5 pl-3 border-l border-slate-200;
+    @apply flex items-center gap-2.5 pl-3 border-l;
+    border-color: var(--border);
   }
 
   .avatar-img {
@@ -185,7 +194,8 @@
   }
 
   .avatar-name {
-    @apply text-sm font-semibold text-slate-800 leading-none;
+    @apply text-sm font-semibold leading-none;
+    color: var(--text);
   }
 
   .avatar-role {
@@ -208,11 +218,15 @@
   }
 
   .page-title {
-    @apply text-2xl font-bold text-slate-900 leading-tight;
+    @apply text-2xl font-bold leading-tight;
+    color: var(--text);
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 
   .page-subtitle {
-    @apply text-sm text-slate-500 mt-1;
+    @apply text-sm mt-1;
+    color: var(--text-muted);
   }
 
   /* KPI grid */
@@ -234,44 +248,52 @@
   /* Card / Panel */
   .card {
     @apply rounded-xl border p-5;
-    background: #fff;
-    border-color: var(--color-border);
+    background: var(--surface);
+    border-color: var(--border);
+    box-shadow: var(--shadow-1);
   }
 
   .card-sm {
     @apply rounded-xl border p-4;
-    background: #fff;
-    border-color: var(--color-border);
+    background: var(--surface);
+    border-color: var(--border);
+    box-shadow: var(--shadow-1);
   }
 
   .card-title {
-    @apply text-sm font-semibold text-slate-700 mb-4;
+    @apply text-sm font-semibold mb-4;
+    color: var(--text);
   }
 
   /* KPI card internals */
   .kpi-label {
     @apply text-xs uppercase tracking-wider font-medium;
-    color: var(--color-muted);
+    color: var(--text-muted);
   }
 
   .kpi-value {
-    @apply text-2xl font-bold text-slate-900 mt-1.5 leading-none;
+    @apply text-2xl font-bold mt-1.5 leading-none;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
 
   .kpi-delta {
     @apply text-xs mt-2 font-medium;
+    font-variant-numeric: tabular-nums;
   }
 
   .kpi-delta.up {
-    @apply text-emerald-600;
+    color: var(--ok-text);
   }
 
   .kpi-delta.down {
-    @apply text-red-500;
+    color: var(--danger-text);
   }
 
   .kpi-delta.neutral {
-    color: var(--color-muted);
+    color: var(--text-muted);
   }
 
   .kpi-icon {
@@ -281,7 +303,7 @@
   /* Tables */
   .table-wrap {
     @apply overflow-auto rounded-lg;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--border);
   }
 
   .data-table {
@@ -290,17 +312,18 @@
 
   .data-table thead tr {
     @apply border-b;
-    border-color: var(--color-border);
+    border-color: var(--border);
   }
 
   .data-table th {
     @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider;
-    color: var(--color-muted);
+    color: var(--text-muted);
   }
 
   .data-table td {
-    @apply px-4 py-3 border-b text-slate-700;
-    border-color: #f1f5f9;
+    @apply px-4 py-3 border-b;
+    color: var(--text);
+    border-color: var(--border);
   }
 
   .data-table tbody tr:last-child td {
@@ -308,7 +331,7 @@
   }
 
   .data-table tbody tr:hover td {
-    @apply bg-slate-50;
+    background: var(--surface-inset);
   }
 
   /* Opt out of the generic row hover so the caller can drive the row
@@ -326,28 +349,33 @@
   }
 
   .badge-green {
-    @apply bg-emerald-50 text-emerald-700;
+    background: var(--ok-bg);
+    color: var(--ok-text);
   }
 
   .badge-red {
-    @apply bg-red-50 text-red-600;
+    background: var(--danger-bg);
+    color: var(--danger-text);
   }
 
   .badge-amber {
-    @apply bg-amber-50 text-amber-700;
+    background: var(--warn-bg);
+    color: var(--warn-text);
   }
 
   .badge-blue {
-    @apply bg-blue-50 text-blue-700;
+    background: var(--info-bg);
+    color: var(--info-text);
   }
 
   .badge-slate {
-    @apply bg-slate-100 text-slate-600;
+    background: var(--surface-inset);
+    color: var(--text-muted);
   }
 
   .badge-teal {
-    @apply text-white;
-    background: var(--color-teal);
+    background: var(--accent-solid, var(--color-teal));
+    color: var(--accent-contrast, #fff);
   }
 
   .badge-purple {
@@ -356,12 +384,13 @@
 
   /* Progress bar */
   .progress-track {
-    @apply w-full rounded-full h-2 bg-slate-100 overflow-hidden;
+    @apply w-full rounded-full h-2 overflow-hidden;
+    background: var(--surface-inset);
   }
 
   .progress-fill {
     @apply h-full rounded-full;
-    background: linear-gradient(90deg, var(--color-teal), var(--color-teal-light));
+    background: linear-gradient(90deg, var(--accent-solid, var(--color-teal)), var(--accent-solid-hover, var(--color-teal-light)));
   }
 
   /* Alert cards */
@@ -370,15 +399,15 @@
   }
 
   .alert-card.error {
-    @apply bg-red-50;
+    background: var(--danger-bg);
   }
 
   .alert-card.warning {
-    @apply bg-amber-50;
+    background: var(--warn-bg);
   }
 
   .alert-card.info {
-    @apply bg-blue-50;
+    background: var(--info-bg);
   }
 
   /* Skeleton */
@@ -389,7 +418,7 @@
 
   .skeleton-bar {
     @apply h-3.5 rounded;
-    background: linear-gradient(90deg, #e2e8f0 0%, #f1f5f9 50%, #e2e8f0 100%);
+    background: linear-gradient(90deg, var(--border) 0%, var(--surface-inset) 50%, var(--border) 100%);
     background-size: 200% 100%;
     animation: pulse-soft 1.2s ease-in-out infinite;
   }
@@ -397,7 +426,7 @@
   /* Divider */
   .divider {
     @apply border-t;
-    border-color: var(--color-border);
+    border-color: var(--border);
   }
 
   /* Full-screen shell for public/auth/onboarding pages */
@@ -669,14 +698,14 @@
    carry these classes. Controls already have an inline border, so a box-shadow
    ring reads cleanly; buttons get an offset outline. Both use the white-label
    brand var with a teal fallback. */
-.ds-field:focus-visible { box-shadow: 0 0 0 2px var(--color-primary, #0f766e); }
-.ds-btn:focus-visible { outline: 2px solid var(--color-primary, #0f766e); outline-offset: 2px; }
+.ds-field:focus-visible { box-shadow: 0 0 0 2px var(--accent-solid, var(--color-primary, #0f766e)); }
+.ds-btn:focus-visible { outline: 2px solid var(--accent-solid, var(--color-primary, #0f766e)); outline-offset: 2px; }
 
 /* E-13e — mobile nav drawer. The shell is a fixed two-column desktop layout; on
    small screens the sidebar slides in over a backdrop, toggled by a hamburger in
    the topbar (hidden on desktop). */
-.nav-toggle { display: none; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 4px; border-radius: 8px; color: var(--color-muted, #64748b); border: 1px solid var(--color-border, #e6eaf0); background: #fff; cursor: pointer; }
-.nav-toggle:hover { background: var(--color-surface-muted, #f1f5f9); }
+.nav-toggle { display: none; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 4px; border-radius: 8px; color: var(--text-muted); border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
+.nav-toggle:hover { background: var(--surface-inset); }
 
 @media (max-width: 768px) {
   .nav-toggle { display: inline-flex; }
