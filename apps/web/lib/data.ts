@@ -730,6 +730,7 @@ export interface Quote {
   seller: QuoteSeller;
   billTo: QuoteBillTo;
   lineImages: Record<string, string[]>; // per-piece image data URLs, keyed by groupName
+  hsn: Record<string, string>; // per-piece HSN/SAC codes, keyed by groupName
   lineItems: QuoteLineItem[];
 }
 
