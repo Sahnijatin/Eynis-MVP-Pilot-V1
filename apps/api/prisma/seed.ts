@@ -96,7 +96,7 @@ async function main() {
   for (const s of staff) {
     const key = LEGACY_TO_KEY[s.role] ?? "agent";
     const u = await prisma.user.upsert({
-      where: { email: s.email },
+      where: { tenantId_email: { tenantId: hotel.id, email: s.email } },
       update: { roleId: roleIdMap[key] },
       create: {
         tenantId: hotel.id,
