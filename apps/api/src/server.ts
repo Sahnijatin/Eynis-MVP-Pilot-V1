@@ -1016,6 +1016,7 @@ const handleRequest = async (
         fnb:           "Restaurant Admin",
         travel:        "Travel Desk Admin",
         healthcare:    "Clinic Admin",
+        it_services:   "IT Admin",
       };
       const ownerName = asTrimmedString(body.ownerName) ?? INDUSTRY_ADMIN_TITLE[industry] ?? "Admin";
 

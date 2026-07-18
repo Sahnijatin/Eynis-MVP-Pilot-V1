@@ -8,7 +8,7 @@ import {
   Workflow, Plug, UserCheck, Telescope
 } from "lucide-react";
 
-export type Industry = "hospitality" | "manufacturing" | "fnb" | "travel" | "healthcare";
+export type Industry = "hospitality" | "manufacturing" | "fnb" | "travel" | "healthcare" | "it_services";
 
 // A single navigable destination. `description` is shown on a module's landing
 // screen (E-2) and is ignored in the sidebar.
@@ -338,6 +338,41 @@ export const INDUSTRY_CONFIGS: Record<Industry, IndustryConfig> = {
     onboardingQuestions: [
       { id: "type", question: "Type of practice?", options: ["General Practice", "Specialty Clinic", "Diagnostic Center", "Hospital"] },
       { id: "load", question: "Daily patient load?", options: ["Under 20", "20–50", "50–100", "100+"] }
+    ]
+  },
+
+  it_services: {
+    id: "it_services",
+    name: "IT / Tech Corporate",
+    tagline: "Internal Help Desk Intelligence",
+    description: "Corporate IT, facilities and HR-ops help desks — employee tickets routed and resolved with SLA",
+    overviewIcon: Building2,
+    accentColor: "#4f46e5",
+    features: ["Ticket Help Desk", "SLA Tracking & Escalation", "Email / Webhook Intake", "Employee Directory", "Sentiment Trends", "AI Brain"],
+    modules: [
+      { ...DASHBOARD_MODULE, label: "Help Desk" },
+      { key: "operations", label: "Tickets", icon: ClipboardList, href: "/queue", description: "Open tickets, SLA state and escalations." },
+      crmModule({ href: "/customers", label: "Employees", description: "Your employee directory and ticket history." }),
+      MARKETING_MODULE,
+      {
+        key: "analytics", label: "Analytics", icon: BarChart3, href: "/reports",
+        description: "Sentiment trends and generated reports.",
+        children: [
+          SENTIMENT_ITEM,
+          REPORTS_ITEM
+        ]
+      },
+      INTEGRATIONS_MODULE,
+      SETTINGS_MODULE
+    ],
+    terminology: {
+      entity: "Employee", entityPlural: "Employees",
+      request: "Ticket", requestPlural: "Tickets",
+      property: "Company", team: "IT Team"
+    },
+    onboardingQuestions: [
+      { id: "size", question: "How large is your organization?", options: ["1–50", "51–200", "201–1000", "1000+"] },
+      { id: "scope", question: "What does your help desk cover?", options: ["IT only", "IT + Facilities", "IT + HR ops", "All internal ops"] }
     ]
   }
 };

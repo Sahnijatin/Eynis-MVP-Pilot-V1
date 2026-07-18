@@ -167,6 +167,143 @@ async function seedPlant() {
   console.log("✓ Seed complete — Apex Components plant loaded (manufacturing demo).");
 }
 
+// ── Demo IT / Tech Corporate help desk (#166) ────────────────────────────────
+// A demo tenant that exercises the IT_HELPDESK pack end-to-end with REAL tickets
+// (ServiceRequests) across incident/access/hardware/software/facilities/hr_ops,
+// plus the email/webhook ConnectorEvents that produced them.
+const ITDESK_ID = "eynis-northwind-1";
+
+async function seedItDesk() {
+  await prisma.serviceRequest.deleteMany({ where: { tenantId: ITDESK_ID } });
+  await prisma.connectorEvent.deleteMany({ where: { tenantId: ITDESK_ID } });
+  await prisma.automationRule.deleteMany({ where: { tenantId: ITDESK_ID } });
+  await prisma.contact.deleteMany({ where: { tenantId: ITDESK_ID } });
+  await prisma.user.deleteMany({ where: { tenantId: ITDESK_ID } });
+  await prisma.role.deleteMany({ where: { tenantId: ITDESK_ID } });
+  await prisma.license.deleteMany({ where: { tenantId: ITDESK_ID } });
+
+  await prisma.tenant.upsert({
+    where: { id: ITDESK_ID },
+    update: { name: "Northwind Corp", industry: "it_services", timezone: "Asia/Kolkata" },
+    create: { id: ITDESK_ID, name: "Northwind Corp", industry: "it_services", timezone: "Asia/Kolkata" },
+  });
+  await prisma.license.create({ data: { tenantId: ITDESK_ID, plan: "growth", maxSeats: 25 } });
+
+  const roleIdByKey: Record<string, string> = {};
+  for (const [key, permissions] of Object.entries(ROLE_PERMISSIONS)) {
+    const r = await prisma.role.create({
+      data: { tenantId: ITDESK_ID, key, displayName: key[0].toUpperCase() + key.slice(1), permissions: JSON.stringify(permissions), isSystem: true, isCustom: false },
+    });
+    roleIdByKey[key] = r.id;
+  }
+
+  const userDefs = [
+    { email: "it.admin@northwind.example", fullName: "IT Admin", legacy: "owner", key: "admin" },
+    { email: "it.lead@northwind.example", fullName: "Service Desk Lead", legacy: "fnb_manager", key: "supervisor" },
+    { email: "it.agent@northwind.example", fullName: "Support Engineer", legacy: "housekeeping", key: "agent" },
+  ];
+  const userIdByEmail: Record<string, string> = {};
+  for (const u of userDefs) {
+    const created = await prisma.user.create({
+      data: { tenantId: ITDESK_ID, email: u.email, fullName: u.fullName, role: u.legacy, roleId: roleIdByKey[u.key], isActive: true },
+    });
+    userIdByEmail[u.email] = created.id;
+  }
+
+  // Employees who raised tickets, keyed the way the email intake door (#162) dedupes
+  // a sender (email:<addr>).
+  const employeeDefs = [
+    { key: "email:alice.k@northwind.example", name: "Alice Kapoor" },
+    { key: "email:raj.m@northwind.example", name: "Raj Menon" },
+    { key: "email:sara.d@northwind.example", name: "Sara Dsouza" },
+    { key: "email:tom.f@northwind.example", name: "Tom Fernandes" },
+    { key: "email:neha.s@northwind.example", name: "Neha Sharma" },
+  ];
+  const contactIdByKey: Record<string, string> = {};
+  for (const e of employeeDefs) {
+    const c = await prisma.contact.create({
+      data: { tenantId: ITDESK_ID, fullName: e.name, phoneE164: e.key, email: e.key.replace(/^email:/, ""), source: "connector" },
+    });
+    contactIdByKey[e.key] = c.id;
+  }
+
+  const now = new Date();
+  const ago = (m: number) => new Date(now.getTime() - m * 60000);
+
+  type Ticket = {
+    who: string; category: string; summary: string;
+    status: "open" | "accepted" | "resolved" | "escalated";
+    priority: "normal" | "high" | "urgent";
+    createdMinsAgo: number; slaMinutes: number; resolvedMinsAgo?: number; breached?: boolean; assignEmail?: string;
+  };
+  const ticketDefs: Ticket[] = [
+    { who: "email:alice.k@northwind.example", category: "incident", summary: "VPN gateway down — the whole finance team cannot connect", status: "escalated", priority: "urgent", createdMinsAgo: 120, slaMinutes: 15, breached: true },
+    { who: "email:raj.m@northwind.example", category: "access", summary: "Password reset and MFA re-enrollment for a new starter", status: "open", priority: "high", createdMinsAgo: 35, slaMinutes: 30 },
+    { who: "email:sara.d@northwind.example", category: "hardware", summary: "Laptop won't power on — suspected charger or battery fault", status: "open", priority: "high", createdMinsAgo: 22, slaMinutes: 30 },
+    { who: "email:tom.f@northwind.example", category: "software", summary: "Outlook crashing on launch after the latest update", status: "accepted", priority: "normal", createdMinsAgo: 18, slaMinutes: 240, assignEmail: "it.agent@northwind.example" },
+    { who: "email:neha.s@northwind.example", category: "facilities", summary: "Meeting room 3 air conditioning not working", status: "open", priority: "normal", createdMinsAgo: 60, slaMinutes: 240 },
+    { who: "email:raj.m@northwind.example", category: "hr_ops", summary: "Onboarding access bundle for a new hire (email, SSO, laptop)", status: "resolved", priority: "normal", createdMinsAgo: 600, slaMinutes: 240, resolvedMinsAgo: 480 },
+    { who: "email:alice.k@northwind.example", category: "incident", summary: "Shared drive was briefly offline — restored, monitoring", status: "resolved", priority: "high", createdMinsAgo: 800, slaMinutes: 30, resolvedMinsAgo: 770 },
+  ];
+
+  const ticketIdByRef: Record<string, string> = {};
+  for (const t of ticketDefs) {
+    const createdAt = ago(t.createdMinsAgo);
+    const sr = await prisma.serviceRequest.create({
+      data: {
+        tenantId: ITDESK_ID,
+        guestId: contactIdByKey[t.who],
+        category: t.category,
+        summary: t.summary,
+        status: t.status,
+        priority: t.priority,
+        source: "email_inbound",
+        slaDueAt: new Date(createdAt.getTime() + t.slaMinutes * 60000),
+        slaBreachedAt: t.breached ? new Date(createdAt.getTime() + t.slaMinutes * 60000) : null,
+        assignedToUserId: t.assignEmail ? (userIdByEmail[t.assignEmail] ?? null) : null,
+        createdAt,
+        resolvedAt: t.resolvedMinsAgo !== undefined ? ago(t.resolvedMinsAgo) : null,
+      },
+      select: { id: true },
+    });
+    // Unique ref per ticket (who+category collides — Alice has two incidents).
+    ticketIdByRef[`${t.who}:${t.category}:${t.createdMinsAgo}`] = sr.id;
+  }
+
+  // ConnectorEvents — the real intake that produced two of the tickets (email + webhook).
+  await prisma.connectorEvent.create({
+    data: {
+      tenantId: ITDESK_ID, connectorKey: "email_inbound", eventType: "inbound_signal",
+      guestPhone: "email:alice.k@northwind.example", guestName: "Alice Kapoor",
+      guestId: contactIdByKey["email:alice.k@northwind.example"],
+      aiProvider: "keyword", aiCategory: "incident", aiPriority: "urgent",
+      aiSummary: "VPN gateway down — finance team cannot connect", aiSentiment: "negative",
+      aiRoutingHint: "it", aiSlaMinutes: 15,
+      serviceRequestId: ticketIdByRef["email:alice.k@northwind.example:incident:120"],
+      replyStatus: "no_reply_needed",
+      rawPayload: JSON.stringify({ tenantId: ITDESK_ID, from: "alice.k@northwind.example", subject: "VPN down", text: "The VPN gateway is offline, the whole finance team cannot connect." }),
+    },
+  });
+  await prisma.connectorEvent.create({
+    data: {
+      tenantId: ITDESK_ID, connectorKey: "webhook", eventType: "inbound_signal",
+      guestPhone: "email:sara.d@northwind.example", guestName: "Sara Dsouza",
+      guestId: contactIdByKey["email:sara.d@northwind.example"],
+      aiProvider: "keyword", aiCategory: "hardware", aiPriority: "high",
+      aiSummary: "Laptop won't power on — charger/battery fault", aiSentiment: "neutral",
+      aiRoutingHint: "it", aiSlaMinutes: 30,
+      serviceRequestId: ticketIdByRef["email:sara.d@northwind.example:hardware:22"],
+      replyStatus: "no_reply_needed",
+      rawPayload: JSON.stringify({ tenantId: ITDESK_ID, message: "My laptop will not power on, I think the charger is dead", contact: { email: "sara.d@northwind.example", name: "Sara Dsouza" } }),
+    },
+  });
+
+  await prisma.automationRule.create({ data: { tenantId: ITDESK_ID, code: "sla_breach_escalate", name: "SLA Breach → Auto-Escalate", isActive: true, configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sla_breach" }, action: { type: "escalate_sr" } }) } });
+  await prisma.automationRule.create({ data: { tenantId: ITDESK_ID, code: "sentiment_low_flag", name: "Negative Sentiment → Flag for Review", isActive: true, configJson: JSON.stringify({ ruleType: "operational", trigger: { type: "sentiment_low", params: { threshold: 2 } }, action: { type: "create_sr" } }) } });
+
+  console.log("✓ Seed complete — Northwind Corp IT help desk loaded (it_services demo).");
+}
+
 async function main() {
   // ── Clear existing data for clean seed ────────────────────────────────────
   await prisma.automationExecution.deleteMany({ where: { tenantId: HOTEL_ID } });
@@ -762,6 +899,9 @@ async function main() {
 
   // Second demo tenant: a manufacturing plant on the same pipeline (#165).
   await seedPlant();
+
+  // Third demo tenant: an IT/Tech Corporate help desk on the same pipeline (#166).
+  await seedItDesk();
 }
 
 main()

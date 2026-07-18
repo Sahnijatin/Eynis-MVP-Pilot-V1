@@ -144,9 +144,51 @@ const MANUFACTURING_PACK: IntakePack = {
   },
 };
 
+// ── IT / Tech Corporate helpdesk (#166) — internal employee helpdesk. ──────────
+// Subject = employee/asset; signals = IT/facilities/HR-ops tickets arriving via the
+// cross-vertical email/webhook doors (#162). Specific categories (access, hardware,
+// software, facilities, hr_ops) are matched before the generic "incident" catch so a
+// "laptop broken" ticket routes to hardware, not a generic outage. Routing sends each
+// category to its owning desk.
+const IT_HELPDESK_PACK: IntakePack = {
+  industry: "it_services",
+  categories: ["incident", "access", "hardware", "software", "facilities", "hr_ops", "general"],
+  defaultCategory: "incident",
+  keywordRules: [
+    { category: "access", keywords: ["password", "reset", "login", "log in", "locked out", "vpn", "mfa", "2fa", "sso", "account", "permission"] },
+    { category: "hardware", keywords: ["laptop", "monitor", "keyboard", "mouse", "printer", "headset", "docking", "webcam", "battery", "charger"] },
+    { category: "software", keywords: ["install", "license", "software", "application", "excel", "outlook", "teams", "browser", "update"] },
+    { category: "facilities", keywords: ["desk", "chair", "meeting room", "air conditioning", "lighting", "badge", "parking", "office"] },
+    { category: "hr_ops", keywords: ["onboarding", "offboarding", "payroll", "leave", "benefits", "expense", "reimburse"] },
+    { category: "incident", keywords: ["outage", "down", "not working", "error", "crash", "offline", "cannot access", "can't access"] },
+  ],
+  routing: {
+    incident: "it",
+    access: "it",
+    hardware: "it",
+    software: "it",
+    facilities: "facilities",
+    hr_ops: "hr",
+    general: "it",
+  },
+  sla: {
+    // Helpdesk response targets: an outage/urgent ticket in 15m, a routine request
+    // within the working half-day (4h).
+    byPriority: { urgent: 15, high: 30, normal: 240 },
+    defaultMinutes: 240,
+    autoMinutes: 60,
+  },
+  offerRouting: {
+    // No upsell flow on an internal helpdesk.
+    byCategory: {},
+    default: "follow_up",
+  },
+};
+
 const PACKS: Record<string, IntakePack> = {
   hospitality: HOSPITALITY_PACK,
   manufacturing: MANUFACTURING_PACK,
+  it_services: IT_HELPDESK_PACK,
   generic: GENERIC_PACK,
 };
 
@@ -190,6 +232,7 @@ const INDUSTRY_TERMS: Record<string, IndustryTerms> = {
   fnb: { label: "Food & Beverage", request: "order", requestPlural: "orders", contactPlural: "diners" },
   travel: { label: "Travel", request: "booking", requestPlural: "bookings", contactPlural: "travellers" },
   healthcare: { label: "Healthcare", request: "appointment", requestPlural: "appointments", contactPlural: "patients" },
+  it_services: { label: "IT / Tech Corporate", request: "ticket", requestPlural: "tickets", contactPlural: "employees" },
 };
 
 export function getIndustryTerms(industry: string | null | undefined): IndustryTerms {
