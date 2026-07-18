@@ -37,7 +37,7 @@ test("getIntakePack and packLookup ignore prototype-chain keys", () => {
 });
 
 test("keywordClassify uses the tenant's pack for category, routing and SLA", () => {
-  const generic = getIntakePack("manufacturing"); // -> generic pack in #159
+  const generic = getIntakePack("logistics"); // unknown industry -> generic pack
 
   // Generic pack keyword rules route on neutral vocabulary...
   const broken = keywordClassify("the line is broken and not working", generic);
@@ -57,6 +57,33 @@ test("keywordClassify uses the tenant's pack for category, routing and SLA", () 
   assert.equal(keywordClassify("hello there", generic).slaMinutes, 60); // generic normal, vs 45
 });
 
+// #165 — the manufacturing pack: downtime/maintenance/quality/safety taxonomy.
+test("manufacturing pack classifies plant-floor signal by category and department", () => {
+  const mfg = getIntakePack("manufacturing");
+  assert.equal(mfg.industry, "manufacturing");
+  assert.deepEqual(mfg.categories, ["safety", "downtime", "quality", "maintenance", "general"]);
+  assert.equal(mfg.defaultCategory, "maintenance");
+
+  // Safety wording wins over a co-occurring downtime/maintenance keyword (rule order).
+  const safety = keywordClassify("gas leak near line 2, machine down", mfg);
+  assert.equal(safety.category, "safety");
+  assert.equal(safety.routingHint, "safety");
+
+  const downtime = keywordClassify("conveyor stopped, line offline", mfg);
+  assert.equal(downtime.category, "downtime");
+  assert.equal(downtime.routingHint, "maintenance"); // downtime routes to the maintenance team
+
+  const quality = keywordClassify("batch has a defect, out of spec", mfg);
+  assert.equal(quality.category, "quality");
+  assert.equal(quality.routingHint, "quality");
+
+  // Unmatched plant signal defaults to maintenance, not the generic "general".
+  assert.equal(keywordClassify("please take a look at unit 5", mfg).category, "maintenance");
+
+  // Urgent downtime gets the tight manufacturing SLA (10m), not generic's 15m.
+  assert.equal(keywordClassify("URGENT: press line down", mfg).slaMinutes, 10);
+});
+
 // #160 — the composed pack unifies vocabulary + intake + automation set per vertical.
 
 test("getIndustryPack composes vocabulary, intake and automation set per industry", () => {
@@ -69,7 +96,8 @@ test("getIndustryPack composes vocabulary, intake and automation set per industr
   const mfg = getIndustryPack("manufacturing");
   assert.equal(mfg.label, "Manufacturing");
   assert.equal(mfg.vocabulary.contactPlural, "clients");
-  assert.equal(mfg.intake.industry, "generic"); // no dedicated intake pack yet (#165)
+  assert.equal(mfg.intake.industry, "manufacturing"); // dedicated intake pack (#165)
+  assert.equal(mfg.intake.defaultCategory, "maintenance");
   // Switching the pack changes the active automation set with no engine change.
   assert.deepEqual(mfg.automations, ["sla_breach_escalate", "sentiment_low_flag"]);
 
@@ -115,7 +143,7 @@ test("getIndustryTerms ignores prototype-chain keys and falls back neutrally", (
 });
 
 test("sanitizeClassification applies the pack's default category and SLA on bad input", () => {
-  const generic = getIntakePack("manufacturing");
+  const generic = getIntakePack("logistics"); // unknown -> generic pack
   const out = sanitizeClassification(
     { category: "", priority: "PANIC", summary: "", sentiment: "x", routingHint: "", slaMinutes: NaN },
     generic,
