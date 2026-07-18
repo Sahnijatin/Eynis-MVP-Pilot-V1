@@ -49,7 +49,11 @@ Phase 9 adds an ESLint guard that enforces this; until then it is a review expec
   Tight, `--font-mono`) + a `.tnum` tabular‑numeral utility; radius 8px; warm‑tinted elevation.
   Invisible until surfaces migrate (tokens are still unread), so it's the "constants" layer the
   migration renders.
-- Phases 4–6 — migrate the DS primitives, `globals.css`, then the 62 feature files.
+- **Phase 4 ✓** — the `components/ds/` primitives migrated onto tokens: `tokens.ts` now
+  references the semantic CSS vars (so every primitive **and** every component that reads
+  `t.color.*` inline is token-driven and theme-aware), with the last hardcoded hex in the
+  primitives (button text, badge tints, toast chip) moved onto AA-safe tokens.
+- Phases 5–6 — migrate `globals.css` shell classes, then the 62 feature files.
 - Phases 7–9 — charts/categorical color, QA/a11y, rollout + lint guard.
 
 Full phase plan lives in the project chat history / issue tracker; this README tracks the
