@@ -37,11 +37,15 @@ Phase 9 adds an ESLint guard that enforces this; until then it is a review expec
 
 ## Status of this work
 
-- **Phase 0 (this directory)** — token contract + migration map. *Documentation only; zero
-  rendering changes.*
-- Phase 1 — the OKLCH ramp generator (`lib/color/ramp.ts`) + AA contrast tests.
-- Phase 2 — dual‑tone values + SSR‑safe theme switching.
-- Phase 3 — personality constants (warm neutrals, type, elevation).
+- **Phase 0 ✓** — token contract + migration map (this directory). *Docs only.*
+- **Phase 1 ✓** — the OKLCH ramp generator (`lib/color/ramp.ts`) + AA contrast tests; injected
+  additively as `--accent-1..12`.
+- **Phase 2 ✓** — dual‑tone token values (both themes) in `globals.css`, SSR‑safe theme
+  switching (`lib/theme-mode.ts`, cookie → `data-theme` on `<html>`), and a toggle gated behind
+  `NEXT_PUBLIC_ENABLE_THEME_TOGGLE` until the migration completes. Defaults to light so OS‑dark
+  users don't get a half‑migrated UI; the var‑driven shell flips today.
+- Phase 3 — personality constants (warm neutrals, type, elevation): swap the **light** token
+  values to the Fintech Trust spec in [`tokens.md`](./tokens.md).
 - Phases 4–6 — migrate the DS primitives, `globals.css`, then the 62 feature files.
 - Phases 7–9 — charts/categorical color, QA/a11y, rollout + lint guard.
 

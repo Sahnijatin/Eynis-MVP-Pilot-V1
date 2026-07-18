@@ -691,3 +691,100 @@
   .nav-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 55; }
   .topbar { padding-left: 1rem; padding-right: 1rem; }
 }
+
+/* ============================================================================
+   DESIGN-SYSTEM TOKEN LAYER (Phase 2 — Adaptive Dual-Tone)
+   ----------------------------------------------------------------------------
+   The semantic tokens every migrated component reads. Defined for BOTH themes.
+   Light values here MATCH the current look, so migrating a component onto tokens
+   changes nothing in light mode; Phase 3 swaps the light values to the Fintech
+   personality. Nothing reads most of these yet (migration is Phases 4-6), so
+   this block is additive and has no visual effect on the un-migrated app.
+   Contract + final target values: docs/design-system/tokens.md
+   ========================================================================== */
+@layer base {
+  :root {
+    /* surfaces */
+    --bg: #f4f6fa;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --surface-inset: #f8fafc;
+    --sidebar: #142032;
+    /* lines */
+    --border: #e6eaf0;
+    --border-strong: #d4dae4;
+    --ring: var(--accent-focus, #94a3b8);
+    /* text (ink) */
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --text-subtle: #94a3b8;
+    --text-faint: #cbd5e1;
+    --text-on-accent: var(--accent-contrast, #ffffff);
+    /* status — success */
+    --ok-bg: #ecfdf5; --ok-border: #a7f3d0; --ok-text: #047857; --ok-solid: #10b981;
+    /* status — warning */
+    --warn-bg: #fffbeb; --warn-border: #fde68a; --warn-text: #b45309; --warn-solid: #f59e0b;
+    /* status — danger */
+    --danger-bg: #fef2f2; --danger-border: #fecaca; --danger-text: #dc2626; --danger-solid: #ef4444;
+    /* status — info */
+    --info-bg: #eff6ff; --info-border: #bfdbfe; --info-text: #2563eb; --info-solid: #3b82f6;
+    /* elevation */
+    --shadow-1: 0 1px 2px rgba(15,23,42,.05);
+    --shadow-2: 0 1px 2px rgba(15,23,42,.04), 0 4px 12px -4px rgba(15,23,42,.10);
+    --shadow-3: 0 2px 4px rgba(15,23,42,.05), 0 12px 28px -10px rgba(15,23,42,.14);
+    --shadow-4: 0 4px 8px rgba(15,23,42,.06), 0 24px 48px -16px rgba(15,23,42,.18);
+    --shadow-5: 0 8px 16px rgba(15,23,42,.08), 0 40px 80px -24px rgba(15,23,42,.24);
+    /* radius */
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 12px; --radius-xl: 16px; --radius-full: 9999px;
+  }
+
+  /* Designed dark theme (not an inversion): elevated surfaces get LIGHTER, borders
+     lighten, text/accents raise perceived contrast. Explicit attribute wins over OS. */
+  :root[data-theme="dark"] {
+    --bg: #0E0F14;
+    --surface: #16181F;
+    --surface-2: #1C1F27;
+    --surface-inset: #101218;
+    --sidebar: #121319;
+    --border: #262A33;
+    --border-strong: #333844;
+    --text: #ECEEF4;
+    --text-muted: #A0A6B4;
+    --text-subtle: #757C8B;
+    --text-faint: #565C6B;
+    --ok-bg: #122820; --ok-border: #1E4938; --ok-text: #4ADE9B; --ok-solid: #12936F;
+    --warn-bg: #2A2113; --warn-border: #4A3B1C; --warn-text: #E0A83B; --warn-solid: #D9922B;
+    --danger-bg: #2A1616; --danger-border: #4A2626; --danger-text: #F0757A; --danger-solid: #DC4438;
+    --info-bg: #171B2E; --info-border: #2A3357; --info-text: #8CA0FF; --info-solid: #3B82F6;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 2px 10px -4px rgba(0,0,0,.6);
+    --shadow-3: 0 8px 26px -12px rgba(0,0,0,.7);
+    --shadow-4: 0 14px 40px -16px rgba(0,0,0,.75);
+    --shadow-5: 0 24px 60px -20px rgba(0,0,0,.8);
+
+    /* Retro-fit the legacy --color-* vars so the existing var-driven shell (body,
+       sidebar, cards, borders) already flips to dark before component migration.
+       Tailwind-hardcoded surfaces stay light until Phase 6 — which is why the
+       user-facing toggle stays behind NEXT_PUBLIC_ENABLE_THEME_TOGGLE for now. */
+    --color-bg: #0E0F14;
+    --color-surface: #16181F;
+    --color-surface-muted: #101218;
+    --color-border: #262A33;
+    --color-text: #ECEEF4;
+    --color-muted: #A0A6B4;
+    --color-sidebar: #121319;
+  }
+
+  /* OS preference, honored only when no explicit choice has been stamped. The app
+     currently always stamps data-theme (default light) until Phase 6, so this is
+     for correctness/parity rather than an active path today. */
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="system"] {
+      --bg: #0E0F14; --surface: #16181F; --surface-2: #1C1F27; --surface-inset: #101218;
+      --sidebar: #121319; --border: #262A33; --border-strong: #333844;
+      --text: #ECEEF4; --text-muted: #A0A6B4; --text-subtle: #757C8B; --text-faint: #565C6B;
+      --color-bg: #0E0F14; --color-surface: #16181F; --color-surface-muted: #101218;
+      --color-border: #262A33; --color-text: #ECEEF4; --color-muted: #A0A6B4; --color-sidebar: #121319;
+    }
+  }
+}
