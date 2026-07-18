@@ -19,7 +19,7 @@ export function UpsellCampaignsClient({ data }: { data: UpsellCampaignsResponse 
       </div>
 
       {!hasData && (
-        <div className="card mb-4" style={{ background: "#f8fafc" }}>
+        <div className="card mb-4" style={{ background: "var(--surface-inset)" }}>
           <p className="text-sm text-fg-muted">No offers generated yet. Rows populate as the upsell automation queues offers and customers convert.</p>
         </div>
       )}

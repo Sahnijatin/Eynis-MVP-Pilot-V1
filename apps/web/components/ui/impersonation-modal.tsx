@@ -196,7 +196,7 @@ function UserRow({ user, accentColor, starting, disabled, onSelect }: { user: Te
         <div className="text-sm font-medium text-fg truncate">{user.fullName || user.email}</div>
         <div className="text-xs text-fg-muted truncate">{user.email}</div>
       </div>
-      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ background: "#f1f5f9", color: "#475569" }}>
+      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ background: "var(--surface-inset)", color: "var(--text-muted)" }}>
         {roleLabel(user.systemRole?.key)}
       </span>
       {starting && <Loader2 className="w-4 h-4 animate-spin text-fg-muted shrink-0" />}

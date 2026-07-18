@@ -215,7 +215,7 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
-          <div className="card" style={{ background: "#0f766e" }}>
+          <div className="card" style={{ background: "var(--accent-solid, #0f766e)" }}>
             <div className="text-xs text-teal-200 uppercase tracking-wider font-medium mb-1">Night Audit</div>
             <div className="text-white font-semibold text-sm mb-1">AI-generated operations report</div>
             <div className="text-teal-100 text-xs mb-3">Generate an end-of-day summary of requests, resolutions and revenue.</div>

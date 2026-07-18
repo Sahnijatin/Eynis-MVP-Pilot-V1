@@ -21,7 +21,7 @@ function toData(result: RunResult): Datum[] {
   return result.grouped.map((g) => ({ label: g.group || "—", value: useSum ? (g.sum ?? 0) : g.count }));
 }
 
-const tooltipStyle = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 } as const;
+const tooltipStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 } as const;
 
 export function ReportResultView({ result }: { result: RunResult }) {
   const viz = result.visualization ?? "table";

@@ -86,7 +86,7 @@ export default function AIBrainPage() {
                 className="max-w-[80%] px-4 py-3 rounded-2xl text-sm"
                 style={m.role === "user"
                   ? { background: "#1d4ed8", color: "#fff", borderBottomRightRadius: 4 }
-                  : { background: "#f8fafc", color: "#1e293b", border: "1px solid #e2e8f0", borderBottomLeftRadius: 4 }}
+                  : { background: "var(--surface-inset)", color: "var(--text)", border: "1px solid var(--border)", borderBottomLeftRadius: 4 }}
               >
                 {m.text.split("\n").map((line, j) => (
                   // Render **bold** as React nodes (never dangerouslySetInnerHTML) — the

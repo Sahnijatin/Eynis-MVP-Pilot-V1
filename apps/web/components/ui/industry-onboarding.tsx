@@ -157,7 +157,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
                   style={isSelected ? {
                     borderColor: ind.accentColor,
                     boxShadow: `0 0 0 3px ${ind.accentColor}18`,
-                    background: "#fff"
+                    background: "var(--surface)"
                   } : {}}
                 >
                   {/* Left: icon + accent bar */}
@@ -178,7 +178,7 @@ export function IndustryOnboarding({ allowAdditional = false }: { allowAdditiona
                         </span>
                       ))}
                       {ind.features.length > 3 && (
-                        <span className="industry-feature-tag" style={{ color: "#94a3b8", borderColor: "#e2e8f0" }}>
+                        <span className="industry-feature-tag" style={{ color: "var(--text-subtle)", borderColor: "var(--border)" }}>
                           +{ind.features.length - 3} more
                         </span>
                       )}

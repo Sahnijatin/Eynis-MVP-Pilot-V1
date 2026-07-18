@@ -72,7 +72,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
             className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
             style={active === p.key && !showCustom
               ? { background: "var(--color-primary, #0f766e)", color: "#fff" }
-              : { border: "1px solid #e2e8f0", color: "#475569" }}
+              : { border: "1px solid var(--border)", color: "var(--text-muted)" }}
           >
             {p.label}
           </button>
@@ -82,7 +82,7 @@ export function DateRangeControl({ defaultPreset = "30d" }: { defaultPreset?: st
           className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
           style={active === "custom" || showCustom
             ? { background: "var(--color-primary, #0f766e)", color: "#fff" }
-            : { border: "1px solid #e2e8f0", color: "#475569" }}
+            : { border: "1px solid var(--border)", color: "var(--text-muted)" }}
         >
           <Calendar className="w-3.5 h-3.5" /> Custom
         </button>

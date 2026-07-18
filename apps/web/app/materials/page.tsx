@@ -37,7 +37,7 @@ export default async function MaterialsPage() {
             <div style={{ overflowX: "auto" }}>
               <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ textAlign: "left", color: "#64748b" }}>
+                  <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                     <th style={{ padding: "8px 10px" }}>Material</th>
                     <th style={{ padding: "8px 10px", textAlign: "right" }}>Received</th>
                     <th style={{ padding: "8px 10px", textAlign: "right" }}>Used</th>

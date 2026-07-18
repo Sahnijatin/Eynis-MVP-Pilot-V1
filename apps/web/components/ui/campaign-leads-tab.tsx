@@ -61,7 +61,7 @@ export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
   if (initialTotal === 0 && !tagFilter) {
     return (
       <div style={{ ...card, textAlign: "center", padding: 32 }}>
-        <p style={{ color: "#666", marginBottom: 16 }}>No leads imported yet.</p>
+        <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>No leads imported yet.</p>
         <Link href={`/campaigns/${campaignId}/leads/import`} style={btnPrimary}>Import leads from CSV</Link>
       </div>
     );
@@ -71,11 +71,11 @@ export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} placeholder="Filter by tag…" style={{ ...input, width: 180 }} />
-        <span style={{ color: "#9ca3af", fontSize: 13 }}>{total} lead{total === 1 ? "" : "s"}</span>
+        <span style={{ color: "var(--text-subtle)", fontSize: 13 }}>{total} lead{total === 1 ? "" : "s"}</span>
         <div style={{ flex: 1 }} />
         {selected.size > 0 && (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: "#374151" }}>{selected.size} selected</span>
+            <span style={{ fontSize: 13, color: "var(--text)" }}>{selected.size} selected</span>
             <input value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} placeholder="tag" style={{ ...input, width: 120 }} />
             <button onClick={() => bulk("addTags")} disabled={busy || !bulkTag.trim()} style={btnPrimary}>Add</button>
             <button onClick={() => bulk("removeTags")} disabled={busy || !bulkTag.trim()} style={btnGhost}>Remove</button>
@@ -109,7 +109,7 @@ export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
                 </tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>No leads match this tag.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>No leads match this tag.</td></tr>
               )}
             </tbody>
           </table>
@@ -119,7 +119,7 @@ export function CampaignLeadsTab({ campaignId, initialLeads, initialTotal }: {
   );
 }
 
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
-const input: React.CSSProperties = { padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, fontFamily: "inherit" };
+const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface)", padding: 16 };
+const input: React.CSSProperties = { padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border-strong)", fontSize: 14, fontFamily: "inherit" };
 const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13, textDecoration: "none" };
-const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13 };
+const btnGhost: React.CSSProperties = { background: "var(--surface-inset)", color: "var(--text)", padding: "8px 14px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 13 };

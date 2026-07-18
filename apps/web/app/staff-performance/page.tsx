@@ -35,7 +35,7 @@ export default async function StaffPerformancePage({
       </div>
 
       {!hasData && (
-        <div className="card mb-5" style={{ background: "#f8fafc" }}>
+        <div className="card mb-5" style={{ background: "var(--surface-inset)" }}>
           <p className="text-sm text-fg-muted">No team activity in this window yet. Metrics populate as requests are assigned and resolved.</p>
         </div>
       )}
@@ -115,7 +115,7 @@ export default async function StaffPerformancePage({
                     </div>
                     <div className="w-full h-2.5 rounded-full bg-surface-inset overflow-hidden flex">
                       <div className="h-full rounded-full" style={{ width: `${resolvedPct}%`, background: "var(--color-primary, #0f766e)" }} />
-                      <div className="h-full" style={{ width: `${openPct}%`, background: "#e2e8f0" }} />
+                      <div className="h-full" style={{ width: `${openPct}%`, background: "var(--surface-inset)" }} />
                     </div>
                   </div>
                 );

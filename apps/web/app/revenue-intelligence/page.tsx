@@ -36,7 +36,7 @@ export default async function RevenueIntelligencePage({
       </div>
 
       {!hasData && (
-        <div className="card mb-5" style={{ background: "#f8fafc" }}>
+        <div className="card mb-5" style={{ background: "var(--surface-inset)" }}>
           <p className="text-sm text-fg-muted">No offer activity in this window yet. Figures populate as upsell offers are sent and accepted.</p>
         </div>
       )}

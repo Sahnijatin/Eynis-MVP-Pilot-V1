@@ -40,7 +40,7 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
       {items.length === 0 ? (
         <div style={{ ...cardBox, textAlign: "center", padding: 48 }}>
           <p style={{ fontSize: 16, marginBottom: 8 }}>No campaigns yet.</p>
-          <p style={{ color: "#666", marginBottom: 20 }}>Create your first multi-channel campaign to start reaching leads.</p>
+          <p style={{ color: "var(--text-muted)", marginBottom: 20 }}>Create your first multi-channel campaign to start reaching leads.</p>
           <Link href="/campaigns/new" style={btnPrimary}>+ New Campaign</Link>
         </div>
       ) : (
@@ -82,6 +82,6 @@ export function CampaignsClient({ items }: { items: CampaignSummary[] }) {
   );
 }
 
-const cardBox: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", overflow: "hidden" };
+const cardBox: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface)", overflow: "hidden" };
 const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "9px 16px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };
-const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "6px 12px", borderRadius: 6, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 13 };
+const btnGhost: React.CSSProperties = { background: "var(--surface-inset)", color: "var(--text)", padding: "6px 12px", borderRadius: 6, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 13 };

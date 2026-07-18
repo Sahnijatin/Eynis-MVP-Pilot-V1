@@ -46,13 +46,13 @@ export default async function RequestPage({
       </div>
       <h1>Submit a Request</h1>
       {!tenantId ? (
-        <p style={{ color: "#64748b" }}>
+        <p style={{ color: "var(--text-muted)" }}>
           This request link is missing its workspace. Please use the exact link or
           QR code you were given, or contact the team that shared it with you.
         </p>
       ) : (
       <>
-      <p style={{ color: "#64748b" }}>
+      <p style={{ color: "var(--text-muted)" }}>
         Scan-ready request form. Submit once and our team will follow up.
       </p>
       {result ? (
@@ -70,7 +70,7 @@ export default async function RequestPage({
           {result === "ok" ? <RequestVoicePlayer text={ackText} /> : null}
         </div>
       ) : null}
-      <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, background: "#fff" }}>
+      <section style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, background: "var(--surface)" }}>
         <form method="POST" action="/api/public/request" style={{ display: "grid", gap: 10 }}>
           <input type="hidden" name="tenantId" value={tenantId} />
           <label>

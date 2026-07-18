@@ -63,9 +63,9 @@ export function CampaignActivityTab({ campaignId, isActive }: { campaignId: stri
     <div style={card}>
       <div style={cardTitle}>
         <span>Activity feed ({items.length})</span>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#666", fontWeight: 500 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>
           <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
-          {live ? <span style={{ color: "#dc2626", fontWeight: 700 }}>● Live</span> : "Auto-refresh"}
+          {live ? <span style={{ color: "var(--danger-text)", fontWeight: 700 }}>● Live</span> : "Auto-refresh"}
         </label>
       </div>
       {items.length === 0 ? (
@@ -82,12 +82,12 @@ export function CampaignActivityTab({ campaignId, isActive }: { campaignId: stri
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{d.lead.firstName} {d.lead.lastName ?? ""}</span>
-                  <span style={{ color: "#9ca3af", fontSize: 12, whiteSpace: "nowrap" }}>{timeAgo(d.createdAt)}</span>
+                  <span style={{ color: "var(--text-subtle)", fontSize: 12, whiteSpace: "nowrap" }}>{timeAgo(d.createdAt)}</span>
                 </div>
-                <div style={{ color: "#6b7280", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {d.renderedSubject ?? d.renderedBody ?? (d.lead.company ?? d.lead.phone ?? "")}
                 </div>
-                {d.error && <div style={{ color: "#991b1b", fontSize: 12 }}>⚠ {d.error}</div>}
+                {d.error && <div style={{ color: "var(--danger-text)", fontSize: 12 }}>⚠ {d.error}</div>}
               </div>
               <Badge label={d.status} tone={STATUS_TONE[d.status] ?? "neutral"} />
             </div>
@@ -98,6 +98,6 @@ export function CampaignActivityTab({ campaignId, isActive }: { campaignId: stri
   );
 }
 
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
+const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface)", padding: 16 };
 const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" };
-const muted: React.CSSProperties = { color: "#9ca3af", padding: 16 };
+const muted: React.CSSProperties = { color: "var(--text-subtle)", padding: 16 };

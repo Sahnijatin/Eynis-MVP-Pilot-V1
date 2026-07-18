@@ -188,7 +188,7 @@ export default function RolesClient({
               className="px-5 py-3 text-sm font-medium border-b-2 transition-colors"
               style={active
                 ? { borderColor: accentColor, color: accentColor }
-                : { borderColor: "transparent", color: "#64748b" }
+                : { borderColor: "transparent", color: "var(--text-muted)" }
               }
             >
               {tab.label}
@@ -281,7 +281,7 @@ export default function RolesClient({
                         <div
                           key={perm}
                           className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                          style={granted ? { background: role.iconBg, color: role.iconColor } : { background: "#f8fafc", color: "#cbd5e1" }}
+                          style={granted ? { background: role.iconBg, color: role.iconColor } : { background: "var(--surface-inset)", color: "#cbd5e1" }}
                         >
                           <span className="text-sm leading-none shrink-0">{granted ? "✓" : "—"}</span>
                           <span>{PERMISSION_LABELS[perm]}</span>

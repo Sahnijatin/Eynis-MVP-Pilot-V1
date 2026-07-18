@@ -6,10 +6,10 @@ export function Badge({
   tone?: "neutral" | "success" | "warning" | "danger";
 }) {
   const styleByTone = {
-    neutral: { background: "#eef2ff", color: "#3730a3" },
-    success: { background: "#dcfce7", color: "#166534" },
-    warning: { background: "#fef3c7", color: "#92400e" },
-    danger: { background: "#fee2e2", color: "#991b1b" }
+    neutral: { background: "var(--info-bg)", color: "#3730a3" },
+    success: { background: "var(--ok-bg)", color: "var(--ok-text)" },
+    warning: { background: "var(--warn-bg)", color: "var(--warn-text)" },
+    danger: { background: "var(--danger-bg)", color: "var(--danger-text)" }
   } as const;
 
   const toneStyle = styleByTone[tone];

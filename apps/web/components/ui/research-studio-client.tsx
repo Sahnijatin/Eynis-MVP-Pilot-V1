@@ -223,13 +223,13 @@ function HomeView(props: {
   return (
     <div>
       {noAi && (
-        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "#991b1b", textDecoration: "underline" }}>Integrations</a> to generate full reports.
+        <div style={{ background: "var(--danger-bg)", border: "1px solid var(--danger-border)", color: "var(--danger-text)", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
+          <strong>No AI provider configured.</strong> Reports will show raw sources only (no analysis). Add an OpenAI or Anthropic key in <a href="/integrations" style={{ color: "var(--danger-text)", textDecoration: "underline" }}>Integrations</a> to generate full reports.
         </div>
       )}
       {noSearch && (
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          Tip: add a <strong>Tavily</strong> key in <a href="/integrations" style={{ color: "#92400e", textDecoration: "underline" }}>Integrations</a> or set <code>SEARXNG_URL</code> on the API to enable web search. Crawl &amp; site-performance still work without it.
+        <div style={{ background: "var(--warn-bg)", border: "1px solid var(--warn-border)", color: "var(--warn-text)", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
+          Tip: add a <strong>Tavily</strong> key in <a href="/integrations" style={{ color: "var(--warn-text)", textDecoration: "underline" }}>Integrations</a> or set <code>SEARXNG_URL</code> on the API to enable web search. Crawl &amp; site-performance still work without it.
         </div>
       )}
 
@@ -532,7 +532,7 @@ function RunView(props: { accent: string; runId: string; onBack: () => void; onO
                   value={schedule?.isActive ? schedule.cadence : "off"}
                   disabled={schedBusy}
                   onChange={(e) => onScheduleChange(e.target.value)}
-                  style={{ fontSize: t.font.xs, padding: "3px 6px", borderRadius: 6, border: `1px solid ${t.color.border}`, background: "#fff", color: t.color.text }}
+                  style={{ fontSize: t.font.xs, padding: "3px 6px", borderRadius: 6, border: `1px solid ${t.color.border}`, background: "var(--surface)", color: t.color.text }}
                 >
                   <option value="off">Off</option>
                   <option value="daily">Daily</option>

@@ -12,7 +12,7 @@ const STAGE_META: Array<{ id: string; label: string; color: string }> = [
   { id: "new", label: "New Orders", color: "#6366f1" },
   { id: "production", label: "In Kitchen", color: "#f59e0b" },
   { id: "qc", label: "Plating / QC", color: "#8b5cf6" },
-  { id: "dispatch", label: "Ready to Serve", color: "#10b981" },
+  { id: "dispatch", label: "Ready to Serve", color: "var(--ok-text)" },
 ];
 
 const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;

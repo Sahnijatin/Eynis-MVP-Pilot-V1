@@ -27,7 +27,7 @@ export function SentimentTrendsClient({ data, from, to }: { data: SentimentRespo
       </div>
 
       {!hasData && (
-        <div className="card mb-5" style={{ background: "#f8fafc" }}>
+        <div className="card mb-5" style={{ background: "var(--surface-inset)" }}>
           <p className="text-sm text-fg-muted">No sentiment data captured yet. Figures populate as voice calls are scored and inbound messages are classified.</p>
         </div>
       )}
@@ -54,7 +54,7 @@ export function SentimentTrendsClient({ data, from, to }: { data: SentimentRespo
           <div className="text-xs text-fg-muted mt-1">{data.surveyCompletionRate === null ? "Survey channel not connected" : "of surveys sent"}</div>
         </div>
         {data.alert ? (
-          <div className="card" style={{ background: "#fffbeb", borderLeft: "3px solid #f59e0b" }}>
+          <div className="card" style={{ background: "var(--warn-bg)", borderLeft: "3px solid #f59e0b" }}>
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
               <div>
@@ -64,7 +64,7 @@ export function SentimentTrendsClient({ data, from, to }: { data: SentimentRespo
             </div>
           </div>
         ) : (
-          <div className="card" style={{ background: "#f0fdf4", borderLeft: "3px solid #10b981" }}>
+          <div className="card" style={{ background: "var(--ok-bg)", borderLeft: "3px solid #10b981" }}>
             <div className="flex items-start gap-2">
               <CheckCircle className="w-4 h-4 text-ok shrink-0 mt-0.5" />
               <div>

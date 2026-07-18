@@ -5,7 +5,7 @@ import { fetchOrders, fetchQuotes, fetchInventory, fetchInventoryYield, fetchDas
 
 // Maintenance/downtime taxonomy (manufacturing pack, #165), in the order shown.
 const MAINT_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
-  { key: "downtime", label: "Downtime", color: "#dc2626" },
+  { key: "downtime", label: "Downtime", color: "var(--danger-text)" },
   { key: "maintenance", label: "Maintenance", color: "#f59e0b" },
   { key: "quality", label: "Quality", color: "#8b5cf6" },
   { key: "safety", label: "Safety", color: "#0ea5e9" },
@@ -19,7 +19,7 @@ const STAGE_META: Array<{ id: string; label: string; color: string }> = [
   { id: "new", label: "New Orders", color: "#6366f1" },
   { id: "production", label: "In Production", color: "#f59e0b" },
   { id: "qc", label: "QC Review", color: "#8b5cf6" },
-  { id: "dispatch", label: "Ready to Dispatch", color: "#10b981" },
+  { id: "dispatch", label: "Ready to Dispatch", color: "var(--ok-text)" },
 ];
 
 const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;

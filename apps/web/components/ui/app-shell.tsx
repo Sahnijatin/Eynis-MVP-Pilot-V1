@@ -448,9 +448,12 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
             <TopbarClock />
           </div>
           <div className="topbar-right">
-            {/* Dark-mode toggle — gated until the component migration (Phase 6)
-                makes dark mode complete for every surface, not just the shell. */}
-            {process.env.NEXT_PUBLIC_ENABLE_THEME_TOGGLE === "true" && <ThemeToggle />}
+            {/* Dark-mode toggle (Phase 8). Shipped now that the Tailwind-utility
+                surfaces (Phases 4–7) and the inline-style neutrals are tokenised,
+                so opt-in dark is complete across the app chrome and feature
+                screens. Still opt-in (default light) until the categorical /
+                segment tints get their own dark steps — see lib/theme-mode.ts. */}
+            <ThemeToggle />
             <div className="relative" ref={notifRef}>
               <button className="topbar-icon-btn" onClick={() => setNotifOpen(v => !v)}>
                 <Bell className="w-4.5 h-4.5" />

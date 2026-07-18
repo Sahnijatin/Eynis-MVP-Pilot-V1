@@ -19,7 +19,7 @@ export function CustomersIntel({ items, entityLabel }: { items: ContactIntelRow[
         <div style={{ overflowX: "auto" }}>
           <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "#64748b" }}>
+              <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                 <th style={{ padding: "8px 10px" }}>Client</th>
                 <th style={{ padding: "8px 10px", textAlign: "right" }}>Won value</th>
                 <th style={{ padding: "8px 10px", textAlign: "right" }}>Wins</th>
@@ -31,7 +31,7 @@ export function CustomersIntel({ items, entityLabel }: { items: ContactIntelRow[
             </thead>
             <tbody>
               {items.length === 0 && (
-                <tr><td colSpan={7} style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>
+                <tr><td colSpan={7} style={{ padding: 24, textAlign: "center", color: "var(--text-subtle)" }}>
                   No client activity yet — send and win quotes and this fills in automatically.
                 </td></tr>
               )}
@@ -42,13 +42,13 @@ export function CustomersIntel({ items, entityLabel }: { items: ContactIntelRow[
                   <tr key={c.id} style={{ borderTop: "1px solid #e2e8f0" }}>
                     <td style={{ padding: "8px 10px" }}>
                       <div style={{ fontWeight: 500 }}>{c.fullName}</div>
-                      <div style={{ fontSize: 12, color: "#94a3b8" }}>{c.phoneE164}{c.email ? ` · ${c.email}` : ""}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>{c.phoneE164}{c.email ? ` · ${c.email}` : ""}</div>
                     </td>
                     <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>{c.acceptedTotalPaise > 0 ? rupees(c.acceptedTotalPaise) : "—"}</td>
                     <td style={{ padding: "8px 10px", textAlign: "right" }}>{c.acceptedCount || "—"}</td>
                     <td style={{ padding: "8px 10px", textAlign: "right" }}>{c.pendingQuotes || "—"}</td>
                     <td style={{ padding: "8px 10px", textAlign: "right" }}>{c.openOrders || "—"}</td>
-                    <td style={{ padding: "8px 10px", color: "#64748b" }}>{days === null ? "—" : days === 0 ? "today" : `${days}d ago`}</td>
+                    <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{days === null ? "—" : days === 0 ? "today" : `${days}d ago`}</td>
                     <td style={{ padding: "8px 10px" }}>
                       {atRisk
                         ? <Badge tone="warning">At risk</Badge>

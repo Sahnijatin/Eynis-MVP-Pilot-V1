@@ -245,9 +245,9 @@ function MfgSegmentBadge({ segment }: { segment: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
     key:      { label: "Key Account",     color: "#1d4ed8", bg: "#eff6ff" },
     channel:  { label: "Channel Partner", color: "#7c3aed", bg: "#f5f3ff" },
-    growth:   { label: "Growth",          color: "#059669", bg: "#d1fae5" },
-    "at-risk":{ label: "At Risk",         color: "#d97706", bg: "#fef3c7" },
-    dormant:  { label: "Dormant",         color: "#dc2626", bg: "#fee2e2" },
+    growth:   { label: "Growth",          color: "var(--ok-text)", bg: "#d1fae5" },
+    "at-risk":{ label: "At Risk",         color: "var(--warn-text)", bg: "#fef3c7" },
+    dormant:  { label: "Dormant",         color: "var(--danger-text)", bg: "#fee2e2" },
   };
   const s = map[segment] ?? map.growth;
   return <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
@@ -266,8 +266,8 @@ function TravelSegmentBadge({ segment }: { segment: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
     key:     { label: "Key Account", color: "#1d4ed8", bg: "#eff6ff" },
     leisure: { label: "Leisure",     color: "#7c3aed", bg: "#f5f3ff" },
-    group:   { label: "Group",       color: "#059669", bg: "#d1fae5" },
-    "at-risk":{ label: "At Risk",    color: "#d97706", bg: "#fef3c7" },
+    group:   { label: "Group",       color: "var(--ok-text)", bg: "#d1fae5" },
+    "at-risk":{ label: "At Risk",    color: "var(--warn-text)", bg: "#fef3c7" },
   };
   const s = map[segment] ?? map.leisure;
   return <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
@@ -372,22 +372,22 @@ export function CustomersClient({ terminology, industry }: Props) {
     : { label: `Total ${terminology.entityPlural}`, value: mfgClients.length, sub: "↑ 2 new this quarter" };
 
   const kpi2 = isFnb
-    ? { label: "Active This Month", value: fnbClients.filter(c => c.status === "active").length, color: "#059669", sub: "Visited in last 30d" }
+    ? { label: "Active This Month", value: fnbClients.filter(c => c.status === "active").length, color: "var(--ok-text)", sub: "Visited in last 30d" }
     : isTravel
     ? { label: "Active Bookings", value: travelClients.filter(c => ["active", "pending"].includes(c.status)).length, color: "#7c3aed", sub: "Confirmed / pending" }
-    : { label: "Active (last 30d)", value: mfgClients.filter(c => c.status === "active").length, color: "#059669", sub: "Revenue generating" };
+    : { label: "Active (last 30d)", value: mfgClients.filter(c => c.status === "active").length, color: "var(--ok-text)", sub: "Revenue generating" };
 
   const kpi3 = isFnb
     ? { label: "Avg. Spend/Visit", value: "₹3,485", color: "#ea580c", sub: "Across all members" }
     : isTravel
-    ? { label: "Dormant / At Risk", value: travelClients.filter(c => c.status === "dormant").length, color: "#d97706", sub: "Need re-engagement" }
-    : { label: "At Risk (60d)", value: mfgClients.filter(c => c.status === "dormant_60").length, color: "#d97706", sub: "Need re-engagement" };
+    ? { label: "Dormant / At Risk", value: travelClients.filter(c => c.status === "dormant").length, color: "var(--warn-text)", sub: "Need re-engagement" }
+    : { label: "At Risk (60d)", value: mfgClients.filter(c => c.status === "dormant_60").length, color: "var(--warn-text)", sub: "Need re-engagement" };
 
   const kpi4 = isFnb
-    ? { label: "Dormant Members", value: fnbClients.filter(c => c.status === "dormant").length, color: "#dc2626", sub: "Send win-back offer" }
+    ? { label: "Dormant Members", value: fnbClients.filter(c => c.status === "dormant").length, color: "var(--danger-text)", sub: "Send win-back offer" }
     : isTravel
-    ? { label: "Avg. Revenue/Client", value: "₹7.2L", color: "#059669", sub: "This financial year" }
-    : { label: "Dormant (90d+)", value: mfgClients.filter(c => c.status === "dormant_90").length, color: "#dc2626", sub: "Re-activation needed" };
+    ? { label: "Avg. Revenue/Client", value: "₹7.2L", color: "var(--ok-text)", sub: "This financial year" }
+    : { label: "Dormant (90d+)", value: mfgClients.filter(c => c.status === "dormant_90").length, color: "var(--danger-text)", sub: "Re-activation needed" };
 
   return (
     <div>
