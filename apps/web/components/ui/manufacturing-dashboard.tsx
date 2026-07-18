@@ -1,7 +1,15 @@
 import Link from "next/link";
-import { AlertTriangle, ChevronRight, ClipboardList, Calculator } from "lucide-react";
+import { AlertTriangle, ChevronRight, ClipboardList, Calculator, Wrench } from "lucide-react";
 import { SmartInsights } from "./smart-insights";
-import { fetchOrders, fetchQuotes, fetchInventory, fetchInventoryYield } from "../../lib/data";
+import { fetchOrders, fetchQuotes, fetchInventory, fetchInventoryYield, fetchDashboardData } from "../../lib/data";
+
+// Maintenance/downtime taxonomy (manufacturing pack, #165), in the order shown.
+const MAINT_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
+  { key: "downtime", label: "Downtime", color: "#dc2626" },
+  { key: "maintenance", label: "Maintenance", color: "#f59e0b" },
+  { key: "quality", label: "Quality", color: "#8b5cf6" },
+  { key: "safety", label: "Safety", color: "#0ea5e9" },
+];
 
 // Manufacturing Command Centre (Phase 7) — every number traces to a DB row:
 // orders from the fulfillment pipeline, quotes awaiting decision, material
@@ -21,9 +29,17 @@ const lakh = (paise: number) => {
 };
 
 export async function ManufacturingDashboard() {
-  const [orders, quotes, inventory, yieldData] = await Promise.all([
-    fetchOrders(), fetchQuotes(), fetchInventory(), fetchInventoryYield(),
+  const [orders, quotes, inventory, yieldData, dash] = await Promise.all([
+    fetchOrders(), fetchQuotes(), fetchInventory(), fetchInventoryYield(), fetchDashboardData(),
   ]);
+
+  // Maintenance/downtime signal (#165) — real ServiceRequests from the webhook/CSV
+  // intake doors, surfaced through the generic dashboard endpoints.
+  const m = dash.overview?.metrics;
+  const byCategory = dash.queueSummary?.byCategory ?? {};
+  const downtimeOpen = byCategory.downtime ?? 0;
+  const maintTotalOpen = MAINT_CATEGORIES.reduce((s, c) => s + (byCategory[c.key] ?? 0), 0);
+  const maxCat = Math.max(1, ...MAINT_CATEGORIES.map((c) => byCategory[c.key] ?? 0));
 
   const stageOf = (id: string) => orders.summary.find((s) => s.stage === id);
   const inProductionValue = stageOf("production")?.valuePaise ?? 0;
@@ -40,6 +56,61 @@ export async function ManufacturingDashboard() {
   return (
     <div>
       <SmartInsights industry="manufacturing" />
+
+      {/* Maintenance & Downtime — real signal from webhook/CSV intake (#165) */}
+      <div className="flex items-center gap-2 mb-3">
+        <Wrench className="w-4 h-4 text-slate-500" />
+        <h3 className="card-title mb-0">Maintenance &amp; Downtime</h3>
+      </div>
+      <div className="kpi-grid mb-4">
+        <div className="card" style={{ borderTop: downtimeOpen > 0 ? "3px solid #dc2626" : undefined }}>
+          <div className="kpi-label">Downtime Events</div>
+          <div className="kpi-value mt-1.5">{downtimeOpen}</div>
+          <div className="kpi-delta neutral mt-1.5">lines currently affected</div>
+        </div>
+        <div className="card">
+          <div className="kpi-label">Open Work Orders</div>
+          <div className="kpi-value mt-1.5">{m?.openCount ?? maintTotalOpen}</div>
+          <div className="kpi-delta neutral mt-1.5">{m?.resolvedTodayCount ?? 0} resolved today</div>
+        </div>
+        <div className="card" style={{ borderTop: (m?.slaBreachedOpenCount ?? 0) > 0 ? "3px solid #dc2626" : undefined }}>
+          <div className="kpi-label">SLA Breached</div>
+          <div className="kpi-value mt-1.5">{m?.slaBreachedOpenCount ?? 0}</div>
+          <div className="kpi-delta neutral mt-1.5">past response deadline</div>
+        </div>
+        <div className="card" style={{ borderTop: (m?.escalatedOpenCount ?? 0) > 0 ? "3px solid #f59e0b" : undefined }}>
+          <div className="kpi-label">Escalations</div>
+          <div className="kpi-value mt-1.5">{m?.escalatedOpenCount ?? 0}</div>
+          <div className="kpi-delta neutral mt-1.5">needs a supervisor</div>
+        </div>
+      </div>
+
+      <div className="card mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="card-title mb-0">Open by Category</h3>
+          <Link href="/queue" className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800">
+            <ClipboardList className="w-4 h-4" /> Maintenance queue <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        {maintTotalOpen === 0 ? (
+          <div className="py-4 text-sm text-slate-400">No open maintenance or downtime events — signal arrives via the webhook/CSV/email intake doors.</div>
+        ) : (
+          <div className="space-y-2">
+            {MAINT_CATEGORIES.map((c) => {
+              const n = byCategory[c.key] ?? 0;
+              return (
+                <div key={c.key} className="flex items-center gap-3">
+                  <div className="w-24 text-sm text-slate-600">{c.label}</div>
+                  <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(n / maxCat) * 100}%`, background: c.color }} />
+                  </div>
+                  <div className="w-8 text-right text-sm font-semibold text-slate-700">{n}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* KPI row — live aggregates */}
       <div className="kpi-grid mb-5">

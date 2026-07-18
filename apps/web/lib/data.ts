@@ -18,7 +18,9 @@ export interface TrendsResponse {
 export interface QueueSummaryResponse {
   ok: boolean;
   totalOpen?: number;
+  byStatus?: Record<string, number>;
   byPriority?: Record<string, number>;
+  byCategory?: Record<string, number>;
 }
 
 export interface QueueResponse {
