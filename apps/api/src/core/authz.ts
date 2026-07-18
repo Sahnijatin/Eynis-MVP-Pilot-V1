@@ -64,6 +64,7 @@ export const permissionMap: Record<string, Permission | null> = {
   "PUT /connectors/configs/:key":         "manage_connectors",
   "DELETE /connectors/configs/:key":      "manage_connectors",
   "POST /connectors/events/ingest":       "manage_requests",
+  "POST /connectors/intake/csv":          "manage_requests",
   "GET /connectors/events":              "view_requests",
   "POST /connectors/whatsapp/send":       "manage_connectors",
   "GET /ai/providers":                    null,

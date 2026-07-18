@@ -77,6 +77,7 @@ import { handleResearchRoutes } from "./core/research/routes";
 import { handleMarketingRoutes } from "./core/campaigns/marketing-routes";
 import { handleCrmRoutes } from "./core/crm/routes";
 import { handleCampaignRoutes } from "./core/campaigns/routes";
+import { handleIntakeRoutes } from "./core/connectors/intake-routes";
 import { ensureTenantAccess } from "./core/authz";
 import { parseAIProvider } from "./core/ai/provider-param";
 // Compat re-exports: tests (authz-matrix) and any older imports keep working.
@@ -3084,6 +3085,7 @@ const handleRequest = async (
     }
 
     // ── Extracted domain routers (5.1): each returns true when it handled ─────
+    if (await handleIntakeRoutes(req, res)) return;
     if (await handleReportRoutes(req, res)) return;
     if (await handleResearchRoutes(req, res)) return;
 
