@@ -114,6 +114,18 @@ export function CampaignBuilder() {
     });
   }
 
+  // Picking an approved template pulls its body, variables and (if present) the
+  // approved Content SID into the preview so the campaign is ready to preview/send.
+  // Clearing the selection leaves whatever the operator has typed untouched.
+  function selectWaTemplate(id: string) {
+    setWaTemplateId(id);
+    const tpl = waTemplates.find((x) => x.id === id);
+    if (!tpl) return;
+    setWaBody(tpl.body ?? "");
+    setWaVars((tpl.variables ?? []).join("\n"));
+    if (tpl.providerTemplateId) setWaSid(tpl.providerTemplateId);
+  }
+
   const MAX_VARIANTS = 26;
   const VARIANT_KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   function addVariant() {
@@ -248,7 +260,7 @@ export function CampaignBuilder() {
           <Field label="Approved template" hint={waTemplates.length === 0
             ? <>No approved templates yet — create one in <a href="/templates" style={{ color: t.color.accent }}>Templates</a>. WhatsApp campaigns can&apos;t be activated without an approved template (Meta requirement).</>
             : <>Required to activate. Manage in <a href="/templates" style={{ color: t.color.accent }}>Templates</a>.</>}>
-            <Select value={whatsappTemplateId} onChange={(e) => setWaTemplateId(e.target.value)}>
+            <Select value={whatsappTemplateId} onChange={(e) => selectWaTemplate(e.target.value)}>
               <option value="">— select an approved template —</option>
               {waTemplates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
             </Select>
