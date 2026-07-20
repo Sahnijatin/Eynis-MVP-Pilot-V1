@@ -257,8 +257,11 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     // Muted sub-lines under the item name: HSN/SAC code (if any) then the spec, which
     // wraps to at most 2 lines instead of hard-truncating so multi-component pieces read
     // fully. Row height clears whichever is taller: this stack or the image links.
+    const metaBits: string[] = [];
+    if (it.hsn) metaBits.push(`HSN/SAC: ${it.hsn}`);
+    if (data.view.mixedRate) metaBits.push(`GST ${it.taxPct}%`); // per-piece rate matters when mixed
     const subLines = [
-      ...(it.hsn ? [`HSN/SAC: ${it.hsn}`] : []),
+      ...(metaBits.length ? [metaBits.join("   ·   ")] : []),
       ...(it.spec ? wrap(it.spec, font, 8, specColW).slice(0, 2) : []),
     ];
     const textH = subLines.length === 0 ? 22 : 30 + (subLines.length - 1) * 10;
@@ -303,7 +306,6 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     TR(value, RIGHT, lyR, boldRow ? 11 : 9.5, f, INK);
     lyR -= boldRow ? 20 : 16;
   };
-  const halfPct = data.view.gstPct / 2;
   // Discount-before-tax presentation (GST-compliant): list Sub Total, less the Discount,
   // gives the Taxable Amount, then GST is charged on that post-discount value.
   if (data.view.discountPaise > 0) {
@@ -311,13 +313,16 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     sumRow("Discount", `- ${money(data.view.discountPaise)}`);
   }
   sumRow("Taxable Amount", money(data.view.taxablePaise));
-  if (data.view.gstPct > 0) {
+  // GST per rate band — one row-pair per distinct rate (mixed-rate quotes show several).
+  // A band's taxable is shown as a suffix only when the quote actually mixes rates.
+  for (const b of data.view.taxBands) {
+    if (b.ratePct <= 0) continue; // exempt / 0% band — nothing to charge
+    const on = data.view.mixedRate ? ` (on ${money(b.taxablePaise)})` : "";
     if (data.view.interState) {
-      // Inter-state supply → single IGST line at the full rate.
-      sumRow(`IGST @${data.view.gstPct}%`, money(data.view.igstPaise));
+      sumRow(`IGST @${b.ratePct}%${on}`, money(b.igstPaise));
     } else {
-      sumRow(`CGST @${halfPct}%`, money(data.view.cgstPaise));
-      sumRow(`SGST @${halfPct}%`, money(data.view.sgstPaise));
+      sumRow(`CGST @${b.ratePct / 2}%${on}`, money(b.cgstPaise));
+      sumRow(`SGST @${b.ratePct / 2}%${on}`, money(b.sgstPaise));
     }
   }
   page.drawLine({ start: { x: rightX, y: lyR + 6 }, end: { x: RIGHT, y: lyR + 6 }, thickness: 0.75, color: LINE });

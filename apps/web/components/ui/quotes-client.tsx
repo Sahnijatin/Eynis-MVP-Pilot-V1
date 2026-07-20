@@ -415,6 +415,13 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
     setQty((m) => { const next = { ...m }; if (Number.isFinite(n) && n > 1) next[group] = Math.min(n, 100_000); else delete next[group]; return next; });
   };
 
+  // Per-piece GST rate override (keyed by groupName). Empty → the piece uses the quote's
+  // default GST %. Enables mixed-rate quotes.
+  const [gstRate, setGstRate] = useState<Record<string, number>>(editQuote?.gst ?? {});
+  const setGstRateFor = (group: string, v: string) => {
+    setGstRate((m) => { const next = { ...m }; const n = Number(v); if (v.trim() !== "" && Number.isFinite(n) && n >= 0 && n <= 28) next[group] = n; else delete next[group]; return next; });
+  };
+
   useEffect(() => {
     fetch("/api/contacts?limit=200", { cache: "no-store" })
       .then((r) => r.json())
@@ -534,7 +541,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       const prunedImages = Object.fromEntries(Object.entries(lineImages).filter(([g, arr]) => groups.has(g) && arr.length));
       const prunedHsn = Object.fromEntries(Object.entries(hsn).filter(([g, code]) => groups.has(g) && code.trim()));
       const prunedQty = Object.fromEntries(Object.entries(qty).filter(([g, n]) => groups.has(g) && n > 1));
-      const letterhead = { seller, billTo, lineImages: prunedImages, hsn: prunedHsn, qty: prunedQty };
+      const prunedGst = Object.fromEntries(Object.entries(gstRate).filter(([g]) => groups.has(g)));
+      const letterhead = { seller, billTo, lineImages: prunedImages, hsn: prunedHsn, qty: prunedQty, gst: prunedGst };
       if (isEdit && editQuote) {
         res = await fetch(`/api/quotes/${editQuote.id}`, { method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ title: title.trim(), ...knobs, ...(custSel && custSel !== "new" ? { contactId: custSel } : {}), ...letterhead, lines: linePayload() }) });
@@ -732,7 +740,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           if (groups.length === 0) return null;
           return (
             <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "grid", gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>PIECE DETAILS — quantity, HSN/SAC & up to {MAX_IMAGES_PER_ROW} images per piece (shown on the quotation PDF)</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>PIECE DETAILS — quantity, HSN/SAC, GST rate & up to {MAX_IMAGES_PER_ROW} images per piece (shown on the quotation PDF)</div>
               {groups.map((g) => {
                 const imgs = lineImages[g] ?? [];
                 return (
@@ -740,6 +748,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                     <div style={{ minWidth: 130, fontSize: 13, fontWeight: 600 }}>{g}</div>
                     <Input type="number" min={1} value={qty[g] ?? ""} onChange={(e) => setQtyFor(g, e.target.value)} placeholder="Qty"
                       style={{ width: 64 }} aria-label={`Quantity for ${g}`} title="Quantity (default 1)" />
+                    <Input type="number" min={0} max={28} step="0.01" value={gstRate[g] ?? ""} onChange={(e) => setGstRateFor(g, e.target.value)} placeholder={`GST% (${num(gstPct)})`}
+                      style={{ width: 96 }} aria-label={`GST rate for ${g}`} title={`GST rate for this piece — blank uses the quote default (${num(gstPct)}%)`} />
                     <Input value={hsn[g] ?? ""} onChange={(e) => setHsnCode(g, e.target.value)} placeholder="HSN/SAC"
                       inputMode="numeric" style={{ width: 96 }} aria-label={`HSN/SAC code for ${g}`} title="4–8 digit HSN (goods) or SAC (services) code" />
                     {imgs.map((src, i) => (

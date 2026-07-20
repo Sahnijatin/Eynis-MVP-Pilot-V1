@@ -734,6 +734,7 @@ export interface Quote {
   lineImages: Record<string, string[]>; // per-piece image data URLs, keyed by groupName
   hsn: Record<string, string>; // per-piece HSN/SAC codes, keyed by groupName
   qty: Record<string, number>; // per-piece quantities, keyed by groupName
+  gst: Record<string, number>; // per-piece GST rate overrides, keyed by groupName
   lineItems: QuoteLineItem[];
 }
 

@@ -18,7 +18,7 @@ import {
   type LineResult,
   type QuoteResult,
 } from "./costing";
-import { parseSeller, parseBillTo, serializeSeller, serializeBillTo, parseLineImages, serializeLineImages, parseHsnByGroup, serializeHsnByGroup, parseQtyByGroup, serializeQtyByGroup } from "./quotation";
+import { parseSeller, parseBillTo, serializeSeller, serializeBillTo, parseLineImages, serializeLineImages, parseHsnByGroup, serializeHsnByGroup, parseQtyByGroup, serializeQtyByGroup, parseGstByGroup, serializeGstByGroup, computeQuoteTax } from "./quotation";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 
@@ -125,6 +125,8 @@ export function serializeLine(l: StoredLine) {
 type QuoteWithLines = Record<string, unknown> & { lineItems: StoredLine[] };
 
 export function serializeQuote(q: QuoteWithLines) {
+  const totalPaise = Number(q.totalPaise) || 0;
+  const gstPaise = gstOf(q); // via the shared tax core (per-piece rates aware)
   return {
     id: q.id,
     number: q.number,
@@ -150,9 +152,9 @@ export function serializeQuote(q: QuoteWithLines) {
     marginPctActual: q.marginPctActual,
     // GST is display-only on top of the taxable total (does not affect costing/margin).
     gstPercent: q.gstPercent ?? 0,
-    gstPaise: gstOf(q),
-    grandTotalPaise: (Number(q.totalPaise) || 0) + gstOf(q),
-    grandTotalInr: toRupees((Number(q.totalPaise) || 0) + gstOf(q)),
+    gstPaise,
+    grandTotalPaise: totalPaise + gstPaise,
+    grandTotalInr: toRupees(totalPaise + gstPaise),
     notes: q.notes,
     terms: q.terms,
     validUntil: q.validUntil,
@@ -172,12 +174,22 @@ export function serializeQuote(q: QuoteWithLines) {
     lineImages: parseLineImages(q.lineImagesJson as string | null | undefined),
     hsn: parseHsnByGroup(q.hsnJson as string | null | undefined),
     qty: parseQtyByGroup(q.qtyJson as string | null | undefined),
+    gst: parseGstByGroup(q.gstRatesJson as string | null | undefined),
     lineItems: (q.lineItems ?? []).map(serializeLine),
   };
 }
 
+// Total GST via the shared tax core, so the serializer, public view, PDF and BUSY
+// voucher agree even when pieces carry different rates. With no per-piece overrides it
+// reduces to gstAmountPaise(totalPaise, gstPercent) — the previous single-rate value.
 const gstOf = (q: QuoteWithLines): number =>
-  gstAmountPaise(Number(q.totalPaise) || 0, Number(q.gstPercent) || 0);
+  computeQuoteTax({
+    lineItems: (q.lineItems ?? []).map((l) => ({ groupName: l.groupName, name: l.name, lengthMm: l.lengthMm, widthMm: l.widthMm, heightMm: l.heightMm, lineCostPaise: l.lineCostPaise })),
+    netTotalPaise: Number(q.totalPaise) || 0,
+    discountPaise: Number(q.discountPaise) || 0,
+    defaultGstPct: Number(q.gstPercent) || 0,
+    gstByGroup: parseGstByGroup(q.gstRatesJson as string | null | undefined),
+  }).gstTotalPaise;
 
 const contactField = (q: QuoteWithLines, key: string): string | null => {
   const c = (q as Record<string, unknown>).contact as Record<string, unknown> | null | undefined;
@@ -347,6 +359,7 @@ export interface CreateQuoteInput {
   lineImages?: unknown; // per-piece images { groupName: dataUrl[] }
   hsn?: unknown; // per-piece HSN/SAC codes { groupName: "9403" }
   qty?: unknown; // per-piece quantities { groupName: 6 }
+  gst?: unknown; // per-piece GST rate overrides { groupName: 12 }
   lines?: LineInputPayload[]; // explicit lines (overrides template seeding when provided)
 }
 
@@ -405,6 +418,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
   const lineImagesJson = input.lineImages !== undefined ? serializeLineImages(input.lineImages) : null;
   const hsnJson = input.hsn !== undefined ? serializeHsnByGroup(input.hsn) : null;
   const qtyJson = input.qty !== undefined ? serializeQtyByGroup(input.qty) : null;
+  const gstRatesJson = input.gst !== undefined ? serializeGstByGroup(input.gst) : null;
   let quote: { id: string } | null = null;
   for (let attempt = 0; attempt < 5 && !quote; attempt++) {
     const number = await nextQuoteNumber(tenantId, year, attempt);
@@ -433,6 +447,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
           lineImagesJson,
           hsnJson,
           qtyJson,
+          gstRatesJson,
         },
       });
     } catch (err) {
@@ -492,7 +507,7 @@ export async function updateQuoteFields(
     title: string; contactId: string | null; companyId: string | null; dealId: string | null;
     overheadPct: number; marginPct: number; marginFloorPct: number; discountPaise: number;
     gstPercent: number; validUntil: Date | null; notes: string | null; terms: string | null;
-    sellerJson: string | null; billToJson: string | null; lineImagesJson: string | null; hsnJson: string | null; qtyJson: string | null;
+    sellerJson: string | null; billToJson: string | null; lineImagesJson: string | null; hsnJson: string | null; qtyJson: string | null; gstRatesJson: string | null;
   }>,
 ) {
   await prisma.quote.update({ where: { id }, data: fields });

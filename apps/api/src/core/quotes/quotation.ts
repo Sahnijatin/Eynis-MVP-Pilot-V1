@@ -206,6 +206,34 @@ export function serializeQtyByGroup(o: unknown): string | null {
   return Object.keys(c).length ? JSON.stringify(c) : null;
 }
 
+// Per-piece GST RATE override (percent), keyed by groupName — for mixed-rate quotes
+// (e.g. furniture at 18% + a component at 12%). A piece with no override uses the
+// quote-level default rate. Bounded to 0–28 (the GST slab range). Mirrors the storage
+// pattern of the other per-piece maps.
+export type GstByGroup = Record<string, number>;
+
+export function cleanGstByGroup(o: unknown): GstByGroup {
+  const src = (o ?? {}) as Record<string, unknown>;
+  const out: GstByGroup = {};
+  let count = 0;
+  for (const [group, raw] of Object.entries(src)) {
+    if (count >= 500) break;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 28) continue;
+    out[String(group).slice(0, 200)] = n;
+    count++;
+  }
+  return out;
+}
+export function parseGstByGroup(json: string | null | undefined): GstByGroup {
+  if (!json) return {};
+  try { return cleanGstByGroup(JSON.parse(json)); } catch { return {}; }
+}
+export function serializeGstByGroup(o: unknown): string | null {
+  const c = cleanGstByGroup(o);
+  return Object.keys(c).length ? JSON.stringify(c) : null;
+}
+
 // GST state code → state/UT name (the leading 2 digits of a GSTIN). Used to print the
 // Place of Supply on the quotation.
 const GST_STATE_NAMES: Record<string, string> = {
@@ -268,14 +296,24 @@ export interface QuotationView {
   subTotalPaise: number; // Σ item amounts (incl. tax) — gross (pre-discount) + GST
   grossSubtotalPaise: number; // ex-GST list value BEFORE discount (Σ item unit prices)
   taxablePaise: number; // ex-GST taxable value AFTER discount (the GST base)
-  gstPct: number;
+  gstPct: number; // the quote's default rate (a per-piece override may differ — see taxBands)
   interState: boolean; // true → GST charged as IGST; false → split CGST+SGST
   placeOfSupplyState: string | null; // resolved 2-digit GST state code (null if unknown)
-  cgstPaise: number; // 0 when interState
-  sgstPaise: number; // 0 when interState
-  igstPaise: number; // 0 when NOT interState
+  mixedRate: boolean; // true when pieces carry more than one GST rate
+  taxBands: QuoteTaxBandView[]; // GST grouped by rate (one entry per distinct rate)
+  cgstPaise: number; // Σ CGST across bands (0 when interState)
+  sgstPaise: number; // Σ SGST across bands (0 when interState)
+  igstPaise: number; // Σ IGST across bands (0 when NOT interState)
   discountPaise: number;
   grandTotalPaise: number; // taxable (post-discount) + gst
+}
+
+export interface QuoteTaxBandView {
+  ratePct: number;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
 }
 
 // A GSTIN is 15 chars: 2-digit state code, 10-char PAN, entity digit, 'Z', checksum.
@@ -314,6 +352,88 @@ const dimsOf = (l: ViewLine): string => {
   return parts.length ? `${parts.join(" × ")} mm` : "";
 };
 
+export interface TaxPiece {
+  group: string;
+  grossPaise: number; // ex-GST list price (pre-discount)
+  netTaxablePaise: number; // ex-GST taxable value (post-discount) — the GST base
+  ratePct: number; // this piece's GST rate (override else default)
+  gstPaise: number; // GST on this piece (its share of its rate band)
+}
+export interface TaxBand {
+  ratePct: number;
+  taxablePaise: number;
+  gstPaise: number;
+}
+export interface QuoteTax {
+  order: string[];
+  pieces: TaxPiece[];
+  gstTotalPaise: number;
+  bands: TaxBand[];
+}
+
+// THE shared tax core. Allocates the net (post-discount) taxable value across pieces by
+// cost, assigns each its GST rate (per-piece override, else the default), and computes
+// GST per RATE BAND (single-rounded via gstAmountPaise). A single-rate quote therefore
+// yields exactly gstAmountPaise(netTotal, rate) — the pre-existing behaviour — while a
+// mixed-rate quote sums the bands. buildQuotationView, serializeQuote and the BUSY
+// voucher all call this, so their tax totals can never disagree.
+export function computeQuoteTax(input: {
+  lineItems: ViewLine[];
+  netTotalPaise: number; // ex-GST, post-discount (q.totalPaise)
+  discountPaise: number;
+  defaultGstPct: number;
+  gstByGroup?: GstByGroup;
+}): QuoteTax {
+  const gstByGroup = cleanGstByGroup(input.gstByGroup);
+  const defaultRate = Math.max(0, Number(input.defaultGstPct) || 0);
+  const discount = Math.max(0, Math.round(Number(input.discountPaise) || 0));
+  const net = Math.max(0, Math.round(Number(input.netTotalPaise) || 0));
+  const gross = net + discount;
+
+  const order: string[] = [];
+  const costByGroup = new Map<string, number>();
+  for (const l of input.lineItems ?? []) {
+    if (!costByGroup.has(l.groupName)) { costByGroup.set(l.groupName, 0); order.push(l.groupName); }
+    costByGroup.set(l.groupName, costByGroup.get(l.groupName)! + Math.max(0, l.lineCostPaise));
+  }
+  const totalCost = order.reduce((s, g) => s + costByGroup.get(g)!, 0);
+
+  // Allocate net + gross per piece by cost; remainder on the last piece so both sum exact.
+  const pieces: TaxPiece[] = [];
+  let allocNet = 0, allocGross = 0;
+  order.forEach((group, i) => {
+    const last = i === order.length - 1;
+    const netTaxablePaise = last || totalCost <= 0 ? net - allocNet : Math.round((net * costByGroup.get(group)!) / totalCost);
+    const grossPaise = last || totalCost <= 0 ? gross - allocGross : Math.round((gross * costByGroup.get(group)!) / totalCost);
+    allocNet += netTaxablePaise; allocGross += grossPaise;
+    pieces.push({ group, grossPaise, netTaxablePaise, ratePct: group in gstByGroup ? gstByGroup[group] : defaultRate, gstPaise: 0 });
+  });
+
+  // Degenerate: no line items → a single piece for the whole value.
+  if (pieces.length === 0 && gross > 0) {
+    order.push("Quotation");
+    pieces.push({ group: "Quotation", grossPaise: gross, netTaxablePaise: net, ratePct: defaultRate, gstPaise: 0 });
+  }
+
+  // GST per rate band: sum taxable by rate, single-round each band (preserving the
+  // single-rate invariant), then distribute each band's GST across its pieces exactly.
+  const bandTaxable = new Map<number, number>();
+  for (const p of pieces) bandTaxable.set(p.ratePct, (bandTaxable.get(p.ratePct) ?? 0) + p.netTaxablePaise);
+  const bands: TaxBand[] = [...bandTaxable.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([ratePct, taxablePaise]) => ({ ratePct, taxablePaise, gstPaise: gstAmountPaise(taxablePaise, ratePct) }));
+  for (const b of bands) {
+    const inBand = pieces.filter((p) => p.ratePct === b.ratePct);
+    let alloc = 0;
+    inBand.forEach((p, j) => {
+      p.gstPaise = j === inBand.length - 1 ? b.gstPaise - alloc : b.taxablePaise > 0 ? Math.round((b.gstPaise * p.netTaxablePaise) / b.taxablePaise) : 0;
+      alloc += p.gstPaise;
+    });
+  }
+  const gstTotalPaise = bands.reduce((s, b) => s + b.gstPaise, 0);
+  return { order, pieces, gstTotalPaise, bands };
+}
+
 // Build the customer-facing quotation from the internal quote. The selling total is
 // allocated across pieces proportional to their internal cost (the customer sees only
 // the piece and its price). Pieces are shown at their pre-discount LIST price; the
@@ -330,6 +450,7 @@ export function buildQuotationView(q: {
   images?: LineImages; // per-piece images keyed by groupName
   hsnByGroup?: HsnByGroup; // per-piece HSN/SAC codes keyed by groupName
   qtyByGroup?: QtyByGroup; // per-piece quantities keyed by groupName (default 1)
+  gstByGroup?: GstByGroup; // per-piece GST rate overrides keyed by groupName (default rate)
   sellerGstin?: string | null; // issuer GSTIN — place of supply origin
   buyerGstin?: string | null; // customer GSTIN — determines intra- vs inter-state
   placeOfSupplyState?: string | null; // explicit ship-to state code — wins over buyer GSTIN
@@ -343,56 +464,36 @@ export function buildQuotationView(q: {
   const netTotal = Math.max(0, Math.round(Number(q.totalPaise) || 0)); // ex-GST, post-discount (the GST taxable value)
   const grossPaise = netTotal + discountPaise; // ex-GST list value, pre-discount
 
-  // GST on the POST-discount taxable value, single-rounded via the shared formula so the
-  // headline tax/total match the serializer, public view and BUSY voucher exactly.
-  const gstTotal = gstAmountPaise(netTotal, gstPct);
+  // Per-piece net taxable, per-piece rate, and per-rate GST bands — the SHARED core the
+  // serializer and BUSY voucher also use, so their tax totals can never disagree.
+  const tax = computeQuoteTax({ lineItems: q.lineItems, netTotalPaise: netTotal, discountPaise, defaultGstPct: gstPct, gstByGroup: q.gstByGroup });
 
-  // Group the internal lines into pieces, preserving first-seen order.
-  const order: string[] = [];
-  const groups = new Map<string, ViewLine[]>();
-  for (const l of q.lineItems ?? []) {
-    if (!groups.has(l.groupName)) { groups.set(l.groupName, []); order.push(l.groupName); }
-    groups.get(l.groupName)!.push(l);
-  }
-  const costByGroup = order.map((g) => groups.get(g)!.reduce((s, l) => s + Math.max(0, l.lineCostPaise), 0));
-  const totalCost = costByGroup.reduce((s, c) => s + c, 0);
-
-  const items: QuotationItem[] = [];
-  let allocatedEx = 0; // Σ per-piece list price so far (must sum to grossPaise)
-  let allocatedTax = 0; // Σ per-piece GST so far (must sum to gstTotal)
-  order.forEach((group, i) => {
-    const last = i === order.length - 1;
-    // Per-piece LIST price allocated on the gross (pre-discount) value.
-    const exTax = last || totalCost <= 0
-      ? grossPaise - allocatedEx
-      : Math.round((grossPaise * costByGroup[i]) / totalCost);
-    allocatedEx += exTax;
-    // Per-piece GST is a display allocation of the single-rounded headline gstTotal
-    // (remainder on the last piece) so the per-line taxes sum EXACTLY to it.
-    const tax = last ? gstTotal - allocatedTax : grossPaise > 0 ? Math.round((gstTotal * exTax) / grossPaise) : 0;
-    allocatedTax += tax;
-    const lines = groups.get(group)!;
+  // One customer line per piece = tax piece + its spec / qty / HSN / images.
+  const linesByGroup = new Map<string, ViewLine[]>();
+  for (const l of q.lineItems ?? []) { if (!linesByGroup.has(l.groupName)) linesByGroup.set(l.groupName, []); linesByGroup.get(l.groupName)!.push(l); }
+  const items: QuotationItem[] = tax.pieces.map((p) => {
+    const lines = linesByGroup.get(p.group) ?? [];
     const spec = lines.map((l) => { const d = dimsOf(l); return d ? `${l.name} (${d})` : l.name; }).join(", ");
-    const qty = qtyByGroup[group] ?? 1;
-    // exTax is the piece's total list price; the shown Price/Unit is per unit.
-    items.push({ name: group, hsn: hsnByGroup[group], spec, quantity: qty, unit: "unit", unitPricePaise: Math.round(exTax / qty), taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [], imageIndices: idxByGroup.get(group) ?? [] });
+    const qty = qtyByGroup[p.group] ?? 1;
+    return { name: p.group, hsn: hsnByGroup[p.group], spec, quantity: qty, unit: "unit", unitPricePaise: Math.round(p.grossPaise / qty), taxPct: p.ratePct, taxPaise: p.gstPaise, amountPaise: p.grossPaise + p.gstPaise, images: images[p.group] ?? [], imageIndices: idxByGroup.get(p.group) ?? [] };
   });
-
-  // Degenerate case (no line items): a single line for the whole quote.
-  if (items.length === 0 && grossPaise > 0) {
-    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: grossPaise, taxPct: gstPct, taxPaise: gstTotal, amountPaise: grossPaise + gstTotal, images: [], imageIndices: [] });
-  }
 
   // Place of supply drives intra- vs inter-state. It's the explicit ship-to state when
   // set (covers B2C / unregistered buyers whose GSTIN doesn't carry it), else the buyer
-  // GSTIN's state. Inter-state (→ single IGST) only when it's known and differs from the
-  // seller's state; otherwise intra-state (CGST+SGST) — the safe default.
+  // GSTIN's state. Inter-state (→ IGST) only when it's known and differs from the seller's
+  // state; otherwise intra-state (CGST+SGST) — the safe default.
   const sellerState = gstStateCode(q.sellerGstin);
   const placeOfSupplyState = normalizeStateCode(q.placeOfSupplyState) ?? gstStateCode(q.buyerGstin);
   const interState = !!sellerState && !!placeOfSupplyState && sellerState !== placeOfSupplyState;
-  const igstPaise = interState ? gstTotal : 0;
-  const cgstPaise = interState ? 0 : Math.round(gstTotal / 2);
-  const sgstPaise = interState ? 0 : gstTotal - cgstPaise; // remainder on SGST so the two halves sum exactly
+
+  // Split each rate band into CGST/SGST (intra) or IGST (inter) for the summary.
+  const taxBands: QuoteTaxBandView[] = tax.bands.map((b) => {
+    const cg = interState ? 0 : Math.round(b.gstPaise / 2);
+    return { ratePct: b.ratePct, taxablePaise: b.taxablePaise, cgstPaise: cg, sgstPaise: interState ? 0 : b.gstPaise - cg, igstPaise: interState ? b.gstPaise : 0 };
+  });
+  const cgstPaise = taxBands.reduce((s, b) => s + b.cgstPaise, 0);
+  const sgstPaise = taxBands.reduce((s, b) => s + b.sgstPaise, 0);
+  const igstPaise = taxBands.reduce((s, b) => s + b.igstPaise, 0);
   const subTotalPaise = items.reduce((s, it) => s + it.amountPaise, 0);
 
   return {
@@ -404,10 +505,12 @@ export function buildQuotationView(q: {
     gstPct,
     interState,
     placeOfSupplyState,
+    mixedRate: tax.bands.length > 1,
+    taxBands,
     cgstPaise,
     sgstPaise,
     igstPaise,
     discountPaise,
-    grandTotalPaise: netTotal + gstTotal, // === service.gstAmountPaise path
+    grandTotalPaise: netTotal + tax.gstTotalPaise, // shared core → matches serializer/BUSY
   };
 }

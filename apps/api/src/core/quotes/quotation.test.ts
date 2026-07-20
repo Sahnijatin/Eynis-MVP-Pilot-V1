@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName, isValidGstin, normalizeStateCode, cleanQtyByGroup, amountInWords } from "./quotation";
+import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName, isValidGstin, normalizeStateCode, cleanQtyByGroup, amountInWords, cleanGstByGroup, computeQuoteTax } from "./quotation";
 import { gstAmountPaise } from "./costing";
 
 // A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
@@ -134,6 +134,42 @@ test("buildQuotationView: attaches HSN/SAC to the matching piece by groupName", 
   });
   assert.equal(view.items.find((i) => i.name === "Dining Table")!.hsn, "9403");
   assert.equal(view.items.find((i) => i.name === "Wardrobe")!.hsn, undefined);
+});
+
+test("computeQuoteTax: single rate reduces to gstAmountPaise (invariant preserved)", () => {
+  for (const [total, pct] of [[100000, 18], [123457, 12], [90000, 5]] as const) {
+    const tax = computeQuoteTax({ lineItems: [line("A", "a", 3), line("B", "b", 7)], netTotalPaise: total, discountPaise: 0, defaultGstPct: pct });
+    assert.equal(tax.gstTotalPaise, gstAmountPaise(total, pct), `${total}@${pct}`);
+    assert.equal(tax.bands.length, 1);
+    assert.equal(tax.pieces.reduce((s, p) => s + p.gstPaise, 0), tax.gstTotalPaise);
+  }
+});
+
+test("computeQuoteTax + buildQuotationView: mixed per-piece rates band correctly", () => {
+  // Table 18% on 80k, Chair 12% on 20k → gst = 14400 + 2400 = 16800.
+  const view = buildQuotationView({
+    lineItems: [line("Table", "top", 8000), line("Chair", "seat", 2000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    gstByGroup: { Chair: 12 }, // Table uses the 18% default
+  });
+  assert.equal(view.mixedRate, true);
+  assert.equal(view.taxBands.length, 2);
+  const gst = view.cgstPaise + view.sgstPaise + view.igstPaise;
+  assert.equal(gst, gstAmountPaise(80000, 18) + gstAmountPaise(20000, 12)); // 16800
+  assert.equal(view.grandTotalPaise, 100000 + 16800);
+  // Per-piece rate flows to the item + sums to the headline.
+  assert.equal(view.items.find((i) => i.name === "Table")!.taxPct, 18);
+  assert.equal(view.items.find((i) => i.name === "Chair")!.taxPct, 12);
+  assert.equal(view.items.reduce((s, i) => s + i.taxPaise, 0), gst);
+});
+
+test("cleanGstByGroup: keeps 0–28 rates, drops the rest", () => {
+  const out = cleanGstByGroup({ A: 18, B: 12, C: 0, D: 30, E: -1, F: "x" });
+  assert.equal(out.A, 18);
+  assert.equal(out.C, 0);
+  assert.equal(out.D, undefined); // > 28
+  assert.equal(out.E, undefined);
+  assert.equal(out.F, undefined);
 });
 
 test("buildQuotationView: intra-state → CGST+SGST, no IGST", () => {
