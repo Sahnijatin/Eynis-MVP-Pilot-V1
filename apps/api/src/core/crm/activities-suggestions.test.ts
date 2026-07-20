@@ -77,6 +77,43 @@ test("notes & tasks: create, list open tasks, complete", async () => {
   } finally { await stop(server); }
 });
 
+test("POST /tasks: standalone task (no contact) + contact-linked task appear in the open list", async () => {
+  const tenantId = "crm-" + uid();
+  await createHotel(tenantId);
+  const email = `owner+${tenantId}@test.local`;
+  await createUser(tenantId, "owner", email);
+  const { server, base } = await startServer();
+  try {
+    const headers = await authHeaders(base, tenantId, email, "owner");
+
+    // A standalone task — no contact required.
+    const standalone = (await (await fetch(base + "/tasks", { method: "POST", headers, body: JSON.stringify({ title: "Order plywood", dueAt: "2026-08-01" }) })).json()) as any;
+    assert.equal(standalone.ok, true);
+    assert.equal(standalone.activity.type, "task");
+    assert.equal(standalone.activity.status, "open");
+    assert.equal(standalone.activity.contactId, null);
+
+    // A task linked to a contact — contactName is echoed back.
+    const contact = (await (await fetch(base + "/contacts", { method: "POST", headers, body: JSON.stringify({ fullName: "Linked" }) })).json()) as any;
+    const cid = contact.contact.id;
+    const linked = (await (await fetch(base + "/tasks", { method: "POST", headers, body: JSON.stringify({ title: "Call Linked", dueAt: "2026-08-02", contactId: cid }) })).json()) as any;
+    assert.equal(linked.activity.contactId, cid);
+    assert.equal(linked.activity.contactName, "Linked");
+
+    // title is required.
+    const bad = await fetch(base + "/tasks", { method: "POST", headers, body: JSON.stringify({ dueAt: "2026-08-01" }) });
+    assert.equal(bad.status, 400);
+
+    // An unknown contact is rejected.
+    const badContact = await fetch(base + "/tasks", { method: "POST", headers, body: JSON.stringify({ title: "x", contactId: "does-not-exist" }) });
+    assert.equal(badContact.status, 400);
+
+    const tasks = (await (await fetch(base + "/tasks?status=open", { headers })).json()) as any;
+    assert.ok(tasks.items.some((t: any) => t.id === standalone.activity.id));
+    assert.ok(tasks.items.some((t: any) => t.id === linked.activity.id));
+  } finally { await stop(server); }
+});
+
 test("timeline projects notes, service requests and deal stage changes", async () => {
   const tenantId = "crm-" + uid();
   await createHotel(tenantId);

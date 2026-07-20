@@ -127,6 +127,7 @@ export const permissionMap: Record<string, Permission | null> = {
   "POST /contacts/:id/activities":        "manage_crm",
   "POST /contacts/:id/score":             "manage_crm",
   "GET /tasks":                           "view_crm",
+  "POST /tasks":                          "manage_crm",
   "PATCH /activities/:id":                "manage_crm",
   "DELETE /activities/:id":               "manage_crm",
   "GET /deals/:id/timeline":              "view_crm",
