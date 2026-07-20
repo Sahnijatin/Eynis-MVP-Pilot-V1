@@ -1717,6 +1717,15 @@ const handleRequest = async (
         json(res, 400, { ok: false, error: "toPhone and message are required" }); return;
       }
 
+      // Guardrail (#168): even a manual staff send must honour the durable opt-out /
+      // DND list — a subject who texted STOP (or was suppressed/erased) is never
+      // contacted. Caps/quiet-hours don't apply to a human-initiated send.
+      const { evaluateOutboundSend } = await import("./core/connectors/messaging-guardrails");
+      const guard = await evaluateOutboundSend({ tenantId: auth.context.tenantId, phone: toPhone, kind: "manual" });
+      if (!guard.allowed) {
+        json(res, 403, { ok: false, error: `Cannot message this subject: ${guard.reason}` }); return;
+      }
+
       const { sendWhatsAppReply } = await import("./core/connectors/whatsapp-outbound");
       const result = await sendWhatsAppReply(auth.context.tenantId, toPhone, message);
       json(res, result.sent ? 200 : 503, { ok: result.sent, ...result });
