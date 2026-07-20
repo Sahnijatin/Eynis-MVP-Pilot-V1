@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, Zap, MessageSquare, RefreshCw, UserX, Star, ArrowRightCircle, Pause, Play } from "lucide-react";
 import { useToast } from "../ds";
 import { PreviewBanner } from "./preview-badge";
-import { NewFlowModal, FLOW_TRIGGERS, FLOW_ACTIONS, type FlowPrefill } from "./new-flow-modal";
+import { NewFlowModal, FLOW_TRIGGERS, FLOW_ACTIONS, type FlowPrefill, type SequenceOption } from "./new-flow-modal";
 import type { AutomationsResponse } from "../../lib/data";
 
 type FlowItem = AutomationsResponse["items"][number];
@@ -29,10 +29,11 @@ const EXAMPLE_FLOWS: Array<{ Icon: typeof MessageSquare; prefill: Required<Pick<
     prefill: { name: "Order delivered → review / referral", trigger: "order_delivered", action: "ask_review", channels: ["whatsapp", "email"], detail: "Satisfaction check → review or referral ask" } },
 ];
 
-export function JourneyAutomationsClient({ accentColor, industryLabel, initialFlows }: {
+export function JourneyAutomationsClient({ accentColor, industryLabel, initialFlows, sequences = [] }: {
   accentColor: string;
   industryLabel: string;
   initialFlows: FlowItem[];
+  sequences?: SequenceOption[];
 }) {
   const toast = useToast();
   const [flows, setFlows] = useState<FlowItem[]>(initialFlows);
@@ -197,7 +198,7 @@ export function JourneyAutomationsClient({ accentColor, industryLabel, initialFl
         ))}
       </div>
 
-      {modalOpen && <NewFlowModal prefill={prefill} onClose={() => setModalOpen(false)} onCreated={onCreated} />}
+      {modalOpen && <NewFlowModal prefill={prefill} sequences={sequences} onClose={() => setModalOpen(false)} onCreated={onCreated} />}
     </div>
   );
 }

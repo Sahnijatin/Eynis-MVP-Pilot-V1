@@ -29,7 +29,7 @@ test("validateFlowCreate: rejects missing name, unknown trigger/action/channel, 
 test("makeFlowCode: slugifies the name and appends the suffix; buildFlowConfig zeroes stats", () => {
   assert.equal(makeFlowCode("New Enquiry → First Response!", () => "abc123"), "flow_new_enquiry_first_response_abc123");
   assert.equal(makeFlowCode("   ", () => "zzz999"), "flow_flow_zzz999");
-  const cfg = JSON.parse(buildFlowConfig({ name: "n", trigger: "new_lead", action: "send_whatsapp", channels: ["whatsapp"], delayHours: 0, detail: null, isActive: true }));
+  const cfg = JSON.parse(buildFlowConfig({ name: "n", trigger: "new_lead", action: "send_whatsapp", channels: ["whatsapp"], delayHours: 0, detail: null, sequenceId: null, isActive: true }));
   assert.equal(cfg.ruleType, "marketing");
   assert.equal(cfg.custom, true);
   assert.deepEqual(cfg.stats, { executions: 0, conversions: 0, revenueInr: 0 });

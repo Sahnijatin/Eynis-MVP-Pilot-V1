@@ -34,6 +34,10 @@ const CHANNELS: Array<{ value: string; label: string }> = [
 ];
 // Triggers where a wait window is meaningful — the delay field only shows for these.
 const DELAY_TRIGGERS = new Set(["quote_no_response", "contact_dormant", "task_overdue"]);
+// Actions that enroll the contact into a drip Sequence — show the sequence picker.
+const SEQUENCE_ACTIONS = new Set(["multi_touch_followup", "nurture_drip"]);
+
+export interface SequenceOption { id: string; name: string }
 
 export interface FlowPrefill {
   name?: string;
@@ -44,8 +48,9 @@ export interface FlowPrefill {
   detail?: string;
 }
 
-export function NewFlowModal({ prefill, onClose, onCreated }: {
+export function NewFlowModal({ prefill, sequences = [], onClose, onCreated }: {
   prefill?: FlowPrefill;
+  sequences?: SequenceOption[];
   onClose: () => void;
   onCreated: (rule: FlowItem) => void;
 }) {
@@ -56,6 +61,7 @@ export function NewFlowModal({ prefill, onClose, onCreated }: {
   const [channels, setChannels] = useState<Set<string>>(new Set(prefill?.channels ?? ["whatsapp"]));
   const [delayHours, setDelayHours] = useState(prefill?.delayHours != null ? String(prefill.delayHours) : "");
   const [detail, setDetail] = useState(prefill?.detail ?? "");
+  const [sequenceId, setSequenceId] = useState("");
   const [active, setActive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +87,7 @@ export function NewFlowModal({ prefill, onClose, onCreated }: {
           channels: [...channels],
           delayHours: DELAY_TRIGGERS.has(trigger) && delayHours.trim() ? Number(delayHours) : 0,
           detail: detail.trim() || undefined,
+          sequenceId: SEQUENCE_ACTIONS.has(action) && sequenceId ? sequenceId : undefined,
           isActive: active,
         }),
       });
@@ -109,6 +116,16 @@ export function NewFlowModal({ prefill, onClose, onCreated }: {
             </Select>
           </Field>
         </div>
+        {SEQUENCE_ACTIONS.has(action) && (
+          <Field label="Sequence to enroll into" hint={sequences.length === 0
+            ? "No sequences yet — the contact gets a follow-up task until you create one in Sequences."
+            : "Which drip sequence the contact is enrolled in."}>
+            <Select value={sequenceId} onChange={(e) => setSequenceId(e.target.value)} disabled={sequences.length === 0}>
+              <option value="">{sequences.length === 0 ? "None available" : "Auto — first active sequence"}</option>
+              {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Field>
+        )}
         {DELAY_TRIGGERS.has(trigger) && (
           <Field label="Wait before firing (hours)" hint="optional — e.g. 72 for a 3-day wait">
             <Input type="number" min={0} value={delayHours} onChange={(e) => setDelayHours(e.target.value)} placeholder="0" />

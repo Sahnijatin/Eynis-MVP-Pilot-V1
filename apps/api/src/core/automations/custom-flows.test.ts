@@ -14,7 +14,7 @@ async function newTenant() {
   return tenantId;
 }
 async function newFlow(tenantId: string, opts: { trigger: string; action: string; detail?: string; createdAt?: Date }) {
-  const cfg = buildFlowConfig({ name: "f", trigger: opts.trigger, action: opts.action, channels: [], delayHours: 0, detail: opts.detail ?? null, isActive: true });
+  const cfg = buildFlowConfig({ name: "f", trigger: opts.trigger, action: opts.action, channels: [], delayHours: 0, detail: opts.detail ?? null, sequenceId: null, isActive: true });
   return prisma.automationRule.create({ data: { tenantId, code: "flow_" + uid(), name: "Test flow", isActive: true, configJson: cfg, ...(opts.createdAt ? { createdAt: opts.createdAt } : {}) } });
 }
 
@@ -72,6 +72,43 @@ test("send_whatsapp with no phone on the contact is skipped (not failed)", async
   assert.equal(execs[0].actionResult, "skipped");
   assert.match(execs[0].resultDetail ?? "", /phone/i);
   assert.equal(await prisma.contact.findFirst({ where: { id: contact.id } }) !== null, true);
+});
+
+test("multi_touch_followup: a new lead is enrolled into the tenant's active sequence", async () => {
+  const tenantId = await newTenant();
+  // An active sequence with one step for the tenant to enroll into.
+  const seq = await prisma.sequence.create({ data: { tenantId, name: "Re-engage", status: "active" } });
+  await prisma.sequenceStep.create({ data: { sequenceId: seq.id, order: 0, waitMinutes: 0, channel: "whatsapp" } });
+  const flow = await newFlow(tenantId, { trigger: "new_lead", action: "multi_touch_followup" });
+  const contact = await prisma.contact.create({ data: { tenantId, fullName: "Enroll Me", phoneE164: "+910000000009", email: "e@x.test" } });
+
+  await evaluateCustomFlows();
+
+  // The contact is enrolled (via a find-or-created CampaignLead) and the execution succeeded.
+  const lead = await prisma.campaignLead.findFirst({ where: { tenantId, contactId: contact.id } });
+  assert.ok(lead, "a campaign lead was created for the contact");
+  const enrollment = await prisma.sequenceEnrollment.findFirst({ where: { tenantId, sequenceId: seq.id, leadId: lead!.id } });
+  assert.ok(enrollment, "the contact is enrolled in the sequence");
+  const execs = await prisma.automationExecution.findMany({ where: { ruleId: flow.id } });
+  assert.equal(execs.length, 1);
+  assert.equal(execs[0].actionResult, "success");
+  assert.match(execs[0].resultDetail ?? "", /Enrolled/);
+
+  // Idempotent — no duplicate enrollment on a second cycle.
+  await evaluateCustomFlows();
+  assert.equal(await prisma.sequenceEnrollment.count({ where: { tenantId, sequenceId: seq.id, leadId: lead!.id } }), 1);
+});
+
+test("multi_touch_followup with no active sequence falls back to a follow-up task", async () => {
+  const tenantId = await newTenant();
+  const flow = await newFlow(tenantId, { trigger: "new_lead", action: "multi_touch_followup" });
+  const contact = await prisma.contact.create({ data: { tenantId, fullName: "No Seq", phoneE164: "+910000000010" } });
+
+  await evaluateCustomFlows();
+  assert.equal(await prisma.activity.count({ where: { tenantId, contactId: contact.id, type: "task" } }), 1, "fallback task created");
+  const execs = await prisma.automationExecution.findMany({ where: { ruleId: flow.id } });
+  assert.equal(execs[0].actionResult, "success");
+  assert.match(execs[0].resultDetail ?? "", /no active sequence/i);
 });
 
 test("resolveTriggerEntities: unknown trigger resolves to no entities", async () => {

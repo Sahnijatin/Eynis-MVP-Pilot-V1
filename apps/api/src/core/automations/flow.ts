@@ -44,8 +44,12 @@ export interface FlowCreateValue {
   channels: FlowChannel[];
   delayHours: number;
   detail: string | null;
+  sequenceId: string | null;
   isActive: boolean;
 }
+
+// Actions that enroll the contact into a drip Sequence — a sequenceId may be attached.
+export const SEQUENCE_ACTIONS = new Set(["multi_touch_followup", "nurture_drip"]);
 
 function str(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -94,9 +98,12 @@ export function validateFlowCreate(body: Record<string, unknown>): Result<FlowCr
   const detail = str(body.detail);
   if (detail && detail.length > 300) return { ok: false, error: "detail is too long (max 300)" };
 
+  // sequenceId only carries meaning for the enroll actions; ignored otherwise.
+  const sequenceId = SEQUENCE_ACTIONS.has(action) ? str(body.sequenceId) : null;
+
   const isActive = body.isActive === undefined ? true : Boolean(body.isActive);
 
-  return { ok: true, value: { name, trigger, action, channels, delayHours, detail, isActive } };
+  return { ok: true, value: { name, trigger, action, channels, delayHours, detail, sequenceId, isActive } };
 }
 
 // Build the configJson payload the GET serializer + engine read back.
@@ -109,6 +116,7 @@ export function buildFlowConfig(v: FlowCreateValue): string {
     channels: v.channels,
     delayHours: v.delayHours,
     detail: v.detail,
+    sequenceId: v.sequenceId,
     stats: { executions: 0, conversions: 0, revenueInr: 0 },
   });
 }

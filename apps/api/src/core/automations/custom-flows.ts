@@ -16,6 +16,7 @@ import { prisma } from "../../db/prisma";
 import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
 import { evaluateOutboundSend, recordAutomatedSend } from "../connectors/messaging-guardrails";
 import { resolveResendCredentials, isResendConfigured, sendFollowUpEmail } from "../email/resend";
+import { enrollContactInSequence } from "../campaigns/enroll";
 
 type ActionResult = "success" | "failed" | "skipped" | "pending";
 
@@ -35,6 +36,7 @@ interface FlowConfig {
   channels: string[];
   delayHours: number;
   detail: string | null;
+  sequenceId: string | null;
 }
 
 interface TriggerEntity {
@@ -177,15 +179,35 @@ async function runFlowAction(
         ? { result: "success", detail: `Email sent to ${entity.email}` }
         : { result: send.error?.includes("not configured") ? "skipped" : "failed", detail: send.error ?? "Send failed" };
     }
+    // Enroll the contact into a multi-step drip Sequence (WhatsApp + email, auto-stops
+    // when the customer replies). Uses the flow's chosen sequence, else the tenant's
+    // first active one. With no contact or no sequence available, falls back to a
+    // tracked follow-up task so the flow still produces an actionable record.
+    case "multi_touch_followup":
+    case "nurture_drip": {
+      if (entity.contactId) {
+        const enrolled = await enrollContactInSequence(tenantId, entity.contactId, {
+          sequenceId: cfg.sequenceId, campaignName: "Automation Follow-up", consentSource: "automation_flow",
+        });
+        if (enrolled.enrolled) return { result: "success", detail: `Enrolled ${entity.label} in "${enrolled.sequenceName}"` };
+        if (enrolled.reason === "already enrolled") return { result: "skipped", detail: `Already enrolled in "${enrolled.sequenceName}"` };
+        // No usable sequence (or none configured) → fall through to the task fallback.
+      }
+      await prisma.activity.create({
+        data: {
+          tenantId, contactId: entity.contactId, userId: null, type: "task", status: "open",
+          title: `Start follow-up sequence: ${entity.label}`.slice(0, 300),
+          body: cfg.detail ?? "No active sequence to enroll into — follow up manually or create one in Sequences.",
+          dueAt: new Date(Date.now() + 24 * 3600_000),
+        },
+      });
+      return { result: "success", detail: `Queued follow-up task for ${entity.label} (no active sequence)` };
+    }
     // Internal actions — create a tracked follow-up task (and, for notify_team, an
     // audit entry) so the flow produces a real, actionable record every time.
     case "create_task":
-    case "multi_touch_followup":
-    case "nurture_drip":
     case "notify_team": {
-      const titlePrefix = cfg.action === "notify_team" ? "Team follow-up"
-        : cfg.action === "create_task" ? "Follow-up"
-        : "Start follow-up sequence";
+      const titlePrefix = cfg.action === "notify_team" ? "Team follow-up" : "Follow-up";
       await prisma.activity.create({
         data: {
           tenantId, contactId: entity.contactId, userId: null, type: "task", status: "open",
@@ -216,6 +238,7 @@ function parseFlowConfig(configJson: string): FlowConfig | null {
       channels: Array.isArray(c.channels) ? (c.channels as string[]) : [],
       delayHours: typeof c.delayHours === "number" ? c.delayHours : 0,
       detail: typeof c.detail === "string" ? c.detail : null,
+      sequenceId: typeof c.sequenceId === "string" && c.sequenceId ? c.sequenceId : null,
     };
   } catch {
     return null;

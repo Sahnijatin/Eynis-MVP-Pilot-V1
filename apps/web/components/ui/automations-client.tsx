@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, Zap, Clock, Download, Filter, CheckCircle2, XCircle, AlertCircle, MessageSquare, Star, Bell, Pause, Play } from "lucide-react";
 import { CampaignBarChart } from "./charts";
 import { PreviewBadge } from "./preview-badge";
-import { NewFlowModal } from "./new-flow-modal";
+import { NewFlowModal, type SequenceOption } from "./new-flow-modal";
 import { useToast } from "../ds";
 import type { AutomationsResponse, AutomationExecutionsResponse } from "../../lib/data";
 
@@ -65,11 +65,12 @@ function downloadCsv(rows: Item[]) {
   URL.revokeObjectURL(url);
 }
 
-export function AutomationsClient({ initialItems, initialSummary, initialExecutions, error }: {
+export function AutomationsClient({ initialItems, initialSummary, initialExecutions, error, sequences = [] }: {
   initialItems: Item[];
   initialSummary: AutomationsResponse["summary"];
   initialExecutions: Execution[];
   error?: string;
+  sequences?: SequenceOption[];
 }) {
   const toast = useToast();
   const [items, setItems] = useState<Item[]>(initialItems);
@@ -344,6 +345,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
 
       {newFlowOpen && (
         <NewFlowModal
+          sequences={sequences}
           onClose={() => setNewFlowOpen(false)}
           onCreated={(rule) => { setItems((prev) => [rule, ...prev]); setNewFlowOpen(false); }}
         />
