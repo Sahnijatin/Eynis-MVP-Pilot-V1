@@ -1434,6 +1434,8 @@ model Quote {
   billToJson        String? // customer bill-to block (name/address/pin/phone/gstin)
   lineImagesJson    String? // per-piece images shown on the PDF: { groupName: dataUrl[] } (max 3/row)
   hsnJson           String? // per-piece HSN/SAC codes shown on the PDF: { groupName: "9403" }
+  qtyJson           String? // per-piece quantities shown on the PDF: { groupName: 6 }
+  gstRatesJson      String? // per-piece GST rate overrides: { groupName: 12 } (else the quote default)
   imageToken        String? @unique // plaintext token gating public image viewing/download (PDF links)
   notes             String?
   terms             String?

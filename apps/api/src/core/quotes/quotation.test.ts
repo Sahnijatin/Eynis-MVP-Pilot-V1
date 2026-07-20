@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName } from "./quotation";
+import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName, isValidGstin, normalizeStateCode, cleanQtyByGroup, amountInWords, cleanGstByGroup, computeQuoteTax } from "./quotation";
+import { gstAmountPaise } from "./costing";
 
 // A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
 const DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
@@ -61,6 +62,62 @@ test("cleanHsnByGroup: keeps 4–8 digit codes, strips non-digits, drops the res
   assert.equal(serializeHsnByGroup({}), null);
 });
 
+test("isValidGstin + gstStateCode: only a well-formed GSTIN yields a state code", () => {
+  assert.equal(isValidGstin("07ABCDE1234F1Z5"), true);
+  assert.equal(isValidGstin("27aaaaa0000a1z5"), true); // case-insensitive
+  assert.equal(isValidGstin("+917006013317"), false); // a phone number
+  assert.equal(isValidGstin("07ABC"), false);
+  // A phone/typo in the GSTIN field must NOT resolve to a state code (would skew IGST).
+  assert.equal(gstStateCode("+917006013317"), null);
+  assert.equal(gstStateCode("07ABCDE1234F1Z5"), "07");
+});
+
+test("normalizeStateCode: accepts real 2-digit GST state codes only", () => {
+  assert.equal(normalizeStateCode("27"), "27");
+  assert.equal(normalizeStateCode("07"), "07");
+  assert.equal(normalizeStateCode("00"), null); // not a real code
+  assert.equal(normalizeStateCode("7"), null);
+  assert.equal(normalizeStateCode("XX"), null);
+});
+
+test("buildQuotationView: explicit place of supply overrides buyer GSTIN for IGST", () => {
+  // Buyer GSTIN is same-state (Delhi 07) but ship-to is Maharashtra (27) → inter-state.
+  const view = buildQuotationView({
+    lineItems: [line("Item", "A", 1000)], totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    sellerGstin: "07AAAAA0000A1Z5", buyerGstin: "07BBBBB1111B1Z5", placeOfSupplyState: "27",
+  });
+  assert.equal(view.placeOfSupplyState, "27");
+  assert.equal(view.interState, true);
+  assert.equal(view.igstPaise, 18000);
+});
+
+test("buildQuotationView: per-piece quantity yields a per-unit price", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Chair", "seat", 1000)], totalPaise: 60000, discountPaise: 0, gstPercent: 0,
+    qtyByGroup: { Chair: 6, Ghost: 0 }, // Ghost invalid (dropped)
+  });
+  assert.equal(view.items[0].quantity, 6);
+  assert.equal(view.items[0].unitPricePaise, 10000); // 60000 / 6
+  assert.equal(view.items[0].amountPaise, 60000); // piece total (qty × unit)
+  assert.equal(view.totalQuantity, 6);
+});
+
+test("cleanQtyByGroup: keeps positive integers, drops the rest", () => {
+  const out = cleanQtyByGroup({ A: 3, B: 0, C: -2, D: 1.9, E: "x" });
+  assert.equal(out.A, 3);
+  assert.equal(out.D, 1); // floored
+  assert.equal(out.B, undefined);
+  assert.equal(out.C, undefined);
+  assert.equal(out.E, undefined);
+});
+
+test("amountInWords: Indian numbering", () => {
+  assert.equal(amountInWords(14750000), "Indian Rupees One Lakh Forty Seven Thousand Five Hundred Only");
+  assert.equal(amountInWords(10000), "Indian Rupees One Hundred Only");
+  assert.equal(amountInWords(12345), "Indian Rupees One Hundred Twenty Three and Forty Five Paise Only");
+  assert.equal(amountInWords(0), "Indian Rupees Zero Only");
+});
+
 test("gstStateName: maps GST state codes to names", () => {
   assert.equal(gstStateName("07"), "Delhi");
   assert.equal(gstStateName("27"), "Maharashtra");
@@ -77,6 +134,42 @@ test("buildQuotationView: attaches HSN/SAC to the matching piece by groupName", 
   });
   assert.equal(view.items.find((i) => i.name === "Dining Table")!.hsn, "9403");
   assert.equal(view.items.find((i) => i.name === "Wardrobe")!.hsn, undefined);
+});
+
+test("computeQuoteTax: single rate reduces to gstAmountPaise (invariant preserved)", () => {
+  for (const [total, pct] of [[100000, 18], [123457, 12], [90000, 5]] as const) {
+    const tax = computeQuoteTax({ lineItems: [line("A", "a", 3), line("B", "b", 7)], netTotalPaise: total, discountPaise: 0, defaultGstPct: pct });
+    assert.equal(tax.gstTotalPaise, gstAmountPaise(total, pct), `${total}@${pct}`);
+    assert.equal(tax.bands.length, 1);
+    assert.equal(tax.pieces.reduce((s, p) => s + p.gstPaise, 0), tax.gstTotalPaise);
+  }
+});
+
+test("computeQuoteTax + buildQuotationView: mixed per-piece rates band correctly", () => {
+  // Table 18% on 80k, Chair 12% on 20k → gst = 14400 + 2400 = 16800.
+  const view = buildQuotationView({
+    lineItems: [line("Table", "top", 8000), line("Chair", "seat", 2000)],
+    totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    gstByGroup: { Chair: 12 }, // Table uses the 18% default
+  });
+  assert.equal(view.mixedRate, true);
+  assert.equal(view.taxBands.length, 2);
+  const gst = view.cgstPaise + view.sgstPaise + view.igstPaise;
+  assert.equal(gst, gstAmountPaise(80000, 18) + gstAmountPaise(20000, 12)); // 16800
+  assert.equal(view.grandTotalPaise, 100000 + 16800);
+  // Per-piece rate flows to the item + sums to the headline.
+  assert.equal(view.items.find((i) => i.name === "Table")!.taxPct, 18);
+  assert.equal(view.items.find((i) => i.name === "Chair")!.taxPct, 12);
+  assert.equal(view.items.reduce((s, i) => s + i.taxPaise, 0), gst);
+});
+
+test("cleanGstByGroup: keeps 0–28 rates, drops the rest", () => {
+  const out = cleanGstByGroup({ A: 18, B: 12, C: 0, D: 30, E: -1, F: "x" });
+  assert.equal(out.A, 18);
+  assert.equal(out.C, 0);
+  assert.equal(out.D, undefined); // > 28
+  assert.equal(out.E, undefined);
+  assert.equal(out.F, undefined);
 });
 
 test("buildQuotationView: intra-state → CGST+SGST, no IGST", () => {
@@ -154,18 +247,32 @@ test("buildQuotationView: attaches images to the matching piece by groupName", (
   assert.equal(wardrobe.images.length, 0);
 });
 
-test("buildQuotationView: discount is shown pre-tax-value and applied after GST", () => {
+test("buildQuotationView: discount reduces the taxable value; GST on the post-discount amount", () => {
   const view = buildQuotationView({
     lineItems: [line("Item", "A", 1000)],
     totalPaise: 90000, // already net of a 10000 discount
     discountPaise: 10000,
     gstPercent: 10,
   });
-  assert.equal(view.taxablePaise, 100000); // gross (pre-discount)
+  assert.equal(view.grossSubtotalPaise, 100000); // list value, pre-discount
   assert.equal(view.discountPaise, 10000);
+  assert.equal(view.taxablePaise, 90000); // post-discount GST base
   const gst = view.cgstPaise + view.sgstPaise;
-  assert.equal(gst, 10000); // 10% of gross
-  assert.equal(view.grandTotalPaise, 100000 + 10000 - 10000);
+  assert.equal(gst, 9000); // 10% of the POST-discount value (compliant)
+  assert.equal(view.grandTotalPaise, 90000 + 9000);
+  // The item's list price is gross; its GST allocation sums to the headline.
+  assert.equal(view.items[0].unitPricePaise, 100000);
+  assert.equal(view.items.reduce((s, i) => s + i.taxPaise, 0), gst);
+});
+
+test("buildQuotationView: headline GST/total match gstAmountPaise exactly (PDF ↔ voucher invariant)", () => {
+  for (const [total, discount, pct] of [[90000, 10000, 10], [123457, 7777, 18], [50000, 0, 12]] as const) {
+    const view = buildQuotationView({ lineItems: [line("A", "a", 3), line("B", "b", 7)], totalPaise: total, discountPaise: discount, gstPercent: pct });
+    const expectedGst = gstAmountPaise(total, pct);
+    assert.equal(view.cgstPaise + view.sgstPaise + view.igstPaise, expectedGst, `gst for ${total}/${pct}`);
+    assert.equal(view.grandTotalPaise, total + expectedGst, `grand for ${total}/${pct}`);
+    assert.equal(view.items.reduce((s, i) => s + i.taxPaise, 0), expectedGst, `per-line tax sums to headline for ${total}/${pct}`);
+  }
 });
 
 test("buildQuotationView: no line items still yields a single positive line", () => {

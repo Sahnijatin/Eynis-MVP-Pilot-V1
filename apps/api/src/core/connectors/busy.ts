@@ -13,6 +13,7 @@
 
 import { prisma } from "../../db/prisma";
 import { gstAmountPaise } from "../quotes/costing";
+import { computeQuoteTax, type GstByGroup } from "../quotes/quotation";
 
 export interface BusyConfig {
   voucherSeries: string;
@@ -48,37 +49,37 @@ export interface VoucherLine {
   unit: string;
   ratePaise: number; // selling rate (ex-GST) per unit
   amountPaise: number; // selling amount (ex-GST)
+  gstPct: number; // this line's GST rate (per-piece override else the default)
+  gstPaise: number; // GST on this line
 }
 
 export interface QuoteForVoucher {
   number: string;
   title: string;
   acceptedAt: Date | null;
-  totalPaise: number; // selling price, ex-GST
+  totalPaise: number; // selling price, ex-GST (post-discount)
+  discountPaise: number;
+  defaultGstPct: number; // quote/connector default GST rate
+  gstByGroup?: GstByGroup; // per-piece rate overrides
   lineItems: Array<{ groupName: string; lineCostPaise: number }>;
 }
 
-// Allocate the selling price across pieces (groupName) proportional to their cost,
-// fixing any rounding remainder on the last piece so the lines sum to the total.
+// Voucher lines = the shared tax core's per-piece net amounts and per-piece GST, so the
+// BUSY voucher's tax total equals the quote / PDF exactly (even for mixed-rate quotes).
 export function buildVoucherLines(quote: QuoteForVoucher): VoucherLine[] {
-  const groups = new Map<string, number>();
-  for (const l of quote.lineItems) groups.set(l.groupName, (groups.get(l.groupName) ?? 0) + l.lineCostPaise);
-  const entries = [...groups.entries()];
-  const totalCost = entries.reduce((s, [, c]) => s + c, 0);
-
-  if (entries.length === 0 || totalCost <= 0) {
+  const hasLines = quote.lineItems.some((l) => l.lineCostPaise > 0);
+  if (!hasLines) {
     // Degenerate: one line for the whole quote.
-    return [{ itemName: quote.title, quantity: 1, unit: "unit", ratePaise: quote.totalPaise, amountPaise: quote.totalPaise }];
+    return [{ itemName: quote.title, quantity: 1, unit: "unit", ratePaise: quote.totalPaise, amountPaise: quote.totalPaise, gstPct: quote.defaultGstPct, gstPaise: gstAmountPaise(quote.totalPaise, quote.defaultGstPct) }];
   }
-
-  const lines: VoucherLine[] = [];
-  let allocated = 0;
-  entries.forEach(([name, cost], i) => {
-    const amount = i === entries.length - 1 ? quote.totalPaise - allocated : Math.round((quote.totalPaise * cost) / totalCost);
-    allocated += amount;
-    lines.push({ itemName: name, quantity: 1, unit: "unit", ratePaise: amount, amountPaise: amount });
+  const tax = computeQuoteTax({
+    lineItems: quote.lineItems.map((l) => ({ groupName: l.groupName, name: "", lengthMm: null, widthMm: null, heightMm: null, lineCostPaise: l.lineCostPaise })),
+    netTotalPaise: quote.totalPaise,
+    discountPaise: quote.discountPaise,
+    defaultGstPct: quote.defaultGstPct,
+    gstByGroup: quote.gstByGroup,
   });
-  return lines;
+  return tax.pieces.map((p) => ({ itemName: p.group, quantity: 1, unit: "unit", ratePaise: p.netTaxablePaise, amountPaise: p.netTaxablePaise, gstPct: p.ratePct, gstPaise: p.gstPaise }));
 }
 
 const rupees = (paise: number) => (Math.round(paise) / 100).toFixed(2);
@@ -96,14 +97,11 @@ const voucherDate = (d: Date | null) => (d ?? new Date()).toISOString().slice(0,
 export function buildBusyCsv(quote: QuoteForVoucher, config: BusyConfig, partyName: string): string {
   const header = ["Date", "VoucherType", "Series", "PartyName", "SalesLedger", "ItemName", "Quantity", "Unit", "Rate", "Amount", "GSTPercent", "GSTAmount", "TotalAmount"];
   const date = voucherDate(quote.acceptedAt);
-  const rows = buildVoucherLines(quote).map((l) => {
-    const gst = gstAmountPaise(l.amountPaise, config.gstPercent);
-    return [
-      date, "Sales", config.voucherSeries, partyName, config.salesLedger,
-      l.itemName, l.quantity, l.unit, rupees(l.ratePaise), rupees(l.amountPaise), config.gstPercent,
-      rupees(gst), rupees(l.amountPaise + gst),
-    ];
-  });
+  const rows = buildVoucherLines(quote).map((l) => [
+    date, "Sales", config.voucherSeries, partyName, config.salesLedger,
+    l.itemName, l.quantity, l.unit, rupees(l.ratePaise), rupees(l.amountPaise), l.gstPct,
+    rupees(l.gstPaise), rupees(l.amountPaise + l.gstPaise),
+  ]);
   return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
@@ -113,11 +111,11 @@ export function buildBusyXml(quote: QuoteForVoucher, config: BusyConfig, partyNa
   const date = voucherDate(quote.acceptedAt);
   const lines = buildVoucherLines(quote);
   const taxable = lines.reduce((s, l) => s + l.amountPaise, 0);
-  const gst = gstAmountPaise(taxable, config.gstPercent);
+  const gst = lines.reduce((s, l) => s + l.gstPaise, 0); // Σ per-line GST — correct for mixed rates
   const items = lines
     .map(
       (l) =>
-        `    <Item>\n      <Name>${xmlEsc(l.itemName)}</Name>\n      <Qty>${l.quantity}</Qty>\n      <Unit>${xmlEsc(l.unit)}</Unit>\n      <Rate>${rupees(l.ratePaise)}</Rate>\n      <Amount>${rupees(l.amountPaise)}</Amount>\n    </Item>`,
+        `    <Item>\n      <Name>${xmlEsc(l.itemName)}</Name>\n      <Qty>${l.quantity}</Qty>\n      <Unit>${xmlEsc(l.unit)}</Unit>\n      <Rate>${rupees(l.ratePaise)}</Rate>\n      <Amount>${rupees(l.amountPaise)}</Amount>\n      <GSTPercent>${l.gstPct}</GSTPercent>\n      <GSTAmount>${rupees(l.gstPaise)}</GSTAmount>\n    </Item>`,
     )
     .join("\n");
   return (
@@ -131,7 +129,6 @@ export function buildBusyXml(quote: QuoteForVoucher, config: BusyConfig, partyNa
     `    <Narration>${xmlEsc(`Sale as per accepted quote ${quote.number} — ${quote.title}`)}</Narration>\n` +
     items +
     `\n    <TaxableAmount>${rupees(taxable)}</TaxableAmount>\n` +
-    `    <GSTPercent>${config.gstPercent}</GSTPercent>\n` +
     `    <GSTAmount>${rupees(gst)}</GSTAmount>\n` +
     `    <GrandTotal>${rupees(taxable + gst)}</GrandTotal>\n` +
     `  </Voucher>\n` +

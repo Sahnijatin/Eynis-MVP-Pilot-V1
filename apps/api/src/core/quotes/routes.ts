@@ -12,7 +12,7 @@ import type { FollowupResult } from "./followup";
 import { upsertContactByPhone } from "../crm/upsert-contact";
 import { loadReportBrand } from "../export/brand";
 import { renderBrandedReportPdf } from "../export/report-pdf";
-import { buildQuotationView, serializeSeller, serializeBillTo, serializeLineImages, serializeHsnByGroup } from "./quotation";
+import { buildQuotationView, serializeSeller, serializeBillTo, serializeLineImages, serializeHsnByGroup, serializeQtyByGroup, serializeGstByGroup, parseGstByGroup } from "./quotation";
 import { renderQuotationPdf } from "../export/quote-pdf";
 import { resolveAiCredentials, aiConfigured, chooseProvider, providerKey } from "../research/ai-credentials";
 import { aiCompleteTiered, extractJson } from "../ai/intelligence";
@@ -228,6 +228,8 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           billTo: body.billTo !== undefined ? body.billTo : undefined,
           lineImages: body.lineImages !== undefined ? body.lineImages : undefined,
           hsn: body.hsn !== undefined ? body.hsn : undefined,
+          qty: body.qty !== undefined ? body.qty : undefined,
+          gst: body.gst !== undefined ? body.gst : undefined,
           lines: Array.isArray(body.lines) ? (body.lines as quotes.LineInputPayload[]) : undefined,
         });
         json(res, 200, { ok: true, quote });
@@ -280,6 +282,8 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         if (body.billTo !== undefined) fields.billToJson = serializeBillTo(body.billTo);
         if (body.lineImages !== undefined) fields.lineImagesJson = serializeLineImages(body.lineImages);
         if (body.hsn !== undefined) fields.hsnJson = serializeHsnByGroup(body.hsn);
+        if (body.qty !== undefined) fields.qtyJson = serializeQtyByGroup(body.qty);
+        if (body.gst !== undefined) fields.gstRatesJson = serializeGstByGroup(body.gst);
         await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
         // Optional full line-replace (the builder's Edit flow saves all lines at once).
         const quote = Array.isArray(body.lines)
@@ -434,17 +438,21 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           gstPercent: Number(quote.gstPercent) || 0,
           images: quote.lineImages,
           hsnByGroup: quote.hsn,
-          // Place of supply: seller vs buyer GSTIN state code decides CGST/SGST vs IGST.
+          qtyByGroup: quote.qty,
+          gstByGroup: quote.gst,
+          // Place of supply: explicit ship-to state (else buyer GSTIN) vs seller state
+          // decides CGST/SGST vs IGST.
           sellerGstin: quote.seller?.gstin ?? null,
           buyerGstin: quote.billTo?.gstin ?? null,
+          placeOfSupplyState: quote.billTo?.stateCode ?? null,
         });
-        // If the quote has images AND a public base URL is configured, mint (once) a
-        // read-only image token and build the link prefix the PDF's "Image N" links use.
-        // Without a public URL, the renderer falls back to plain text (no links).
+        // Mint the public image token only for a SENT/decided quote (never a draft), and
+        // only when the quote has images and a public base URL is configured — so a draft
+        // preview PDF never embeds a link that serves its artwork publicly.
         const hasImages = view.items.some((it) => it.imageIndices.length > 0);
         const publicBase = (process.env.EYNIS_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
         let imageLinkBase: string | null = null;
-        if (hasImages && publicBase) {
+        if (hasImages && publicBase && quote.status !== "draft") {
           const token = await quotes.ensureImageToken(auth.context.tenantId, quoteId);
           if (token) imageLinkBase = `${publicBase}/api/public/quote-image/${token}`;
         }
@@ -489,7 +497,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           const c = await prisma.contact.findFirst({ where: { id: raw.contactId, tenantId: auth.context.tenantId }, select: { fullName: true } });
           if (c) partyName = c.fullName;
         }
-        const q = { number: raw.number, title: raw.title, acceptedAt: raw.acceptedAt, totalPaise: raw.totalPaise, lineItems: raw.lineItems.map((l) => ({ groupName: l.groupName, lineCostPaise: l.lineCostPaise })) };
+        const q = { number: raw.number, title: raw.title, acceptedAt: raw.acceptedAt, totalPaise: raw.totalPaise, discountPaise: raw.discountPaise, defaultGstPct: config.gstPercent, gstByGroup: parseGstByGroup(raw.gstRatesJson as string | null | undefined), lineItems: raw.lineItems.map((l) => ({ groupName: l.groupName, lineCostPaise: l.lineCostPaise })) };
         if (format === "xml") {
           sendDoc(res, "application/xml; charset=utf-8", busy.buildBusyXml(q, config, partyName), `busy-voucher-${raw.number}.xml`);
         } else {
