@@ -49,7 +49,7 @@ export function CampaignCallsTab({ campaignId }: { campaignId: string }) {
   }, [campaignId]);
 
   if (loading) return <div style={muted}>Loading calls…</div>;
-  if (calls.length === 0) return <div style={{ ...card, textAlign: "center", padding: 32, color: "#666" }}>No calls yet. Calls appear here once a voice campaign is active and dialling.</div>;
+  if (calls.length === 0) return <div style={{ ...card, textAlign: "center", padding: 32, color: "var(--text-muted)" }}>No calls yet. Calls appear here once a voice campaign is active and dialling.</div>;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: selected ? "1fr 1fr" : "1fr", gap: 16 }}>
@@ -70,7 +70,7 @@ export function CampaignCallsTab({ campaignId }: { campaignId: string }) {
               {calls.map((c) => (
                 <tr key={c.id} onClick={() => setSelected(c.id)}
                   style={{ cursor: "pointer", background: selected === c.id ? "#f0fdfa" : undefined }}>
-                  <td>{c.lead.firstName} {c.lead.lastName ?? ""}<div style={{ color: "#9ca3af", fontSize: 12 }}>{c.lead.company ?? c.lead.phone ?? ""}</div></td>
+                  <td>{c.lead.firstName} {c.lead.lastName ?? ""}<div style={{ color: "var(--text-subtle)", fontSize: 12 }}>{c.lead.company ?? c.lead.phone ?? ""}</div></td>
                   <td>{c.abVariant}</td>
                   <td><Badge label={c.status} tone={STATUS_TONE[c.status] ?? "neutral"} /></td>
                   <td>{c.outcome ?? "—"}</td>
@@ -127,7 +127,7 @@ function CallDetailPanel({ campaignId, callId, onClose }: { campaignId: string; 
         <div style={{ display: "grid", gap: 16 }}>
           <div>
             <div style={{ fontWeight: 600 }}>{detail.lead.firstName} {detail.lead.lastName ?? ""}</div>
-            <div style={{ color: "#9ca3af", fontSize: 13 }}>{detail.lead.company ?? ""} · {detail.lead.phone ?? ""}</div>
+            <div style={{ color: "var(--text-subtle)", fontSize: 13 }}>{detail.lead.company ?? ""} · {detail.lead.phone ?? ""}</div>
           </div>
 
           <SentimentMeter events={events} finalSentiment={detail.sentiment} live={live} />
@@ -181,18 +181,18 @@ function SentimentMeter({ events, finalSentiment, live }: { events: SentimentEve
         <span style={{ fontWeight: 700 }}>{label}</span>
       </div>
       <div style={{ position: "relative", height: 10, borderRadius: 999, background: "linear-gradient(90deg,#ef4444,#f59e0b,#22c55e)" }}>
-        <div style={{ position: "absolute", top: -3, left: `calc(${pct}% - 8px)`, width: 16, height: 16, borderRadius: "50%", background: "#fff", border: "2px solid #0f766e", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+        <div style={{ position: "absolute", top: -3, left: `calc(${pct}% - 8px)`, width: 16, height: 16, borderRadius: "50%", background: "var(--surface)", border: "2px solid #0f766e", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
       </div>
-      {scored.length === 0 && events.length === 0 && <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 6 }}>No sentiment events recorded yet.</div>}
+      {scored.length === 0 && events.length === 0 && <div style={{ color: "var(--text-subtle)", fontSize: 12, marginTop: 6 }}>No sentiment events recorded yet.</div>}
     </div>
   );
 }
 
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
+const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface)", padding: 16 };
 const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" };
-const sub: React.CSSProperties = { color: "#666", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 };
-const muted: React.CSSProperties = { color: "#9ca3af", padding: 16 };
+const sub: React.CSSProperties = { color: "var(--text-muted)", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 };
+const muted: React.CSSProperties = { color: "var(--text-subtle)", padding: 16 };
 const bubble: React.CSSProperties = { maxWidth: "80%", padding: "8px 12px", borderRadius: 12, fontSize: 13 };
-const closeBtn: React.CSSProperties = { background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#9ca3af" };
+const closeBtn: React.CSSProperties = { background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text-subtle)" };
 const csvLink: React.CSSProperties = { fontSize: 13, color: "var(--color-primary, #0f766e)", textDecoration: "none", fontWeight: 600 };
-const livePill: React.CSSProperties = { color: "#dc2626", fontSize: 12, fontWeight: 700, marginLeft: 8 };
+const livePill: React.CSSProperties = { color: "var(--danger-text)", fontSize: 12, fontWeight: 700, marginLeft: 8 };

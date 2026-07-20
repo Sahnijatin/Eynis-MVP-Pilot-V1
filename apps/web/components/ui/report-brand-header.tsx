@@ -37,8 +37,8 @@ export function ReportBrandHeader({ title, subtitle }: { title: string; subtitle
           : <span style={{ color: "#fff", fontWeight: 700 }}>{(name || "•").charAt(0).toUpperCase()}</span>}
       </div>
       <div style={{ lineHeight: 1.3 }}>
-        {name && <div style={{ fontWeight: 700, color: "#0f172a" }}>{name}</div>}
-        <div style={{ fontSize: 12, color: "#64748b" }}>{title}{subtitle ? ` · ${subtitle}` : ""}</div>
+        {name && <div style={{ fontWeight: 700, color: "var(--text)" }}>{name}</div>}
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{title}{subtitle ? ` · ${subtitle}` : ""}</div>
       </div>
     </div>
   );

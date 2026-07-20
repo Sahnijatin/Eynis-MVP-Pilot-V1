@@ -8,10 +8,10 @@ import type { PatientRow } from "../../lib/data";
 const ACCENT = "#0891b2";
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  active: { label: "Active", color: "#059669", bg: "#d1fae5" },
-  due: { label: "Due", color: "#d97706", bg: "#fef3c7" },
-  overdue: { label: "Overdue", color: "#dc2626", bg: "#fee2e2" },
-  lost_follow_up: { label: "Lost Follow-up", color: "#64748b", bg: "#f1f5f9" },
+  active: { label: "Active", color: "var(--ok-text)", bg: "var(--ok-bg)" },
+  due: { label: "Due", color: "var(--warn-text)", bg: "var(--warn-bg)" },
+  overdue: { label: "Overdue", color: "var(--danger-text)", bg: "var(--danger-bg)" },
+  lost_follow_up: { label: "Lost Follow-up", color: "var(--text-muted)", bg: "var(--surface-inset)" },
 };
 const STATUSES = Object.keys(STATUS_META);
 

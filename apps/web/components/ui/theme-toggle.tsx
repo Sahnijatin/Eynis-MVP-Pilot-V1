@@ -9,9 +9,10 @@ import { THEME_COOKIE, type ThemeMode } from "../../lib/theme-mode";
 // and broadcasts `eynis-theme-change` so the app shell re-injects the accent
 // ramp for the new theme.
 //
-// Mounted only behind NEXT_PUBLIC_ENABLE_THEME_TOGGLE until the component color
-// migration (Phase 6) completes — before then, dark mode only covers the
-// var-driven shell, so it isn't shipped to end users yet.
+// Shipped in the topbar (Phase 8) now that the colour migration (Phases 4–8) has
+// tokenised the app chrome, feature screens, and inline-style neutrals — opt-in
+// dark is complete across the app. The default stays light until OS-honoring is
+// switched on (see lib/theme-mode.ts).
 export function ThemeToggle({ className = "" }: { className?: string }) {
   const [mode, setMode] = useState<ThemeMode>("light");
 

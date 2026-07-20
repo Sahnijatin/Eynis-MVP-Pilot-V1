@@ -149,7 +149,7 @@ export default function TeamClient({
               className="px-5 py-3 text-sm font-medium border-b-2 transition-colors"
               style={active
                 ? { borderColor: accentColor, color: accentColor }
-                : { borderColor: "transparent", color: "#64748b" }
+                : { borderColor: "transparent", color: "var(--text-muted)" }
               }
             >
               {tab.label}

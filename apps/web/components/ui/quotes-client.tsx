@@ -174,7 +174,7 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
         <div style={{ overflowX: "auto" }}>
           <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "#64748b" }}>
+              <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                 <th style={{ padding: "8px 10px" }}>Quote</th>
                 <th style={{ padding: "8px 10px" }}>Title</th>
                 <th style={{ padding: "8px 10px" }}>Customer</th>
@@ -185,7 +185,7 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
             </thead>
             <tbody>
               {quotes.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>No quotes yet. Click “New Quote” to build one.</td></tr>
+                <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "var(--text-subtle)" }}>No quotes yet. Click “New Quote” to build one.</td></tr>
               )}
               {quotes.map((q) => (
                 <tr key={q.id} style={{ borderTop: "1px solid #e2e8f0" }}>
@@ -256,7 +256,7 @@ function QuoteView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
     }>
       <div style={{ display: "grid", gap: 12 }}>
         {(quote.contactName || timeline.length > 0) && (
-          <div style={{ fontSize: 13, color: "#475569", display: "grid", gap: 2 }}>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", display: "grid", gap: 2 }}>
             {quote.contactName && <div>Customer: <strong>{quote.contactName}</strong>{quote.contactPhone ? ` · ${quote.contactPhone}` : ""}</div>}
             {timeline.map((t) => <div key={String(t)}>{t}</div>)}
           </div>
@@ -264,7 +264,7 @@ function QuoteView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
         <div style={{ overflowX: "auto" }}>
           <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "#64748b" }}>
+              <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                 <th style={{ padding: "6px 8px" }}>Component</th>
                 <th style={{ padding: "6px 8px" }}>Piece</th>
                 <th style={{ padding: "6px 8px" }}>Dimensions</th>
@@ -277,8 +277,8 @@ function QuoteView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
               {quote.lineItems.map((l) => (
                 <tr key={l.id} style={{ borderTop: "1px solid #e2e8f0" }}>
                   <td style={{ padding: "6px 8px" }}>{l.name}</td>
-                  <td style={{ padding: "6px 8px", color: "#64748b" }}>{l.groupName}</td>
-                  <td style={{ padding: "6px 8px", color: "#64748b" }}>{dims(l)}</td>
+                  <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{l.groupName}</td>
+                  <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{dims(l)}</td>
                   <td style={{ padding: "6px 8px", textAlign: "right" }}>{l.computedQty} {l.materialUnit}</td>
                   <td style={{ padding: "6px 8px", textAlign: "right" }}>{rupees(l.unitRatePaise)}</td>
                   <td style={{ padding: "6px 8px", textAlign: "right" }}>{rupees(l.lineCostPaise)}</td>
@@ -287,8 +287,8 @@ function QuoteView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
             </tbody>
           </table>
         </div>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, display: "grid", gap: 4, fontSize: 14 }}>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 2 }}>Internal cost breakdown (not shown on the customer quote)</div>
+        <div style={{ background: "var(--surface-inset)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "grid", gap: 4, fontSize: 14 }}>
+          <div style={{ fontSize: 12, color: "var(--text-subtle)", marginBottom: 2 }}>Internal cost breakdown (not shown on the customer quote)</div>
           <Row label="Material" value={rupees(quote.materialCostPaise)} />
           <Row label="Labor" value={rupees(quote.laborCostPaise)} />
           <Row label="Overhead" value={rupees(quote.overheadPaise)} />
@@ -298,8 +298,8 @@ function QuoteView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
           {quote.gstPercent > 0 && <Row label={`GST @ ${quote.gstPercent}%`} value={rupees(quote.gstPaise)} />}
           <Row label={<strong>Grand total</strong>} value={<strong>{rupees(quote.grandTotalPaise)}</strong>} />
         </div>
-        {quote.terms && <div style={{ fontSize: 13, color: "#475569" }}><strong>Terms:</strong> {quote.terms}</div>}
-        {quote.notes && <div style={{ fontSize: 13, color: "#475569" }}><strong>Notes:</strong> {quote.notes}</div>}
+        {quote.terms && <div style={{ fontSize: 13, color: "var(--text-muted)" }}><strong>Terms:</strong> {quote.terms}</div>}
+        {quote.notes && <div style={{ fontSize: 13, color: "var(--text-muted)" }}><strong>Notes:</strong> {quote.notes}</div>}
       </div>
     </Modal>
   );
@@ -560,16 +560,16 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
         </div>
 
         {/* Quotation letterhead — appears on the PDF (seller tax/bank details + bill-to) */}
-        <div style={{ border: "1px solid #e2e8f0", borderRadius: 8 }}>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8 }}>
           <button type="button" onClick={() => setShowLetterhead((v) => !v)}
-            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#f8fafc", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, color: "#475569", fontWeight: 600 }}>
+            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface-inset)", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
             <span>Quotation letterhead — company & bank details, bill-to (shown on the PDF)</span>
             <span>{showLetterhead ? "▲" : "▼"}</span>
           </button>
           {showLetterhead && (
             <div style={{ padding: 12, display: "grid", gap: 14 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>YOUR COMPANY (seller) — carried forward from your last quote</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 }}>YOUR COMPANY (seller) — carried forward from your last quote</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <Input value={seller.name ?? ""} onChange={(e) => setS({ name: e.target.value })} placeholder="Company name" />
                   <Input value={seller.phone ?? ""} onChange={(e) => setS({ phone: e.target.value })} placeholder="Phone" />
@@ -578,7 +578,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                   <Input value={seller.gstin ?? ""} onChange={(e) => setS({ gstin: e.target.value })} placeholder="GSTIN" />
                   <Input value={seller.pan ?? ""} onChange={(e) => setS({ pan: e.target.value })} placeholder="PAN number" />
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", margin: "10px 0 6px" }}>BANK DETAILS</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", margin: "10px 0 6px" }}>BANK DETAILS</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                   <Input value={seller.bankAccountName ?? ""} onChange={(e) => setS({ bankAccountName: e.target.value })} placeholder="Account holder" />
                   <Input value={seller.bankAccountNumber ?? ""} onChange={(e) => setS({ bankAccountNumber: e.target.value })} placeholder="Account number" />
@@ -592,7 +592,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>BILL TO (customer)</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 }}>BILL TO (customer)</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <Input value={billTo.name ?? ""} onChange={(e) => setB({ name: e.target.value })} placeholder="Customer / company name" />
                   <Input value={billTo.phone ?? ""} onChange={(e) => setB({ phone: e.target.value })} placeholder="Phone" />
@@ -606,8 +606,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
         </div>
 
         {/* AI-assist */}
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 10 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13, color: "#475569" }}>
+        <div style={{ background: "var(--surface-inset)", border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13, color: "var(--text-muted)" }}>
             <Sparkles className="w-4 h-4" /> Describe the piece — AI drafts the line items (you review dimensions & rates)
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -629,7 +629,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
         {/* Line items */}
         <div style={{ display: "grid", gap: 8 }}>
           {lines.map((l, i) => (
-            <div key={l.key} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 8, display: "grid", gap: 6 }}>
+            <div key={l.key} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8, display: "grid", gap: 6 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr auto", gap: 6 }}>
                 <Input value={l.name} onChange={(e) => setLine(l.key, { name: e.target.value })} placeholder={`Component ${i + 1} (e.g. Table top)`} />
                 <Input value={l.groupName} onChange={(e) => setLine(l.key, { groupName: e.target.value })} placeholder="Piece / group" />
@@ -655,7 +655,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
               {inventory.length > 0 && !l.inventoryItemId && (
                 <Input type="number" value={l.unitRateInr} onChange={(e) => setLine(l.key, { unitRateInr: e.target.value })} placeholder="₹/unit (material rate — or pick a material above)" />
               )}
-              <div style={{ fontSize: 12, color: "#64748b", textAlign: "right" }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>
                 {preview?.lines[i] ? <>{preview.lines[i].computedQty} {l.materialUnit} · {rupees(preview.lines[i].lineCostPaise)}</> : null}
               </div>
             </div>
@@ -668,8 +668,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           const groups = Array.from(new Set(lines.map((l) => l.groupName || "General")));
           if (groups.length === 0) return null;
           return (
-            <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, display: "grid", gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>ITEM IMAGES & HSN/SAC — up to {MAX_IMAGES_PER_ROW} images per item; HSN/SAC codes shown on the quotation PDF</div>
+            <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "grid", gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>ITEM IMAGES & HSN/SAC — up to {MAX_IMAGES_PER_ROW} images per item; HSN/SAC codes shown on the quotation PDF</div>
               {groups.map((g) => {
                 const imgs = lineImages[g] ?? [];
                 return (
@@ -680,13 +680,13 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                     {imgs.map((src, i) => (
                       <div key={i} style={{ position: "relative", width: 48, height: 48 }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+                        <img src={src} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
                         <button type="button" onClick={() => removeImage(g, i)} title="Remove"
-                          style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: "none", background: "#ef4444", color: "#fff", fontSize: 11, lineHeight: "18px", cursor: "pointer" }}>×</button>
+                          style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: "none", background: "var(--danger-solid)", color: "#fff", fontSize: 11, lineHeight: "18px", cursor: "pointer" }}>×</button>
                       </div>
                     ))}
                     {imgs.length < MAX_IMAGES_PER_ROW && (
-                      <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: 6, border: "1px dashed #cbd5e1", color: "#64748b", cursor: "pointer", fontSize: 20 }}>
+                      <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: 6, border: "1px dashed var(--border-strong)", color: "var(--text-muted)", cursor: "pointer", fontSize: 20 }}>
                         +
                         <input type="file" accept="image/*" multiple style={{ display: "none" }}
                           onChange={(e) => { addImages(g, e.target.files); e.target.value = ""; }} />
@@ -701,8 +701,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
 
         {/* Totals — internal view (the customer PDF never shows cost/margin) */}
         {q && (
-          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, display: "grid", gap: 4, fontSize: 14 }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 2 }}>Internal cost breakdown (not shown on the customer quote)</div>
+          <div style={{ background: "var(--surface-inset)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "grid", gap: 4, fontSize: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--text-subtle)", marginBottom: 2 }}>Internal cost breakdown (not shown on the customer quote)</div>
             <Row label="Material" value={rupees(q.materialCostPaise)} />
             <Row label="Labor" value={rupees(q.laborCostPaise)} />
             <Row label="Overhead" value={rupees(q.overheadPaise)} />
@@ -712,7 +712,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
             {num(gstPct) > 0 && <Row label={`GST @ ${num(gstPct)}%`} value={rupees(gstPaise)} />}
             <Row label={<strong>Grand total</strong>} value={<strong>{rupees(q.totalPaise + gstPaise)}</strong>} />
             {floorViolation && (
-              <div style={{ display: "flex", gap: 6, alignItems: "center", color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 8px", marginTop: 6 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", color: "var(--warn-text)", background: "var(--warn-bg)", border: "1px solid var(--warn-border)", borderRadius: 6, padding: "6px 8px", marginTop: 6 }}>
                 <AlertTriangle className="w-4 h-4" />
                 Margin {q.marginPctActual.toFixed(1)}% is below the {num(marginFloorPct)}% floor. Minimum price to clear it: <strong>{rupees(q.minTotalPaise)}</strong>. You can save a draft, but sending is blocked until the floor is met.
               </div>
@@ -725,5 +725,5 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
 }
 
 function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
-  return <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "#475569" }}>{label}</span><span>{value}</span></div>;
+  return <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-muted)" }}>{label}</span><span>{value}</span></div>;
 }

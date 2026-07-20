@@ -36,9 +36,9 @@ const primary: CSSProperties = {
 const secondary: CSSProperties = {
   padding: "6px 12px",
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
-  background: "#fff",
-  color: "#334155"
+  border: "1px solid var(--border-strong)",
+  background: "var(--surface)",
+  color: "var(--text)"
 };
 
 export function PendingSubmitButton({

@@ -227,9 +227,9 @@ export function InventoryClient({ initialItems, heading }: { initialItems: Inven
                   <td className="py-2.5 px-2 text-fg-muted">{item.reorderLevel} {item.unit}</td>
                   <td className="py-2.5 px-2 text-fg-muted">₹{item.unitCostInr.toLocaleString("en-IN")}</td>
                   <td className="py-2.5 px-2">
-                    {item.status === "critical" && <span className="badge" style={{ background: "#fee2e2", color: "#dc2626" }}>Critical</span>}
-                    {item.status === "warning" && <span className="badge" style={{ background: "#fef3c7", color: "#d97706" }}>Low Stock</span>}
-                    {item.status === "ok" && <span className="badge" style={{ background: "#d1fae5", color: "#059669" }}>OK</span>}
+                    {item.status === "critical" && <span className="badge" style={{ background: "var(--danger-bg)", color: "var(--danger-text)" }}>Critical</span>}
+                    {item.status === "warning" && <span className="badge" style={{ background: "var(--warn-bg)", color: "var(--warn-text)" }}>Low Stock</span>}
+                    {item.status === "ok" && <span className="badge" style={{ background: "var(--ok-bg)", color: "var(--ok-text)" }}>OK</span>}
                   </td>
                   <td className="py-2.5 px-2">
                     <button onClick={() => handleDelete(item)} disabled={busy} className="w-7 h-7 rounded-lg flex items-center justify-center text-fg-muted hover:bg-danger-bg hover:text-danger disabled:opacity-50">

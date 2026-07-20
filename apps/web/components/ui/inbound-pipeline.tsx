@@ -73,7 +73,7 @@ async function PipelineContent() {
   return (
     <div className="space-y-2">
       {events.map((ev) => {
-        const connector = CONNECTOR_LABELS[ev.connectorKey] ?? { label: ev.connectorKey, color: "#94a3b8" };
+        const connector = CONNECTOR_LABELS[ev.connectorKey] ?? { label: ev.connectorKey, color: "var(--text-subtle)" };
         const replySent = ev.replyStatus === "sent";
         const replyFailed = ev.replyStatus?.startsWith("failed") || ev.replyStatus?.startsWith("error");
 

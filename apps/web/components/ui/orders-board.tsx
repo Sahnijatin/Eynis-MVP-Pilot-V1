@@ -11,8 +11,8 @@ const STAGES: Array<{ id: OrderRow["stage"]; label: string; color: string }> = [
   { id: "new", label: "New Order", color: "#6366f1" },
   { id: "production", label: "In Production", color: "#f59e0b" },
   { id: "qc", label: "QC Review", color: "#8b5cf6" },
-  { id: "dispatch", label: "Ready to Dispatch", color: "#10b981" },
-  { id: "delivered", label: "Delivered", color: "#64748b" },
+  { id: "dispatch", label: "Ready to Dispatch", color: "var(--ok-text)" },
+  { id: "delivered", label: "Delivered", color: "var(--text-muted)" },
 ];
 
 const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: Math.round(paise) % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
@@ -77,7 +77,7 @@ export function OrdersBoard({ initialItems, initialSummary }: { initialItems: Or
         <div style={{ overflowX: "auto" }}>
           <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "#64748b" }}>
+              <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                 <th style={{ padding: "8px 10px" }}>Order</th>
                 <th style={{ padding: "8px 10px" }}>Item</th>
                 <th style={{ padding: "8px 10px" }}>Customer</th>
@@ -88,7 +88,7 @@ export function OrdersBoard({ initialItems, initialSummary }: { initialItems: Or
             </thead>
             <tbody>
               {visible.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>
+                <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "var(--text-subtle)" }}>
                   No orders {filter ? "in this stage" : "yet — accept a quote and it lands here automatically"}.
                 </td></tr>
               )}
@@ -97,7 +97,7 @@ export function OrdersBoard({ initialItems, initialSummary }: { initialItems: Or
                   <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{o.number}</td>
                   <td style={{ padding: "8px 10px" }}>{o.title}</td>
                   <td style={{ padding: "8px 10px", color: o.contactName || o.companyName ? "#0f172a" : "#94a3b8" }}>{o.companyName ?? o.contactName ?? "—"}</td>
-                  <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#64748b" }}>{o.quoteNumber}</td>
+                  <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "var(--text-muted)" }}>{o.quoteNumber}</td>
                   <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>{rupees(o.valuePaise)}</td>
                   <td style={{ padding: "8px 10px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

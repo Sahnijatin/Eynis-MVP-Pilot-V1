@@ -28,7 +28,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
     return (
       <main style={{ maxWidth: 640, margin: "48px auto", padding: 16, textAlign: "center" }}>
         <h1 style={{ fontSize: 22 }}>Quote not found</h1>
-        <p style={{ color: "#64748b" }}>This link is invalid or no longer active. Please contact the sender for a fresh link.</p>
+        <p style={{ color: "var(--text-muted)" }}>This link is invalid or no longer active. Please contact the sender for a fresh link.</p>
       </main>
     );
   }
@@ -45,22 +45,22 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
         <span style={{ fontWeight: 700, fontSize: 20 }}>{brand.name}</span>
       </div>
 
-      <section style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", padding: 20 }}>
+      <section style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)", padding: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div style={{ fontFamily: "monospace", color: "#64748b", fontSize: 13 }}>{quote.number}</div>
+            <div style={{ fontFamily: "monospace", color: "var(--text-muted)", fontSize: 13 }}>{quote.number}</div>
             <h1 style={{ fontSize: 22, margin: "4px 0" }}>{quote.title}</h1>
-            {quote.contactName && <div style={{ color: "#64748b", fontSize: 14 }}>Prepared for {quote.contactName}</div>}
+            {quote.contactName && <div style={{ color: "var(--text-muted)", fontSize: 14 }}>Prepared for {quote.contactName}</div>}
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", textTransform: "uppercase" }}>Grand total</div>
+            <div style={{ fontSize: 12, color: "var(--text-subtle)", textTransform: "uppercase" }}>Grand total</div>
             <div style={{ fontSize: 26, fontWeight: 700 }}>{rupees(quote.grandTotalPaise)}</div>
           </div>
         </div>
 
         <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 14 }}>
           <thead>
-            <tr style={{ textAlign: "left", color: "#64748b" }}>
+            <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "8px 6px" }}>Item</th>
               <th style={{ padding: "8px 6px" }}>Specification</th>
               <th style={{ padding: "8px 6px", textAlign: "right" }}>Amount</th>
@@ -70,17 +70,17 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
             {quote.items.map((it, i) => (
               <tr key={i} style={{ borderTop: "1px solid #e2e8f0" }}>
                 <td style={{ padding: "8px 6px", fontWeight: 500 }}>{it.piece}</td>
-                <td style={{ padding: "8px 6px", color: "#64748b" }}>{it.spec}</td>
+                <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>{it.spec}</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{rupees(it.amountPaise)}</td>
               </tr>
             ))}
             <tr style={{ borderTop: "1px solid #cbd5e1" }}>
-              <td colSpan={2} style={{ padding: "8px 6px", color: "#475569" }}>Subtotal</td>
+              <td colSpan={2} style={{ padding: "8px 6px", color: "var(--text-muted)" }}>Subtotal</td>
               <td style={{ padding: "8px 6px", textAlign: "right" }}>{rupees(quote.totalPaise)}</td>
             </tr>
             {quote.gstPercent > 0 && (
               <tr>
-                <td colSpan={2} style={{ padding: "8px 6px", color: "#475569" }}>GST @ {quote.gstPercent}%</td>
+                <td colSpan={2} style={{ padding: "8px 6px", color: "var(--text-muted)" }}>GST @ {quote.gstPercent}%</td>
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>{rupees(quote.gstPaise)}</td>
               </tr>
             )}
@@ -91,16 +91,16 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
           </tbody>
         </table>
 
-        {quote.terms && <p style={{ fontSize: 13, color: "#475569", marginTop: 12 }}><strong>Terms:</strong> {quote.terms}</p>}
+        {quote.terms && <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}><strong>Terms:</strong> {quote.terms}</p>}
         {quote.validUntil && quote.status === "sent" && (
-          <p style={{ fontSize: 13, color: "#64748b" }}>Valid until {new Date(quote.validUntil).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Valid until {new Date(quote.validUntil).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p>
         )}
 
         <QuoteDecision token={token} status={quote.status} primaryColor={brand.primaryColor} />
       </section>
 
       {brand.showPoweredBy && (
-        <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, marginTop: 16 }}>Powered by {brand.platformName}</p>
+        <p style={{ textAlign: "center", color: "var(--text-subtle)", fontSize: 12, marginTop: 16 }}>Powered by {brand.platformName}</p>
       )}
     </main>
   );

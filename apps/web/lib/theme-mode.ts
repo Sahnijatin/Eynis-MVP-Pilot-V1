@@ -8,11 +8,14 @@ export type ThemeMode = "light" | "dark";
 /**
  * Resolve the theme to stamp on <html> from the cookie value.
  *
- * Deliberately defaults to **light** until the component color migration (Phase 6)
- * is complete: most feature surfaces still use hardcoded light colors, so honoring
- * an OS dark preference now would render a half-migrated, broken dark UI. Only an
- * explicit `dark` choice (via the gated toggle) opts in. Phase 6 will switch the
- * default to honor `prefers-color-scheme`.
+ * Defaults to **light**; only an explicit `dark` choice (via the now-shipped
+ * toggle, Phase 8) opts in. The colour migration (Phases 4–8) tokenised the
+ * Tailwind-utility surfaces and the inline-style neutrals, so opt-in dark is
+ * complete across the app. Honoring `prefers-color-scheme` by DEFAULT is held
+ * back one more step: the categorical / segment tints (coloured chips in the CRM
+ * and industry dashboards) don't yet have dark steps, so forcing OS-dark on every
+ * user would surface those light-tint chips on a dark canvas. Flip this to honor
+ * the OS once those land.
  */
 export function resolveThemeMode(cookieValue: string | undefined | null): ThemeMode {
   return cookieValue === "dark" ? "dark" : "light";

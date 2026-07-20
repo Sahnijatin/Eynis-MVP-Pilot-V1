@@ -10,10 +10,10 @@ export function Card({
   hint?: string;
 }) {
   return (
-    <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, background: "#fff" }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, background: "var(--surface)" }}>
       <strong>{title}</strong>
       <div style={{ fontSize: 22, marginTop: 6 }}>{value}</div>
-      {hint ? <p style={{ margin: "6px 0 0 0", color: "#666", fontSize: 12 }}>{hint}</p> : null}
+      {hint ? <p style={{ margin: "6px 0 0 0", color: "var(--text-muted)", fontSize: 12 }}>{hint}</p> : null}
     </div>
   );
 }

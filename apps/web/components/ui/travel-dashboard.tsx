@@ -8,11 +8,11 @@ import { fetchBookings, fetchQuotes } from "../../lib/data";
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   in_progress: { label: "In Progress", color: "#1d4ed8", bg: "#eff6ff" },
-  confirmed: { label: "Confirmed", color: "#059669", bg: "#d1fae5" },
-  pending_visa: { label: "Visa Pending", color: "#d97706", bg: "#fef3c7" },
-  urgent: { label: "Action Needed", color: "#dc2626", bg: "#fee2e2" },
-  completed: { label: "Completed", color: "#475569", bg: "#f1f5f9" },
-  cancelled: { label: "Cancelled", color: "#64748b", bg: "#f1f5f9" },
+  confirmed: { label: "Confirmed", color: "var(--ok-text)", bg: "var(--ok-bg)" },
+  pending_visa: { label: "Visa Pending", color: "var(--warn-text)", bg: "var(--warn-bg)" },
+  urgent: { label: "Action Needed", color: "var(--danger-text)", bg: "var(--danger-bg)" },
+  completed: { label: "Completed", color: "var(--text-muted)", bg: "var(--surface-inset)" },
+  cancelled: { label: "Cancelled", color: "var(--text-muted)", bg: "var(--surface-inset)" },
 };
 
 const rupees = (paise: number) => `₹${(Math.round(paise) / 100).toLocaleString("en-IN")}`;

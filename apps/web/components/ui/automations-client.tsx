@@ -336,7 +336,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
       </div>
 
       <div className="fixed bottom-6 left-64 z-40">
-        <button onClick={() => setInfoOpen(true)} className="px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0f766e" }}>
+        <button onClick={() => setInfoOpen(true)} className="px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "var(--accent-solid, #0f766e)" }}>
           <Plus className="w-4 h-4" /> New Workflow
         </button>
       </div>
@@ -357,7 +357,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
               Building brand-new custom workflows (your own triggers and actions) is on the roadmap. Want a specific flow set up in the meantime? Reach out to your account team and we&apos;ll configure it for you.
             </p>
             <div className="flex justify-end">
-              <button onClick={() => setInfoOpen(false)} className="px-4 py-2 text-sm font-semibold rounded-lg text-white" style={{ background: "#0f766e" }}>Got it</button>
+              <button onClick={() => setInfoOpen(false)} className="px-4 py-2 text-sm font-semibold rounded-lg text-white" style={{ background: "var(--accent-solid, #0f766e)" }}>Got it</button>
             </div>
           </div>
         </div>

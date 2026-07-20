@@ -8,13 +8,13 @@ import type { AppointmentRow } from "../../lib/data";
 const ACCENT = "#0891b2";
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  scheduled: { label: "Scheduled", color: "#64748b", bg: "#f1f5f9" },
-  checked_in: { label: "Checked In", color: "#059669", bg: "#d1fae5" },
-  waiting: { label: "Waiting", color: "#d97706", bg: "#fef3c7" },
+  scheduled: { label: "Scheduled", color: "var(--text-muted)", bg: "var(--surface-inset)" },
+  checked_in: { label: "Checked In", color: "var(--ok-text)", bg: "var(--ok-bg)" },
+  waiting: { label: "Waiting", color: "var(--warn-text)", bg: "var(--warn-bg)" },
   in_progress: { label: "In Progress", color: "#1d4ed8", bg: "#eff6ff" },
-  completed: { label: "Completed", color: "#475569", bg: "#f1f5f9" },
-  no_show: { label: "No Show", color: "#dc2626", bg: "#fee2e2" },
-  cancelled: { label: "Cancelled", color: "#94a3b8", bg: "#f8fafc" },
+  completed: { label: "Completed", color: "var(--text-muted)", bg: "var(--surface-inset)" },
+  no_show: { label: "No Show", color: "var(--danger-text)", bg: "var(--danger-bg)" },
+  cancelled: { label: "Cancelled", color: "var(--text-subtle)", bg: "var(--surface-inset)" },
 };
 const STATUSES = Object.keys(STATUS_META);
 

@@ -41,7 +41,7 @@ export function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
   }, [campaignId]);
 
   if (loading) return <div style={muted}>Loading analytics…</div>;
-  if (!data) return <div style={{ ...card, color: "#666" }}>Analytics unavailable.</div>;
+  if (!data) return <div style={{ ...card, color: "var(--text-muted)" }}>Analytics unavailable.</div>;
 
   const { overall, variants } = data;
   const single = variants.length <= 1;
@@ -60,14 +60,14 @@ export function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
       <div style={card}>
         <div style={cardTitle}>{single ? "Result" : `Winner — ${variants.length}-arm test`}</div>
         {single ? (
-          <div style={{ color: "#666" }}>Single variant — no A/B test running.</div>
+          <div style={{ color: "var(--text-muted)" }}>Single variant — no A/B test running.</div>
         ) : data.leadingVariant === null ? (
-          <div style={{ color: "#666" }}>No leading variant yet — the arms are even.</div>
+          <div style={{ color: "var(--text-muted)" }}>No leading variant yet — the arms are even.</div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <Badge label={`Variant ${data.leadingVariant}${leadingLabel ? ` · ${leadingLabel}` : ""} leads`} tone={data.confident ? "success" : "warning"} />
             <Badge label={data.confident ? "Statistically significant" : "Not yet significant"} tone={data.confident ? "success" : "neutral"} />
-            <span style={{ color: "#666", fontSize: 13 }}>p = {data.pValue} · {data.sampleNote}</span>
+            <span style={{ color: "var(--text-muted)", fontSize: 13 }}>p = {data.pValue} · {data.sampleNote}</span>
           </div>
         )}
       </div>
@@ -101,10 +101,10 @@ function VariantCard({ name, label, v, leading, confident }: { name: string; lab
 function Row({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
-      <span style={{ color: "#666", fontSize: 13 }}>{label}</span>
+      <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{label}</span>
       <span style={{ textAlign: "right" }}>
         <span style={{ fontWeight: 700 }}>{value}</span>
-        {sub && <div style={{ color: "#9ca3af", fontSize: 11 }}>{sub}</div>}
+        {sub && <div style={{ color: "var(--text-subtle)", fontSize: 11 }}>{sub}</div>}
       </span>
     </div>
   );
@@ -113,12 +113,12 @@ function Row({ label, value, sub }: { label: string; value: string; sub?: string
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={card}>
-      <div style={{ color: "#666", fontSize: 13 }}>{label}</div>
+      <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div>
     </div>
   );
 }
 
-const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 16 };
+const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface)", padding: 16 };
 const cardTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 10 };
-const muted: React.CSSProperties = { color: "#9ca3af", padding: 16 };
+const muted: React.CSSProperties = { color: "var(--text-subtle)", padding: 16 };

@@ -61,12 +61,32 @@ Two distinct things came out of the Phase 6 "categorical" residual:
 Categorical Tailwind residual is now **0**; `charts.tsx` carries no hardcoded hex
 beyond the accent SSR fallback.
 
-**Still deferred — the inline-hex long tail (~600 values).** Per-item `color`/`bg`
-dictionaries in inline styles (segment maps in `customers-client`, status maps in
-`healthcare-/fnb-/manufacturing-dashboard`, misc inline `style={{color:'#…'}}`)
-are unchanged — they render correctly but aren't tokenised. These are STATUS
-(→ status tokens) or true category (→ `--cat-*`) and move in a dedicated hex pass,
-separate from this Tailwind-utility program.
+### Phase 8 (dark mode + inline-hex neutrals) — done
+
+The inline-style hex is the last un-tokenised layer. A `(prop, hex)`-keyed codemod
+tokenised **254 occurrences across ~50 files** — but keyed on ROLE, so the same
+hex maps by context: `background:"#fff"` → `--surface` while `color:"#fff"` is
+**left** (white text stays correct on dark/accent in both themes); `#dc2626` →
+`--danger-text` as `color`, `--danger-solid` as `background`. Brand (`#25d366`
+WhatsApp), on-dark sidebar blues, and categorical/segment hues are left untouched.
+
+Result: **every neutral dark-breaker (light bg / dark text / light-gray border in
+inline styles) is gone** — grep-verified 0. The **dark-mode theme toggle is now
+shipped** in the topbar (was behind `NEXT_PUBLIC_ENABLE_THEME_TOGGLE`). Dark-mode
+token pairs were WCAG-checked with the ramp's `contrastRatio`: all text pairs pass
+(body ≥ 4.5:1, meta ≥ 3:1) on the dark surfaces — e.g. `--text` 15.3:1, `--text-muted`
+7.3:1, `--text-subtle` 4.2:1, status texts 6.1–9.1:1.
+
+**Default stays light (opt-in dark).** Honoring `prefers-color-scheme` by default
+is the one remaining step — held until the **categorical / segment tints** (coloured
+CRM/dashboard chips: `#1d4ed8`/`#eff6ff`, `#7c3aed`/`#f5f3ff`, etc.) get their own
+dark steps, since those light-tint chips would otherwise sit on a dark canvas for
+users who never opted in. That + a live per-screen visual pass is the Phase 8b/9 tail.
+
+**Still un-tokenised (cosmetic, non-breaking):** the coloured segment/status
+dictionaries and decorative brand hues above — they render as coloured chips in
+both themes (readable, just not dark-native). A dedicated categorical pass folds
+them into `--cat-*` / status tokens.
 
 ```bash
 # files

@@ -76,7 +76,7 @@ export default async function SettingsPage() {
               className="px-5 py-3 text-sm font-medium border-b-2 transition-colors"
               style={active
                 ? { borderColor: BRAND, color: BRAND }
-                : { borderColor: "transparent", color: "#64748b" }
+                : { borderColor: "transparent", color: "var(--text-muted)" }
               }
             >
               {tab.label}

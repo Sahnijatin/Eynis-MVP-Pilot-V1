@@ -105,7 +105,7 @@ export default async function GuestProfilePage({
             <button className="px-3 py-2 text-sm font-medium rounded-lg border border-line text-fg-muted hover:bg-surface-inset flex items-center gap-1.5">
               <MessageSquare className="w-3.5 h-3.5" /> Send WhatsApp
             </button>
-            <button className="px-3 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: "#0f766e" }}>
+            <button className="px-3 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: "var(--accent-solid, #0f766e)" }}>
               <Bell className="w-3.5 h-3.5" /> Create Request
             </button>
           </div>

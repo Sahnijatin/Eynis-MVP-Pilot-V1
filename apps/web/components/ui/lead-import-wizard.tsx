@@ -97,7 +97,7 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
         <div style={sectionTitle}>1. Upload CSV</div>
         <input ref={fileRef} type="file" accept=".csv" hidden onChange={(e) => onFile(e.target.files?.[0])} />
         <button onClick={() => fileRef.current?.click()} style={btnGhost}>{file ? `Change file (${file.name})` : "Choose CSV file"}</button>
-        {file && <span style={{ marginLeft: 10, color: "#666", fontSize: 13 }}>{(file.size / 1024).toFixed(0)} KB</span>}
+        {file && <span style={{ marginLeft: 10, color: "var(--text-muted)", fontSize: 13 }}>{(file.size / 1024).toFixed(0)} KB</span>}
       </section>
 
       {headers.length > 0 && (
@@ -115,7 +115,7 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 14, padding: 12, background: "#fafafa", borderRadius: 8 }}>
+            <div style={{ marginTop: 14, padding: 12, background: "var(--surface-inset)", borderRadius: 8 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
                 <input type="checkbox" checked={defaultConsent} onChange={(e) => setDefaultConsent(e.target.checked)} />
                 I confirm every contact in this file has consented to be contacted
@@ -128,7 +128,7 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
                   </select>
                 </div>
               )}
-              <p style={{ fontSize: 12, color: "#888", margin: "8px 0 0" }}>
+              <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "8px 0 0" }}>
                 Leads without consent are rejected. Opted-out numbers are skipped automatically.
               </p>
             </div>
@@ -148,7 +148,7 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
             </div>
           </section>
 
-          {error && <div style={{ color: "#991b1b", background: "#fee2e2", padding: 10, borderRadius: 8, marginBottom: 12 }}>{error}</div>}
+          {error && <div style={{ color: "var(--danger-text)", background: "var(--danger-bg)", padding: 10, borderRadius: 8, marginBottom: 12 }}>{error}</div>}
           {!result && (
             <button onClick={doImport} disabled={busy} style={btnPrimary}>{busy ? "Importing…" : "Import leads"}</button>
           )}
@@ -159,14 +159,14 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
         <section style={{ ...section, borderColor: "var(--color-primary, #0f766e)" }}>
           <div style={sectionTitle}>Import complete</div>
           <div style={{ display: "flex", gap: 24, marginBottom: 12 }}>
-            <div><div style={{ fontSize: 28, fontWeight: 700, color: "#166534" }}>{result.imported}</div><div style={{ color: "#666", fontSize: 13 }}>imported</div></div>
-            <div><div style={{ fontSize: 28, fontWeight: 700, color: "#92400e" }}>{result.skipped}</div><div style={{ color: "#666", fontSize: 13 }}>skipped (dupes / opted-out)</div></div>
-            <div><div style={{ fontSize: 28, fontWeight: 700, color: "#991b1b" }}>{result.errors.length}</div><div style={{ color: "#666", fontSize: 13 }}>rejected</div></div>
+            <div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--ok-text)" }}>{result.imported}</div><div style={{ color: "var(--text-muted)", fontSize: 13 }}>imported</div></div>
+            <div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--warn-text)" }}>{result.skipped}</div><div style={{ color: "var(--text-muted)", fontSize: 13 }}>skipped (dupes / opted-out)</div></div>
+            <div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--danger-text)" }}>{result.errors.length}</div><div style={{ color: "var(--text-muted)", fontSize: 13 }}>rejected</div></div>
           </div>
           {result.errors.length > 0 && (
             <details>
-              <summary style={{ cursor: "pointer", fontSize: 13, color: "#666" }}>View rejected rows</summary>
-              <ul style={{ fontSize: 13, color: "#666", maxHeight: 160, overflow: "auto" }}>
+              <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--text-muted)" }}>View rejected rows</summary>
+              <ul style={{ fontSize: 13, color: "var(--text-muted)", maxHeight: 160, overflow: "auto" }}>
                 {result.errors.slice(0, 100).map((e, i) => <li key={i}>Row {e.row}: {e.reason}</li>)}
               </ul>
             </details>
@@ -181,9 +181,9 @@ export function LeadImportWizard({ campaignId }: { campaignId: string }) {
   );
 }
 
-const section: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff", padding: 18, marginBottom: 16 };
+const section: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface)", padding: 18, marginBottom: 16 };
 const sectionTitle: React.CSSProperties = { fontWeight: 600, marginBottom: 12, fontSize: 15 };
-const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "#374151", marginBottom: 4, fontWeight: 500 };
-const input: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 14, boxSizing: "border-box" };
+const lbl: React.CSSProperties = { display: "block", fontSize: 13, color: "var(--text)", marginBottom: 4, fontWeight: 500 };
+const input: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid var(--border-strong)", borderRadius: 7, fontSize: 14, boxSizing: "border-box" };
 const btnPrimary: React.CSSProperties = { background: "var(--color-primary, #0f766e)", color: "#fff", padding: "10px 18px", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer", fontSize: 14, textDecoration: "none" };
-const btnGhost: React.CSSProperties = { background: "#f3f4f6", color: "#374151", padding: "10px 18px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };
+const btnGhost: React.CSSProperties = { background: "var(--surface-inset)", color: "var(--text)", padding: "10px 18px", borderRadius: 8, fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer", fontSize: 14 };

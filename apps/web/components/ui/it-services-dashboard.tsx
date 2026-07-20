@@ -10,11 +10,11 @@ import { fetchDashboardData } from "../../lib/data";
 
 // Ticket taxonomy (IT_HELPDESK pack), in the order shown.
 const TICKET_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
-  { key: "incident", label: "Incident", color: "#dc2626" },
+  { key: "incident", label: "Incident", color: "var(--danger-text)" },
   { key: "access", label: "Access", color: "#4f46e5" },
   { key: "hardware", label: "Hardware", color: "#f59e0b" },
   { key: "software", label: "Software", color: "#0ea5e9" },
-  { key: "facilities", label: "Facilities", color: "#10b981" },
+  { key: "facilities", label: "Facilities", color: "var(--ok-text)" },
   { key: "hr_ops", label: "HR Ops", color: "#8b5cf6" },
 ];
 
