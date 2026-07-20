@@ -137,6 +137,11 @@ three light slots sit <3:1 (relief rule → legend/label required).
 | `--cat-7` | violet | `#4a3aa7` | `#9085e9` |
 | `--cat-8` | red | `#e34948` | `#e66767` |
 
+**Chip tints** `--cat-1..8-bg` (light + dark) pair with the solid hue as text for
+pills/badges. Only slots **1 / 2 / 7 / 8** clear ~3:1 text-on-tint in **both**
+themes (validated) — use those for `{color: var(--cat-N), background: var(--cat-N-bg)}`
+chips; 3/4/5/6 are for solid marks (dots, series fills), not text-on-tint.
+
 **Chart chrome** aliases theme tokens so charts flip with no dark override:
 `--chart-grid` (=`--border`), `--chart-axis` (=`--text-subtle`),
 `--chart-tooltip-bg` (=`--surface`), `--chart-tooltip-border` (=`--border`),

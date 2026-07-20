@@ -10,7 +10,12 @@ import { ReportResultTable, type RunResult } from "./report-result-table";
 // grouped data (group-by); if a chart viz is selected without grouping we fall
 // back to the table so the user always sees their data.
 
-const PALETTE = ["#0f766e", "#14b8a6", "#f59e0b", "#6366f1", "#ef4444", "#8b5cf6", "#0891b2", "#65a30d", "#db2777", "#475569"];
+// Categorical series palette — brand accent first, then the colour-blind-safe
+// --cat-* ramp in fixed order, a neutral last. Theme-flipping (see tokens.md §5b).
+const PALETTE = [
+  "var(--accent-solid, #0f766e)", "var(--cat-1)", "var(--cat-4)", "var(--cat-7)", "var(--cat-8)",
+  "var(--cat-5)", "var(--cat-2)", "var(--cat-6)", "var(--cat-3)", "var(--text-muted)",
+];
 
 interface Datum { label: string; value: number }
 

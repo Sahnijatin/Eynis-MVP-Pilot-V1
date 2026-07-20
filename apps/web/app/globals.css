@@ -766,6 +766,11 @@
        the same eight hues stepped for the dark surface, below. */
     --cat-1: #2a78d6; --cat-2: #008300; --cat-3: #e87ba4; --cat-4: #eda100;
     --cat-5: #1baf7a; --cat-6: #eb6834; --cat-7: #4a3aa7; --cat-8: #e34948;
+    /* categorical tints — for chips/pills (paired -bg for the -solid hue as text).
+       Only slots 1/2/7/8 clear ~3:1 text-on-tint in BOTH themes (the mid-hue as
+       text); 3/4/5/6 are for solid marks, not text-on-tint chips. */
+    --cat-1-bg: #e5effa; --cat-2-bg: #e0f0e0; --cat-3-bg: #fceff4; --cat-4-bg: #fdf4e0;
+    --cat-5-bg: #e4f5ef; --cat-6-bg: #fdede7; --cat-7-bg: #e9e7f4; --cat-8-bg: #fce9e9;
     /* chart chrome — alias theme tokens so charts flip with the app (no dark override needed) */
     --chart-grid: var(--border);
     --chart-axis: var(--text-subtle);
@@ -808,6 +813,8 @@
        validated: worst adjacent CVD ΔE 8.4, normal ΔE 19.3, all ≥3:1 on surface. */
     --cat-1: #3987e5; --cat-2: #008300; --cat-3: #d55181; --cat-4: #c98500;
     --cat-5: #199e70; --cat-6: #d95926; --cat-7: #9085e9; --cat-8: #e66767;
+    --cat-1-bg: #1d2e47; --cat-2-bg: #122d19; --cat-3-bg: #3c2333; --cat-4-bg: #3a2e19;
+    --cat-5-bg: #17332f; --cat-6-bg: #3d2520; --cat-7-bg: #2e2e47; --cat-8-bg: #40282d;
     --shadow-1: 0 1px 2px rgba(0,0,0,.4);
     --shadow-2: 0 2px 10px -4px rgba(0,0,0,.6);
     --shadow-3: 0 8px 26px -12px rgba(0,0,0,.7);
@@ -837,6 +844,8 @@
       --text: #ECEEF4; --text-muted: #A0A6B4; --text-subtle: #757C8B; --text-faint: #565C6B;
       --cat-1: #3987e5; --cat-2: #008300; --cat-3: #d55181; --cat-4: #c98500;
       --cat-5: #199e70; --cat-6: #d95926; --cat-7: #9085e9; --cat-8: #e66767;
+      --cat-1-bg: #1d2e47; --cat-2-bg: #122d19; --cat-3-bg: #3c2333; --cat-4-bg: #3a2e19;
+      --cat-5-bg: #17332f; --cat-6-bg: #3d2520; --cat-7-bg: #2e2e47; --cat-8-bg: #40282d;
       --color-bg: #0E0F14; --color-surface: #16181F; --color-surface-muted: #101218;
       --color-border: #262A33; --color-text: #ECEEF4; --color-muted: #A0A6B4; --color-sidebar: #121319;
     }

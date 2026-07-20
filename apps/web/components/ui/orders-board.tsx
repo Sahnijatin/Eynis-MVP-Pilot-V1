@@ -8,9 +8,9 @@ import type { OrderRow, OrderStageSummary } from "../../lib/data";
 // accepted quotes. Every number here traces to a DB row — no sample data.
 
 const STAGES: Array<{ id: OrderRow["stage"]; label: string; color: string }> = [
-  { id: "new", label: "New Order", color: "#6366f1" },
-  { id: "production", label: "In Production", color: "#f59e0b" },
-  { id: "qc", label: "QC Review", color: "#8b5cf6" },
+  { id: "new", label: "New Order", color: "var(--cat-1)" },
+  { id: "production", label: "In Production", color: "var(--cat-4)" },
+  { id: "qc", label: "QC Review", color: "var(--cat-7)" },
   { id: "dispatch", label: "Ready to Dispatch", color: "var(--ok-text)" },
   { id: "delivered", label: "Delivered", color: "var(--text-muted)" },
 ];

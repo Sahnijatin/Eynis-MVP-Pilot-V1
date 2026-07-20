@@ -9,9 +9,9 @@ import { fetchOrders, fetchQuotes, fetchInventory, fetchInventoryYield } from ".
 // (Table-service/POS metrics need a POS/Menu source — see /menu.)
 
 const STAGE_META: Array<{ id: string; label: string; color: string }> = [
-  { id: "new", label: "New Orders", color: "#6366f1" },
-  { id: "production", label: "In Kitchen", color: "#f59e0b" },
-  { id: "qc", label: "Plating / QC", color: "#8b5cf6" },
+  { id: "new", label: "New Orders", color: "var(--cat-1)" },
+  { id: "production", label: "In Kitchen", color: "var(--cat-4)" },
+  { id: "qc", label: "Plating / QC", color: "var(--cat-7)" },
   { id: "dispatch", label: "Ready to Serve", color: "var(--ok-text)" },
 ];
 

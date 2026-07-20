@@ -12,10 +12,10 @@ import { fetchDashboardData } from "../../lib/data";
 const TICKET_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
   { key: "incident", label: "Incident", color: "var(--danger-text)" },
   { key: "access", label: "Access", color: "#4f46e5" },
-  { key: "hardware", label: "Hardware", color: "#f59e0b" },
-  { key: "software", label: "Software", color: "#0ea5e9" },
+  { key: "hardware", label: "Hardware", color: "var(--cat-4)" },
+  { key: "software", label: "Software", color: "var(--cat-5)" },
   { key: "facilities", label: "Facilities", color: "var(--ok-text)" },
-  { key: "hr_ops", label: "HR Ops", color: "#8b5cf6" },
+  { key: "hr_ops", label: "HR Ops", color: "var(--cat-7)" },
 ];
 
 export async function ItServicesDashboard() {
