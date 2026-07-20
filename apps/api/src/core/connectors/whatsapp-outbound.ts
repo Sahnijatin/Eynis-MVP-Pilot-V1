@@ -141,6 +141,28 @@ export async function sendWhatsAppReply(tenantId: string, toPhone: string, messa
   return { sent: false, provider: null, error: "No WhatsApp provider configured" };
 }
 
+// Operational template gate (#168) — the single chokepoint for a business-initiated
+// AUTOMATED send (e.g. the check-in welcome). Meta requires a *pre-approved* template
+// for out-of-session sends, so this resolves the tenant's manager-approved WhatsApp
+// template from the library and refuses anything that isn't approved. `context` maps
+// the template's ordered {variable} names to values; they're passed to Twilio as
+// positional Content variables ({{1}}, {{2}}, …). Returns `templateNotApproved` when
+// the referenced template is missing / not whatsapp / not approved so the caller can
+// skip rather than fall back to non-compliant free text.
+export async function sendApprovedWhatsAppTemplate(
+  tenantId: string,
+  toPhone: string,
+  templateId: string,
+  context: Record<string, string>,
+): Promise<OutboundResult & { templateNotApproved?: boolean }> {
+  const { resolveApprovedWhatsappTemplate } = await import("../campaigns/whatsapp-template");
+  const tpl = await resolveApprovedWhatsappTemplate(templateId);
+  if (!tpl) return { sent: false, provider: null, error: "Template is not an approved WhatsApp template", templateNotApproved: true };
+  const contentVariables: Record<string, string> = {};
+  tpl.variables.forEach((name, i) => { contentVariables[String(i + 1)] = context[name] ?? ""; });
+  return sendWhatsAppTemplate(tenantId, toPhone, tpl.contentSid, contentVariables);
+}
+
 // Sends a pre-approved WhatsApp template (Twilio Content API) — required for
 // business-initiated outbound to people who haven't messaged first. Resolves
 // Twilio config from the hotel's connector config, then env. Returns the
