@@ -54,7 +54,9 @@ import { handleReportRoutes } from "./core/reports/routes";
 import { handleResearchRoutes } from "./core/research/routes";
 import { handleMarketingRoutes } from "./core/campaigns/marketing-routes";
 import { handleCrmRoutes } from "./core/crm/routes";
+import { handleCrmDealRoutes } from "./core/crm/deals-routes";
 import { handleCampaignRoutes } from "./core/campaigns/routes";
+import { handleCampaignSubRoutes } from "./core/campaigns/subresource-routes";
 import { handleAIRoutes } from "./core/ai/routes";
 import { handleTeamRoutes } from "./core/team/routes";
 import { handleAnalyticsRoutes } from "./core/analytics/routes";
@@ -249,8 +251,10 @@ const handleRequest = async (
     if (await handleTeamRoutes(req, res)) return;
 
     if (await handleMarketingRoutes(req, res)) return;
+    if (await handleCrmDealRoutes(req, res)) return;
     if (await handleCrmRoutes(req, res)) return;
     if (await handleCampaignRoutes(req, res)) return;
+    if (await handleCampaignSubRoutes(req, res)) return;
 
     json(res, 404, { ok: false, error: "Not found" });
   } catch (_error) {
