@@ -156,14 +156,14 @@ export const CONNECTOR_CATALOG: ConnectorCatalogItem[] = [
   },
   {
     key: "pms_hotelogix", category: "pms", name: "Hotelogix PMS",
-    description: "Sync reservations and guest profiles from Hotelogix.",
-    icon: "🏨", brandColor: "#2563eb", planned: true, ingestModes: ["api", "webhook"],
+    description: "Ingest check-in / check-out events from Hotelogix via webhook.",
+    icon: "🏨", brandColor: "#2563eb", planned: false, ingestModes: ["webhook", "api"],
     requiredFields: [{ key: "apiKey", label: "API Key", secret: true }, { key: "propertyId", label: "Property ID" }],
   },
   {
     key: "pms_ezee", category: "pms", name: "eZee PMS",
-    description: "Sync reservations and guest profiles from eZee.",
-    icon: "🏨", brandColor: "#2563eb", planned: true, ingestModes: ["api"],
+    description: "Ingest check-in / check-out events from eZee via webhook.",
+    icon: "🏨", brandColor: "#2563eb", planned: false, ingestModes: ["webhook", "api"],
     requiredFields: [{ key: "apiKey", label: "API Key", secret: true }, { key: "hotelCode", label: "Hotel Code" }],
   },
   {
