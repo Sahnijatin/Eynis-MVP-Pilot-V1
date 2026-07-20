@@ -1,6 +1,7 @@
 import { prisma } from "../../db/prisma";
 import { AI_AVAILABLE, type AIProvider, classifyInboundEvent } from "../ai/intelligence";
 import { sendWhatsAppReply, buildReplyMessage } from "./whatsapp-outbound";
+import { detectOptOutKeyword, applyInboundOptOut, evaluateOutboundSend } from "./messaging-guardrails";
 import { broadcastSSEEvent } from "../../sse/clients";
 import { getIntakePack, DEFAULT_INTAKE_PACK, type IntakePack } from "../industry-pack";
 
@@ -134,6 +135,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
   let classification: ClassificationResult | null = null;
   let replySent = false;
   let replyMessage: string | null = null;
+  let replyStatusOverride: string | undefined; // set when the reply is suppressed (#168)
 
   try {
     // Resolve the tenant's industry pack once — it drives categories, keyword
@@ -149,6 +151,18 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
     // 2. Upsert guest
     if (guestPhone) {
       guestId = await upsertGuest(tenantId, guestName, guestPhone);
+
+      // 2b. Honour inbound opt-out immediately (#168): a leading STOP/UNSUBSCRIBE
+      // adds the subject to the durable suppression list before any reply is built;
+      // START/RESUME lifts a reversible opt-out. Best-effort — a failure here must
+      // not abort intake (the SR still needs creating).
+      if (messageText) {
+        const keyword = detectOptOutKeyword(messageText);
+        if (keyword) {
+          await applyInboundOptOut(tenantId, guestPhone, keyword).catch((e) =>
+            console.warn(`[ingest] opt-out apply failed for tenant=${tenantId}:`, e instanceof Error ? e.message : e));
+        }
+      }
     }
 
     // 3. Classify via AI (or keyword fallback)
@@ -210,23 +224,32 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
         }
       });
 
-      // 5. Build and send outbound reply
+      // 5. Build and send outbound reply — but only if the subject hasn't opted
+      // out (#168). The ack is a transactional reply to a message they just sent,
+      // so it isn't rate-capped/quiet-houred; opt-out still suppresses it.
       if (sendReply && guestPhone) {
-        const tenant = await prisma.tenant.findUnique({
-          where: { id: tenantId },
-          select: { name: true, branding: { select: { brandName: true } } }
-        });
-        const brandName = tenant?.branding?.brandName?.trim() || tenant?.name?.trim() || null;
-        replyMessage = buildReplyMessage(guestName, classification.summary, sr.id, brandName);
-        const replyResult = await sendWhatsAppReply(tenantId, guestPhone, replyMessage);
-        replySent = replyResult.sent;
-
-        if (!replyResult.sent) {
-          // Reply failed — store the intended message but mark status
-          await prisma.connectorEvent.update({
-            where: { id: event.id },
-            data: { replyMessage, replyStatus: `failed: ${replyResult.error ?? "unknown"}` }
+        const guard = await evaluateOutboundSend({ tenantId, phone: guestPhone, kind: "transactional" });
+        if (!guard.allowed) {
+          // Suppressed — record it via the override so step 6 doesn't recompute it
+          // back to "no_reply_needed" (replyMessage stays null on this path).
+          replyStatusOverride = `suppressed: ${guard.reason}`;
+        } else {
+          const tenant = await prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { name: true, branding: { select: { brandName: true } } }
           });
+          const brandName = tenant?.branding?.brandName?.trim() || tenant?.name?.trim() || null;
+          replyMessage = buildReplyMessage(guestName, classification.summary, sr.id, brandName);
+          const replyResult = await sendWhatsAppReply(tenantId, guestPhone, replyMessage);
+          replySent = replyResult.sent;
+
+          if (!replyResult.sent) {
+            // Reply failed — store the intended message but mark status
+            await prisma.connectorEvent.update({
+              where: { id: event.id },
+              data: { replyMessage, replyStatus: `failed: ${replyResult.error ?? "unknown"}` }
+            });
+          }
         }
       }
     }
@@ -246,7 +269,7 @@ export async function ingestConnectorEvent(input: IngestInput): Promise<IngestRe
         serviceRequestId,
         replyMessage: replyMessage ?? undefined,
         replySentAt: replySent ? new Date() : undefined,
-        replyStatus: replySent ? "sent" : (replyMessage ? undefined : "no_reply_needed")
+        replyStatus: replyStatusOverride ?? (replySent ? "sent" : (replyMessage ? undefined : "no_reply_needed"))
       }
     });
 

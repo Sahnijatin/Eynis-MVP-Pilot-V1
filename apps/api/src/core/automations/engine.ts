@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
+import { evaluateOutboundSend, recordAutomatedSend } from "../connectors/messaging-guardrails";
 import { expireOverdueQuotes } from "../quotes/service";
 import { singleFlight } from "../single-flight";
 import { loadTemplateForRun } from "../research/store";
@@ -163,11 +164,22 @@ export async function evaluateCheckinWelcome() {
       }))) continue;
 
       const { guest } = stay;
+
+      // Anti-spam guardrails (#168): the welcome is an AUTOMATED, business-initiated
+      // send, so it faces opt-out + quiet-hours + daily-cap. A blocked send finalises
+      // the (already-claimed) execution as "skipped" so it is never retried.
+      const guard = await evaluateOutboundSend({ tenantId: rule.tenantId, phone: guest.phoneE164, kind: "automated" });
+      if (!guard.allowed) {
+        await finalizeExecution(rule.id, stay.id, "skipped", `Suppressed: ${guard.reason}`);
+        continue;
+      }
+
       const firstName = guest.fullName.split(" ")[0] ?? guest.fullName;
       const message = `Welcome to ${brandName}, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — The ${brandName} Team`;
 
       try {
         const result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);
+        if (result.sent) await recordAutomatedSend(rule.tenantId, guest.phoneE164, rule.code);
         await finalizeExecution(rule.id, stay.id, result.sent ? "success" : "failed",
           result.sent ? `Welcome sent to ${guest.phoneE164}` : (result.error ?? "Send failed"));
       } catch (err) {

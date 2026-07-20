@@ -60,6 +60,7 @@ model Tenant {
   whatsappMessages      WhatsappMessage[]
   messageDeliveries     MessageDelivery[]
   doNotContacts         DoNotContact[]
+  automatedMessages     AutomatedMessageLog[]
   branding              TenantBranding?
   sendingDomain         SendingDomain?
   emailSuppressions     EmailSuppression[]
@@ -1054,6 +1055,24 @@ model DoNotContact {
 
   @@unique([tenantId, phone])
   @@index([tenantId])
+}
+
+// Per-subject log of AUTOMATED, operational (non-campaign) outbound messages —
+// the check-in welcome and other engine-driven sends (#168). Its only job is to
+// power the anti-spam daily cap: count rows for one address in the last 24h before
+// an automated send. Campaign sends have their own MessageDelivery ledger; manual
+// staff sends and transactional replies are never capped, so they aren't logged
+// here. Kept intentionally small (no body/PII beyond the address).
+model AutomatedMessageLog {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("hotelId")
+  channel   String   @default("whatsapp")
+  address   String // phone E.164 (or synthetic intake key)
+  kind      String // the automation code, e.g. "checkin_welcome"
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, address, createdAt])
 }
 
 // ── CRM: Pipelines, Deals & Forecasting (Increment A) ─────────────────────────
