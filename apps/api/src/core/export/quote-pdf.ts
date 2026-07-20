@@ -18,9 +18,11 @@ const RIGHT = A4[0] - MARGIN;
 const CONTENT_W = A4[0] - MARGIN * 2;
 
 const WHITE = rgb(1, 1, 1);
-const INK = rgb(0.1, 0.12, 0.16);
-const MUTED = rgb(0.42, 0.46, 0.52);
-const LINE = rgb(0.82, 0.84, 0.87);
+const INK = rgb(0.106, 0.114, 0.137); // #1b1d23 — slightly warm near-black
+const MUTED = rgb(0.424, 0.443, 0.471); // #6c7178
+const FAINT = rgb(0.604, 0.627, 0.655); // #9aa0a7 — captions
+const LINE = rgb(0.863, 0.867, 0.886); // #dcdde2 — hairline
+const PANEL = rgb(0.98, 0.969, 0.961); // #faf7f5 — warm chip / card fill
 const LINKBLUE = rgb(0.11, 0.35, 0.75);
 
 // Attach a clickable URI link annotation over a rectangle on a page. pdf-lib has no
@@ -41,7 +43,7 @@ function addLink(page: PDFPage, rect: [number, number, number, number], uri: str
 
 const hexToRgb = (hex: string): RGB => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec((hex || "").trim());
-  if (!m) return rgb(0.55, 0.05, 0.08); // fallback deep red (matches a classic quotation)
+  if (!m) return rgb(0.541, 0.118, 0.141); // #8a1e24 — deep maroon (crafted, heritage feel)
   return rgb(parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255);
 };
 
@@ -123,6 +125,10 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  // A serif (Times) carries the letterhead wordmark, the "QUOTATION" title and the grand
+  // total — a crafted, heritage feel against the Helvetica data columns. Both are
+  // standard-14 fonts, so no font file is embedded.
+  const serifBold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const accent = hexToRgb(data.accentColor);
   const linkBase = (data.imageLinkBase ?? "").trim().replace(/\/$/, "") || null;
   const logo = await tryEmbedLogo(doc, data.logoUrl ?? null);
@@ -158,11 +164,11 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     const drawH = logoW / (logo.width / logo.height);
     page.drawImage(logo, { x: LEFT, y: ly - drawH, width: logoW, height: drawH });
     ly -= drawH + 8;
-    T(truncate(sellerName, bold, 13, leftMaxW), LEFT, ly - 11, 13, bold, accent);
+    T(truncate(sellerName, serifBold, 14, leftMaxW), LEFT, ly - 11, 14, serifBold, accent);
     ly -= 22;
   } else {
-    T(truncate(sellerName, bold, 20, leftMaxW), LEFT, ly - 14, 20, bold, accent);
-    ly -= 30;
+    T(truncate(sellerName, serifBold, 22, leftMaxW), LEFT, ly - 15, 22, serifBold, accent);
+    ly -= 31;
   }
   const sellerLines: string[] = [];
   if (data.seller.address) sellerLines.push(...wrap(data.seller.address, font, 9, midX - LEFT - 8));
@@ -183,8 +189,8 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     T(truncate(value, font, 9, rightMaxW - lw), midX + 8 + lw, ry, 9, font, INK);
     ry -= 14;
   };
-  T("QUOTATION", midX + 8, ry - 14, 20, bold, INK);
-  ry -= 34;
+  T("QUOTATION", midX + 8, ry - 15, 22, serifBold, INK);
+  ry -= 35;
   metaRow("Quotation No:", safe(data.number));
   const dateStr = data.date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
   metaRow("Quotation Date:", dateStr);
@@ -270,7 +276,19 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     if (y - rowH < bottomLimit) { page = doc.addPage(A4); y = A4[1] - MARGIN; drawTableHeader(); }
     const ty = y - 15;
     T(truncate(it.name, bold, 10, specColW), cItem + 8, ty, 10, bold, INK);
-    subLines.forEach((ln, k) => T(ln, cItem + 8, ty - 11 - k * 10, 8, font, MUTED));
+    subLines.forEach((ln, k) => {
+      const yy = ty - 11 - k * 10;
+      // The first sub-line (HSN/SAC, and GST% on mixed-rate quotes) reads as a chip —
+      // a warm-panel pill hugging the text — to mirror the on-screen template. Spec
+      // lines below it stay plain.
+      if (k === 0 && metaBits.length) {
+        const w = font.widthOfTextAtSize(safe(ln), 8);
+        page.drawRectangle({ x: cItem + 6, y: yy - 3, width: w + 8, height: 13, color: PANEL, borderColor: LINE, borderWidth: 0.5 });
+        T(ln, cItem + 10, yy, 8, font, MUTED);
+      } else {
+        T(ln, cItem + 8, yy, 8, font, MUTED);
+      }
+    });
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
     if (imgCount) drawRowImageLinks(it.imageIndices, y);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
@@ -325,12 +343,17 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
       sumRow(`SGST @${b.ratePct / 2}%${on}`, money(b.sgstPaise));
     }
   }
-  page.drawLine({ start: { x: rightX, y: lyR + 6 }, end: { x: RIGHT, y: lyR + 6 }, thickness: 0.75, color: LINE });
-  lyR -= 6;
-  sumRow("Total Amount", money(data.view.grandTotalPaise), true);
-  // Total in words (conventional on Indian quotations/invoices).
+  // Total Amount — an emphasised, warm-panel card (serif value in the brand accent) so
+  // the bottom line is the first thing the eye lands on.
   lyR -= 2;
-  for (const wl of wrap(amountInWords(data.view.grandTotalPaise), font, 8, rightColW)) { T(wl, rightX, lyR, 8, font, MUTED); lyR -= 11; }
+  const cardH = 30;
+  const cardTopY = lyR + 6;
+  page.drawRectangle({ x: rightX, y: cardTopY - cardH, width: RIGHT - rightX, height: cardH, color: PANEL, borderColor: LINE, borderWidth: 1 });
+  T("Total Amount", rightX + 10, cardTopY - 19, 12, serifBold, INK);
+  TR(money(data.view.grandTotalPaise), RIGHT - 10, cardTopY - 20, 15, serifBold, accent);
+  lyR = cardTopY - cardH - 6;
+  // Total in words (conventional on Indian quotations/invoices).
+  for (const wl of wrap(amountInWords(data.view.grandTotalPaise), font, 8, rightColW)) { T(wl, rightX, lyR, 8, font, FAINT); lyR -= 11; }
 
   // Left: bank details, notes, terms.
   const s = data.seller;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Card, CardTitle, Field, Input, Disclosure, useToast, tokens as t } from "../ds";
 import type { TenantBranding } from "../../lib/theme";
 
@@ -15,6 +15,41 @@ const EMPTY: TenantBranding = {
 // return false — they serve HTML, not an image, so <img> can't render them.
 const looksLikeImage = (u?: string | null) =>
   !u || /^data:image\//i.test(u) || /\.(png|jpe?g|svg|webp|gif|ico|avif)(\?.*)?$/i.test(u.trim());
+
+// Server-side cap on an uploaded (data-URL) logo — mirror sanitizeBranding's
+// LOGO_MAX_BYTES so we reject client-side with a clear message instead of the save
+// silently dropping the logo to null.
+const LOGO_MAX_BYTES = 700 * 1024;
+
+// Resize a picked logo to a bounded PNG data URL before it leaves the browser: caps the
+// longest edge (logos are small, and this keeps the branding payload well under the API
+// body limit) and re-encodes as PNG to preserve transparency (JPEG would flatten it to a
+// white box, which looks wrong on a coloured report header). Resolves null if the file
+// can't be read as an image. SVGs without an intrinsic size may fail to draw → null.
+function resizeLogoToPngDataUrl(file: File, maxEdge = 480): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) { resolve(null); return; }
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        const scale = Math.min(1, maxEdge / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round((img.width || maxEdge) * scale));
+        const h = Math.max(1, Math.round((img.height || maxEdge) * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        try { ctx.drawImage(img, 0, 0, w, h); resolve(canvas.toDataURL("image/png")); }
+        catch { resolve(null); }
+      };
+      img.src = typeof reader.result === "string" ? reader.result : "";
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export function BrandingPanel() {
   const toast = useToast();
@@ -50,6 +85,25 @@ export function BrandingPanel() {
 
   const set = (patch: Partial<TenantBranding>) => setForm((f) => ({ ...f, ...patch }));
   const colorInvalid = (v: string | null | undefined) => Boolean(v && !/^#[0-9a-fA-F]{6}$/.test(v));
+
+  // Logo upload: resize to a bounded PNG data URL, then store it in logoUrl (the same
+  // field a pasted URL uses). The data URL flows through the branding save to the PDF
+  // quotation letterhead, reports, and emails — no separate storage.
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const onLogoFile = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    const dataUrl = await resizeLogoToPngDataUrl(file);
+    if (!dataUrl) { toast.push("Couldn't read that image — try a PNG or JPG logo.", "error"); return; }
+    // Reject anything still over the server cap (a huge photo used as a logo) with a
+    // clear message rather than letting the save silently drop it.
+    if (Math.floor((dataUrl.length * 3) / 4) > LOGO_MAX_BYTES) {
+      toast.push("That image is too large even after resizing — use a simpler logo (PNG/SVG).", "error");
+      return;
+    }
+    setLogoBroken(false);
+    set({ logoUrl: dataUrl });
+  };
 
   async function save() {
     if (colorInvalid(form.primaryColor) || colorInvalid(form.accentColor) || colorInvalid(form.sidebarColor)) {
@@ -99,17 +153,57 @@ export function BrandingPanel() {
       <Field label="Tagline" hint="Sidebar subtitle."><Input value={form.tagline ?? ""} onChange={(e) => set({ tagline: e.target.value })} placeholder="Operations, intelligently" /></Field>
 
       <Field
-        label="Logo URL"
+        label="Logo"
         hint={
-          logoUrl && !looksLikeImage(logoUrl)
-            ? warn("That looks like a page link, not an image. Use the host's “Direct link” (ends in .png/.jpg/.svg) — e.g. https://iili.io/xxxx.png, not …/i/xxxx.")
-            : logoBroken
-              ? warn("Couldn't load that image — check the URL is public and a direct link.")
-              : "Direct image link, square works best (PNG/SVG). Right-click the image → “Copy image address”."
+          logoBroken
+            ? warn("Couldn't load that image — re-upload, or check the URL is a public direct link.")
+            : "Shown on your quotation PDFs, reports, emails, and the sidebar. Upload a PNG or SVG — a transparent square works best."
         }
       >
-        <Input value={form.logoUrl ?? ""} onChange={(e) => { setLogoBroken(false); set({ logoUrl: e.target.value }); }} placeholder="https://cdn.acme.com/logo.png"
-          style={(logoUrl && !looksLikeImage(logoUrl)) || logoBroken ? { borderColor: t.color.warning } : undefined} />
+        {/* Upload box: a dropzone-style tile with the current logo preview, plus
+            upload / replace / remove controls. The uploaded image is resized in the
+            browser and stored inline, so no image hosting is needed. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            type="button"
+            onClick={() => logoInputRef.current?.click()}
+            aria-label={logoUrl ? "Replace logo" : "Upload logo"}
+            style={{
+              width: 84, height: 84, flexShrink: 0, borderRadius: t.radius.md, cursor: "pointer",
+              border: `1.5px dashed ${logoUrl && !logoBroken ? t.color.border : t.color.borderStrong ?? t.color.border}`,
+              background: t.color.bg, display: "flex", alignItems: "center", justifyContent: "center",
+              overflow: "hidden", padding: logoUrl && !logoBroken ? 6 : 0,
+            }}
+          >
+            {logoUrl && !logoBroken
+              ? <img src={logoUrl} alt="Current logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} onError={() => setLogoBroken(true)} onLoad={() => setLogoBroken(false)} />
+              : <span style={{ fontSize: t.font.xs, color: t.color.textMuted, textAlign: "center", lineHeight: 1.3, padding: 6 }}>Click to<br />upload</span>}
+          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button type="button" variant="secondary" size="sm" onClick={() => logoInputRef.current?.click()}>
+                {logoUrl ? "Replace" : "Upload logo"}
+              </Button>
+              {logoUrl && (
+                <Button type="button" variant="secondary" size="sm" onClick={() => { setLogoBroken(false); set({ logoUrl: "" }); }}>Remove</Button>
+              )}
+            </div>
+            <span style={{ fontSize: t.font.xs, color: t.color.textMuted }}>PNG, JPG or SVG · up to 700&nbsp;KB after resizing</span>
+          </div>
+          <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style={{ display: "none" }}
+            onChange={(e) => { onLogoFile(e.target.files); e.target.value = ""; }} />
+        </div>
+
+        {/* Fallback for teams that already host their logo somewhere. */}
+        <div style={{ marginTop: 8 }}>
+          <Disclosure summary="…or paste a logo URL">
+            <Input value={/^data:/i.test(logoUrl) ? "" : (form.logoUrl ?? "")} onChange={(e) => { setLogoBroken(false); set({ logoUrl: e.target.value }); }} placeholder="https://cdn.acme.com/logo.png"
+              style={(logoUrl && !/^data:/i.test(logoUrl) && !looksLikeImage(logoUrl)) || logoBroken ? { borderColor: t.color.warning } : undefined} />
+            {logoUrl && !/^data:/i.test(logoUrl) && !looksLikeImage(logoUrl) && (
+              <div style={{ marginTop: 4 }}>{warn("That looks like a page link, not an image. Use the host's “Direct link” (ends in .png/.jpg/.svg).")}</div>
+            )}
+          </Disclosure>
+        </div>
       </Field>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

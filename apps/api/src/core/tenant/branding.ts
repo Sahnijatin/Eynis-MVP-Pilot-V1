@@ -26,10 +26,26 @@ export const sanitizeBranding = (body: Record<string, unknown>) => {
     return s && s.length <= 200 && /^[a-zA-Z0-9 ,"'\-]+$/.test(s) ? s : null;
   };
   const bool = (v: unknown, dflt: boolean): boolean => (typeof v === "boolean" ? v : dflt);
+  // Logo may be either a plain (hosted) URL OR an uploaded raster image inlined as a
+  // data: URL. For an upload we accept only png/jpeg (the formats the PDF embedder can
+  // render) and cap the decoded size so a crafted payload can't bloat the tenant row or
+  // the branding response; anything oversized/malformed falls back to null (= no logo).
+  const LOGO_MAX_BYTES = 700 * 1024;
+  const logo = (v: unknown): string | null => {
+    const s = str(v);
+    if (!s) return null;
+    if (/^data:/i.test(s)) {
+      const m = /^data:image\/(png|jpe?g);base64,([a-z0-9+/=]+)$/i.exec(s);
+      if (!m) return null;
+      const bytes = Math.floor((m[2].length * 3) / 4);
+      return bytes > 0 && bytes <= LOGO_MAX_BYTES ? s : null;
+    }
+    return s.length <= 4096 ? s : null; // plain URL — bound the length
+  };
   return {
     brandName: str(body.brandName),
     tagline: str(body.tagline),
-    logoUrl: str(body.logoUrl),
+    logoUrl: logo(body.logoUrl),
     faviconUrl: str(body.faviconUrl),
     primaryColor: color(body.primaryColor),
     accentColor: color(body.accentColor),
