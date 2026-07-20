@@ -10,7 +10,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { prisma } from "../../db/prisma";
 import { authorize, ensureTenantAccess } from "../authz";
-import { json, parseBody, parseRawBody, asTrimmedString, clientIp } from "../../http/helpers";
+import { json, parseBody, parseRawBody, parseUrl, asTrimmedString, clientIp } from "../../http/helpers";
+import { selectPmsAdapter } from "../connectors/pms/adapters";
+import { ingestPmsEvent } from "../connectors/pms/ingest";
 import { rateLimit } from "../rate-limit";
 import { upsertContactByPhone } from "../crm/upsert-contact";
 import { broadcastSSEEvent } from "../../sse/clients";
@@ -258,7 +260,7 @@ export async function handlePublicWebhookRoutes(req: IncomingMessage, res: Serve
   }
 
   // ── POST /connectors/pms/webhook ─────────────────────────────────────────
-  if (req.url === "/connectors/pms/webhook" && req.method === "POST") {
+  if (parseUrl(req.url).pathname === "/connectors/pms/webhook" && req.method === "POST") {
     // This endpoint writes data (contacts, stays, visit counts) for the tenantId
     // in the body, so it MUST be authenticated. Without the shared-secret gate
     // anyone who knows a tenantId could inject check-in/checkout events (F-2).
@@ -271,35 +273,37 @@ export async function handlePublicWebhookRoutes(req: IncomingMessage, res: Serve
     if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return true; }
 
     const rawBody = await parseRawBody(req);
-    const body = (rawBody ? JSON.parse(rawBody) : {}) as {
-      tenantId?: unknown; hotelId?: unknown; event?: unknown;
-      guest?: { name?: unknown; phone?: unknown };
-      reservation?: { roomNumber?: unknown; checkIn?: unknown; checkOut?: unknown };
-    };
-    const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId from existing PMS integrations
-    const eventType = asTrimmedString(body.event) ?? "guest.checkin";
+    let body: Record<string, unknown>;
+    try { body = (rawBody ? JSON.parse(rawBody) : {}) as Record<string, unknown>; }
+    catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return true; }
+
+    // Provider selection (#169): `?provider=ezee|hotelogix` (or the connector key
+    // `pms_*`, or a `provider` field in the body) picks the adapter; absent →
+    // the generic shape, so existing integrations keep working.
+    const qp = parseUrl(req.url).searchParams;
+    const provider = asTrimmedString(qp.get("provider"))
+      ?? (typeof req.headers["x-pms-provider"] === "string" ? req.headers["x-pms-provider"] : null)
+      ?? asTrimmedString(body.provider) ?? asTrimmedString(body.connectorKey);
+    const adapter = selectPmsAdapter(provider);
+
+    // Tenant resolution: our tenantId comes from the request (body `tenantId`/
+    // legacy `hotelId`, or `?tenantId=` on the webhook URL) — real PMS payloads
+    // carry the vendor's own property id, not ours, so the tenant is identified by
+    // the URL the provider is configured to POST to.
+    const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId) ?? asTrimmedString(qp.get("tenantId"));
     if (!tenantId) { json(res, 400, { ok: false, error: "tenantId is required" }); return true; }
-    const hasAccess = await ensureTenantAccess(tenantId);
-    if (!hasAccess) { json(res, 404, { ok: false, error: "Hotel not found" }); return true; }
+    if (!(await ensureTenantAccess(tenantId))) { json(res, 404, { ok: false, error: "Hotel not found" }); return true; }
 
-    const guestName = asTrimmedString(body.guest?.name) ?? "PMS Guest";
-    const guestPhone = asTrimmedString(body.guest?.phone) ?? `+9199${Math.floor(Math.random() * 90000000) + 10000000}`;
-    const roomNumber = asTrimmedString(body.reservation?.roomNumber) ?? "101";
-    const checkInAt = body.reservation?.checkIn ? new Date(body.reservation.checkIn as string) : new Date();
-    const checkOutAt = body.reservation?.checkOut ? new Date(body.reservation.checkOut as string) : new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
+    const canonical = adapter.normalize(body);
+    if (!canonical) { json(res, 400, { ok: false, error: "Unrecognised PMS payload" }); return true; }
 
-    const guestId = await upsertContactByPhone(tenantId, guestName, guestPhone);
-
-    if (eventType === "guest.checkin") {
-      await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
-      const stay = await prisma.stay.create({ data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt } });
-      broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
-      json(res, 201, { ok: true, event: "checkin", stayId: stay.id, guestId });
-    } else if (eventType === "guest.checkout") {
-      broadcastSSEEvent(tenantId, { type: "checkout_event", data: { guestId, guestName, roomNumber, checkOutAt } });
-      json(res, 200, { ok: true, event: "checkout", guestId });
+    const result = await ingestPmsEvent(tenantId, canonical);
+    if (result.event === "checkin") {
+      json(res, 201, { ok: true, event: "checkin", stayId: result.stayId, guestId: result.guestId, provider: adapter.provider });
+    } else if (result.event === "checkout") {
+      json(res, 200, { ok: true, event: "checkout", guestId: result.guestId, provider: adapter.provider });
     } else {
-      json(res, 200, { ok: true, event: eventType, guestId });
+      json(res, 200, { ok: true, event: canonical.sourceEvent ?? "ignored", guestId: result.guestId, provider: adapter.provider });
     }
     return true;
   }
