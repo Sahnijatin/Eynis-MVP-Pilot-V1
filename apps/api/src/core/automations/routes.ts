@@ -9,6 +9,49 @@ import { json, parseBody, parseUrl, asSafeLimit, asSafeOffset } from "../../http
 import { enforceLicenseFeature } from "../license";
 
 export async function handleAutomationRoutes(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  // ── POST /automations — create a custom journey flow ─────────────────────
+  // Self-serve "New Flow": persists an AutomationRule (ruleType "marketing") whose
+  // configJson carries the chosen trigger/action/channels. Starts with zero stats.
+  if (req.url && parseUrl(req.url).pathname === "/automations" && req.method === "POST") {
+    const auth = await authorize(req, res, "POST /automations");
+    if (!auth.ok) return true;
+    const context = auth.context;
+    const lic = await enforceLicenseFeature(context.tenantId, "automations");
+    if (!lic.ok) { json(res, 403, { ok: false, error: lic.error }); return true; }
+    const { validateFlowCreate, buildFlowConfig, makeFlowCode } = await import("./flow");
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const validated = validateFlowCreate(body);
+    if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return true; }
+    const v = validated.value;
+    const configJson = buildFlowConfig(v);
+    const rand = () => Math.random().toString(36).slice(2, 8);
+    // Retry a few times if the generated code collides with an existing rule.
+    let created: { id: string; code: string; name: string; isActive: boolean; createdAt: Date } | null = null;
+    for (let attempt = 0; attempt < 5 && !created; attempt++) {
+      const code = makeFlowCode(v.name, rand);
+      try {
+        created = await prisma.automationRule.create({
+          data: { tenantId: context.tenantId, code, name: v.name, isActive: v.isActive, configJson },
+          select: { id: true, code: true, name: true, isActive: true, createdAt: true },
+        });
+      } catch (err) {
+        if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") continue; // code collision → retry
+        throw err;
+      }
+    }
+    if (!created) { json(res, 409, { ok: false, error: "Could not allocate a unique flow code — please retry" }); return true; }
+    json(res, 201, {
+      ok: true,
+      rule: {
+        id: created.id, code: created.code, name: created.name, isActive: created.isActive,
+        ruleType: "marketing", executions: 0, conversions: 0, revenueInr: 0,
+        trigger: v.trigger, action: v.action, channels: v.channels, delayHours: v.delayHours, detail: v.detail,
+        lastFiredAt: null, createdAt: created.createdAt,
+      },
+    });
+    return true;
+  }
+
   // ── PATCH /automations/:id — pause / resume a rule ───────────────────────
   // The automation engine only fires rules with isActive: true, so toggling
   // this genuinely starts/stops the rule on the next 60s cycle.
@@ -106,7 +149,15 @@ export async function handleAutomationRoutes(req: IncomingMessage, res: ServerRe
       return {
         id: r.id, code: r.code, name: r.name, isActive: r.isActive,
         ruleType: isMarketing ? "marketing" : "operational",
-        executions, conversions, revenueInr, lastFiredAt, createdAt: r.createdAt
+        executions, conversions, revenueInr, lastFiredAt, createdAt: r.createdAt,
+        // Custom "New Flow" rules carry their journey definition — surfaced so the UI
+        // can render the trigger → action. Undefined for the seeded operational rules.
+        trigger: (config.trigger as string) ?? null,
+        action: (config.action as string) ?? null,
+        channels: Array.isArray(config.channels) ? (config.channels as string[]) : [],
+        delayHours: typeof config.delayHours === "number" ? config.delayHours : 0,
+        detail: (config.detail as string) ?? null,
+        custom: config.custom === true,
       };
     });
     const totalExecutions = items.reduce((s, i) => s + i.executions, 0);

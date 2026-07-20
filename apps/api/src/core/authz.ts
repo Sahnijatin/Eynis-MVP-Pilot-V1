@@ -59,6 +59,7 @@ export const permissionMap: Record<string, Permission | null> = {
   "DELETE /menu/items/:id":               "manage_inventory",
   "GET /inventory/yield":                 "view_reports",
   "GET /automations":                     "manage_automations",
+  "POST /automations":                    "manage_automations",
   "GET /automations/executions":          "manage_automations",
   "PATCH /automations/:id":               "manage_automations",
   "GET /connectors/registry":             "manage_connectors",
