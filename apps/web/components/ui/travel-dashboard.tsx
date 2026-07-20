@@ -7,7 +7,7 @@ import { fetchBookings, fetchQuotes } from "../../lib/data";
 // and trip quotes awaiting a decision from the quote engine.
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  in_progress: { label: "In Progress", color: "#1d4ed8", bg: "#eff6ff" },
+  in_progress: { label: "In Progress", color: "var(--cat-1)", bg: "var(--cat-1-bg)" },
   confirmed: { label: "Confirmed", color: "var(--ok-text)", bg: "var(--ok-bg)" },
   pending_visa: { label: "Visa Pending", color: "var(--warn-text)", bg: "var(--warn-bg)" },
   urgent: { label: "Action Needed", color: "var(--danger-text)", bg: "var(--danger-bg)" },

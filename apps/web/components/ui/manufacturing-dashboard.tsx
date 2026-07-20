@@ -6,9 +6,9 @@ import { fetchOrders, fetchQuotes, fetchInventory, fetchInventoryYield, fetchDas
 // Maintenance/downtime taxonomy (manufacturing pack, #165), in the order shown.
 const MAINT_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
   { key: "downtime", label: "Downtime", color: "var(--danger-text)" },
-  { key: "maintenance", label: "Maintenance", color: "#f59e0b" },
-  { key: "quality", label: "Quality", color: "#8b5cf6" },
-  { key: "safety", label: "Safety", color: "#0ea5e9" },
+  { key: "maintenance", label: "Maintenance", color: "var(--cat-4)" },
+  { key: "quality", label: "Quality", color: "var(--cat-7)" },
+  { key: "safety", label: "Safety", color: "var(--cat-5)" },
 ];
 
 // Manufacturing Command Centre (Phase 7) — every number traces to a DB row:
@@ -16,9 +16,9 @@ const MAINT_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
 // alerts from live inventory, waste ratio from the stock ledger.
 
 const STAGE_META: Array<{ id: string; label: string; color: string }> = [
-  { id: "new", label: "New Orders", color: "#6366f1" },
-  { id: "production", label: "In Production", color: "#f59e0b" },
-  { id: "qc", label: "QC Review", color: "#8b5cf6" },
+  { id: "new", label: "New Orders", color: "var(--cat-1)" },
+  { id: "production", label: "In Production", color: "var(--cat-4)" },
+  { id: "qc", label: "QC Review", color: "var(--cat-7)" },
   { id: "dispatch", label: "Ready to Dispatch", color: "var(--ok-text)" },
 ];
 

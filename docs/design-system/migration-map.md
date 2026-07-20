@@ -107,6 +107,26 @@ On a hit the message names the file + offender and points to `tokens.md`. To cle
 a genuine exception, migrate to the token or add it to the allowlist **with a
 reason** — and shrink the allowlist as the dark-QA + categorical tails land.
 
+### Categorical-tint tail — done
+
+Added paired tint tokens `--cat-1..8-bg` (light + dark) — only slots **1/2/7/8**
+clear ~3:1 text-on-tint in both themes (validated), so those are the chip slots;
+3/4/5/6 stay solid-mark only. Migrated the remaining categorical `{color, bg}` /
+`{statusColor, statusBg}` / `{iconColor, iconBg}` PAIRS and the tier-badge ternary
+onto tokens (blue → `--cat-1`, violet → `--cat-7`, green/amber/red → the status
+ramps), the kanban column identity colours onto `--cat-*`, and the report series
+`PALETTE` onto accent + `--cat-*` in fixed order. **Every light-tint chip that
+would have sat on a dark canvas is now a theme-flipping token** (grep-verified 0).
+
+Left intentionally: saturated **solid** decorative accents (`#7c3aed`/`#1d4ed8`/
+`#ea580c` panel/bubble/vertical-accent fills), which render correctly on both
+canvases, and the brand hues (`#25d366`) / on-dark sidebar blues.
+
+**OS-default dark is now unblocked** — no known light-tint breakers remain. Flipping
+`resolveThemeMode` to honour `prefers-color-scheme` is a deliberate product-default
+change and should ship with a live per-screen visual pass; the toggle stays opt-in
+until then.
+
 ```bash
 # files
 grep -rlE '(bg|text|border|ring)-(slate|gray|teal|red|amber|emerald|blue|indigo|cyan|purple|orange)-[0-9]' apps/web/components apps/web/app --include=*.tsx | wc -l

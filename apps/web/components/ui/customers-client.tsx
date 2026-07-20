@@ -26,58 +26,58 @@ const MFG_CLIENT_DETAILS: Record<string, ClientDetailData> = {
   "Crestline Hotels": {
     contact: { person: "Rajesh Mehta", role: "Procurement Director", phone: "+91 98765 43210", email: "rajesh.mehta@crestlinehotels.example", address: "Corporate Park, Aerocity, New Delhi - 110037", extras: [{ label: "GST", value: "07AABCM1234F1Z5" }, { label: "Payment Terms", value: "Net 45 days" }, { label: "Credit Limit", value: "₹50L" }] },
     history: [
-      { id: "ORD-2841", title: "Teak Lobby Benches × 24", subtitle: "Custom finish, brass hardware", amount: "₹18.4L", date: "12 May 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "ORD-2734", title: "Conference Tables × 6", subtitle: "Mahogany, executive grade", amount: "₹14.2L", date: "8 Mar 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "ORD-2652", title: "Reception Desk Unit", subtitle: "Custom 3.8m wide", amount: "₹9.8L", date: "12 Jan 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2841", title: "Teak Lobby Benches × 24", subtitle: "Custom finish, brass hardware", amount: "₹18.4L", date: "12 May 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "ORD-2734", title: "Conference Tables × 6", subtitle: "Mahogany, executive grade", amount: "₹14.2L", date: "8 Mar 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "ORD-2652", title: "Reception Desk Unit", subtitle: "Custom 3.8m wide", amount: "₹9.8L", date: "12 Jan 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "Prefers teak and mahogany. Always requires brass hardware. Rajesh prefers WhatsApp updates.",
   },
   "Patel Architects LLP": {
     contact: { person: "Ankit Patel", role: "Principal Architect", phone: "+91 99887 76655", email: "ankit@patelarchitects.com", address: "Bandra West, Mumbai - 400050", extras: [{ label: "GST", value: "27AAAFP1234B1ZA" }, { label: "Payment Terms", value: "Net 30 days" }] },
     history: [
-      { id: "ORD-2812", title: "Modular Workstations × 40", subtitle: "Open-plan fit-out", amount: "₹22.8L", date: "22 May 2025", status: "In Production", statusColor: "#d97706", statusBg: "#fef3c7" },
-      { id: "ORD-2711", title: "Executive Boardroom Set", subtitle: "10-seater, walnut finish", amount: "₹9.4L", date: "14 Feb 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2812", title: "Modular Workstations × 40", subtitle: "Open-plan fit-out", amount: "₹22.8L", date: "22 May 2025", status: "In Production", statusColor: "var(--warn-text)", statusBg: "var(--warn-bg)" },
+      { id: "ORD-2711", title: "Executive Boardroom Set", subtitle: "10-seater, walnut finish", amount: "₹9.4L", date: "14 Feb 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "Channel partner — 3–4 referrals/quarter. Needs 3D renders before sign-off.",
   },
   "Kapoor Developers": {
     contact: { person: "Sunita Kapoor", role: "VP - Projects", phone: "+91 98112 34567", email: "sunita@kapoordevelopers.com", address: "Sector 18, Gurugram - 122001", extras: [{ label: "Payment Terms", value: "Net 60 days" }] },
     history: [
-      { id: "ORD-2789", title: "Villa Bedroom Furniture × 12 units", amount: "₹31.2L", date: "8 Apr 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "ORD-2640", title: "Lobby Seating — Prestige Tower", amount: "₹18.8L", date: "5 Dec 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2789", title: "Villa Bedroom Furniture × 12 units", amount: "₹31.2L", date: "8 Apr 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "ORD-2640", title: "Lobby Seating — Prestige Tower", amount: "₹18.8L", date: "5 Dec 2024", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "At risk — last order 60d ago. Send re-engagement offer.",
   },
   "Grandview Hotels": {
     contact: { person: "Priya Nair", role: "Corporate Procurement", phone: "+91 80123 45678", email: "procurement@grandviewhotels.example", address: "MG Road, Bengaluru - 560001", extras: [{ label: "GST", value: "29AABCT1234C1ZB" }, { label: "Contract", value: "Annual rate card" }] },
     history: [
-      { id: "ORD-2422", title: "Spa Furniture Package", amount: "₹44.6L", date: "3 Jun 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "ORD-2318", title: "Presidential Suite Fit-out", amount: "₹62.1L", date: "8 Jan 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2422", title: "Spa Furniture Package", amount: "₹44.6L", date: "3 Jun 2024", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "ORD-2318", title: "Presidential Suite Fit-out", amount: "₹62.1L", date: "8 Jan 2024", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "Dormant 90d+ — historically highest-value account. Escalate to senior sales.",
   },
   "Sharma Retail Chains": {
     contact: { person: "Deepak Sharma", role: "Store Development Head", phone: "+91 95556 78901", email: "deepak@sharmaretail.com", address: "Connaught Place, New Delhi - 110001", extras: [{ label: "Outlets", value: "14 stores across NCR" }] },
     history: [
-      { id: "ORD-2831", title: "Retail Display Units × 60", amount: "₹14.8L", date: "18 May 2025", status: "In Transit", statusColor: "#d97706", statusBg: "#fef3c7" },
-      { id: "ORD-2770", title: "Cash Counter Modules × 14", amount: "₹8.4L", date: "2 Mar 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2831", title: "Retail Display Units × 60", amount: "₹14.8L", date: "18 May 2025", status: "In Transit", statusColor: "var(--warn-text)", statusBg: "var(--warn-bg)" },
+      { id: "ORD-2770", title: "Cash Counter Modules × 14", amount: "₹8.4L", date: "2 Mar 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "Growth account — expanding to 6 new stores in Q3.",
   },
   "Azure Hospitality": {
     contact: { person: "Manish Agarwal", role: "VP Procurement", phone: "+91 33456 78901", email: "manish.agarwal@azurehospitality.example", address: "Park Street, Kolkata - 700071", extras: [{ label: "Contract Value", value: "₹3Cr+ annually" }, { label: "Payment Terms", value: "Net 45 days" }] },
     history: [
-      { id: "ORD-2848", title: "Banquet Hall Chairs × 500", amount: "₹28.5L", date: "26 May 2025", status: "In Production", statusColor: "#d97706", statusBg: "#fef3c7" },
-      { id: "ORD-2801", title: "Restaurant Seating Revamp", amount: "₹19.2L", date: "10 Apr 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "ORD-2744", title: "Guest Room Furniture Package", amount: "₹38.7L", date: "15 Jan 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2848", title: "Banquet Hall Chairs × 500", amount: "₹28.5L", date: "26 May 2025", status: "In Production", statusColor: "var(--warn-text)", statusBg: "var(--warn-bg)" },
+      { id: "ORD-2801", title: "Restaurant Seating Revamp", amount: "₹19.2L", date: "10 Apr 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "ORD-2744", title: "Guest Room Furniture Package", amount: "₹38.7L", date: "15 Jan 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "Key account — priority handling. Manish expects weekly status updates.",
   },
   "Meridian Housing Ltd.": {
     contact: { person: "Ravi Krishnan", role: "Head of Projects", phone: "+91 22345 67890", email: "ravi.k@meridianhousing.example", address: "Nariman Point, Mumbai - 400021", extras: [{ label: "Payment Terms", value: "Net 60 days" }] },
     history: [
-      { id: "ORD-2698", title: "Apartment Kitchen Modules × 80", amount: "₹26.4L", date: "15 Mar 2025", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "ORD-2601", title: "Common Area Furniture", amount: "₹12.8L", date: "4 Nov 2024", status: "Delivered", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "ORD-2698", title: "Apartment Kitchen Modules × 80", amount: "₹26.4L", date: "15 Mar 2025", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "ORD-2601", title: "Common Area Furniture", amount: "₹12.8L", date: "4 Nov 2024", status: "Delivered", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Orders", notes: "At risk — next project starts Q4. Reach out before competitor quotes.",
   },
@@ -101,58 +101,58 @@ const FNB_CLIENT_DETAILS: Record<string, ClientDetailData> = {
   "Anjali Mehta": {
     contact: { person: "Anjali Mehta", phone: "+91 98001 11223", email: "anjali.mehta@gmail.com", extras: [{ label: "Loyalty Points", value: "4,820 pts" }, { label: "Birthday", value: "14 Aug" }, { label: "Dietary", value: "No pork, gluten-sensitive" }, { label: "Preferred Table", value: "Corner booth (Table 12)" }] },
     history: [
-      { id: "VIS-0412", title: "Dinner — Table 12", subtitle: "Wagyu Tenderloin, Truffle Risotto, Negroni × 2", amount: "₹8,400", date: "29 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0388", title: "Dinner — Table 12", subtitle: "Lobster Thermidor, Burrata, Champagne", amount: "₹9,200", date: "10 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0371", title: "Birthday Dinner (party of 6)", subtitle: "Chef's tasting menu × 6, cake arranged", amount: "₹32,400", date: "14 Apr 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0352", title: "Lunch — Table 8", subtitle: "Pasta, Tiramisu, Sparkling water", amount: "₹3,800", date: "22 Mar 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0412", title: "Dinner — Table 12", subtitle: "Wagyu Tenderloin, Truffle Risotto, Negroni × 2", amount: "₹8,400", date: "29 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0388", title: "Dinner — Table 12", subtitle: "Lobster Thermidor, Burrata, Champagne", amount: "₹9,200", date: "10 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0371", title: "Birthday Dinner (party of 6)", subtitle: "Chef's tasting menu × 6, cake arranged", amount: "₹32,400", date: "14 Apr 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0352", title: "Lunch — Table 8", subtitle: "Pasta, Tiramisu, Sparkling water", amount: "₹3,800", date: "22 Mar 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "VIP Platinum. Prefers corner table away from kitchen. Loves truffle dishes. Always orders Negroni. Send personalized offer for truffle season menu.",
   },
   "Rahul Shah": {
     contact: { person: "Rahul Shah", phone: "+91 99334 45566", email: "rahul.shah@outlook.com", extras: [{ label: "Loyalty Points", value: "2,340 pts" }, { label: "Dietary", value: "Vegetarian" }, { label: "Preferred Time", value: "Weekday evenings" }] },
     history: [
-      { id: "VIS-0409", title: "Dinner — Table 6", subtitle: "Mushroom Risotto, Panna Cotta, Red wine", amount: "₹4,200", date: "24 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0392", title: "Dinner — Table 4", subtitle: "Pasta Primavera, Tiramisu, Cocktail", amount: "₹3,800", date: "12 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0409", title: "Dinner — Table 6", subtitle: "Mushroom Risotto, Panna Cotta, Red wine", amount: "₹4,200", date: "24 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0392", title: "Dinner — Table 4", subtitle: "Pasta Primavera, Tiramisu, Cocktail", amount: "₹3,800", date: "12 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "Gold member. Strict vegetarian. Usually brings spouse on weekday evenings. Loyal for 2 years.",
   },
   "Priya Nair": {
     contact: { person: "Priya Nair", phone: "+91 80111 22334", email: "priya.nair@gmail.com", extras: [{ label: "Loyalty Points", value: "5,910 pts" }, { label: "Birthday", value: "3 Dec" }, { label: "Preferred Seat", value: "Window seat, non-smoking" }] },
     history: [
-      { id: "VIS-0411", title: "Dinner — Table 2 (window)", subtitle: "Salmon Gravlax, Duck Confit, Dessert platter", amount: "₹7,800", date: "28 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0399", title: "Business Lunch — Table 2", subtitle: "Set menu × 3, still water, espresso", amount: "₹6,300", date: "18 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0411", title: "Dinner — Table 2 (window)", subtitle: "Salmon Gravlax, Duck Confit, Dessert platter", amount: "₹7,800", date: "28 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0399", title: "Business Lunch — Table 2", subtitle: "Set menu × 3, still water, espresso", amount: "₹6,300", date: "18 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "Top spender. Often brings corporate guests for business lunches. Invite to exclusive wine pairing dinners.",
   },
   "Kiran Rao": {
     contact: { person: "Kiran Rao", phone: "+91 91223 34455", email: "kiran.rao@yahoo.com", extras: [{ label: "Loyalty Points", value: "820 pts" }, { label: "Dietary", value: "No seafood" }] },
     history: [
-      { id: "VIS-0334", title: "Dinner — Table 9", subtitle: "Lamb Rack, Chocolate Fondant, Beer", amount: "₹4,800", date: "14 Mar 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0298", title: "Weekend Brunch", subtitle: "Eggs Benedict, Mimosa", amount: "₹2,200", date: "12 Jan 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0334", title: "Dinner — Table 9", subtitle: "Lamb Rack, Chocolate Fondant, Beer", amount: "₹4,800", date: "14 Mar 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0298", title: "Weekend Brunch", subtitle: "Eggs Benedict, Mimosa", amount: "₹2,200", date: "12 Jan 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "Occasional visitor — last visit 75d ago. Send re-engagement offer (20% off next visit).",
   },
   "Sanjay Gupta": {
     contact: { person: "Sanjay Gupta", phone: "+91 97889 00112", email: "sanjay.g@hotmail.com", extras: [{ label: "Loyalty Points", value: "1,920 pts" }, { label: "Preferred", value: "Sports table near bar" }] },
     history: [
-      { id: "VIS-0407", title: "Dinner — Bar Area", subtitle: "Burger, Wings, 4 beers", amount: "₹3,200", date: "20 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0390", title: "Dinner with friends (4)", subtitle: "Sharing platters, cocktails × 6", amount: "₹8,400", date: "5 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0407", title: "Dinner — Bar Area", subtitle: "Burger, Wings, 4 beers", amount: "₹3,200", date: "20 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0390", title: "Dinner with friends (4)", subtitle: "Sharing platters, cocktails × 6", amount: "₹8,400", date: "5 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "Regular with friend groups. High group-spend events. Send offer for group dining experiences.",
   },
   "Neha Verma": {
     contact: { person: "Neha Verma", phone: "+91 96001 33445", email: "neha.verma@gmail.com", extras: [{ label: "Loyalty Points", value: "310 pts" }, { label: "Joined", value: "Apr 2025" }] },
     history: [
-      { id: "VIS-0408", title: "Dinner — Table 5", subtitle: "Pasta, Wine, Crème brûlée", amount: "₹3,400", date: "22 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0380", title: "Weekend Lunch", subtitle: "Pizza, Salad, Mocktail", amount: "₹2,100", date: "2 May 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0408", title: "Dinner — Table 5", subtitle: "Pasta, Wine, Crème brûlée", amount: "₹3,400", date: "22 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0380", title: "Weekend Lunch", subtitle: "Pizza, Salad, Mocktail", amount: "₹2,100", date: "2 May 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "New member with strong visit frequency. Nurture with loyalty incentives to elevate to Gold.",
   },
   "Deepak Joshi": {
     contact: { person: "Deepak Joshi", phone: "+91 94556 67788", email: "djoshi@rediffmail.com", extras: [{ label: "Loyalty Points", value: "640 pts" }] },
     history: [
-      { id: "VIS-0310", title: "Dinner — Table 3", subtitle: "Chicken Tikka, Naan, Whisky", amount: "₹4,200", date: "28 Jan 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "VIS-0279", title: "Dinner", subtitle: "Steak, Red wine", amount: "₹3,800", date: "10 Nov 2024", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "VIS-0310", title: "Dinner — Table 3", subtitle: "Chicken Tikka, Naan, Whisky", amount: "₹4,200", date: "28 Jan 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "VIS-0279", title: "Dinner", subtitle: "Steak, Red wine", amount: "₹3,800", date: "10 Nov 2024", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Visits", notes: "Dormant 120d+. High avg bill when active. Send win-back WhatsApp offer.",
   },
@@ -175,49 +175,49 @@ const TRAVEL_CLIENT_DETAILS: Record<string, ClientDetailData> = {
   "Mehta Corp": {
     contact: { person: "Vikram Mehta", role: "Travel Manager", phone: "+91 98765 11223", email: "vikram.mehta@mehtacorp.com", address: "Mehta Corp HQ, BKC, Mumbai - 400051", extras: [{ label: "GST", value: "27AABCM5678G1Z2" }, { label: "Travel Policy", value: "Business class for C-suite, Economy otherwise" }, { label: "Preferred Airline", value: "IndiGo / Air India" }] },
     history: [
-      { id: "BKG-1039", title: "Singapore Tech Summit — 5 pax", subtitle: "SIN 3–7 Jun · 4N/5D · Business class", amount: "₹4.2L", date: "22 May 2025", status: "Confirmed", statusColor: "#1d4ed8", statusBg: "#dbeafe" },
-      { id: "BKG-1028", title: "Dubai Sales Conference — 8 pax", subtitle: "DXB 12–15 Apr · 3N/4D", amount: "₹3.8L", date: "28 Mar 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "BKG-1014", title: "London HQ Visit — 3 pax", subtitle: "LHR 8–13 Feb · 5N/6D", amount: "₹5.6L", date: "20 Jan 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "BKG-1039", title: "Singapore Tech Summit — 5 pax", subtitle: "SIN 3–7 Jun · 4N/5D · Business class", amount: "₹4.2L", date: "22 May 2025", status: "Confirmed", statusColor: "var(--cat-1)", statusBg: "var(--cat-1-bg)" },
+      { id: "BKG-1028", title: "Dubai Sales Conference — 8 pax", subtitle: "DXB 12–15 Apr · 3N/4D", amount: "₹3.8L", date: "28 Mar 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "BKG-1014", title: "London HQ Visit — 3 pax", subtitle: "LHR 8–13 Feb · 5N/6D", amount: "₹5.6L", date: "20 Jan 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Bookings", notes: "Key corporate account. Vikram consolidates all travel. Negotiate annual rate card for 15+ trips/year.",
   },
   "ABC Technologies": {
     contact: { person: "Anita Singh", role: "Admin Head", phone: "+91 99001 55667", email: "anita@abctech.in", address: "ABC Tech Park, Whitefield, Bengaluru - 560066", extras: [{ label: "GST", value: "29AABCA9988H1Z6" }, { label: "Preferred Hotel Chain", value: "Crestline / Regal" }] },
     history: [
-      { id: "BKG-1042", title: "Team Offsite — Goa — 12 pax", subtitle: "GOI 24–27 May · 3N/4D · Resort", amount: "₹2.9L", date: "18 May 2025", status: "Confirmed", statusColor: "#1d4ed8", statusBg: "#dbeafe" },
-      { id: "BKG-1031", title: "US Client Visit — 2 pax", subtitle: "JFK 1–8 Apr · 7N/8D", amount: "₹4.1L", date: "12 Mar 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "BKG-1042", title: "Team Offsite — Goa — 12 pax", subtitle: "GOI 24–27 May · 3N/4D · Resort", amount: "₹2.9L", date: "18 May 2025", status: "Confirmed", statusColor: "var(--cat-1)", statusBg: "var(--cat-1-bg)" },
+      { id: "BKG-1031", title: "US Client Visit — 2 pax", subtitle: "JFK 1–8 Apr · 7N/8D", amount: "₹4.1L", date: "12 Mar 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Bookings", notes: "Fast-growing tech company. Quarterly offsites and frequent US/Europe trips. High potential.",
   },
   "Arora Family": {
     contact: { person: "Suresh Arora", role: "Primary Contact", phone: "+91 98112 77889", email: "suresh.arora@gmail.com", address: "Sector 22, Gurugram - 122015", extras: [{ label: "Preferences", value: "Beach resorts, luxury hotels" }, { label: "Passport", value: "Valid until Mar 2030" }] },
     history: [
-      { id: "BKG-1046", title: "Maldives Honeymoon — 2 pax", subtitle: "MLE 7–14 Jun · 7N/8D · Water villa", amount: "₹2.1L", date: "6 Apr 2025", status: "Upcoming", statusColor: "#7c3aed", statusBg: "#f5f3ff" },
-      { id: "BKG-1018", title: "Bali Family Trip — 4 pax", subtitle: "DPS 26–31 Dec · 5N/6D", amount: "₹1.8L", date: "4 Nov 2024", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "BKG-1046", title: "Maldives Honeymoon — 2 pax", subtitle: "MLE 7–14 Jun · 7N/8D · Water villa", amount: "₹2.1L", date: "6 Apr 2025", status: "Upcoming", statusColor: "var(--cat-7)", statusBg: "var(--cat-7-bg)" },
+      { id: "BKG-1018", title: "Bali Family Trip — 4 pax", subtitle: "DPS 26–31 Dec · 5N/6D", amount: "₹1.8L", date: "4 Nov 2024", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Bookings", notes: "Leisure family traveller. Prefers luxury beach/island destinations. Upcoming Maldives trip departing 7 Jun.",
   },
   "IT Company Offsite": {
     contact: { person: "Rajat Sharma", role: "HR Manager", phone: "+91 95556 88990", email: "rajat@itcompany.com", address: "Cyber City, Gurugram - 122002", extras: [{ label: "Attendees", value: "45 employees" }, { label: "Budget", value: "₹12,000/person" }] },
     history: [
-      { id: "BKG-1046", title: "Annual Company Offsite — 45 pax", subtitle: "Coorg 20–23 Jul · 3N/4D · Resort", amount: "₹8.6L", date: "10 Mar 2025", status: "Pending Payment", statusColor: "#d97706", statusBg: "#fef3c7" },
-      { id: "BKG-0998", title: "Team Outing — 20 pax", subtitle: "Jaipur 15–17 Nov · 2N/3D", amount: "₹2.4L", date: "5 Oct 2024", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "BKG-1046", title: "Annual Company Offsite — 45 pax", subtitle: "Coorg 20–23 Jul · 3N/4D · Resort", amount: "₹8.6L", date: "10 Mar 2025", status: "Pending Payment", statusColor: "var(--warn-text)", statusBg: "var(--warn-bg)" },
+      { id: "BKG-0998", title: "Team Outing — 20 pax", subtitle: "Jaipur 15–17 Nov · 2N/3D", amount: "₹2.4L", date: "5 Oct 2024", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Bookings", notes: "URGENT — 0% payment received for Jul offsite. Follow up immediately. Departs in 7 weeks.",
   },
   "Sharma & Associates": {
     contact: { person: "Pradeep Sharma", role: "Partner", phone: "+91 98334 56789", email: "pradeep@sharmalaw.com", address: "Parliament Street, New Delhi - 110001", extras: [{ label: "Typical Destination", value: "Mumbai, Delhi, Bengaluru" }] },
     history: [
-      { id: "BKG-1021", title: "Mumbai — 2 pax", subtitle: "BOM 10–12 Feb · 2N/3D", amount: "₹88K", date: "2 Feb 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "BKG-0992", title: "Bengaluru — 1 pax", subtitle: "BLR 18–19 Dec · 1N/2D", amount: "₹42K", date: "5 Dec 2024", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "BKG-1021", title: "Mumbai — 2 pax", subtitle: "BOM 10–12 Feb · 2N/3D", amount: "₹88K", date: "2 Feb 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "BKG-0992", title: "Bengaluru — 1 pax", subtitle: "BLR 18–19 Dec · 1N/2D", amount: "₹42K", date: "5 Dec 2024", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Bookings", notes: "Domestic travel only. Dormant 120d — send re-engagement with upcoming budget season offers.",
   },
   "Kapoor Family": {
     contact: { person: "Manoj Kapoor", role: "Primary Contact", phone: "+91 94444 23456", email: "manoj.kapoor@yahoo.com", address: "Juhu, Mumbai - 400049", extras: [{ label: "Preferences", value: "Hill stations, heritage hotels" }] },
     history: [
-      { id: "BKG-1008", title: "Rajasthan Heritage Tour — 4 pax", subtitle: "Jaipur/Udaipur/Jodhpur · 7N/8D", amount: "₹1.4L", date: "14 Jan 2025", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
-      { id: "BKG-0974", title: "Shimla — 3 pax", subtitle: "SLV 5–8 Oct · 3N/4D", amount: "₹72K", date: "20 Sep 2024", status: "Completed", statusColor: "#059669", statusBg: "#d1fae5" },
+      { id: "BKG-1008", title: "Rajasthan Heritage Tour — 4 pax", subtitle: "Jaipur/Udaipur/Jodhpur · 7N/8D", amount: "₹1.4L", date: "14 Jan 2025", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
+      { id: "BKG-0974", title: "Shimla — 3 pax", subtitle: "SLV 5–8 Oct · 3N/4D", amount: "₹72K", date: "20 Sep 2024", status: "Completed", statusColor: "var(--ok-text)", statusBg: "var(--ok-bg)" },
     ],
     historyLabel: "Bookings", notes: "Leisure traveller. Interested in domestic heritage circuit. Dormant 5 months — send Kerela backwaters offer.",
   },
@@ -243,8 +243,8 @@ interface TravelClient {
 
 function MfgSegmentBadge({ segment }: { segment: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    key:      { label: "Key Account",     color: "#1d4ed8", bg: "#eff6ff" },
-    channel:  { label: "Channel Partner", color: "#7c3aed", bg: "#f5f3ff" },
+    key:      { label: "Key Account",     color: "var(--cat-1)", bg: "var(--cat-1-bg)" },
+    channel:  { label: "Channel Partner", color: "var(--cat-7)", bg: "var(--cat-7-bg)" },
     growth:   { label: "Growth",          color: "var(--ok-text)", bg: "var(--ok-bg)" },
     "at-risk":{ label: "At Risk",         color: "var(--warn-text)", bg: "var(--warn-bg)" },
     dormant:  { label: "Dormant",         color: "var(--danger-text)", bg: "var(--danger-bg)" },
@@ -257,15 +257,15 @@ function FnbTierBadge({ tier }: { tier: string }) {
   const isPlatinum = tier.includes("Platinum");
   const isGold = tier === "Gold";
   const isNew = tier === "New Member";
-  const color = isPlatinum ? "#7c3aed" : isGold ? "#d97706" : isNew ? "#059669" : "#64748b";
-  const bg = isPlatinum ? "#f5f3ff" : isGold ? "#fef3c7" : isNew ? "#d1fae5" : "#f1f5f9";
+  const color = isPlatinum ? "var(--cat-7)" : isGold ? "var(--warn-text)" : isNew ? "var(--ok-text)" : "var(--text-muted)";
+  const bg = isPlatinum ? "var(--cat-7-bg)" : isGold ? "var(--warn-bg)" : isNew ? "var(--ok-bg)" : "var(--surface-inset)";
   return <span className="badge text-xs flex items-center gap-1" style={{ background: bg, color }}>{isPlatinum && <Star className="w-2.5 h-2.5" />}{tier}</span>;
 }
 
 function TravelSegmentBadge({ segment }: { segment: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    key:     { label: "Key Account", color: "#1d4ed8", bg: "#eff6ff" },
-    leisure: { label: "Leisure",     color: "#7c3aed", bg: "#f5f3ff" },
+    key:     { label: "Key Account", color: "var(--cat-1)", bg: "var(--cat-1-bg)" },
+    leisure: { label: "Leisure",     color: "var(--cat-7)", bg: "var(--cat-7-bg)" },
     group:   { label: "Group",       color: "var(--ok-text)", bg: "var(--ok-bg)" },
     "at-risk":{ label: "At Risk",    color: "var(--warn-text)", bg: "var(--warn-bg)" },
   };
@@ -374,7 +374,7 @@ export function CustomersClient({ terminology, industry }: Props) {
   const kpi2 = isFnb
     ? { label: "Active This Month", value: fnbClients.filter(c => c.status === "active").length, color: "var(--ok-text)", sub: "Visited in last 30d" }
     : isTravel
-    ? { label: "Active Bookings", value: travelClients.filter(c => ["active", "pending"].includes(c.status)).length, color: "#7c3aed", sub: "Confirmed / pending" }
+    ? { label: "Active Bookings", value: travelClients.filter(c => ["active", "pending"].includes(c.status)).length, color: "var(--cat-7)", sub: "Confirmed / pending" }
     : { label: "Active (last 30d)", value: mfgClients.filter(c => c.status === "active").length, color: "var(--ok-text)", sub: "Revenue generating" };
 
   const kpi3 = isFnb

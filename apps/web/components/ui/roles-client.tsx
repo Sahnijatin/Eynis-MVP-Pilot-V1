@@ -77,8 +77,8 @@ export default function RolesClient({
         description: "Custom role",
         permissions: ar.permissions,
         isSystemRole: false,
-        iconColor: "#7c3aed",
-        iconBg: "#f5f3ff",
+        iconColor: "var(--cat-7)",
+        iconBg: "var(--cat-7-bg)",
         userCount: ar.userCount ?? 0,
         isCustom: true,
         apiId: ar.id,
@@ -156,8 +156,8 @@ export default function RolesClient({
         description: "Custom role",
         permissions: customPerms,
         isSystemRole: false,
-        iconColor: "#7c3aed",
-        iconBg: "#f5f3ff",
+        iconColor: "var(--cat-7)",
+        iconBg: "var(--cat-7-bg)",
         userCount: 0,
         isCustom: true,
         apiId: data.role?.id,
@@ -281,7 +281,7 @@ export default function RolesClient({
                         <div
                           key={perm}
                           className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                          style={granted ? { background: role.iconBg, color: role.iconColor } : { background: "var(--surface-inset)", color: "#cbd5e1" }}
+                          style={granted ? { background: role.iconBg, color: role.iconColor } : { background: "var(--surface-inset)", color: "var(--text-faint)" }}
                         >
                           <span className="text-sm leading-none shrink-0">{granted ? "✓" : "—"}</span>
                           <span>{PERMISSION_LABELS[perm]}</span>
