@@ -9,7 +9,7 @@ import { getIndustryConfig, type Industry, type NavModule } from "../../lib/indu
 import { resolveTheme, type TenantBranding } from "../../lib/theme";
 import { buildAccentRamp, accentRampToVars } from "../../lib/color/ramp";
 import { ThemeToggle } from "./theme-toggle";
-import type { ThemeMode } from "../../lib/theme-mode";
+import { effectiveThemeMode, type ThemeMode } from "../../lib/theme-mode";
 import {
   type OrgRole,
   ORG_ROLE_LABELS,
@@ -189,19 +189,28 @@ export function AppShell({ children, platformBrand = "Eynis", initialOrgRole = "
   const { user, isLoaded } = useUser();
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Active light/dark theme (Phase 2). Initialised from the server-stamped
-  // data-theme attribute and updated live when the toggle broadcasts a change,
-  // so the accent ramp re-injects for the right theme.
+  // Active light/dark theme (Phase 2). Resolved from the server-stamped
+  // data-theme attribute — which may be "system", in which case we read the OS
+  // preference — and updated live when the toggle broadcasts a change OR (while
+  // in system mode) when the OS preference flips, so the accent ramp re-injects
+  // for the right theme.
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   useEffect(() => {
-    const read = () => setThemeMode(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    const read = () => setThemeMode(effectiveThemeMode());
     read();
     const onChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      setThemeMode(detail === "dark" ? "dark" : "light");
+      // Explicit toggle choice wins; anything else (e.g. cleared → system) re-reads.
+      setThemeMode(detail === "dark" ? "dark" : detail === "light" ? "light" : effectiveThemeMode());
     };
     window.addEventListener("eynis-theme-change", onChange);
-    return () => window.removeEventListener("eynis-theme-change", onChange);
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const onOS = () => { if (document.documentElement.getAttribute("data-theme") === "system") read(); };
+    mq?.addEventListener?.("change", onOS);
+    return () => {
+      window.removeEventListener("eynis-theme-change", onChange);
+      mq?.removeEventListener?.("change", onOS);
+    };
   }, []);
 
   const [navOpen, setNavOpen] = useState(false); // mobile sidebar drawer (E-13e)
