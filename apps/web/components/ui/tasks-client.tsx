@@ -80,12 +80,11 @@ function CreateTaskModal({ contacts, onClose, onCreated }: { contacts: ContactLi
 
   async function submit() {
     if (!title.trim()) { setError("Task is required"); return; }
-    if (!dueAt) { setError("Due date is required"); return; }
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/tasks", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), dueAt, contactId: contactId || undefined, body: notes.trim() || undefined }),
+        body: JSON.stringify({ title: title.trim(), dueAt: dueAt || undefined, contactId: contactId || undefined, body: notes.trim() || undefined }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Could not create task");
@@ -99,7 +98,7 @@ function CreateTaskModal({ contacts, onClose, onCreated }: { contacts: ContactLi
     <Modal title="New Task" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button><Button onClick={submit} disabled={busy}>{busy ? <Spinner size={14} /> : "Create task"}</Button></>}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Task"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Follow up about…" autoFocus /></Field>
-        <Field label="Due date"><Input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} /></Field>
+        <Field label="Due date" hint="optional"><Input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} /></Field>
         {contacts.length > 0 && (
           <Field label="Contact" hint="optional — link this task to a contact">
             <Select value={contactId} onChange={(e) => setContactId(e.target.value)}>
