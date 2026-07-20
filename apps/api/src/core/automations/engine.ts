@@ -6,6 +6,7 @@ import { expireOverdueQuotes } from "../quotes/service";
 import { singleFlight } from "../single-flight";
 import { loadTemplateForRun } from "../research/store";
 import { getIntakePack, packLookup } from "../industry-pack";
+import { evaluateCustomFlows } from "./custom-flows";
 
 type ActionResult = "success" | "failed" | "skipped" | "pending";
 
@@ -362,6 +363,7 @@ export const runAutomationCycle = singleFlight(async (): Promise<void> => {
       evaluateCheckinWelcome(),
       evaluateUpsellFollowup(),
       evaluateResearchOnStage(),
+      evaluateCustomFlows(),
       evaluateQuoteExpiry()
     ]);
   } catch (err) {
