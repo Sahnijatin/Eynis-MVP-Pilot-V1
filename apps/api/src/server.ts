@@ -1,12 +1,13 @@
 import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { InMemoryEventBus } from "./events/event-bus";
 import { prisma } from "./db/prisma";
 import { Prisma } from "@prisma/client";
 import { isValidConsentSource } from "@eynis/shared";
 import { parseBearerToken, verifyAuthToken, assertJwtSecretConfigured, assertTokenExchangeConfigured } from "./core/auth";
 import { handleConnectorMessagingRoutes } from "./core/connectors/messaging-routes";
 import { handleAuthRoutes } from "./core/auth-routes";
+import { handlePublicWebhookRoutes } from "./core/webhooks/routes";
+import { eventBus } from "./events/bus";
 import { startAutomationWorker } from "./core/automations/engine";
 import { listInventory, applyMovement, updateItem, deleteItem, listMovements, yieldSummary, toPaise, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
@@ -18,9 +19,8 @@ import { rateLimit } from "./core/rate-limit";
 import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
-import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
-import { verifySharedWebhookSecret, webhookEnforcement } from "./core/connectors/webhook-verify";
-import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
+import { registerSSEClient, removeSSEClient } from "./sse/clients";
+import { webhookEnforcement } from "./core/connectors/webhook-verify";
 import { syncSystemRolePermissions } from "./core/rbac";
 import { enforceLicenseFeature, planOptions, isValidPlan, VALID_PLANS, DEFAULT_SEATS_FOR_PLAN, type PlanKey } from "./core/license";
 import { type Permission } from "./core/permissions";
@@ -43,9 +43,8 @@ import { buildReportBlocks, buildReportCsv } from "./core/research/render";
 import type { SynthResult } from "./core/research/synthesize";
 import { startResearchWorker } from "./core/research/worker";
 import { startResearchScheduleWorker, isCadence, advanceCadence, type Cadence } from "./core/research/schedule";
-import { json, sendDoc, sendBinary, parseRawBody, parseBody, hasString, asTrimmedString, asPositiveInt, parseUrl, asSafeLimit, asSafeOffset, numOrNull, numUndef, dateOrNull, normalizePhoneE164, clientIp, PayloadTooLargeError } from "./http/helpers";
+import { json, sendDoc, sendBinary, parseBody, hasString, asTrimmedString, asPositiveInt, parseUrl, asSafeLimit, asSafeOffset, numOrNull, numUndef, dateOrNull, normalizePhoneE164, clientIp, PayloadTooLargeError } from "./http/helpers";
 import { authorize, getAuthenticatedContext, canAccess, type RouteContext } from "./core/authz";
-import { upsertContactByPhone } from "./core/crm/upsert-contact";
 import { handleInventoryRoutes } from "./core/inventory/routes";
 import { handleMenuRoutes } from "./core/menu/routes";
 import { handleBookingRoutes } from "./core/bookings/routes";
@@ -75,8 +74,6 @@ import { ensureTenantAccess } from "./core/authz";
 export { permissionMap } from "./core/authz";
 export type { RouteContext } from "./core/authz";
 
-const eventBus = new InMemoryEventBus();
-
 eventBus.subscribe("service_request.created", (event) => {
   // Placeholder for upcoming Day 3 worker hooks.
   void event;
@@ -86,49 +83,7 @@ eventBus.subscribe("service_request.created", (event) => {
 // -window parser moved to core/analytics/routes.ts with the analytics routes, #164.)
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-const normalizePhone = (value: string) => value.replace(/\s+/g, "");
 
-const createServiceRequestForHotel = async (input: {
-  tenantId: string;
-  guestId: string;
-  category: string;
-  summary: string;
-  source: string;
-  priority?: string;
-  slaMinutes?: number | null;
-}) => {
-  const safePriority = input.priority ?? "normal";
-  const safeSlaDueAt =
-    input.slaMinutes && input.slaMinutes > 0
-      ? new Date(Date.now() + input.slaMinutes * 60 * 1000)
-      : null;
-  return prisma.serviceRequest.create({
-    data: {
-      tenantId: input.tenantId,
-      guestId: input.guestId,
-      category: input.category,
-      status: "open",
-      source: input.source,
-      summary: input.summary,
-      priority: safePriority,
-      slaDueAt: safeSlaDueAt
-    },
-    select: {
-      id: true,
-      tenantId: true,
-      guestId: true,
-      category: true,
-      status: true,
-      source: true,
-      summary: true,
-      assignedToUserId: true,
-      priority: true,
-      slaDueAt: true,
-      slaBreachedAt: true,
-      createdAt: true
-    }
-  });
-};
 
 // Gate for the internal provisioning console (E-8). This is the platform-staff
 // boundary — completely separate from tenant RBAC above. Writes its own response
@@ -571,40 +526,10 @@ const handleRequest = async (
     }
 
     // ── Vapi end-of-call webhook (public; verified by x-vapi-secret) ─────────
-    if (req.url === "/webhooks/vapi" && req.method === "POST") {
-      const rawBody = await parseRawBody(req);
-      let payload: unknown = {};
-      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
+    // ── Public webhooks + intake router (#164): vapi / events / public-requests /
+    // resend / pms extracted to core/webhooks/routes.ts
+    if (await handlePublicWebhookRoutes(req, res)) return;
 
-      const { verifyWebhook, resolveVapiCredentials } = await import("./core/campaigns/vapi");
-      const { normalizeVapiMessage, processVapiWebhook } = await import("./core/campaigns/webhook");
-
-      // Resolve the expected secret per-tenant: assistants are provisioned with the
-      // tenant's webhookSecret (ConnectorConfig, falling back to env), so verifying
-      // only against the global env var rejects tenants with their own secret (F-16).
-      // Mapping the call→tenant uses the unverified callId purely to pick which
-      // secret to check against — the caller must still present that secret.
-      let expectedSecret = asTrimmedString(process.env.VAPI_WEBHOOK_SECRET);
-      const evt = normalizeVapiMessage(payload);
-      if (evt.kind !== "ignore") {
-        const call = await prisma.callRecord.findUnique({ where: { vapiCallId: evt.callId }, select: { tenantId: true } });
-        if (call) {
-          const creds = await resolveVapiCredentials(call.tenantId);
-          if (creds.webhookSecret) expectedSecret = creds.webhookSecret;
-        }
-      }
-
-      const verdict = verifyWebhook({
-        provided: (req.headers["x-vapi-secret"] as string) ?? null,
-        expected: expectedSecret,
-        enforce: String(process.env.VERIFY_WEBHOOKS ?? "").toLowerCase() === "true",
-      });
-      if (!verdict.ok) { json(res, 401, { ok: false, error: verdict.reason ?? "Invalid webhook secret" }); return; }
-
-      const result = await processVapiWebhook(payload);
-      json(res, 200, { ok: true, ...result });
-      return;
-    }
 
     // ── GET /sse/live-feed — real-time event stream ───────────────────────────
     if (req.url?.startsWith("/sse/live-feed") && req.method === "GET") {
@@ -633,133 +558,6 @@ const handleRequest = async (
     // ── Tenant/self settings router (#164): extracted to core/tenant/routes.ts
     if (await handleTenantMeRoutes(req, res)) return;
 
-    if (req.url === "/events/service-request-created" && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /events/service-request-created");
-      if (!auth.ok) return;
-      const context = auth.context;
-
-      const hasAccess = await ensureTenantAccess(context.tenantId);
-      if (!hasAccess) {
-        json(res, 403, { ok: false, error: "Hotel not found or access denied" });
-        return;
-      }
-
-      eventBus.publish({
-        type: "service_request.created",
-        tenantId: context.tenantId,
-        payload: { source: "api" },
-        createdAt: new Date().toISOString()
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          tenantId: context.tenantId,
-          actorRole: context.role,
-          action: "service_request.created",
-          entityType: "service_request",
-          metadata: JSON.stringify({ source: "api" })
-        }
-      });
-
-      json(res, 202, { ok: true });
-      return;
-    }
-
-    if (req.url === "/public/requests" && req.method === "POST") {
-      // Throttle per client IP — this is an unauthenticated write (creates a Contact +
-      // ServiceRequest). Without a cap it can be scripted to flood a tenant's queue and
-      // create unbounded Contact rows (F-…). A public intake form is low-frequency.
-      const pip = clientIp(req);
-      if (!(await rateLimit(`public-req:${pip}`, 10, 60_000))) {
-        json(res, 429, { ok: false, error: "Too many requests. Please try again shortly." });
-        return;
-      }
-      const body = (await parseBody(req)) as {
-        tenantId?: unknown;
-        hotelId?: unknown;
-        guestName?: unknown;
-        guestPhone?: unknown;
-        category?: unknown;
-        summary?: unknown;
-        source?: unknown;
-      };
-      const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId from existing public links
-      const guestName = asTrimmedString(body.guestName);
-      const guestPhoneRaw = asTrimmedString(body.guestPhone);
-      const category = asTrimmedString(body.category) ?? "general";
-      const summary = asTrimmedString(body.summary);
-      const source = asTrimmedString(body.source) ?? "qr";
-      const guestPhone = guestPhoneRaw ? normalizePhone(guestPhoneRaw) : null;
-
-      if (!tenantId || !guestName || !guestPhone || !summary) {
-        json(res, 400, {
-          ok: false,
-          error: "tenantId, guestName, guestPhone and summary are required"
-        });
-        return;
-      }
-
-      const hasAccess = await ensureTenantAccess(tenantId);
-      if (!hasAccess) {
-        json(res, 404, { ok: false, error: "Hotel not found" });
-        return;
-      }
-
-      const guestId = await upsertContactByPhone(tenantId, guestName, guestPhone);
-      const serviceRequest = await createServiceRequestForHotel({
-        tenantId,
-        guestId,
-        category,
-        summary,
-        source,
-        priority: "normal"
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          tenantId,
-          actorRole: "guest",
-          action: "service_request.created.public",
-          entityType: "service_request",
-          entityId: serviceRequest.id,
-          metadata: JSON.stringify({ source, guestPhone })
-        }
-      });
-
-      json(res, 201, { ok: true, item: serviceRequest });
-      return;
-    }
-
-    // ── POST /webhooks/resend — public: email delivery/bounce/complaint events ──
-    // Feeds the per-tenant EmailSuppression list. Verified via the Svix signature
-    // when RESEND_WEBHOOK_SECRET is set (accept-all in dev, mirroring VERIFY_WEBHOOKS).
-    if (req.url === "/webhooks/resend" && req.method === "POST") {
-      const rawBody = await parseRawBody(req);
-      const secret = asTrimmedString(process.env.RESEND_WEBHOOK_SECRET);
-      if (!secret) {
-        // Fail closed in production: without the secret, forged bounce/complaint
-        // events could suppress arbitrary recipients (F-10). Accept-all only in dev.
-        if (process.env.NODE_ENV === "production") { json(res, 503, { ok: false, error: "Webhook secret not configured" }); return; }
-      } else {
-        const hdr = (k: string) => (typeof req.headers[k] === "string" ? (req.headers[k] as string) : null);
-        const tsHeader = hdr("svix-timestamp");
-        // Replay protection: reject stale or missing timestamps (Svix sends unix
-        // seconds) so a captured signed payload can't be replayed forever (F-10).
-        const tsSec = tsHeader ? Number(tsHeader) : NaN;
-        if (!Number.isFinite(tsSec) || Math.abs(Date.now() / 1000 - tsSec) > 300) {
-          json(res, 401, { ok: false, error: "Stale or missing webhook timestamp" }); return;
-        }
-        const valid = verifyResendSignature(secret, {
-          id: hdr("svix-id"), timestamp: tsHeader, signature: hdr("svix-signature"),
-        }, rawBody ?? "");
-        if (!valid) { json(res, 401, { ok: false, error: "Invalid webhook signature" }); return; }
-      }
-      let event: unknown;
-      try { event = rawBody ? JSON.parse(rawBody) : {}; } catch { json(res, 400, { ok: false, error: "Invalid JSON" }); return; }
-      const result = await processResendEvent(event as Parameters<typeof processResendEvent>[0]);
-      json(res, 200, { ok: true, action: result.action });
-      return;
-    }
 
     // ── Connector messaging router (#164): whatsapp webhook + connector events + send
     // extracted to core/connectors/messaging-routes.ts
@@ -802,83 +600,6 @@ const handleRequest = async (
     // ── AI + Night Audit routers (#164): extracted to core/ai/routes.ts ──────
     if (await handleAIRoutes(req, res)) return;
 
-    // ── POST /connectors/pms/simulate ────────────────────────────────────────
-    if (req.url === "/connectors/pms/simulate" && req.method === "POST") {
-      // Demo-only: fabricates a check-in with real DB writes. Disabled in
-      // production unless explicitly opted in, so it can't be used to seed
-      // bogus stays/contacts on a live tenant (F-2).
-      if (process.env.NODE_ENV === "production" && process.env.ENABLE_PMS_SIMULATE !== "true") {
-        json(res, 404, { ok: false, error: "Not found" }); return;
-      }
-      const auth = await authorize(req, res, "POST /connectors/pms/simulate");
-      if (!auth.ok) return;
-      const { tenantId } = auth.context;
-      const body = (await parseBody(req)) as { guestName?: unknown; roomNumber?: unknown };
-      const guestNameInput = asTrimmedString(body.guestName) ?? "Demo Guest";
-      const roomNumber = asTrimmedString(body.roomNumber) ?? `${Math.floor(Math.random() * 50) + 101}`;
-
-      const phone = `+9198${Math.floor(Math.random() * 90000000) + 10000000}`;
-      const guestId = await upsertContactByPhone(tenantId, guestNameInput, phone);
-      await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
-
-      const checkInAt = new Date();
-      const checkOutAt = new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
-      const stay = await prisma.stay.create({
-        data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt }
-      });
-
-      broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt } });
-
-      json(res, 201, { ok: true, stay: { id: stay.id, guestId, guestName: guestNameInput, roomNumber, checkInAt, checkOutAt } });
-      return;
-    }
-
-    // ── POST /connectors/pms/webhook ─────────────────────────────────────────
-    if (req.url === "/connectors/pms/webhook" && req.method === "POST") {
-      // This endpoint writes data (contacts, stays, visit counts) for the tenantId
-      // in the body, so it MUST be authenticated. Without the shared-secret gate
-      // anyone who knows a tenantId could inject check-in/checkout events (F-2).
-      const providedSecret = req.headers["x-webhook-secret"];
-      const secretCheck = verifySharedWebhookSecret({
-        expected: process.env.PMS_WEBHOOK_SECRET,
-        provided: typeof providedSecret === "string" ? providedSecret : Array.isArray(providedSecret) ? providedSecret[0] : null,
-        isProduction: process.env.NODE_ENV === "production"
-      });
-      if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
-
-      const rawBody = await parseRawBody(req);
-      const body = (rawBody ? JSON.parse(rawBody) : {}) as {
-        tenantId?: unknown; hotelId?: unknown; event?: unknown;
-        guest?: { name?: unknown; phone?: unknown };
-        reservation?: { roomNumber?: unknown; checkIn?: unknown; checkOut?: unknown };
-      };
-      const tenantId = asTrimmedString(body.tenantId) ?? asTrimmedString(body.hotelId); // accept legacy hotelId from existing PMS integrations
-      const eventType = asTrimmedString(body.event) ?? "guest.checkin";
-      if (!tenantId) { json(res, 400, { ok: false, error: "tenantId is required" }); return; }
-      const hasAccess = await ensureTenantAccess(tenantId);
-      if (!hasAccess) { json(res, 404, { ok: false, error: "Hotel not found" }); return; }
-
-      const guestName = asTrimmedString(body.guest?.name) ?? "PMS Guest";
-      const guestPhone = asTrimmedString(body.guest?.phone) ?? `+9199${Math.floor(Math.random() * 90000000) + 10000000}`;
-      const roomNumber = asTrimmedString(body.reservation?.roomNumber) ?? "101";
-      const checkInAt = body.reservation?.checkIn ? new Date(body.reservation.checkIn as string) : new Date();
-      const checkOutAt = body.reservation?.checkOut ? new Date(body.reservation.checkOut as string) : new Date(checkInAt.getTime() + 2 * 24 * 60 * 60 * 1000);
-
-      const guestId = await upsertContactByPhone(tenantId, guestName, guestPhone);
-
-      if (eventType === "guest.checkin") {
-        await prisma.contact.update({ where: { id: guestId }, data: { visitCount: { increment: 1 } } });
-        const stay = await prisma.stay.create({ data: { tenantId, guestId, roomNumber, checkInAt, checkOutAt } });
-        broadcastSSEEvent(tenantId, { type: "checkin_event", data: { stayId: stay.id, guestId, guestName, roomNumber, checkInAt } });
-        json(res, 201, { ok: true, event: "checkin", stayId: stay.id, guestId });
-      } else if (eventType === "guest.checkout") {
-        broadcastSSEEvent(tenantId, { type: "checkout_event", data: { guestId, guestName, roomNumber, checkOutAt } });
-        json(res, 200, { ok: true, event: "checkout", guestId });
-      } else {
-        json(res, 200, { ok: true, event: eventType, guestId });
-      }
-      return;
-    }
 
     // ── Team router (#164): extracted to core/team/routes.ts ─────────────────
     if (await handleTeamRoutes(req, res)) return;
