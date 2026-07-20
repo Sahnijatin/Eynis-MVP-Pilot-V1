@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { sendWhatsAppReply } from "../connectors/whatsapp-outbound";
+import { sendWhatsAppReply, sendApprovedWhatsAppTemplate } from "../connectors/whatsapp-outbound";
 import { evaluateOutboundSend, recordAutomatedSend } from "../connectors/messaging-guardrails";
 import { expireOverdueQuotes } from "../quotes/service";
 import { singleFlight } from "../single-flight";
@@ -135,7 +135,7 @@ export async function evaluateSentimentLowFlag() {
 export async function evaluateCheckinWelcome() {
   const rules = await prisma.automationRule.findMany({
     where: { code: "checkin_welcome", isActive: true },
-    select: { id: true, tenantId: true, code: true }
+    select: { id: true, tenantId: true, code: true, configJson: true }
   });
 
   const now = new Date();
@@ -150,6 +150,17 @@ export async function evaluateCheckinWelcome() {
       select: { name: true, branding: { select: { brandName: true } } }
     });
     const brandName = tenant?.branding?.brandName?.trim() || tenant?.name?.trim() || "us";
+
+    // Template gate (#168): a business-initiated welcome should go through a
+    // manager-approved WhatsApp template. When the rule config names one, the send
+    // uses it (Meta-compliant); with WHATSAPP_REQUIRE_TEMPLATE=true a missing/
+    // unapproved template blocks the send rather than falling back to free text.
+    let welcomeTemplateId: string | null = null;
+    try {
+      const cfg = JSON.parse(rule.configJson || "{}") as { welcomeTemplateId?: unknown };
+      welcomeTemplateId = typeof cfg.welcomeTemplateId === "string" && cfg.welcomeTemplateId.trim() ? cfg.welcomeTemplateId.trim() : null;
+    } catch { /* ignore malformed config */ }
+    const requireTemplate = process.env.WHATSAPP_REQUIRE_TEMPLATE === "true";
 
     const recentStays = await prisma.stay.findMany({
       where: { tenantId: rule.tenantId, checkInAt: { gte: thirtyMinsAgo, lte: now } },
@@ -175,10 +186,26 @@ export async function evaluateCheckinWelcome() {
       }
 
       const firstName = guest.fullName.split(" ")[0] ?? guest.fullName;
-      const message = `Welcome to ${brandName}, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — The ${brandName} Team`;
 
       try {
-        const result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);
+        let result;
+        if (welcomeTemplateId) {
+          // Manager-approved template path (Meta-compliant business-initiated send).
+          result = await sendApprovedWhatsAppTemplate(rule.tenantId, guest.phoneE164, welcomeTemplateId, {
+            firstName, guestName: guest.fullName, roomNumber: stay.roomNumber, brandName,
+          });
+          if (result.templateNotApproved) {
+            await finalizeExecution(rule.id, stay.id, "skipped", `Welcome template ${welcomeTemplateId} is not approved`);
+            continue;
+          }
+        } else if (requireTemplate) {
+          // Strict gate: no approved template configured → don't send free text.
+          await finalizeExecution(rule.id, stay.id, "skipped", "No approved welcome template configured (WHATSAPP_REQUIRE_TEMPLATE)");
+          continue;
+        } else {
+          const message = `Welcome to ${brandName}, ${firstName}! We're delighted to have you in Room ${stay.roomNumber}. Need anything during your stay? Just WhatsApp us anytime — The ${brandName} Team`;
+          result = await sendWhatsAppReply(rule.tenantId, guest.phoneE164, message);
+        }
         if (result.sent) await recordAutomatedSend(rule.tenantId, guest.phoneE164, rule.code);
         await finalizeExecution(rule.id, stay.id, result.sent ? "success" : "failed",
           result.sent ? `Welcome sent to ${guest.phoneE164}` : (result.error ?? "Send failed"));

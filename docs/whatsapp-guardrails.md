@@ -69,10 +69,37 @@ so a bad value never throws mid-send.
   them against the daily cap; treat these caps as cost controls, not just
   anti-spam.
 
-## Follow-ups (not in this change)
+## 4. Manager-approved template library (business-initiated sends)
 
-- **Approved template library** gating business-initiated message formats (Meta
-  requires pre-approved templates for out-of-session sends; `sendWhatsAppTemplate`
-  already exists — a manager-approved template registry would gate which
-  `contentSid`s the automations may use).
+Meta only permits business-initiated WhatsApp messages via a **pre-approved
+template**. Eynis enforces this through a per-tenant template library with a
+manager-gated approval lifecycle, so guest/employee-facing message *formats* are
+governed, not free-typed.
+
+- **Library + approval workflow** (`MessageTemplate`, managed at `/templates*` in
+  `core/campaigns/marketing-routes.ts`, gated by the `manage_campaigns` permission):
+  `draft → submitted → approved | rejected`. Approval records the provider Content
+  SID; content is locked once approved.
+- **Campaign / sequence sends** resolve through the single chokepoint
+  `core/campaigns/whatsapp-template.ts` (`resolveApprovedWhatsappTemplate` /
+  `isApprovedWhatsappTemplate`) and refuse anything not `approved` — a sequence
+  can't even be activated with an unapproved WhatsApp step.
+- **Operational automated sends** (the `checkin_welcome` automation) go through
+  `sendApprovedWhatsAppTemplate` (`core/connectors/whatsapp-outbound.ts`) when the
+  rule config names a `welcomeTemplateId`: the approved template's ordered
+  `{variable}`s are mapped to positional Twilio Content variables. An unapproved /
+  missing template is **skipped**, never sent as free text.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WHATSAPP_REQUIRE_TEMPLATE` | `false` | Strict gate: when `true`, a business-initiated automated send with **no** approved template configured is skipped instead of falling back to free text. Leave `false` in dev/demo (free-text welcome preserved). |
+
+Transactional replies (a response to a message the subject just sent, inside the
+24-hour customer-service window) are exempt — Meta allows free-form session
+messages, so they don't require a template.
+
+## Follow-ups
+
 - Per-tenant (vs platform-env) cap / quiet-hours configuration surface.
