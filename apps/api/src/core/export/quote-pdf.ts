@@ -59,7 +59,9 @@ const safe = (s: unknown): string =>
     .replace(/…/g, "...") // horizontal ellipsis
     .replace(/•/g, "-") // bullet → hyphen
     .replace(/[^\x00-\xFF]/g, "");
-const money = (paise: number): string => `Rs. ${(Math.round(paise) / 100).toFixed(2)}`;
+// Indian digit grouping (lakh/crore): 12500000 paise → "Rs. 1,25,000.00".
+const money = (paise: number): string =>
+  `Rs. ${(Math.round(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function truncate(s: string, font: PDFFont, size: number, maxW: number): string {
   s = safe(s);
@@ -105,7 +107,7 @@ export interface QuotationPdfData {
 
 // Item table column layout (fractions of content width). Numeric columns are right-aligned.
 // The Image(s) column (clickable "Image N" links) sits right after Quantity.
-const COLS = { item: 0.35, qty: 0.08, images: 0.16, price: 0.15, tax: 0.14, amount: 0.12 };
+const COLS = { item: 0.34, qty: 0.07, images: 0.14, price: 0.15, tax: 0.14, amount: 0.16 };
 
 // Neutral, industry-agnostic boilerplate shown when the quote carries no terms of its
 // own, so the document is never blank there. Kept generic (no payment/advance terms) so
@@ -269,7 +271,8 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
     if (imgCount) drawRowImageLinks(it.imageIndices, y);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
-    T(`${money(it.taxPaise)} (${it.taxPct}%)`, cTax + 4, ty, 8, font, INK);
+    // Per-line tax amount only — the rate is stated in the summary (CGST/SGST/IGST @…%).
+    T(money(it.taxPaise), cTax + 4, ty, 8.5, font, INK);
     TR(money(it.amountPaise), RIGHT - 8, ty, 9, font, INK);
     page.drawLine({ start: { x: LEFT, y: y - rowH }, end: { x: RIGHT, y: y - rowH }, thickness: 0.5, color: LINE });
     y -= rowH;
@@ -301,6 +304,12 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     lyR -= boldRow ? 20 : 16;
   };
   const halfPct = data.view.gstPct / 2;
+  // Discount-before-tax presentation (GST-compliant): list Sub Total, less the Discount,
+  // gives the Taxable Amount, then GST is charged on that post-discount value.
+  if (data.view.discountPaise > 0) {
+    sumRow("Sub Total", money(data.view.grossSubtotalPaise));
+    sumRow("Discount", `- ${money(data.view.discountPaise)}`);
+  }
   sumRow("Taxable Amount", money(data.view.taxablePaise));
   if (data.view.gstPct > 0) {
     if (data.view.interState) {
@@ -311,7 +320,6 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
       sumRow(`SGST @${halfPct}%`, money(data.view.sgstPaise));
     }
   }
-  if (data.view.discountPaise > 0) sumRow("Discount", `- ${money(data.view.discountPaise)}`);
   page.drawLine({ start: { x: rightX, y: lyR + 6 }, end: { x: RIGHT, y: lyR + 6 }, thickness: 0.75, color: LINE });
   lyR -= 6;
   sumRow("Total Amount", money(data.view.grandTotalPaise), true);
@@ -325,8 +333,15 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   if (s.bankBranch) bankLines.push(`Branch: ${s.bankBranch}`);
   if (s.ifsc) bankLines.push(`IFSC code: ${s.ifsc}`);
   if (s.upi) bankLines.push(`UPI ID: ${s.upi}`);
-  const heading = (label: string) => { T(label, LEFT, lyL, 10, bold, INK); lyL -= 15; };
-  const bodyLines = (lines: string[], size = 9) => { for (const l of lines) { T(truncate(l, font, size, leftColW), LEFT, lyL, size, font, INK); lyL -= size + 4; } };
+  // Long bank/notes/terms must not overflow the page — spill to a fresh page (reserving
+  // room below for the signature block) instead of drawing over the bottom margin/border.
+  const leftBottom = MARGIN + 60;
+  let leftPaginated = false;
+  const ensureLeft = (need: number) => {
+    if (lyL - need < leftBottom) { page = doc.addPage(A4); lyL = A4[1] - MARGIN; leftPaginated = true; }
+  };
+  const heading = (label: string) => { ensureLeft(15); T(label, LEFT, lyL, 10, bold, INK); lyL -= 15; };
+  const bodyLines = (lines: string[], size = 9) => { for (const l of lines) { ensureLeft(size + 4); T(truncate(l, font, size, leftColW), LEFT, lyL, size, font, INK); lyL -= size + 4; } };
   if (bankLines.length) { heading("Bank Details"); bodyLines(bankLines); lyL -= 8; }
   if (data.notes) { heading("Notes"); bodyLines(wrap(data.notes, font, 9, leftColW)); lyL -= 8; }
   const termsText = (data.terms && data.terms.trim()) ? data.terms : DEFAULT_TERMS;
@@ -335,9 +350,11 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   // ── Signatures ────────────────────────────────────────────────────────────────
   // Anchor the signature block to the bottom of the page (standard document layout).
   // If the content already reaches too far down to fit it, move to a fresh page so the
-  // signatures never overlap the tax summary / terms.
+  // signatures never overlap the tax summary / terms. When the left column spilled to a
+  // new page, the tax summary is on an earlier page, so only the left cursor matters.
+  const contentBottomY = leftPaginated ? lyL : Math.min(lyL, lyR);
   const footY = MARGIN + 36;
-  if (Math.min(lyL, lyR) < footY + 24) { page = doc.addPage(A4); y = A4[1] - MARGIN; }
+  if (contentBottomY < footY + 24) { page = doc.addPage(A4); y = A4[1] - MARGIN; }
   page.drawLine({ start: { x: LEFT, y: footY + 14 }, end: { x: LEFT + 150, y: footY + 14 }, thickness: 0.5, color: LINE });
   T("Customer Signature", LEFT, footY, 9, font, MUTED);
   page.drawLine({ start: { x: RIGHT - 170, y: footY + 14 }, end: { x: RIGHT, y: footY + 14 }, thickness: 0.5, color: LINE });

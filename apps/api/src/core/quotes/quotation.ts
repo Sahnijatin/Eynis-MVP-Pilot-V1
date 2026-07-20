@@ -9,6 +9,8 @@
 //     selling price, with GST split into CGST/SGST. Internal material/labor/overhead/
 //     margin never appears. All money is integer paise.
 
+import { gstAmountPaise } from "./costing"; // the ONE GST formula — see below (pure, no I/O)
+
 export interface SellerDetails {
   name?: string;
   address?: string;
@@ -209,15 +211,16 @@ export interface QuotationItem {
 export interface QuotationView {
   items: QuotationItem[];
   totalQuantity: number;
-  subTotalPaise: number; // Σ item amounts (incl. tax)
-  taxablePaise: number; // ex-GST taxable value (pre-discount)
+  subTotalPaise: number; // Σ item amounts (incl. tax) — gross (pre-discount) + GST
+  grossSubtotalPaise: number; // ex-GST list value BEFORE discount (Σ item unit prices)
+  taxablePaise: number; // ex-GST taxable value AFTER discount (the GST base)
   gstPct: number;
   interState: boolean; // true → GST charged as IGST; false → split CGST+SGST
   cgstPaise: number; // 0 when interState
   sgstPaise: number; // 0 when interState
   igstPaise: number; // 0 when NOT interState
   discountPaise: number;
-  grandTotalPaise: number; // taxable + gst − discount
+  grandTotalPaise: number; // taxable (post-discount) + gst
 }
 
 // The 2-digit GST state code is the leading pair of a GSTIN (e.g. "07" = Delhi). Returns
@@ -243,8 +246,12 @@ const dimsOf = (l: ViewLine): string => {
 
 // Build the customer-facing quotation from the internal quote. The selling total is
 // allocated across pieces proportional to their internal cost (the customer sees only
-// the piece and its price). GST is charged on the pre-discount taxable value and the
-// discount is applied after tax — the standard trade-discount presentation.
+// the piece and its price). Pieces are shown at their pre-discount LIST price; the
+// discount then reduces the taxable value and GST is charged on the POST-discount
+// amount — the GST-compliant presentation (a discount at time of supply is excluded
+// from taxable value). GST uses the shared gstAmountPaise on the post-discount total,
+// the SAME formula the serializer / public view / BUSY export use, so the branded PDF's
+// tax and grand total can never disagree with them.
 export function buildQuotationView(q: {
   lineItems: ViewLine[];
   totalPaise: number; // ex-GST selling value, AFTER discount (the engine's stored total)
@@ -260,8 +267,12 @@ export function buildQuotationView(q: {
   const idxByGroup = lineImageIndexByGroup(images);
   const gstPct = Math.max(0, Number(q.gstPercent) || 0);
   const discountPaise = Math.max(0, Math.round(Number(q.discountPaise) || 0));
-  const netTotal = Math.max(0, Math.round(Number(q.totalPaise) || 0));
-  const taxablePaise = netTotal + discountPaise; // pre-discount ex-GST value
+  const netTotal = Math.max(0, Math.round(Number(q.totalPaise) || 0)); // ex-GST, post-discount (the GST taxable value)
+  const grossPaise = netTotal + discountPaise; // ex-GST list value, pre-discount
+
+  // GST on the POST-discount taxable value, single-rounded via the shared formula so the
+  // headline tax/total match the serializer, public view and BUSY voucher exactly.
+  const gstTotal = gstAmountPaise(netTotal, gstPct);
 
   // Group the internal lines into pieces, preserving first-seen order.
   const order: string[] = [];
@@ -274,26 +285,27 @@ export function buildQuotationView(q: {
   const totalCost = costByGroup.reduce((s, c) => s + c, 0);
 
   const items: QuotationItem[] = [];
-  let allocated = 0;
-  let gstTotal = 0;
+  let allocatedEx = 0; // Σ per-piece list price so far (must sum to grossPaise)
+  let allocatedTax = 0; // Σ per-piece GST so far (must sum to gstTotal)
   order.forEach((group, i) => {
     const last = i === order.length - 1;
+    // Per-piece LIST price allocated on the gross (pre-discount) value.
     const exTax = last || totalCost <= 0
-      ? taxablePaise - allocated
-      : Math.round((taxablePaise * costByGroup[i]) / totalCost);
-    allocated += exTax;
-    const tax = Math.round((exTax * gstPct) / 100);
-    gstTotal += tax;
+      ? grossPaise - allocatedEx
+      : Math.round((grossPaise * costByGroup[i]) / totalCost);
+    allocatedEx += exTax;
+    // Per-piece GST is a display allocation of the single-rounded headline gstTotal
+    // (remainder on the last piece) so the per-line taxes sum EXACTLY to it.
+    const tax = last ? gstTotal - allocatedTax : grossPaise > 0 ? Math.round((gstTotal * exTax) / grossPaise) : 0;
+    allocatedTax += tax;
     const lines = groups.get(group)!;
     const spec = lines.map((l) => { const d = dimsOf(l); return d ? `${l.name} (${d})` : l.name; }).join(", ");
     items.push({ name: group, hsn: hsnByGroup[group], spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [], imageIndices: idxByGroup.get(group) ?? [] });
   });
 
   // Degenerate case (no line items): a single line for the whole quote.
-  if (items.length === 0 && taxablePaise > 0) {
-    const tax = Math.round((taxablePaise * gstPct) / 100);
-    gstTotal = tax;
-    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax, images: [], imageIndices: [] });
+  if (items.length === 0 && grossPaise > 0) {
+    items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: grossPaise, taxPct: gstPct, taxPaise: gstTotal, amountPaise: grossPaise + gstTotal, images: [], imageIndices: [] });
   }
 
   // Place of supply: inter-state ONLY when both GSTINs are known and their state codes
@@ -311,13 +323,14 @@ export function buildQuotationView(q: {
     items,
     totalQuantity: items.reduce((s, it) => s + it.quantity, 0),
     subTotalPaise,
-    taxablePaise,
+    grossSubtotalPaise: grossPaise,
+    taxablePaise: netTotal, // post-discount GST base
     gstPct,
     interState,
     cgstPaise,
     sgstPaise,
     igstPaise,
     discountPaise,
-    grandTotalPaise: taxablePaise + gstTotal - discountPaise,
+    grandTotalPaise: netTotal + gstTotal, // === service.gstAmountPaise path
   };
 }

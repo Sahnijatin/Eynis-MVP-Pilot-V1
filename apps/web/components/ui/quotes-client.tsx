@@ -314,6 +314,12 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const [marginPct, setMarginPct] = useState(String(editQuote?.marginPct ?? 45));
   const [marginFloorPct, setMarginFloorPct] = useState(String(editQuote?.marginFloorPct ?? 30));
   const [gstPct, setGstPct] = useState(String(editQuote?.gstPercent ?? 18));
+  // Validity date — drives the PDF's "Valid Until" line, the default terms' "valid for N
+  // days", and auto-expiry. New quotes default to 15 days out; edits keep the saved date.
+  const [validUntil, setValidUntil] = useState(
+    editQuote?.validUntil ? new Date(editQuote.validUntil).toISOString().slice(0, 10)
+      : editQuote ? "" : new Date(Date.now() + 15 * 86_400_000).toISOString().slice(0, 10),
+  );
   // Seed edit state without rounding away sub-rupee precision — Math.round here
   // silently changed a draft's totals on an open→save round-trip (₹12.50 → ₹13).
   const [discountInr, setDiscountInr] = useState(String((editQuote?.discountPaise ?? 0) / 100));
@@ -477,6 +483,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       const knobs = {
         overheadPct: num(overheadPct), marginPct: num(marginPct), marginFloorPct: num(marginFloorPct),
         gstPercent: num(gstPct), discountPaise: Math.round(num(discountInr) * 100),
+        validUntil: validUntil || null,
       };
       const customer = custSel === "new" ? { customer: { fullName: newCust.fullName, phoneE164: newCust.phone, email: newCust.email } }
         : custSel ? { contactId: custSel } : {};
@@ -624,6 +631,9 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           <Field label="Labor ₹/hr"><Input type="number" value={laborRateInr} onChange={(e) => setLaborRateInr(e.target.value)} /></Field>
           <Field label="Discount ₹"><Input type="number" value={discountInr} onChange={(e) => setDiscountInr(e.target.value)} /></Field>
           <Field label="GST %"><Input type="number" value={gstPct} onChange={(e) => setGstPct(e.target.value)} /></Field>
+        </div>
+        <div style={{ marginTop: 10, maxWidth: 220 }}>
+          <Field label="Valid until"><Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></Field>
         </div>
 
         {/* Line items */}

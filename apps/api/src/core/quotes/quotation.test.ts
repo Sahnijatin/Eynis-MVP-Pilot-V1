@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName } from "./quotation";
+import { gstAmountPaise } from "./costing";
 
 // A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
 const DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
@@ -154,18 +155,32 @@ test("buildQuotationView: attaches images to the matching piece by groupName", (
   assert.equal(wardrobe.images.length, 0);
 });
 
-test("buildQuotationView: discount is shown pre-tax-value and applied after GST", () => {
+test("buildQuotationView: discount reduces the taxable value; GST on the post-discount amount", () => {
   const view = buildQuotationView({
     lineItems: [line("Item", "A", 1000)],
     totalPaise: 90000, // already net of a 10000 discount
     discountPaise: 10000,
     gstPercent: 10,
   });
-  assert.equal(view.taxablePaise, 100000); // gross (pre-discount)
+  assert.equal(view.grossSubtotalPaise, 100000); // list value, pre-discount
   assert.equal(view.discountPaise, 10000);
+  assert.equal(view.taxablePaise, 90000); // post-discount GST base
   const gst = view.cgstPaise + view.sgstPaise;
-  assert.equal(gst, 10000); // 10% of gross
-  assert.equal(view.grandTotalPaise, 100000 + 10000 - 10000);
+  assert.equal(gst, 9000); // 10% of the POST-discount value (compliant)
+  assert.equal(view.grandTotalPaise, 90000 + 9000);
+  // The item's list price is gross; its GST allocation sums to the headline.
+  assert.equal(view.items[0].unitPricePaise, 100000);
+  assert.equal(view.items.reduce((s, i) => s + i.taxPaise, 0), gst);
+});
+
+test("buildQuotationView: headline GST/total match gstAmountPaise exactly (PDF ↔ voucher invariant)", () => {
+  for (const [total, discount, pct] of [[90000, 10000, 10], [123457, 7777, 18], [50000, 0, 12]] as const) {
+    const view = buildQuotationView({ lineItems: [line("A", "a", 3), line("B", "b", 7)], totalPaise: total, discountPaise: discount, gstPercent: pct });
+    const expectedGst = gstAmountPaise(total, pct);
+    assert.equal(view.cgstPaise + view.sgstPaise + view.igstPaise, expectedGst, `gst for ${total}/${pct}`);
+    assert.equal(view.grandTotalPaise, total + expectedGst, `grand for ${total}/${pct}`);
+    assert.equal(view.items.reduce((s, i) => s + i.taxPaise, 0), expectedGst, `per-line tax sums to headline for ${total}/${pct}`);
+  }
 });
 
 test("buildQuotationView: no line items still yields a single positive line", () => {
