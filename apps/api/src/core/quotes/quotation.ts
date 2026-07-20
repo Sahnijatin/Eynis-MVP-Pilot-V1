@@ -148,8 +148,53 @@ export function lineImageIndexByGroup(images: LineImages): Map<string, number[]>
   return map;
 }
 
+// Per-piece HSN (goods) / SAC (services) codes shown on the quotation, keyed by
+// groupName. Codes are 4–8 digit numeric strings; the sanitizer strips non-digits and
+// drops anything outside that length. Mirrors the LineImages storage pattern.
+export type HsnByGroup = Record<string, string>;
+
+export function cleanHsnByGroup(o: unknown): HsnByGroup {
+  const src = (o ?? {}) as Record<string, unknown>;
+  const out: HsnByGroup = {};
+  let count = 0;
+  for (const [group, raw] of Object.entries(src)) {
+    if (count >= 500) break; // bound the map
+    const digits = String(raw ?? "").replace(/\D/g, "");
+    if (digits.length < 4 || digits.length > 8) continue;
+    out[String(group).slice(0, 200)] = digits;
+    count++;
+  }
+  return out;
+}
+export function parseHsnByGroup(json: string | null | undefined): HsnByGroup {
+  if (!json) return {};
+  try { return cleanHsnByGroup(JSON.parse(json)); } catch { return {}; }
+}
+export function serializeHsnByGroup(o: unknown): string | null {
+  const c = cleanHsnByGroup(o);
+  return Object.keys(c).length ? JSON.stringify(c) : null;
+}
+
+// GST state code → state/UT name (the leading 2 digits of a GSTIN). Used to print the
+// Place of Supply on the quotation.
+const GST_STATE_NAMES: Record<string, string> = {
+  "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
+  "05": "Uttarakhand", "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+  "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur",
+  "15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam", "19": "West Bengal",
+  "20": "Jharkhand", "21": "Odisha", "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+  "25": "Daman & Diu", "26": "Dadra & Nagar Haveli and Daman & Diu", "27": "Maharashtra",
+  "28": "Andhra Pradesh (Old)", "29": "Karnataka", "30": "Goa", "31": "Lakshadweep", "32": "Kerala",
+  "33": "Tamil Nadu", "34": "Puducherry", "35": "Andaman & Nicobar Islands", "36": "Telangana",
+  "37": "Andhra Pradesh", "38": "Ladakh", "97": "Other Territory", "99": "Centre Jurisdiction",
+};
+export function gstStateName(code: string | null | undefined): string | null {
+  return GST_STATE_NAMES[String(code ?? "").trim()] ?? null;
+}
+
 export interface QuotationItem {
   name: string; // the piece (groupName)
+  hsn?: string; // HSN/SAC code for this piece, if provided
   spec: string; // its components + dimensions, as a customer-readable spec
   quantity: number;
   unit: string;
@@ -167,10 +212,19 @@ export interface QuotationView {
   subTotalPaise: number; // Σ item amounts (incl. tax)
   taxablePaise: number; // ex-GST taxable value (pre-discount)
   gstPct: number;
-  cgstPaise: number;
-  sgstPaise: number;
+  interState: boolean; // true → GST charged as IGST; false → split CGST+SGST
+  cgstPaise: number; // 0 when interState
+  sgstPaise: number; // 0 when interState
+  igstPaise: number; // 0 when NOT interState
   discountPaise: number;
   grandTotalPaise: number; // taxable + gst − discount
+}
+
+// The 2-digit GST state code is the leading pair of a GSTIN (e.g. "07" = Delhi). Returns
+// null when the value isn't a GSTIN with a leading numeric state code.
+export function gstStateCode(gstin: string | undefined | null): string | null {
+  const m = /^(\d{2})/.exec(String(gstin ?? "").trim());
+  return m ? m[1] : null;
 }
 
 interface ViewLine {
@@ -197,8 +251,12 @@ export function buildQuotationView(q: {
   discountPaise: number;
   gstPercent: number;
   images?: LineImages; // per-piece images keyed by groupName
+  hsnByGroup?: HsnByGroup; // per-piece HSN/SAC codes keyed by groupName
+  sellerGstin?: string | null; // issuer GSTIN — place of supply origin
+  buyerGstin?: string | null; // customer GSTIN — determines intra- vs inter-state
 }): QuotationView {
   const images = cleanLineImages(q.images);
+  const hsnByGroup = cleanHsnByGroup(q.hsnByGroup);
   const idxByGroup = lineImageIndexByGroup(images);
   const gstPct = Math.max(0, Number(q.gstPercent) || 0);
   const discountPaise = Math.max(0, Math.round(Number(q.discountPaise) || 0));
@@ -228,7 +286,7 @@ export function buildQuotationView(q: {
     gstTotal += tax;
     const lines = groups.get(group)!;
     const spec = lines.map((l) => { const d = dimsOf(l); return d ? `${l.name} (${d})` : l.name; }).join(", ");
-    items.push({ name: group, spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [], imageIndices: idxByGroup.get(group) ?? [] });
+    items.push({ name: group, hsn: hsnByGroup[group], spec, quantity: 1, unit: "unit", unitPricePaise: exTax, taxPct: gstPct, taxPaise: tax, amountPaise: exTax + tax, images: images[group] ?? [], imageIndices: idxByGroup.get(group) ?? [] });
   });
 
   // Degenerate case (no line items): a single line for the whole quote.
@@ -238,8 +296,15 @@ export function buildQuotationView(q: {
     items.push({ name: "Quotation", spec: "", quantity: 1, unit: "unit", unitPricePaise: taxablePaise, taxPct: gstPct, taxPaise: tax, amountPaise: taxablePaise + tax, images: [], imageIndices: [] });
   }
 
-  const cgstPaise = Math.round(gstTotal / 2);
-  const sgstPaise = gstTotal - cgstPaise; // remainder on SGST so the two halves sum exactly
+  // Place of supply: inter-state ONLY when both GSTINs are known and their state codes
+  // differ → GST is charged as a single IGST line. Otherwise intra-state (CGST+SGST),
+  // which also covers the common case of an unregistered/unknown buyer (no GSTIN).
+  const sellerState = gstStateCode(q.sellerGstin);
+  const buyerState = gstStateCode(q.buyerGstin);
+  const interState = !!sellerState && !!buyerState && sellerState !== buyerState;
+  const igstPaise = interState ? gstTotal : 0;
+  const cgstPaise = interState ? 0 : Math.round(gstTotal / 2);
+  const sgstPaise = interState ? 0 : gstTotal - cgstPaise; // remainder on SGST so the two halves sum exactly
   const subTotalPaise = items.reduce((s, it) => s + it.amountPaise, 0);
 
   return {
@@ -248,8 +313,10 @@ export function buildQuotationView(q: {
     subTotalPaise,
     taxablePaise,
     gstPct,
+    interState,
     cgstPaise,
     sgstPaise,
+    igstPaise,
     discountPaise,
     grandTotalPaise: taxablePaise + gstTotal - discountPaise,
   };

@@ -8,6 +8,8 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import type { SellerDetails, BillTo, QuotationView } from "../quotes/quotation";
+import { gstStateCode, gstStateName } from "../quotes/quotation";
+import { tryEmbedLogo } from "./report-pdf";
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 34;
@@ -43,8 +45,20 @@ const hexToRgb = (hex: string): RGB => {
   return rgb(parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255);
 };
 
-// Helvetica is WinAnsi — map ₹ and drop anything unencodable so drawText never throws.
-const safe = (s: unknown): string => String(s ?? "").replace(/₹/g, "Rs.").replace(/[^\x00-\xFF]/g, "");
+// Helvetica is WinAnsi (Latin-1). Map ₹ and the common "smart" punctuation that
+// copy-paste from Word/email/browsers inserts (em/en dashes, curly quotes, ellipsis,
+// bullets) to Latin-1 equivalents so they RENDER instead of being silently deleted.
+// Anything still outside Latin-1 (e.g. Devanagari/Tamil names) is dropped — rendering
+// those needs an embedded Unicode font, tracked separately. drawText never throws.
+const safe = (s: unknown): string =>
+  String(s ?? "")
+    .replace(/₹/g, "Rs.")
+    .replace(/[‒-―]/g, "-") // figure/en/em/horizontal dashes → hyphen
+    .replace(/[‘’‚‛]/g, "'") // curly single quotes/low-9 → '
+    .replace(/[“”„‟]/g, '"') // curly double quotes/low-9 → "
+    .replace(/…/g, "...") // horizontal ellipsis
+    .replace(/•/g, "-") // bullet → hyphen
+    .replace(/[^\x00-\xFF]/g, "");
 const money = (paise: number): string => `Rs. ${(Math.round(paise) / 100).toFixed(2)}`;
 
 function truncate(s: string, font: PDFFont, size: number, maxW: number): string {
@@ -70,6 +84,7 @@ function wrap(text: string, font: PDFFont, size: number, maxW: number): string[]
 
 export interface QuotationPdfData {
   number: string;
+  subject?: string | null; // the quote title, shown as its own "Subject" line (not jammed into the number)
   date: Date;
   seller: SellerDetails;
   billTo: BillTo;
@@ -79,6 +94,9 @@ export interface QuotationPdfData {
   validUntil?: Date | null;
   accentColor: string;
   brandName: string;
+  // Tenant brand logo (best-effort). Fetched + embedded server-side via the shared
+  // SSRF-guarded helper; null/unreachable → text seller name only (no logo).
+  logoUrl?: string | null;
   // Absolute URL prefix for image links, e.g. "https://demo.eynis.com/api/public/
   // quote-image/<token>". The Image(s) column renders "Image N" links to `${base}/<idx>`
   // (opens) and `${base}/<idx>?download=1` (downloads). Null → plain text, no links.
@@ -87,7 +105,17 @@ export interface QuotationPdfData {
 
 // Item table column layout (fractions of content width). Numeric columns are right-aligned.
 // The Image(s) column (clickable "Image N" links) sits right after Quantity.
-const COLS = { item: 0.30, qty: 0.10, images: 0.18, price: 0.16, tax: 0.14, amount: 0.12 };
+const COLS = { item: 0.35, qty: 0.08, images: 0.16, price: 0.15, tax: 0.14, amount: 0.12 };
+
+// Neutral, industry-agnostic boilerplate shown when the quote carries no terms of its
+// own, so the document is never blank there. Kept generic (no payment/advance terms) so
+// it's safe for any tenant; a tenant that sets its own terms overrides this entirely.
+const DEFAULT_TERMS = [
+  "This is a quotation and not a tax invoice.",
+  "Prices are valid until the validity date shown above; if no validity is stated, this quotation is valid for 15 days from the date of issue.",
+  "Applicable taxes are as shown above and subject to the prevailing rates at the time of billing.",
+  "This quotation does not constitute a confirmed order until accepted in writing.",
+].join("\n");
 
 export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -95,6 +123,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const accent = hexToRgb(data.accentColor);
   const linkBase = (data.imageLinkBase ?? "").trim().replace(/\/$/, "") || null;
+  const logo = await tryEmbedLogo(doc, data.logoUrl ?? null);
 
   let page: PDFPage = doc.addPage(A4);
   const top = A4[1] - MARGIN;
@@ -118,32 +147,54 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   // ── Header: seller (left) | QUOTATION + meta (right) ──────────────────────────
   const midX = LEFT + CONTENT_W * 0.52;
   const sellerName = data.seller.name || data.brandName || "Your Company";
+  const leftMaxW = midX - LEFT - 8;
   let ly = y - 6;
-  T(truncate(sellerName, bold, 20, midX - LEFT - 8), LEFT, ly - 14, 20, bold, accent);
-  ly -= 30;
+  // Letterhead: brand logo (if any) above the seller name, else the name at full size.
+  if (logo) {
+    const logoH = 40;
+    const logoW = Math.min((logo.width / logo.height) * logoH, leftMaxW, 200);
+    const drawH = logoW / (logo.width / logo.height);
+    page.drawImage(logo, { x: LEFT, y: ly - drawH, width: logoW, height: drawH });
+    ly -= drawH + 8;
+    T(truncate(sellerName, bold, 13, leftMaxW), LEFT, ly - 11, 13, bold, accent);
+    ly -= 22;
+  } else {
+    T(truncate(sellerName, bold, 20, leftMaxW), LEFT, ly - 14, 20, bold, accent);
+    ly -= 30;
+  }
   const sellerLines: string[] = [];
   if (data.seller.address) sellerLines.push(...wrap(data.seller.address, font, 9, midX - LEFT - 8));
   if (data.seller.phone) sellerLines.push(`Phone: ${data.seller.phone}`);
+  if (data.seller.email) sellerLines.push(`Email: ${data.seller.email}`);
   if (data.seller.gstin) sellerLines.push(`GSTIN: ${data.seller.gstin}`);
   if (data.seller.pan) sellerLines.push(`PAN Number: ${data.seller.pan}`);
   for (const line of sellerLines) { T(truncate(line, font, 9, midX - LEFT - 8), LEFT, ly, 9, font, INK); ly -= 13; }
 
-  // Right column.
+  // Right column. This is a QUOTATION, not a tax invoice — so the meta labels read
+  // "Quotation No/Date", and the quote subject gets its OWN labelled line rather than
+  // being concatenated into the number.
   let ry = y - 6;
+  const rightMaxW = RIGHT - (midX + 8);
+  const metaRow = (label: string, value: string) => {
+    T(label, midX + 8, ry, 9, bold, INK);
+    const lw = bold.widthOfTextAtSize(`${label} `, 9);
+    T(truncate(value, font, 9, rightMaxW - lw), midX + 8 + lw, ry, 9, font, INK);
+    ry -= 14;
+  };
   T("QUOTATION", midX + 8, ry - 14, 20, bold, INK);
   ry -= 34;
-  T("Invoice No:", midX + 8, ry, 9, bold, INK);
-  T(safe(data.number), midX + 8 + bold.widthOfTextAtSize("Invoice No: ", 9), ry, 9, font, INK);
-  ry -= 14;
+  metaRow("Quotation No:", safe(data.number));
   const dateStr = data.date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
-  T("Invoice Date:", midX + 8, ry, 9, bold, INK);
-  T(dateStr, midX + 8 + bold.widthOfTextAtSize("Invoice Date: ", 9), ry, 9, font, INK);
-  ry -= 14;
+  metaRow("Quotation Date:", dateStr);
   if (data.validUntil) {
-    T("Valid Until:", midX + 8, ry, 9, bold, INK);
-    T(data.validUntil.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), midX + 8 + bold.widthOfTextAtSize("Valid Until: ", 9), ry, 9, font, INK);
-    ry -= 14;
+    metaRow("Valid Until:", data.validUntil.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
   }
+  const subject = (data.subject ?? "").trim();
+  if (subject) metaRow("Subject:", subject);
+  // Place of supply — the buyer's GST state, printed on GST documents.
+  const posCode = gstStateCode(data.billTo.gstin);
+  const posName = gstStateName(posCode);
+  if (posName) metaRow("Place of Supply:", `${posName} (${posCode})`);
 
   y = Math.min(ly, ry) - 6;
   page.drawLine({ start: { x: midX, y: top + 2 }, end: { x: midX, y: y + 6 }, thickness: 0.75, color: LINE });
@@ -168,7 +219,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
     page.drawRectangle({ x: LEFT, y: y - headerH, width: CONTENT_W, height: headerH, color: accent });
     const hy = y - 15;
     T("Items", cItem + 8, hy, 9, bold, WHITE);
-    T("Quantity", cQty + 6, hy, 9, bold, WHITE);
+    T("Qty", cQty + 6, hy, 9, bold, WHITE);
     T("Image(s)", cImg + 4, hy, 9, bold, WHITE);
     T("Price/Unit", cPrice + 4, hy, 9, bold, WHITE);
     T("Tax/Unit", cTax + 4, hy, 9, bold, WHITE);
@@ -198,13 +249,23 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   };
 
   const bottomLimit = MARGIN + 150; // reserve room for the summary + signatures
+  const specColW = (cQty - cItem) - 12; // Items column inner width (name + wrapped spec)
   for (const it of data.view.items) {
     const imgCount = it.imageIndices?.length ?? 0;
-    const rowH = imgCount ? Math.max(30, 14 + imgCount * 12) : it.spec ? 30 : 22;
+    // Muted sub-lines under the item name: HSN/SAC code (if any) then the spec, which
+    // wraps to at most 2 lines instead of hard-truncating so multi-component pieces read
+    // fully. Row height clears whichever is taller: this stack or the image links.
+    const subLines = [
+      ...(it.hsn ? [`HSN/SAC: ${it.hsn}`] : []),
+      ...(it.spec ? wrap(it.spec, font, 8, specColW).slice(0, 2) : []),
+    ];
+    const textH = subLines.length === 0 ? 22 : 30 + (subLines.length - 1) * 10;
+    const imgH = imgCount ? Math.max(30, 14 + imgCount * 12) : 0;
+    const rowH = Math.max(22, textH, imgH);
     if (y - rowH < bottomLimit) { page = doc.addPage(A4); y = A4[1] - MARGIN; drawTableHeader(); }
     const ty = y - 15;
-    T(truncate(it.name, bold, 10, (cQty - cItem) - 12), cItem + 8, ty, 10, bold, INK);
-    if (it.spec) T(truncate(it.spec, font, 8, (cQty - cItem) - 12), cItem + 8, ty - 11, 8, font, MUTED);
+    T(truncate(it.name, bold, 10, specColW), cItem + 8, ty, 10, bold, INK);
+    subLines.forEach((ln, k) => T(ln, cItem + 8, ty - 11 - k * 10, 8, font, MUTED));
     T(`${it.quantity} ${it.unit}`, cQty + 6, ty, 9, font, INK);
     if (imgCount) drawRowImageLinks(it.imageIndices, y);
     T(money(it.unitPricePaise), cPrice + 4, ty, 9, font, INK);
@@ -220,7 +281,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const sy = y - 15;
   T("Sub Total", cItem + 8, sy, 9, bold, WHITE);
   T(String(data.view.totalQuantity), cQty + 6, sy, 9, bold, WHITE);
-  T(money(data.view.cgstPaise + data.view.sgstPaise), cTax + 4, sy, 9, bold, WHITE);
+  T(money(data.view.cgstPaise + data.view.sgstPaise + data.view.igstPaise), cTax + 4, sy, 9, bold, WHITE);
   TR(money(data.view.subTotalPaise), RIGHT - 8, sy, 9, bold, WHITE);
   y -= subH + 16;
 
@@ -242,8 +303,13 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const halfPct = data.view.gstPct / 2;
   sumRow("Taxable Amount", money(data.view.taxablePaise));
   if (data.view.gstPct > 0) {
-    sumRow(`CGST @${halfPct}%`, money(data.view.cgstPaise));
-    sumRow(`SGST @${halfPct}%`, money(data.view.sgstPaise));
+    if (data.view.interState) {
+      // Inter-state supply → single IGST line at the full rate.
+      sumRow(`IGST @${data.view.gstPct}%`, money(data.view.igstPaise));
+    } else {
+      sumRow(`CGST @${halfPct}%`, money(data.view.cgstPaise));
+      sumRow(`SGST @${halfPct}%`, money(data.view.sgstPaise));
+    }
   }
   if (data.view.discountPaise > 0) sumRow("Discount", `- ${money(data.view.discountPaise)}`);
   page.drawLine({ start: { x: rightX, y: lyR + 6 }, end: { x: RIGHT, y: lyR + 6 }, thickness: 0.75, color: LINE });
@@ -263,10 +329,15 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const bodyLines = (lines: string[], size = 9) => { for (const l of lines) { T(truncate(l, font, size, leftColW), LEFT, lyL, size, font, INK); lyL -= size + 4; } };
   if (bankLines.length) { heading("Bank Details"); bodyLines(bankLines); lyL -= 8; }
   if (data.notes) { heading("Notes"); bodyLines(wrap(data.notes, font, 9, leftColW)); lyL -= 8; }
-  if (data.terms) { heading("Terms & Conditions"); bodyLines(wrap(data.terms, font, 9, leftColW)); lyL -= 8; }
+  const termsText = (data.terms && data.terms.trim()) ? data.terms : DEFAULT_TERMS;
+  { heading("Terms & Conditions"); bodyLines(wrap(termsText, font, 9, leftColW)); lyL -= 8; }
 
   // ── Signatures ────────────────────────────────────────────────────────────────
-  const footY = Math.max(MARGIN + 24, Math.min(lyL, lyR) - 24);
+  // Anchor the signature block to the bottom of the page (standard document layout).
+  // If the content already reaches too far down to fit it, move to a fresh page so the
+  // signatures never overlap the tax summary / terms.
+  const footY = MARGIN + 36;
+  if (Math.min(lyL, lyR) < footY + 24) { page = doc.addPage(A4); y = A4[1] - MARGIN; }
   page.drawLine({ start: { x: LEFT, y: footY + 14 }, end: { x: LEFT + 150, y: footY + 14 }, thickness: 0.5, color: LINE });
   T("Customer Signature", LEFT, footY, 9, font, MUTED);
   page.drawLine({ start: { x: RIGHT - 170, y: footY + 14 }, end: { x: RIGHT, y: footY + 14 }, thickness: 0.5, color: LINE });

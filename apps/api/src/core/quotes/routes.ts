@@ -12,7 +12,7 @@ import type { FollowupResult } from "./followup";
 import { upsertContactByPhone } from "../crm/upsert-contact";
 import { loadReportBrand } from "../export/brand";
 import { renderBrandedReportPdf } from "../export/report-pdf";
-import { buildQuotationView, serializeSeller, serializeBillTo, serializeLineImages } from "./quotation";
+import { buildQuotationView, serializeSeller, serializeBillTo, serializeLineImages, serializeHsnByGroup } from "./quotation";
 import { renderQuotationPdf } from "../export/quote-pdf";
 import { resolveAiCredentials, aiConfigured, chooseProvider, providerKey } from "../research/ai-credentials";
 import { aiCompleteTiered, extractJson } from "../ai/intelligence";
@@ -227,6 +227,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           seller: body.seller !== undefined ? body.seller : undefined,
           billTo: body.billTo !== undefined ? body.billTo : undefined,
           lineImages: body.lineImages !== undefined ? body.lineImages : undefined,
+          hsn: body.hsn !== undefined ? body.hsn : undefined,
           lines: Array.isArray(body.lines) ? (body.lines as quotes.LineInputPayload[]) : undefined,
         });
         json(res, 200, { ok: true, quote });
@@ -278,6 +279,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
         if (body.seller !== undefined) fields.sellerJson = serializeSeller(body.seller);
         if (body.billTo !== undefined) fields.billToJson = serializeBillTo(body.billTo);
         if (body.lineImages !== undefined) fields.lineImagesJson = serializeLineImages(body.lineImages);
+        if (body.hsn !== undefined) fields.hsnJson = serializeHsnByGroup(body.hsn);
         await quotes.updateQuoteFields(auth.context.tenantId, quoteId, fields);
         // Optional full line-replace (the builder's Edit flow saves all lines at once).
         const quote = Array.isArray(body.lines)
@@ -431,6 +433,10 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           discountPaise: Number(quote.discountPaise) || 0,
           gstPercent: Number(quote.gstPercent) || 0,
           images: quote.lineImages,
+          hsnByGroup: quote.hsn,
+          // Place of supply: seller vs buyer GSTIN state code decides CGST/SGST vs IGST.
+          sellerGstin: quote.seller?.gstin ?? null,
+          buyerGstin: quote.billTo?.gstin ?? null,
         });
         // If the quote has images AND a public base URL is configured, mint (once) a
         // read-only image token and build the link prefix the PDF's "Image N" links use.
@@ -443,7 +449,8 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           if (token) imageLinkBase = `${publicBase}/api/public/quote-image/${token}`;
         }
         const pdf = await renderQuotationPdf({
-          number: `${String(quote.number)} — ${String(quote.title)}`,
+          number: String(quote.number),
+          subject: String(quote.title),
           date: quote.sentAt ? new Date(quote.sentAt as unknown as string) : new Date(quote.createdAt as unknown as string),
           seller: quote.seller,
           billTo,
@@ -453,6 +460,7 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           validUntil: quote.validUntil ? new Date(quote.validUntil as unknown as string) : null,
           accentColor: brand.primaryColor,
           brandName: brand.brandName,
+          logoUrl: brand.logoUrl,
           imageLinkBase,
         });
         sendBinary(res, "application/pdf", pdf, `quotation-${quote.number}.pdf`);
