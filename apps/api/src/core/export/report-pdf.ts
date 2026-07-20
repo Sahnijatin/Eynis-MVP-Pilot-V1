@@ -70,8 +70,9 @@ export function isSafeLogoUrl(raw: string): boolean {
 }
 
 // Best-effort logo embed: https public host only, PNG/JPG, no redirects, short
-// timeout, never throws.
-async function tryEmbedLogo(doc: PDFDocument, url: string | null) {
+// timeout, never throws. Exported so the quotation PDF reuses the same SSRF-guarded
+// fetch + embed path.
+export async function tryEmbedLogo(doc: PDFDocument, url: string | null) {
   if (!url || !/\.(png|jpe?g)(\?.*)?$/i.test(url) || !isSafeLogoUrl(url)) return null;
   try {
     const ctrl = new AbortController();

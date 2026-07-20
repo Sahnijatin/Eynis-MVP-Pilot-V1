@@ -362,6 +362,12 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const removeImage = (group: string, idx: number) =>
     setLineImages((m) => ({ ...m, [group]: (m[group] ?? []).filter((_, i) => i !== idx) }));
 
+  // Per-piece HSN/SAC codes (keyed by groupName), shown on the quotation PDF and used
+  // for the GST voucher. Kept as free text here; the API sanitizes to 4–8 digits.
+  const [hsn, setHsn] = useState<Record<string, string>>(editQuote?.hsn ?? {});
+  const setHsnCode = (group: string, code: string) =>
+    setHsn((m) => ({ ...m, [group]: code.replace(/\D/g, "").slice(0, 8) }));
+
   useEffect(() => {
     fetch("/api/contacts?limit=200", { cache: "no-store" })
       .then((r) => r.json())
@@ -478,7 +484,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       // Only keep images for pieces (groups) that still exist on the quote.
       const groups = new Set(lines.map((l) => l.groupName || "General"));
       const prunedImages = Object.fromEntries(Object.entries(lineImages).filter(([g, arr]) => groups.has(g) && arr.length));
-      const letterhead = { seller, billTo, lineImages: prunedImages };
+      const prunedHsn = Object.fromEntries(Object.entries(hsn).filter(([g, code]) => groups.has(g) && code.trim()));
+      const letterhead = { seller, billTo, lineImages: prunedImages, hsn: prunedHsn };
       if (isEdit && editQuote) {
         res = await fetch(`/api/quotes/${editQuote.id}`, { method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ title: title.trim(), ...knobs, ...(custSel && custSel !== "new" ? { contactId: custSel } : {}), ...letterhead, lines: linePayload() }) });
@@ -662,12 +669,14 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           if (groups.length === 0) return null;
           return (
             <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "grid", gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>ITEM IMAGES — up to {MAX_IMAGES_PER_ROW} per item, shown on the quotation PDF</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>ITEM IMAGES & HSN/SAC — up to {MAX_IMAGES_PER_ROW} images per item; HSN/SAC codes shown on the quotation PDF</div>
               {groups.map((g) => {
                 const imgs = lineImages[g] ?? [];
                 return (
                   <div key={g} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={{ minWidth: 130, fontSize: 13, fontWeight: 600 }}>{g}</div>
+                    <Input value={hsn[g] ?? ""} onChange={(e) => setHsnCode(g, e.target.value)} placeholder="HSN/SAC"
+                      inputMode="numeric" style={{ width: 96 }} title="4–8 digit HSN (goods) or SAC (services) code" />
                     {imgs.map((src, i) => (
                       <div key={i} style={{ position: "relative", width: 48, height: 48 }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
