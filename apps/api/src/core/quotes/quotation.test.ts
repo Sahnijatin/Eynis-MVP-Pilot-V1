@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName } from "./quotation";
+import { buildQuotationView, cleanSeller, serializeSeller, parseSeller, serializeBillTo, cleanLineImages, gstStateCode, cleanHsnByGroup, serializeHsnByGroup, gstStateName, isValidGstin, normalizeStateCode, cleanQtyByGroup, amountInWords } from "./quotation";
 import { gstAmountPaise } from "./costing";
 
 // A tiny valid data URL (content isn't decoded by the sanitizer, only shape/size checked).
@@ -60,6 +60,62 @@ test("cleanHsnByGroup: keeps 4–8 digit codes, strips non-digits, drops the res
   assert.equal(out["TooLong"], undefined);
   assert.equal(out["Empty"], undefined);
   assert.equal(serializeHsnByGroup({}), null);
+});
+
+test("isValidGstin + gstStateCode: only a well-formed GSTIN yields a state code", () => {
+  assert.equal(isValidGstin("07ABCDE1234F1Z5"), true);
+  assert.equal(isValidGstin("27aaaaa0000a1z5"), true); // case-insensitive
+  assert.equal(isValidGstin("+917006013317"), false); // a phone number
+  assert.equal(isValidGstin("07ABC"), false);
+  // A phone/typo in the GSTIN field must NOT resolve to a state code (would skew IGST).
+  assert.equal(gstStateCode("+917006013317"), null);
+  assert.equal(gstStateCode("07ABCDE1234F1Z5"), "07");
+});
+
+test("normalizeStateCode: accepts real 2-digit GST state codes only", () => {
+  assert.equal(normalizeStateCode("27"), "27");
+  assert.equal(normalizeStateCode("07"), "07");
+  assert.equal(normalizeStateCode("00"), null); // not a real code
+  assert.equal(normalizeStateCode("7"), null);
+  assert.equal(normalizeStateCode("XX"), null);
+});
+
+test("buildQuotationView: explicit place of supply overrides buyer GSTIN for IGST", () => {
+  // Buyer GSTIN is same-state (Delhi 07) but ship-to is Maharashtra (27) → inter-state.
+  const view = buildQuotationView({
+    lineItems: [line("Item", "A", 1000)], totalPaise: 100000, discountPaise: 0, gstPercent: 18,
+    sellerGstin: "07AAAAA0000A1Z5", buyerGstin: "07BBBBB1111B1Z5", placeOfSupplyState: "27",
+  });
+  assert.equal(view.placeOfSupplyState, "27");
+  assert.equal(view.interState, true);
+  assert.equal(view.igstPaise, 18000);
+});
+
+test("buildQuotationView: per-piece quantity yields a per-unit price", () => {
+  const view = buildQuotationView({
+    lineItems: [line("Chair", "seat", 1000)], totalPaise: 60000, discountPaise: 0, gstPercent: 0,
+    qtyByGroup: { Chair: 6, Ghost: 0 }, // Ghost invalid (dropped)
+  });
+  assert.equal(view.items[0].quantity, 6);
+  assert.equal(view.items[0].unitPricePaise, 10000); // 60000 / 6
+  assert.equal(view.items[0].amountPaise, 60000); // piece total (qty × unit)
+  assert.equal(view.totalQuantity, 6);
+});
+
+test("cleanQtyByGroup: keeps positive integers, drops the rest", () => {
+  const out = cleanQtyByGroup({ A: 3, B: 0, C: -2, D: 1.9, E: "x" });
+  assert.equal(out.A, 3);
+  assert.equal(out.D, 1); // floored
+  assert.equal(out.B, undefined);
+  assert.equal(out.C, undefined);
+  assert.equal(out.E, undefined);
+});
+
+test("amountInWords: Indian numbering", () => {
+  assert.equal(amountInWords(14750000), "Indian Rupees One Lakh Forty Seven Thousand Five Hundred Only");
+  assert.equal(amountInWords(10000), "Indian Rupees One Hundred Only");
+  assert.equal(amountInWords(12345), "Indian Rupees One Hundred Twenty Three and Forty Five Paise Only");
+  assert.equal(amountInWords(0), "Indian Rupees Zero Only");
 });
 
 test("gstStateName: maps GST state codes to names", () => {

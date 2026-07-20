@@ -47,6 +47,23 @@ const num = (s: string) => { const n = Number(s); return Number.isFinite(n) ? n 
 const nz = (s: string) => (s.trim() === "" ? null : Math.round(num(s)));
 const newKey = () => Math.random().toString(36).slice(2, 9);
 
+// GSTIN shape check (mirrors the API) — a bad value in the GSTIN field otherwise skews
+// the Place of Supply and the IGST-vs-CGST/SGST decision.
+const GSTIN_RE = /^[0-3][0-9][A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const isValidGstin = (s: string) => GSTIN_RE.test(s.trim().toUpperCase());
+// GST state codes → names, for the Place of Supply selector.
+const GST_STATES: [string, string][] = [
+  ["01", "Jammu & Kashmir"], ["02", "Himachal Pradesh"], ["03", "Punjab"], ["04", "Chandigarh"],
+  ["05", "Uttarakhand"], ["06", "Haryana"], ["07", "Delhi"], ["08", "Rajasthan"], ["09", "Uttar Pradesh"],
+  ["10", "Bihar"], ["11", "Sikkim"], ["12", "Arunachal Pradesh"], ["13", "Nagaland"], ["14", "Manipur"],
+  ["15", "Mizoram"], ["16", "Tripura"], ["17", "Meghalaya"], ["18", "Assam"], ["19", "West Bengal"],
+  ["20", "Jharkhand"], ["21", "Odisha"], ["22", "Chhattisgarh"], ["23", "Madhya Pradesh"], ["24", "Gujarat"],
+  ["25", "Daman & Diu"], ["26", "Dadra & Nagar Haveli and Daman & Diu"], ["27", "Maharashtra"],
+  ["28", "Andhra Pradesh (Old)"], ["29", "Karnataka"], ["30", "Goa"], ["31", "Lakshadweep"], ["32", "Kerala"],
+  ["33", "Tamil Nadu"], ["34", "Puducherry"], ["35", "Andaman & Nicobar Islands"], ["36", "Telangana"],
+  ["37", "Andhra Pradesh"], ["38", "Ladakh"], ["97", "Other Territory"], ["99", "Centre Jurisdiction"],
+];
+
 function blankLine(groupName: string): DraftLine {
   return { key: newKey(), groupName, name: "", kind: "material", costBasis: "area", lengthMm: "", widthMm: "", heightMm: "", quantity: "1", inventoryItemId: "", unitRateInr: "", wastagePct: "0", laborHours: "0", materialUnit: "sqft" };
 }
@@ -92,6 +109,9 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
   const [building, setBuilding] = useState(false);
   const [editing, setEditing] = useState<Quote | null>(null);
   const [viewing, setViewing] = useState<Quote | null>(null);
+  // Reject reason is collected in an accessible in-modal field (not a blocking prompt).
+  const [rejecting, setRejecting] = useState<Quote | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -121,13 +141,11 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
 
   // In-flight guard: a double-click on Send must not fire the action twice.
   const actingRef = useRef(false);
-  const act = useCallback(async (id: string, action: "send" | "accept" | "reject" | "expire") => {
+  const act = useCallback(async (id: string, action: "send" | "accept" | "reject" | "expire", reason?: string) => {
     if (actingRef.current) return;
     let body: Record<string, unknown> = {};
     if (action === "reject") {
-      const reason = window.prompt("Reason for rejection (optional):", "");
-      if (reason === null) return; // cancelled
-      if (reason.trim()) body = { reason: reason.trim() };
+      if (reason && reason.trim()) body = { reason: reason.trim() };
     }
     actingRef.current = true;
     try {
@@ -191,20 +209,20 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
                 <tr key={q.id} style={{ borderTop: "1px solid #e2e8f0" }}>
                   <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{q.number}</td>
                   <td style={{ padding: "8px 10px" }}>{q.title}</td>
-                  <td style={{ padding: "8px 10px", color: q.contactName ? "#0f172a" : "#94a3b8" }}>{q.contactName ?? "—"}</td>
+                  <td style={{ padding: "8px 10px", color: q.contactName ? "#0f172a" : "#64748b" }}>{q.contactName ?? "—"}</td>
                   <td style={{ padding: "8px 10px" }}><Badge tone={statusTone(q.status)}>{q.status}</Badge></td>
                   <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>{rupees(q.grandTotalPaise)}</td>
                   <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
-                    <a href={`/api/quotes/${q.id}/pdf`} target="_blank" rel="noreferrer" title="Download PDF">
+                    <a href={`/api/quotes/${q.id}/pdf`} target="_blank" rel="noreferrer" title="Download PDF" aria-label={`Download PDF for ${q.number}`}>
                       <Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /></Button>
                     </a>{" "}
-                    {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => setViewing(q)} title="View quote"><Eye className="w-3.5 h-3.5" /></Button>}{" "}
-                    {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => copyLink(q.id)} title="Copy customer link (replaces any earlier link)"><Link2 className="w-3.5 h-3.5" /></Button>}{" "}
-                    {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => openEdit(q)} title="Edit draft"><Pencil className="w-3.5 h-3.5" /></Button>}{" "}
+                    {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => setViewing(q)} title="View quote" aria-label={`View quote ${q.number}`}><Eye className="w-3.5 h-3.5" /></Button>}{" "}
+                    {q.status !== "draft" && <Button variant="secondary" size="sm" onClick={() => copyLink(q.id)} title="Copy customer link (replaces any earlier link)" aria-label={`Copy customer link for ${q.number}`}><Link2 className="w-3.5 h-3.5" /></Button>}{" "}
+                    {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => openEdit(q)} title="Edit draft" aria-label={`Edit draft ${q.number}`}><Pencil className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "draft" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "send")}><Send className="w-3.5 h-3.5" /> Send</Button>}{" "}
                     {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "accept")}><CheckCircle className="w-3.5 h-3.5" /> Accept</Button>}{" "}
-                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "reject")} title="Mark rejected"><XCircle className="w-3.5 h-3.5" /> Reject</Button>}{" "}
-                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "expire")} title="Mark expired"><Clock3 className="w-3.5 h-3.5" /></Button>}{" "}
+                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => { setRejecting(q); setRejectReason(""); }} title="Mark rejected"><XCircle className="w-3.5 h-3.5" /> Reject</Button>}{" "}
+                    {q.status === "sent" && <Button variant="secondary" size="sm" onClick={() => act(q.id, "expire")} title="Mark expired" aria-label={`Mark ${q.number} expired`}><Clock3 className="w-3.5 h-3.5" /></Button>}{" "}
                     {q.status === "accepted" && (
                       <a href={`/api/quotes/${q.id}/busy-export?format=csv`} target="_blank" rel="noreferrer" title="Export a BUSY-ready sales voucher (import via Administration → Import Voucher)">
                         <Button variant="secondary" size="sm"><FileSpreadsheet className="w-3.5 h-3.5" /> Busy</Button>
@@ -229,6 +247,21 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
       )}
 
       {viewing && <QuoteView quote={viewing} onClose={() => setViewing(null)} />}
+
+      {rejecting && (
+        <Modal title={`Reject ${rejecting.number}`} onClose={() => setRejecting(null)} width={420} footer={
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => setRejecting(null)}>Cancel</Button>
+            <Button onClick={() => { const id = rejecting.id; setRejecting(null); act(id, "reject", rejectReason); }}>Reject quote</Button>
+          </div>
+        }>
+          <Field label="Reason (optional)">
+            <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} aria-label="Reason for rejection"
+              placeholder="Why is this quote being rejected?"
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 14, resize: "vertical", boxSizing: "border-box" }} />
+          </Field>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -374,6 +407,14 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const setHsnCode = (group: string, code: string) =>
     setHsn((m) => ({ ...m, [group]: code.replace(/\D/g, "").slice(0, 8) }));
 
+  // Per-piece quantity (keyed by groupName; default 1) — shown on the PDF, splits the
+  // piece's allocated price into a unit price.
+  const [qty, setQty] = useState<Record<string, number>>(editQuote?.qty ?? {});
+  const setQtyFor = (group: string, v: string) => {
+    const n = Math.floor(Number(v));
+    setQty((m) => { const next = { ...m }; if (Number.isFinite(n) && n > 1) next[group] = Math.min(n, 100_000); else delete next[group]; return next; });
+  };
+
   useEffect(() => {
     fetch("/api/contacts?limit=200", { cache: "no-store" })
       .then((r) => r.json())
@@ -492,7 +533,8 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
       const groups = new Set(lines.map((l) => l.groupName || "General"));
       const prunedImages = Object.fromEntries(Object.entries(lineImages).filter(([g, arr]) => groups.has(g) && arr.length));
       const prunedHsn = Object.fromEntries(Object.entries(hsn).filter(([g, code]) => groups.has(g) && code.trim()));
-      const letterhead = { seller, billTo, lineImages: prunedImages, hsn: prunedHsn };
+      const prunedQty = Object.fromEntries(Object.entries(qty).filter(([g, n]) => groups.has(g) && n > 1));
+      const letterhead = { seller, billTo, lineImages: prunedImages, hsn: prunedHsn, qty: prunedQty };
       if (isEdit && editQuote) {
         res = await fetch(`/api/quotes/${editQuote.id}`, { method: "PATCH", headers: { "content-type": "application/json" },
           body: JSON.stringify({ title: title.trim(), ...knobs, ...(custSel && custSel !== "new" ? { contactId: custSel } : {}), ...letterhead, lines: linePayload() }) });
@@ -568,10 +610,10 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
 
         {/* Quotation letterhead — appears on the PDF (seller tax/bank details + bill-to) */}
         <div style={{ border: "1px solid var(--border)", borderRadius: 8 }}>
-          <button type="button" onClick={() => setShowLetterhead((v) => !v)}
+          <button type="button" onClick={() => setShowLetterhead((v) => !v)} aria-expanded={showLetterhead}
             style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface-inset)", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
             <span>Quotation letterhead — company & bank details, bill-to (shown on the PDF)</span>
-            <span>{showLetterhead ? "▲" : "▼"}</span>
+            <span aria-hidden="true">{showLetterhead ? "▲" : "▼"}</span>
           </button>
           {showLetterhead && (
             <div style={{ padding: 12, display: "grid", gap: 14 }}>
@@ -582,9 +624,12 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                   <Input value={seller.phone ?? ""} onChange={(e) => setS({ phone: e.target.value })} placeholder="Phone" />
                   <Input value={seller.address ?? ""} onChange={(e) => setS({ address: e.target.value })} placeholder="Address" />
                   <Input value={seller.email ?? ""} onChange={(e) => setS({ email: e.target.value })} placeholder="Email (optional)" />
-                  <Input value={seller.gstin ?? ""} onChange={(e) => setS({ gstin: e.target.value })} placeholder="GSTIN" />
+                  <Input value={seller.gstin ?? ""} onChange={(e) => setS({ gstin: e.target.value })} placeholder="GSTIN" aria-invalid={!!seller.gstin && !isValidGstin(seller.gstin)} />
                   <Input value={seller.pan ?? ""} onChange={(e) => setS({ pan: e.target.value })} placeholder="PAN number" />
                 </div>
+                {!!seller.gstin && !isValidGstin(seller.gstin) && (
+                  <div style={{ fontSize: 11, color: "#b45309", marginTop: 4 }}>Seller GSTIN doesn’t look valid — expected 15 characters (2-digit state code + PAN + entity/Z/checksum).</div>
+                )}
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", margin: "10px 0 6px" }}>BANK DETAILS</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                   <Input value={seller.bankAccountName ?? ""} onChange={(e) => setS({ bankAccountName: e.target.value })} placeholder="Account holder" />
@@ -605,8 +650,16 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                   <Input value={billTo.phone ?? ""} onChange={(e) => setB({ phone: e.target.value })} placeholder="Phone" />
                   <Input value={billTo.address ?? ""} onChange={(e) => setB({ address: e.target.value })} placeholder="Address" />
                   <Input value={billTo.pin ?? ""} onChange={(e) => setB({ pin: e.target.value })} placeholder="Pin code" />
-                  <Input value={billTo.gstin ?? ""} onChange={(e) => setB({ gstin: e.target.value })} placeholder="GSTIN (optional)" />
+                  <Input value={billTo.gstin ?? ""} onChange={(e) => setB({ gstin: e.target.value })} placeholder="GSTIN (optional)" aria-invalid={!!billTo.gstin && !isValidGstin(billTo.gstin)} />
+                  <Select value={billTo.stateCode ?? ""} onChange={(e) => setB({ stateCode: e.target.value })} aria-label="Place of Supply (ship-to state)">
+                    <option value="">Place of Supply (state)…</option>
+                    {GST_STATES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+                  </Select>
                 </div>
+                {!!billTo.gstin && !isValidGstin(billTo.gstin) && (
+                  <div style={{ fontSize: 11, color: "#b45309", marginTop: 4 }}>Customer GSTIN doesn’t look valid. Set Place of Supply below so tax is computed correctly.</div>
+                )}
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Place of Supply defaults to the customer’s GSTIN state; set it explicitly for an unregistered/B2C buyer shipping to another state.</div>
               </div>
             </div>
           )}
@@ -679,14 +732,16 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
           if (groups.length === 0) return null;
           return (
             <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "grid", gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>ITEM IMAGES & HSN/SAC — up to {MAX_IMAGES_PER_ROW} images per item; HSN/SAC codes shown on the quotation PDF</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>PIECE DETAILS — quantity, HSN/SAC & up to {MAX_IMAGES_PER_ROW} images per piece (shown on the quotation PDF)</div>
               {groups.map((g) => {
                 const imgs = lineImages[g] ?? [];
                 return (
                   <div key={g} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={{ minWidth: 130, fontSize: 13, fontWeight: 600 }}>{g}</div>
+                    <Input type="number" min={1} value={qty[g] ?? ""} onChange={(e) => setQtyFor(g, e.target.value)} placeholder="Qty"
+                      style={{ width: 64 }} aria-label={`Quantity for ${g}`} title="Quantity (default 1)" />
                     <Input value={hsn[g] ?? ""} onChange={(e) => setHsnCode(g, e.target.value)} placeholder="HSN/SAC"
-                      inputMode="numeric" style={{ width: 96 }} title="4–8 digit HSN (goods) or SAC (services) code" />
+                      inputMode="numeric" style={{ width: 96 }} aria-label={`HSN/SAC code for ${g}`} title="4–8 digit HSN (goods) or SAC (services) code" />
                     {imgs.map((src, i) => (
                       <div key={i} style={{ position: "relative", width: 48, height: 48 }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}

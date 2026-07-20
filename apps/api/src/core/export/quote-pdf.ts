@@ -8,7 +8,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import type { SellerDetails, BillTo, QuotationView } from "../quotes/quotation";
-import { gstStateCode, gstStateName } from "../quotes/quotation";
+import { gstStateName, amountInWords } from "../quotes/quotation";
 import { tryEmbedLogo } from "./report-pdf";
 
 const A4: [number, number] = [595.28, 841.89];
@@ -194,7 +194,7 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   const subject = (data.subject ?? "").trim();
   if (subject) metaRow("Subject:", subject);
   // Place of supply — the buyer's GST state, printed on GST documents.
-  const posCode = gstStateCode(data.billTo.gstin);
+  const posCode = data.view.placeOfSupplyState;
   const posName = gstStateName(posCode);
   if (posName) metaRow("Place of Supply:", `${posName} (${posCode})`);
 
@@ -323,6 +323,9 @@ export async function renderQuotationPdf(data: QuotationPdfData): Promise<Uint8A
   page.drawLine({ start: { x: rightX, y: lyR + 6 }, end: { x: RIGHT, y: lyR + 6 }, thickness: 0.75, color: LINE });
   lyR -= 6;
   sumRow("Total Amount", money(data.view.grandTotalPaise), true);
+  // Total in words (conventional on Indian quotations/invoices).
+  lyR -= 2;
+  for (const wl of wrap(amountInWords(data.view.grandTotalPaise), font, 8, rightColW)) { T(wl, rightX, lyR, 8, font, MUTED); lyR -= 11; }
 
   // Left: bank details, notes, terms.
   const s = data.seller;

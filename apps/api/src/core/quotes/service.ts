@@ -18,7 +18,7 @@ import {
   type LineResult,
   type QuoteResult,
 } from "./costing";
-import { parseSeller, parseBillTo, serializeSeller, serializeBillTo, parseLineImages, serializeLineImages, parseHsnByGroup, serializeHsnByGroup } from "./quotation";
+import { parseSeller, parseBillTo, serializeSeller, serializeBillTo, parseLineImages, serializeLineImages, parseHsnByGroup, serializeHsnByGroup, parseQtyByGroup, serializeQtyByGroup } from "./quotation";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 
@@ -171,6 +171,7 @@ export function serializeQuote(q: QuoteWithLines) {
     billTo: parseBillTo(q.billToJson as string | null | undefined),
     lineImages: parseLineImages(q.lineImagesJson as string | null | undefined),
     hsn: parseHsnByGroup(q.hsnJson as string | null | undefined),
+    qty: parseQtyByGroup(q.qtyJson as string | null | undefined),
     lineItems: (q.lineItems ?? []).map(serializeLine),
   };
 }
@@ -345,6 +346,7 @@ export interface CreateQuoteInput {
   billTo?: unknown; // customer bill-to block
   lineImages?: unknown; // per-piece images { groupName: dataUrl[] }
   hsn?: unknown; // per-piece HSN/SAC codes { groupName: "9403" }
+  qty?: unknown; // per-piece quantities { groupName: 6 }
   lines?: LineInputPayload[]; // explicit lines (overrides template seeding when provided)
 }
 
@@ -402,6 +404,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
   const billToJson = input.billTo !== undefined ? serializeBillTo(input.billTo) : null;
   const lineImagesJson = input.lineImages !== undefined ? serializeLineImages(input.lineImages) : null;
   const hsnJson = input.hsn !== undefined ? serializeHsnByGroup(input.hsn) : null;
+  const qtyJson = input.qty !== undefined ? serializeQtyByGroup(input.qty) : null;
   let quote: { id: string } | null = null;
   for (let attempt = 0; attempt < 5 && !quote; attempt++) {
     const number = await nextQuoteNumber(tenantId, year, attempt);
@@ -429,6 +432,7 @@ export async function createQuote(tenantId: string, input: CreateQuoteInput) {
           billToJson,
           lineImagesJson,
           hsnJson,
+          qtyJson,
         },
       });
     } catch (err) {
@@ -488,7 +492,7 @@ export async function updateQuoteFields(
     title: string; contactId: string | null; companyId: string | null; dealId: string | null;
     overheadPct: number; marginPct: number; marginFloorPct: number; discountPaise: number;
     gstPercent: number; validUntil: Date | null; notes: string | null; terms: string | null;
-    sellerJson: string | null; billToJson: string | null; lineImagesJson: string | null; hsnJson: string | null;
+    sellerJson: string | null; billToJson: string | null; lineImagesJson: string | null; hsnJson: string | null; qtyJson: string | null;
   }>,
 ) {
   await prisma.quote.update({ where: { id }, data: fields });
@@ -612,6 +616,7 @@ export type DecisionResult =
 export interface DecisionActor {
   actorRole: string; // "staff" (authorized route) | "customer" (public link)
   actorId?: string | null;
+  actorIp?: string | null; // client IP — strengthens the record of who decided a quote
 }
 
 export async function acceptQuote(tenantId: string, quoteId: string, actor: DecisionActor): Promise<DecisionResult> {
@@ -639,7 +644,7 @@ export async function acceptQuote(tenantId: string, quoteId: string, actor: Deci
   await prisma.auditLog.create({
     data: {
       tenantId, actorRole: actor.actorRole, action: "quote_accepted", entityType: "quote", entityId: quoteId,
-      metadata: JSON.stringify({ number: raw?.number, totalPaise: raw?.totalPaise, actorId: actor.actorId ?? null }),
+      metadata: JSON.stringify({ number: raw?.number, totalPaise: raw?.totalPaise, actorId: actor.actorId ?? null, actorIp: actor.actorIp ?? null }),
     },
   });
   // Fulfillment (Phase 7): an accepted quote becomes an order. Best-effort and
@@ -665,7 +670,7 @@ export async function rejectQuote(tenantId: string, quoteId: string, reason: str
   await prisma.auditLog.create({
     data: {
       tenantId, actorRole: actor.actorRole, action: "quote_rejected", entityType: "quote", entityId: quoteId,
-      metadata: JSON.stringify({ number: raw.number, reason, actorId: actor.actorId ?? null }),
+      metadata: JSON.stringify({ number: raw.number, reason, actorId: actor.actorId ?? null, actorIp: actor.actorIp ?? null }),
     },
   });
   return { ok: true, quote };

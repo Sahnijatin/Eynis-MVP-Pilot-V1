@@ -733,6 +733,7 @@ export interface Quote {
   billTo: QuoteBillTo;
   lineImages: Record<string, string[]>; // per-piece image data URLs, keyed by groupName
   hsn: Record<string, string>; // per-piece HSN/SAC codes, keyed by groupName
+  qty: Record<string, number>; // per-piece quantities, keyed by groupName
   lineItems: QuoteLineItem[];
 }
 
@@ -743,7 +744,7 @@ export interface QuoteSeller {
   signatory?: string;
 }
 export interface QuoteBillTo {
-  name?: string; address?: string; pin?: string; phone?: string; gstin?: string;
+  name?: string; address?: string; pin?: string; phone?: string; gstin?: string; stateCode?: string;
 }
 export interface QuoteTemplateComponent {
   id: string;

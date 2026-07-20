@@ -53,11 +53,11 @@ export async function handlePublicQuoteRoutes(req: IncomingMessage, res: ServerR
       return true;
     }
     const result = action === "accept"
-      ? await quotes.acceptQuote(quote.tenantId, quote.id, { actorRole: "customer" })
+      ? await quotes.acceptQuote(quote.tenantId, quote.id, { actorRole: "customer", actorIp: ip })
       : await quotes.rejectQuote(
           quote.tenantId, quote.id,
           asTrimmedString((await parseObjectBody(req)).reason) ?? "Declined by customer",
-          { actorRole: "customer" },
+          { actorRole: "customer", actorIp: ip },
         );
     if (!result.ok) { json(res, result.status, { ok: false, error: result.error }); return true; }
     json(res, 200, { ok: true, status: result.quote?.status });
