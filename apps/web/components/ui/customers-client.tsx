@@ -245,9 +245,9 @@ function MfgSegmentBadge({ segment }: { segment: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
     key:      { label: "Key Account",     color: "#1d4ed8", bg: "#eff6ff" },
     channel:  { label: "Channel Partner", color: "#7c3aed", bg: "#f5f3ff" },
-    growth:   { label: "Growth",          color: "var(--ok-text)", bg: "#d1fae5" },
-    "at-risk":{ label: "At Risk",         color: "var(--warn-text)", bg: "#fef3c7" },
-    dormant:  { label: "Dormant",         color: "var(--danger-text)", bg: "#fee2e2" },
+    growth:   { label: "Growth",          color: "var(--ok-text)", bg: "var(--ok-bg)" },
+    "at-risk":{ label: "At Risk",         color: "var(--warn-text)", bg: "var(--warn-bg)" },
+    dormant:  { label: "Dormant",         color: "var(--danger-text)", bg: "var(--danger-bg)" },
   };
   const s = map[segment] ?? map.growth;
   return <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
@@ -266,8 +266,8 @@ function TravelSegmentBadge({ segment }: { segment: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
     key:     { label: "Key Account", color: "#1d4ed8", bg: "#eff6ff" },
     leisure: { label: "Leisure",     color: "#7c3aed", bg: "#f5f3ff" },
-    group:   { label: "Group",       color: "var(--ok-text)", bg: "#d1fae5" },
-    "at-risk":{ label: "At Risk",    color: "var(--warn-text)", bg: "#fef3c7" },
+    group:   { label: "Group",       color: "var(--ok-text)", bg: "var(--ok-bg)" },
+    "at-risk":{ label: "At Risk",    color: "var(--warn-text)", bg: "var(--warn-bg)" },
   };
   const s = map[segment] ?? map.leisure;
   return <span className="badge text-xs" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
