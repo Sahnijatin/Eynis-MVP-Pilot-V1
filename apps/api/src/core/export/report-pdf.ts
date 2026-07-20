@@ -73,7 +73,20 @@ export function isSafeLogoUrl(raw: string): boolean {
 // timeout, never throws. Exported so the quotation PDF reuses the same SSRF-guarded
 // fetch + embed path.
 export async function tryEmbedLogo(doc: PDFDocument, url: string | null) {
-  if (!url || !/\.(png|jpe?g)(\?.*)?$/i.test(url) || !isSafeLogoUrl(url)) return null;
+  if (!url) return null;
+  // Uploaded logo (Settings → Branding) arrives as an inline data URL. Decode + embed
+  // the base64 directly — no fetch, so no SSRF surface and no dependence on a public
+  // host. Only raster png/jpeg can be embedded by pdf-lib (svg/webp are dropped here but
+  // still render fine in the web/email <img> paths).
+  const dataM = /^data:image\/(png|jpe?g);base64,([a-z0-9+/=]+)$/i.exec(url.trim());
+  if (dataM) {
+    try {
+      const bytes = Uint8Array.from(Buffer.from(dataM[2], "base64"));
+      if (!bytes.byteLength || bytes.byteLength > 5_000_000) return null;
+      return dataM[1].toLowerCase() === "png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    } catch { return null; }
+  }
+  if (!/\.(png|jpe?g)(\?.*)?$/i.test(url) || !isSafeLogoUrl(url)) return null;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 2500);
