@@ -88,6 +88,25 @@ dictionaries and decorative brand hues above — they render as coloured chips i
 both themes (readable, just not dark-native). A dedicated categorical pass folds
 them into `--cat-*` / status tokens.
 
+### Phase 9 (regression guard) — done
+
+The repo has no ESLint (`lint` = `tsc`, `test` = node:test), so the guard is a
+**node:test** — `apps/web/lib/design-system/color-guard.test.ts` — that runs in the
+existing `npm run test -w @eynis/web` (already a CI step). It fails the build if a
+hardcoded colour the migration eliminated reappears:
+
+1. **Tailwind numeric colour utilities** (`bg-slate-500`, `text-red-600`, …) and
+   solid `bg-white`/`bg-black`/`border-white` — banned except the documented
+   **Tier-B allowlist** (on-dark rails / decorative / stray categorical). `text-white`
+   and translucent `/opacity` overlays stay allowed.
+2. **Neutral hex in inline style** — the exact shades Phase 8 replaced, **role-keyed**
+   so `color:"#fff"` (white text) stays legal while `background:"#fff"` (→ `--surface`)
+   and dark-text / light-gray-border hexes fail.
+
+On a hit the message names the file + offender and points to `tokens.md`. To clear
+a genuine exception, migrate to the token or add it to the allowlist **with a
+reason** — and shrink the allowlist as the dark-QA + categorical tails land.
+
 ```bash
 # files
 grep -rlE '(bg|text|border|ring)-(slate|gray|teal|red|amber|emerald|blue|indigo|cyan|purple|orange)-[0-9]' apps/web/components apps/web/app --include=*.tsx | wc -l
