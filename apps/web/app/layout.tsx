@@ -7,7 +7,7 @@ import { cookies } from "next/headers";
 import { resolveUserContext } from "../lib/user-context";
 import { resolveHostTheme } from "../lib/host-theme";
 import { platformBrand } from "../lib/platform";
-import { THEME_COOKIE, resolveThemeMode } from "../lib/theme-mode";
+import { THEME_COOKIE, resolveThemeMode, type ThemeChoice } from "../lib/theme-mode";
 import type { Industry } from "../lib/industry-config";
 import type { OrgRole } from "../lib/rbac";
 import "./globals.css";
@@ -39,12 +39,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   } catch { /* keep AppShell defaults */ }
 
   // Stamp the theme server-side from the cookie so there's no flash and no
-  // hydration mismatch (Phase 2). Defaults to light until the component color
-  // migration completes — see lib/theme-mode.ts.
-  let themeMode: "light" | "dark" = "light";
+  // hydration mismatch (Phase 2). No explicit choice → "system", which honours
+  // the OS via the @media block in globals.css — see lib/theme-mode.ts.
+  let themeMode: ThemeChoice = "system";
   try {
     themeMode = resolveThemeMode((await cookies()).get(THEME_COOKIE)?.value);
-  } catch { /* cookies unavailable — keep light */ }
+  } catch { /* cookies unavailable — honour OS */ }
 
   return (
     <ClerkProvider>

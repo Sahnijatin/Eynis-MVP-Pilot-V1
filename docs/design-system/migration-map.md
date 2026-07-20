@@ -122,10 +122,26 @@ Left intentionally: saturated **solid** decorative accents (`#7c3aed`/`#1d4ed8`/
 `#ea580c` panel/bubble/vertical-accent fills), which render correctly on both
 canvases, and the brand hues (`#25d366`) / on-dark sidebar blues.
 
-**OS-default dark is now unblocked** — no known light-tint breakers remain. Flipping
-`resolveThemeMode` to honour `prefers-color-scheme` is a deliberate product-default
-change and should ship with a live per-screen visual pass; the toggle stays opt-in
-until then.
+**OS-default dark is now unblocked** — no known light-tint breakers remain.
+
+### OS-default dark — enabled
+
+`resolveThemeMode` now returns `"system"` when no explicit cookie is set (was
+`"light"`). The layout stamps `<html data-theme="system">`, and the
+`:root[data-theme="system"]` `@media (prefers-color-scheme: dark)` block in
+globals.css drives the theme from the OS — SSR-safe (deterministic stamp, CSS does
+the OS resolution, no flash, no hydration mismatch). An explicit toggle choice
+(`light`/`dark`) still wins over the OS in both directions.
+
+That `@media` block was completed to mirror the **full** `[data-theme="dark"]` token
+set (it had been missing status ramps + shadows), so system-dark is a complete dark
+theme, not a partial one. The accent-ramp injector and the toggle resolve the
+concrete theme via `effectiveThemeMode()` (reads `matchMedia` when the stamp is
+`system`) and both re-render on OS-preference changes.
+
+Remaining caveat: a live per-screen visual pass of the authenticated app hasn't
+been run headless (Clerk-gated). Automated coverage: all dark token pairs WCAG-AA
+(ramp `contrastRatio`), the Phase 9 guard, and 0 light-tint chip breakers.
 
 ```bash
 # files
