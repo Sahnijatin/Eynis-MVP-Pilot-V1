@@ -6,8 +6,7 @@ import { Prisma } from "@prisma/client";
 import type { UserRole, SystemRoleKey } from "@eynis/shared";
 import { isValidConsentSource } from "@eynis/shared";
 import { createAuthToken, parseBearerToken, verifyAuthToken, assertJwtSecretConfigured, assertTokenExchangeConfigured, verifyTokenExchangeSecret } from "./core/auth";
-import { normalizeWhatsappInbound } from "./core/connectors/whatsapp";
-import { ingestConnectorEvent } from "./core/connectors/ingest";
+import { handleConnectorMessagingRoutes } from "./core/connectors/messaging-routes";
 import { startAutomationWorker } from "./core/automations/engine";
 import { listInventory, applyMovement, updateItem, deleteItem, listMovements, yieldSummary, toPaise, type MovementType } from "./core/inventory/service";
 import * as quotes from "./core/quotes/service";
@@ -21,7 +20,7 @@ import { startCampaignDispatchWorker } from "./core/campaigns/dispatch";
 import { startCampaignWorker } from "./core/campaigns/worker";
 import { startSequenceWorker } from "./core/campaigns/sequence-runner";
 import { registerSSEClient, removeSSEClient, broadcastSSEEvent } from "./sse/clients";
-import { checkWebhookSignature, verifySharedWebhookSecret, webhookEnforcement } from "./core/connectors/webhook-verify";
+import { verifySharedWebhookSecret, webhookEnforcement } from "./core/connectors/webhook-verify";
 import { processResendEvent, verifyResendSignature } from "./core/email/resend-webhook";
 import { randomBytes } from "node:crypto";
 import { parsePermissions, getPermissionsForLegacyRole, seedDefaultRolesForHotel, seedLicenseForHotel, syncSystemRolePermissions } from "./core/rbac";
@@ -1166,199 +1165,10 @@ const handleRequest = async (
       return;
     }
 
-    if (req.url === "/integrations/whatsapp/webhook" && req.method === "POST") {
-      const provided = req.headers["x-webhook-secret"];
-      const secretCheck = verifySharedWebhookSecret({
-        expected: process.env.WHATSAPP_WEBHOOK_SECRET,
-        provided: typeof provided === "string" ? provided : Array.isArray(provided) ? provided[0] : null,
-        isProduction: process.env.NODE_ENV === "production"
-      });
-      if (!secretCheck.ok) { json(res, secretCheck.status, { ok: false, error: secretCheck.reason ?? "Unauthorized" }); return; }
+    // ── Connector messaging router (#164): whatsapp webhook + connector events + send
+    // extracted to core/connectors/messaging-routes.ts
+    if (await handleConnectorMessagingRoutes(req, res)) return;
 
-      const rawBody = await parseRawBody(req);
-      // Enforce-when-configured: verification turns on automatically as soon as
-      // the operator has configured what it needs (Interakt secret, or Twilio
-      // token + public URL). VERIFY_WEBHOOKS=true forces it on; =false is the
-      // explicit dev escape hatch. See webhookEnforcement().
-      const enforcement = webhookEnforcement();
-
-      const twilioSig = typeof req.headers["x-twilio-signature"] === "string" ? req.headers["x-twilio-signature"] : null;
-      const interaktSigPresent = typeof req.headers["x-hub-signature-256"] === "string" || typeof req.headers["x-interakt-signature"] === "string";
-      // Close the omission bypass: when any provider is enforced, a request with
-      // no provider signature at all must be rejected rather than silently
-      // accepted (F-9) — otherwise forging "the other provider's" payload
-      // unsigned would bypass verification entirely.
-      if (enforcement.any && twilioSig === null && !interaktSigPresent) {
-        json(res, 401, { ok: false, error: "Missing webhook signature" }); return;
-      }
-      if (twilioSig !== null) {
-        // Twilio's HMAC covers the exact public URL it POSTed to PLUS the sorted form
-        // params. Use the configured public URL (TWILIO_WEBHOOK_URL / EYNIS_PUBLIC_URL,
-        // never the request Host which a caller controls) and the real form params
-        // parsed from the body. Enforcement is automatic once that URL + the auth
-        // token are configured — operators should validate against a live Twilio
-        // number when setting them.
-        const configuredBase = (process.env.TWILIO_WEBHOOK_URL ?? process.env.EYNIS_PUBLIC_URL ?? "").trim();
-        const fullUrl = configuredBase
-          ? configuredBase
-          : `https://${req.headers.host ?? "localhost"}${req.url}`;
-        const isForm = (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
-        const twilioParams = isForm ? Object.fromEntries(new URLSearchParams(rawBody)) : {};
-        const check = checkWebhookSignature({ provider: "twilio", signature: twilioSig, url: fullUrl, rawBody, params: twilioParams, enforce: enforcement.twilio });
-        if (!check.ok) { json(res, 401, { ok: false, error: check.reason ?? "Twilio signature verification failed" }); return; }
-      }
-
-      const interaktSig = typeof req.headers["x-hub-signature-256"] === "string"
-        ? req.headers["x-hub-signature-256"]
-        : typeof req.headers["x-interakt-signature"] === "string"
-        ? req.headers["x-interakt-signature"]
-        : null;
-      if (interaktSig !== null) {
-        const check = checkWebhookSignature({ provider: "interakt", signature: interaktSig, url: req.url ?? "", rawBody, enforce: enforcement.interakt });
-        if (!check.ok) { json(res, 401, { ok: false, error: check.reason ?? "Interakt signature verification failed" }); return; }
-      }
-
-      const body = (rawBody ? JSON.parse(rawBody) : {}) as Record<string, unknown>;
-      const normalized = normalizeWhatsappInbound(body);
-      if (!normalized) {
-        json(res, 400, {
-          ok: false,
-          error: "Unable to normalize webhook payload. Provide provider-compatible payload with tenantId, sender phone and message."
-        });
-        return;
-      }
-      const { tenantId, fromPhone, message, guestName, provider } = normalized;
-      const hasAccess = await ensureTenantAccess(tenantId);
-      if (!hasAccess) {
-        json(res, 404, { ok: false, error: "Hotel not found" });
-        return;
-      }
-
-      // Two-way campaign WhatsApp agent: if this sender is a lead on a campaign
-      // with the agent enabled, handle the reply here and stop. Otherwise fall
-      // through to the normal service-request ingest.
-      const providerMessageId =
-        asTrimmedString((body as Record<string, unknown>).MessageSid) ??
-        asTrimmedString((body as Record<string, unknown>).messageId) ??
-        asTrimmedString((body as Record<string, unknown>).id);
-      const { handleInboundWhatsApp } = await import("./core/campaigns/whatsapp-agent");
-      const agentResult = await handleInboundWhatsApp({ tenantId, fromPhone, body: message, providerMessageId });
-      if (agentResult.handled) {
-        json(res, 202, { ok: true, handledBy: "whatsapp_agent", reason: agentResult.reason });
-        return;
-      }
-
-      const result = await ingestConnectorEvent({
-        tenantId,
-        connectorKey: provider === "twilio" ? "whatsapp_twilio" : provider === "interakt" ? "whatsapp_interakt" : "whatsapp_generic",
-        guestPhone: fromPhone,
-        guestName,
-        messageText: message,
-        rawPayload: body,
-        sendReply: true
-      });
-
-      json(res, 202, {
-        ok: true,
-        connectorEventId: result.connectorEventId,
-        requestId: result.serviceRequestId,
-        classification: result.classification,
-        replySent: result.replySent
-      });
-      return;
-    }
-
-    // ── Connector: unified ingest endpoint ──────────────────────────────────
-    if (req.url?.startsWith("/connectors/events/ingest") && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /connectors/events/ingest");
-      if (!auth.ok) return;
-
-      const body = (await parseBody(req)) as {
-        connectorKey?: unknown; eventType?: unknown; guestPhone?: unknown;
-        guestName?: unknown; messageText?: unknown; aiProvider?: unknown; sendReply?: unknown;
-      };
-      const connectorKey = asTrimmedString(body.connectorKey);
-      const messageText = asTrimmedString(body.messageText);
-      if (!connectorKey || !messageText) {
-        json(res, 400, { ok: false, error: "connectorKey and messageText are required" }); return;
-      }
-      const aiProv = asTrimmedString(body.aiProvider) === "openai" ? "openai" as const : "claude" as const;
-
-      const result = await ingestConnectorEvent({
-        tenantId: auth.context.tenantId,
-        connectorKey,
-        eventType: asTrimmedString(body.eventType) ?? "inbound_message",
-        guestPhone: asTrimmedString(body.guestPhone) ?? undefined,
-        guestName: asTrimmedString(body.guestName) ?? undefined,
-        messageText,
-        rawPayload: body,
-        aiProvider: aiProv,
-        sendReply: body.sendReply !== false
-      });
-
-      json(res, 201, { ok: true, ...result });
-      return;
-    }
-
-    // ── Connector: event log ────────────────────────────────────────────────
-    if (req.url?.startsWith("/connectors/events") && req.method === "GET") {
-      const auth = await authorize(req, res, "GET /connectors/events");
-      if (!auth.ok) return;
-
-      const qs = parseUrl(req.url).searchParams;
-      // Use the hardened helpers — a raw Number("abc") here yielded take: NaN, which
-      // made Prisma throw and surfaced as an opaque 500 (F-…). Every other list route
-      // already uses these.
-      const limit = asSafeLimit(qs.get("limit"), 20, 100);
-      const offset = asSafeOffset(qs.get("offset"));
-      const connectorKey = qs.get("connectorKey") ?? undefined;
-
-      const [items, total] = await Promise.all([
-        prisma.connectorEvent.findMany({
-          where: { tenantId: auth.context.tenantId, ...(connectorKey ? { connectorKey } : {}) },
-          orderBy: { createdAt: "desc" },
-          take: limit,
-          skip: offset,
-          select: {
-            id: true, connectorKey: true, eventType: true, guestPhone: true,
-            guestName: true, aiProvider: true, aiCategory: true, aiPriority: true,
-            aiSummary: true, aiSentiment: true, aiRoutingHint: true,
-            serviceRequestId: true, replySentAt: true, replyStatus: true, createdAt: true
-          }
-        }),
-        prisma.connectorEvent.count({ where: { tenantId: auth.context.tenantId, ...(connectorKey ? { connectorKey } : {}) } })
-      ]);
-
-      json(res, 200, { ok: true, items, page: { limit, offset, total, hasMore: offset + items.length < total } });
-      return;
-    }
-
-    // ── Connector: outbound WhatsApp send ───────────────────────────────────
-    if (req.url?.startsWith("/connectors/whatsapp/send") && req.method === "POST") {
-      const auth = await authorize(req, res, "POST /connectors/whatsapp/send");
-      if (!auth.ok) return;
-
-      const body = (await parseBody(req)) as { toPhone?: unknown; message?: unknown };
-      const toPhone = asTrimmedString(body.toPhone);
-      const message = asTrimmedString(body.message);
-      if (!toPhone || !message) {
-        json(res, 400, { ok: false, error: "toPhone and message are required" }); return;
-      }
-
-      // Guardrail (#168): even a manual staff send must honour the durable opt-out /
-      // DND list — a subject who texted STOP (or was suppressed/erased) is never
-      // contacted. Caps/quiet-hours don't apply to a human-initiated send.
-      const { evaluateOutboundSend } = await import("./core/connectors/messaging-guardrails");
-      const guard = await evaluateOutboundSend({ tenantId: auth.context.tenantId, phone: toPhone, kind: "manual" });
-      if (!guard.allowed) {
-        json(res, 403, { ok: false, error: `Cannot message this subject: ${guard.reason}` }); return;
-      }
-
-      const { sendWhatsAppReply } = await import("./core/connectors/whatsapp-outbound");
-      const result = await sendWhatsAppReply(auth.context.tenantId, toPhone, message);
-      json(res, result.sent ? 200 : 503, { ok: result.sent, ...result });
-      return;
-    }
 
     // ── Service-requests router (#164): extracted to core/service-requests/routes.ts
     if (await handleServiceRequestRoutes(req, res)) return;
