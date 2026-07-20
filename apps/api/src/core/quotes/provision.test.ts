@@ -106,6 +106,30 @@ test("backfill provisions templates for a pre-existing tenant that has none, and
   assert.equal(afterSeeded, beforeSeeded, "an already-provisioned tenant is left untouched");
 });
 
+test("backfill guarantees starter WhatsApp templates for a tenant provisioned before they existed", async () => {
+  // Simulate a tenant provisioned before starter message templates existed: it has quote
+  // templates (so the full-kit path is skipped) but zero WhatsApp message templates.
+  const tenantId = await newTenant("manufacturing", "Pre-Template Co");
+  await seedIndustryDefaults(tenantId, "manufacturing", "Pre-Template Co");
+  await prisma.messageTemplate.deleteMany({ where: { tenantId } });
+  assert.equal(await prisma.messageTemplate.count({ where: { tenantId, channel: "whatsapp" } }), 0);
+  const quotesBefore = await prisma.quoteTemplate.count({ where: { tenantId } });
+
+  const n = await backfillIndustryDefaults();
+  assert.ok(n >= 1, "at least this tenant was backfilled");
+
+  const wa = await prisma.messageTemplate.findMany({ where: { tenantId, channel: "whatsapp", status: "approved" } });
+  assert.ok(wa.length >= 1, "starter WhatsApp templates now exist and are approved");
+  assert.ok(wa.some((t) => t.name === "Quote sent (WhatsApp)"), "the campaign picker's starter template is present");
+  assert.ok(wa.every((t) => t.body.includes("Pre-Template Co")), "template body is company-stamped");
+  // The message-template backfill must not re-seed quote templates.
+  assert.equal(await prisma.quoteTemplate.count({ where: { tenantId } }), quotesBefore, "quote templates untouched");
+
+  // Idempotent: a second backfill is a no-op (no duplicate WhatsApp templates).
+  await backfillIndustryDefaults();
+  assert.equal(await prisma.messageTemplate.count({ where: { tenantId, channel: "whatsapp" } }), wa.length, "no duplicates on a second backfill");
+});
+
 test("a service-vertical template prices correctly through the shared costing engine", async () => {
   // Healthcare uses fixed/hours cost bases; confirm the engine rolls it up without a
   // furniture-style dimension. Dental Implant = fixture + crown + lab + 1.5h surgery.
