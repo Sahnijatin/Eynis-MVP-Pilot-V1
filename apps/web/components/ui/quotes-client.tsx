@@ -258,7 +258,7 @@ export function QuotesClient({ initialQuotes, templates, inventory }: { initialQ
           <Field label="Reason (optional)">
             <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} aria-label="Reason for rejection"
               placeholder="Why is this quote being rejected?"
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 14, resize: "vertical", boxSizing: "border-box" }} />
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", fontFamily: "inherit", fontSize: 14, resize: "vertical", boxSizing: "border-box" }} />
           </Field>
         </Modal>
       )}
@@ -659,7 +659,7 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
                 {!!billTo.gstin && !isValidGstin(billTo.gstin) && (
                   <div style={{ fontSize: 11, color: "#b45309", marginTop: 4 }}>Customer GSTIN doesn’t look valid. Set Place of Supply below so tax is computed correctly.</div>
                 )}
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Place of Supply defaults to the customer’s GSTIN state; set it explicitly for an unregistered/B2C buyer shipping to another state.</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Place of Supply defaults to the customer’s GSTIN state; set it explicitly for an unregistered/B2C buyer shipping to another state.</div>
               </div>
             </div>
           )}
