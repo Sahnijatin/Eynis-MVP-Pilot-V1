@@ -99,6 +99,35 @@ function resizeImageToDataUrl(file: File, maxEdge = 1600, quality = 0.72): Promi
   });
 }
 
+// Resize a picked seller logo to a bounded PNG data URL (transparency preserved — JPEG
+// would flatten it to a white box on the letterhead). Longest edge capped so the quote
+// payload stays small. Resolves null if the file can't be read as an image.
+const SELLER_LOGO_MAX_BYTES = 700 * 1024;
+function resizeLogoToPngDataUrl(file: File, maxEdge = 480): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) { resolve(null); return; }
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        const scale = Math.min(1, maxEdge / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round((img.width || maxEdge) * scale));
+        const h = Math.max(1, Math.round((img.height || maxEdge) * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        try { ctx.drawImage(img, 0, 0, w, h); resolve(canvas.toDataURL("image/png")); }
+        catch { resolve(null); }
+      };
+      img.src = typeof reader.result === "string" ? reader.result : "";
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function statusTone(s: string): "neutral" | "accent" | "success" | "danger" | "warning" {
   return s === "accepted" ? "success" : s === "sent" ? "accent" : s === "rejected" ? "danger" : s === "expired" ? "warning" : "neutral";
 }
@@ -387,6 +416,21 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
   const setS = (patch: Partial<QuoteSeller>) => setSeller((s) => ({ ...s, ...patch }));
   const setB = (patch: Partial<QuoteBillTo>) => setBillTo((b) => ({ ...b, ...patch }));
 
+  // Seller company logo — uploaded, resized to a bounded PNG, stored on the quote's
+  // seller letterhead snapshot and shown on the quotation PDF (falls back to the
+  // workspace branding logo when unset).
+  const sellerLogoRef = useRef<HTMLInputElement>(null);
+  const onSellerLogo = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    const dataUrl = await resizeLogoToPngDataUrl(file);
+    if (!dataUrl) { toast.push("Couldn't read that image — try a PNG or JPG logo.", "error"); return; }
+    if (Math.floor((dataUrl.length * 3) / 4) > SELLER_LOGO_MAX_BYTES) {
+      toast.push("That image is too large even after resizing — use a simpler logo.", "error"); return;
+    }
+    setS({ logo: dataUrl });
+  };
+
   // Per-piece images (keyed by groupName), shown on the PDF after the Quantity column.
   const [lineImages, setLineImages] = useState<Record<string, string[]>>(editQuote?.lineImages ?? {});
   const addImages = async (group: string, files: FileList | null) => {
@@ -627,6 +671,27 @@ function QuoteBuilder({ templates, inventory, editQuote, onClose, onSaved }: { t
             <div style={{ padding: 12, display: "grid", gap: 14 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 }}>YOUR COMPANY (seller) — carried forward from your last quote</div>
+                {/* Company logo — an upload box that resizes in the browser and stores the
+                    image on the quote; it renders at the top-left of the quotation letterhead. */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <button type="button" onClick={() => sellerLogoRef.current?.click()} aria-label={seller.logo ? "Replace company logo" : "Upload company logo"}
+                    style={{ width: 76, height: 76, flexShrink: 0, borderRadius: 8, cursor: "pointer", border: "1.5px dashed var(--border-strong)", background: "var(--surface-inset)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: seller.logo ? 6 : 0 }}>
+                    {seller.logo
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={seller.logo} alt="Company logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                      : <span style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.3 }}>Click to<br />upload</span>}
+                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Company logo</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Button type="button" variant="secondary" size="sm" onClick={() => sellerLogoRef.current?.click()}>{seller.logo ? "Replace" : "Upload logo"}</Button>
+                      {seller.logo && <Button type="button" variant="secondary" size="sm" onClick={() => setS({ logo: undefined })}>Remove</Button>}
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Shown on the quotation letterhead. PNG/JPG · up to 700&nbsp;KB.</span>
+                  </div>
+                  <input ref={sellerLogoRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style={{ display: "none" }}
+                    onChange={(e) => { onSellerLogo(e.target.files); e.target.value = ""; }} />
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <Input value={seller.name ?? ""} onChange={(e) => setS({ name: e.target.value })} placeholder="Company name" />
                   <Input value={seller.phone ?? ""} onChange={(e) => setS({ phone: e.target.value })} placeholder="Phone" />

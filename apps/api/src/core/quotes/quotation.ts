@@ -25,6 +25,9 @@ export interface SellerDetails {
   ifsc?: string;
   upi?: string;
   signatory?: string;
+  logo?: string; // seller company logo for the letterhead — an uploaded data:image/png|jpeg
+  // URL (bounded) or a plain hosted URL. Kept out of SELLER_KEYS so it bypasses the tight
+  // 400-char text cap; sanitised separately in cleanSeller.
 }
 
 export interface BillTo {
@@ -48,11 +51,30 @@ const str = (v: unknown): string | undefined => {
   return s ? s.slice(0, 400) : undefined; // cap to keep the snapshot bounded
 };
 
+// The seller logo is either an uploaded raster inlined as a data: URL (png/jpeg only —
+// the formats the PDF embedder renders) or a plain hosted URL. Data URLs are decoded-size
+// bounded so a crafted quote can't bloat the sellerJson snapshot; anything malformed/
+// oversized is dropped (→ no logo), matching how the workspace branding logo is handled.
+const SELLER_LOGO_MAX_BYTES = 700 * 1024;
+const sellerLogo = (v: unknown): string | undefined => {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return undefined;
+  if (/^data:/i.test(s)) {
+    const m = /^data:image\/(png|jpe?g);base64,([a-z0-9+/=]+)$/i.exec(s);
+    if (!m) return undefined;
+    const bytes = Math.floor((m[2].length * 3) / 4);
+    return bytes > 0 && bytes <= SELLER_LOGO_MAX_BYTES ? s : undefined;
+  }
+  return s.length <= 4096 ? s : undefined; // plain URL — bound the length
+};
+
 // Sanitize an untrusted input object down to the known keys (drops anything else).
 export function cleanSeller(o: unknown): SellerDetails {
   const src = (o ?? {}) as Record<string, unknown>;
   const out: SellerDetails = {};
   for (const k of SELLER_KEYS) { const v = str(src[k]); if (v) out[k] = v; }
+  const logo = sellerLogo(src.logo);
+  if (logo) out.logo = logo;
   return out;
 }
 export function cleanBillTo(o: unknown): BillTo {

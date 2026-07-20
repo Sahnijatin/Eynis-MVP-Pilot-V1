@@ -468,7 +468,9 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           validUntil: quote.validUntil ? new Date(quote.validUntil as unknown as string) : null,
           accentColor: brand.primaryColor,
           brandName: brand.brandName,
-          logoUrl: brand.logoUrl,
+          // Prefer the per-quote seller logo (letterhead) when set; otherwise fall back to
+          // the workspace branding logo. Both go through the same SSRF-guarded embedder.
+          logoUrl: (typeof quote.seller?.logo === "string" && quote.seller.logo.trim()) ? quote.seller.logo : brand.logoUrl,
           imageLinkBase,
         });
         sendBinary(res, "application/pdf", pdf, `quotation-${quote.number}.pdf`);
