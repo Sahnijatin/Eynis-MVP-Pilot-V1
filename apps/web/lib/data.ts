@@ -155,6 +155,13 @@ export interface AutomationsResponse {
     revenueInr: number;
     lastFiredAt: string | null;
     createdAt: string;
+    // Present on custom "New Flow" rules (undefined on seeded operational rules).
+    trigger?: string | null;
+    action?: string | null;
+    channels?: string[];
+    delayHours?: number;
+    detail?: string | null;
+    custom?: boolean;
   }>;
   summary: {
     totalAutomations: number;

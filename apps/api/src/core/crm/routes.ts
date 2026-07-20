@@ -197,6 +197,30 @@ export async function handleCrmRoutes(req: IncomingMessage, res: ServerResponse)
       return true;
     }
 
+    // POST /tasks — register a standalone task, optionally linked to a contact/deal.
+    // Unlike POST /contacts/:id/activities, this does not require an existing contact,
+    // so a follow-up can be captured directly from the tenant-wide Tasks screen.
+    if (parseUrl(req.url).pathname === "/tasks" && req.method === "POST") {
+      const auth = await authorize(req, res, "POST /tasks");
+      if (!auth.ok) return true;
+      const tenantId = auth.context.tenantId;
+      const { validateActivityCreate, serializeActivity } = await import("./activities");
+      const body = await parseObjectBody(req);
+      body.type = "task"; // this endpoint only ever creates tasks
+      const validated = validateActivityCreate(body);
+      if (!validated.ok) { json(res, 400, { ok: false, error: validated.error }); return true; }
+      const v = validated.value;
+      if (v.contactId && !(await prisma.contact.findFirst({ where: { id: v.contactId, tenantId }, select: { id: true } }))) { json(res, 400, { ok: false, error: "Contact not found" }); return true; }
+      if (v.dealId && !(await prisma.deal.findFirst({ where: { id: v.dealId, tenantId }, select: { id: true } }))) { json(res, 400, { ok: false, error: "Deal not found" }); return true; }
+      const created = await prisma.activity.create({
+        data: { tenantId, contactId: v.contactId, dealId: v.dealId, userId: auth.context.userId, type: "task", title: v.title, body: v.body, dueAt: v.dueAt, status: "open" },
+        include: { user: { select: { id: true, fullName: true } }, contact: { select: { id: true, fullName: true } } },
+      });
+      if (v.contactId) await prisma.contact.update({ where: { id: v.contactId }, data: { lastActivityAt: new Date() } });
+      json(res, 201, { ok: true, activity: { ...serializeActivity(created), contactName: created.contact?.fullName ?? null } });
+      return true;
+    }
+
     // ── CRM: Activity update / delete (complete a task, edit a note) ─────────
     if (parseUrl(req.url).pathname.startsWith("/activities/")) {
       const id = parseCrmIdPath(req.url, "activities");

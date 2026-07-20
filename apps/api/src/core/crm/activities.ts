@@ -26,6 +26,7 @@ export interface ActivityCreateValue {
   title: string;
   body: string | null;
   dueAt: Date | null;
+  contactId: string | null;
   dealId: string | null;
   status: string; // tasks start "open"; notes/meetings are "logged"
 }
@@ -47,6 +48,7 @@ export function validateActivityCreate(body: Record<string, unknown>): Result<Ac
       title,
       body: optString(body.body),
       dueAt,
+      contactId: optString(body.contactId),
       dealId: optString(body.dealId),
       status: type === "task" ? "open" : "logged",
     },

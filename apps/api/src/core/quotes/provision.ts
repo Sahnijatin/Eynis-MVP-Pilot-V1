@@ -59,6 +59,31 @@ function componentData(
   };
 }
 
+// Ensure the industry's starter MessageTemplates exist for a tenant. These ship
+// pre-"approved" so a WhatsApp/email campaign or sequence can be built and activated
+// out of the box (Meta requires a pre-approved template to send). Idempotent by
+// (name, channel): an existing row has its body/subject/category refreshed; a missing
+// one is created. Returns the count and a key→id map (keys drive sequence-step links).
+export async function seedStarterMessageTemplates(
+  tenantId: string,
+  industry: string | null | undefined,
+  companyName: string,
+): Promise<{ count: number; idByKey: Record<string, string> }> {
+  const catalog = getIndustryCatalog(industry);
+  const name = (companyName || "Your Company").trim() || "Your Company";
+  const idByKey: Record<string, string> = {};
+  for (const mt of catalog.messageTemplates) {
+    const body = fillCompany(mt.body, name);
+    const subject = mt.subject ? fillCompany(mt.subject, name) : null;
+    const existing = await prisma.messageTemplate.findFirst({ where: { tenantId, name: mt.name, channel: mt.channel }, select: { id: true } });
+    const row = existing
+      ? await prisma.messageTemplate.update({ where: { id: existing.id }, data: { body, subject, category: mt.category, status: "approved" }, select: { id: true } })
+      : await prisma.messageTemplate.create({ data: { tenantId, name: mt.name, channel: mt.channel, category: mt.category, subject, body, status: "approved" }, select: { id: true } });
+    idByKey[mt.key] = row.id;
+  }
+  return { count: catalog.messageTemplates.length, idByKey };
+}
+
 export async function seedIndustryDefaults(
   tenantId: string,
   industry: string | null | undefined,
@@ -104,17 +129,8 @@ export async function seedIndustryDefaults(
   }
 
   // 3. Message templates for the follow-up sequence (idempotent by name+channel).
-  const tplIdByKey: Record<string, string> = {};
-  for (const mt of catalog.messageTemplates) {
-    const body = fillCompany(mt.body, name);
-    const subject = mt.subject ? fillCompany(mt.subject, name) : null;
-    const existing = await prisma.messageTemplate.findFirst({ where: { tenantId, name: mt.name, channel: mt.channel }, select: { id: true } });
-    const row = existing
-      ? await prisma.messageTemplate.update({ where: { id: existing.id }, data: { body, subject, category: mt.category, status: "approved" }, select: { id: true } })
-      : await prisma.messageTemplate.create({ data: { tenantId, name: mt.name, channel: mt.channel, category: mt.category, subject, body, status: "approved" }, select: { id: true } });
-    tplIdByKey[mt.key] = row.id;
-    result.messageTemplates++;
-  }
+  const { count: mtCount, idByKey: tplIdByKey } = await seedStarterMessageTemplates(tenantId, industry, name);
+  result.messageTemplates = mtCount;
 
   // 4. Follow-up sequence + steps (skip if a sequence with this name exists). Exits
   //    the moment the customer replies/books/opts out — the auto-stop the customer asked for.
@@ -156,20 +172,33 @@ export async function seedIndustryDefaults(
   return result;
 }
 
-// Boot-time self-heal: provision the industry starter kit for any tenant that has no
-// quote templates yet — the ones created before auto-provisioning existed. Each tenant
-// is seeded from ITS OWN industry (a null/unknown industry falls back to the furniture
-// default). Idempotent: only tenants with ZERO templates are touched, so it runs once
-// per tenant and is a no-op on every subsequent boot. Mirrors syncSystemRolePermissions.
+// Boot-time self-heal: guarantee every tenant has its industry starter kit. Two cases,
+// each seeded from the tenant's OWN industry (null/unknown → furniture default):
+//   • zero quote templates → full starter kit (created before auto-provisioning existed).
+//   • has quote templates but zero WhatsApp templates → starter message templates only
+//     (provisioned before starter message templates were added — its campaign "Approved
+//     template" picker would otherwise be empty).
+// Idempotent: a fully-provisioned tenant is untouched, so it runs once per tenant and is
+// a no-op on every subsequent boot. Mirrors syncSystemRolePermissions.
 export async function backfillIndustryDefaults(): Promise<number> {
   const tenants = await prisma.tenant.findMany({ select: { id: true, name: true, industry: true } });
   let seeded = 0;
   for (const t of tenants) {
-    const count = await prisma.quoteTemplate.count({ where: { tenantId: t.id } });
-    if (count > 0) continue;
     try {
-      await seedIndustryDefaults(t.id, t.industry, t.name);
-      seeded++;
+      // A tenant with no quote templates predates auto-provisioning entirely — give it
+      // the full starter kit (which includes the WhatsApp/email message templates).
+      if ((await prisma.quoteTemplate.count({ where: { tenantId: t.id } })) === 0) {
+        await seedIndustryDefaults(t.id, t.industry, t.name);
+        seeded++;
+        continue;
+      }
+      // A tenant that DOES have quote templates but no WhatsApp templates was provisioned
+      // before starter message templates existed — its campaign "Approved template" picker
+      // would otherwise be empty. Guarantee the starter templates independently.
+      if ((await prisma.messageTemplate.count({ where: { tenantId: t.id, channel: "whatsapp" } })) === 0) {
+        await seedStarterMessageTemplates(t.id, t.industry, t.name);
+        seeded++;
+      }
     } catch (err) {
       console.warn("[backfillIndustryDefaults] failed for tenant", t.id, err instanceof Error ? err.message : err);
     }

@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Zap, Clock, Download, Filter, CheckCircle2, XCircle, AlertCircle, MessageSquare, Star, Bell, X, Pause, Play } from "lucide-react";
+import { Plus, Zap, Clock, Download, Filter, CheckCircle2, XCircle, AlertCircle, MessageSquare, Star, Bell, Pause, Play } from "lucide-react";
 import { CampaignBarChart } from "./charts";
 import { PreviewBadge } from "./preview-badge";
+import { NewFlowModal, type SequenceOption } from "./new-flow-modal";
 import { useToast } from "../ds";
 import type { AutomationsResponse, AutomationExecutionsResponse } from "../../lib/data";
 
@@ -64,11 +65,12 @@ function downloadCsv(rows: Item[]) {
   URL.revokeObjectURL(url);
 }
 
-export function AutomationsClient({ initialItems, initialSummary, initialExecutions, error }: {
+export function AutomationsClient({ initialItems, initialSummary, initialExecutions, error, sequences = [] }: {
   initialItems: Item[];
   initialSummary: AutomationsResponse["summary"];
   initialExecutions: Execution[];
   error?: string;
+  sequences?: SequenceOption[];
 }) {
   const toast = useToast();
   const [items, setItems] = useState<Item[]>(initialItems);
@@ -76,7 +78,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
   const [filterOpen, setFilterOpen] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [newFlowOpen, setNewFlowOpen] = useState(false);
 
   // The page fetches up to 200 executions: the full set feeds the per-day
   // activity chart; the log below shows the most recent 15.
@@ -140,7 +142,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
             <h1 className="page-title">Automations</h1>
             <p className="page-subtitle">Rule-based workflows that fire automatically — 60s evaluation cycle.</p>
           </div>
-          <button onClick={() => setInfoOpen(true)} className="px-4 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: "#f59e0b" }}>
+          <button onClick={() => setNewFlowOpen(true)} className="px-4 py-2 text-sm font-semibold rounded-lg text-white flex items-center gap-1.5" style={{ background: "#f59e0b" }}>
             <Plus className="w-4 h-4" /> Create New Workflow
           </button>
         </div>
@@ -176,7 +178,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
         <div className="card col-span-1">
           <div className="flex items-center justify-between mb-4">
             <h3 className="card-title mb-0">Automation Library</h3>
-            <button onClick={() => setInfoOpen(true)} className="text-sm font-medium" style={{ color: "var(--color-teal)" }}>View All</button>
+            <button onClick={() => setNewFlowOpen(true)} className="text-sm font-medium" style={{ color: "var(--color-teal)" }}>View All</button>
           </div>
           <div className="space-y-3">
             {templateLibrary.map((t) => (
@@ -186,7 +188,7 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
                   <span className="text-sm font-semibold text-fg">{t.name}</span>
                 </div>
                 <p className="text-xs text-fg-muted mb-2">{t.desc}</p>
-                <button onClick={() => setInfoOpen(true)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "var(--color-teal)" }}>
+                <button onClick={() => setNewFlowOpen(true)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "var(--color-teal)" }}>
                   Use Template →
                 </button>
               </div>
@@ -336,31 +338,17 @@ export function AutomationsClient({ initialItems, initialSummary, initialExecuti
       </div>
 
       <div className="fixed bottom-6 left-64 z-40">
-        <button onClick={() => setInfoOpen(true)} className="px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "var(--accent-solid, #0f766e)" }}>
+        <button onClick={() => setNewFlowOpen(true)} className="px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "var(--accent-solid, #0f766e)" }}>
           <Plus className="w-4 h-4" /> New Workflow
         </button>
       </div>
 
-      {/* Honest info modal — custom workflow authoring isn't self-serve yet, so
-          rather than fake a builder we explain how automations work today. */}
-      {infoOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setInfoOpen(false)}>
-          <div className="bg-surface rounded-xl shadow-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-3">
-              <h3 className="text-base font-semibold text-fg">Custom workflows</h3>
-              <button onClick={() => setInfoOpen(false)} className="text-fg-subtle hover:text-fg-muted"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-sm text-fg-muted mb-3">
-              Your operational automations already run automatically on a 60-second cycle — you can <strong>pause or resume</strong> any rule from the table below, and export the list to CSV.
-            </p>
-            <p className="text-sm text-fg-muted mb-4">
-              Building brand-new custom workflows (your own triggers and actions) is on the roadmap. Want a specific flow set up in the meantime? Reach out to your account team and we&apos;ll configure it for you.
-            </p>
-            <div className="flex justify-end">
-              <button onClick={() => setInfoOpen(false)} className="px-4 py-2 text-sm font-semibold rounded-lg text-white" style={{ background: "var(--accent-solid, #0f766e)" }}>Got it</button>
-            </div>
-          </div>
-        </div>
+      {newFlowOpen && (
+        <NewFlowModal
+          sequences={sequences}
+          onClose={() => setNewFlowOpen(false)}
+          onCreated={(rule) => { setItems((prev) => [rule, ...prev]); setNewFlowOpen(false); }}
+        />
       )}
     </div>
   );

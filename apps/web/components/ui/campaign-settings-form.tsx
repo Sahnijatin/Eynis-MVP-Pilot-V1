@@ -161,7 +161,12 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignDetail })
         <div style={card}>
           <div style={cardTitle}>WhatsApp</div>
           <Field label="Approved template">
-            <select style={input} value={whatsappTemplateId} onChange={(e) => setWaTemplateId(e.target.value)}>
+            <select style={input} value={whatsappTemplateId} onChange={(e) => {
+              const id = e.target.value;
+              setWaTemplateId(id);
+              const tpl = waTemplates.find((x) => x.id === id);
+              if (tpl) setWaBody(tpl.body ?? "");
+            }}>
               <option value="">— select an approved template —</option>
               {waTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
