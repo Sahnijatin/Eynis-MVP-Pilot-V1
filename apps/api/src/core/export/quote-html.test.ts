@@ -45,9 +45,12 @@ test("renders the static scaffold + core dynamic fields", () => {
   assert.match(html, /Home office fit-out/);          // subject row
   assert.match(html, /Place of Supply/);
   assert.match(html, /Karnataka \(29\)/);
+  assert.match(html, /Total GST @18%/);               // combined GST line with effective rate
+  assert.match(html, /Total \(incl\. GST\)/);          // total is explicitly GST-inclusive
   assert.match(html, /₹1,53,400\.00/);                // grand total
   assert.match(html, /Indian Rupees One Lakh Fifty Three Thousand Four Hundred Only/);
-  assert.match(html, /Authorised Signatory for/);
+  assert.match(html, /Authorised Signatory for/);      // signature block present
+  assert.match(html, /Customer Signature/);
 });
 
 test("intra-state quote splits GST into CGST + SGST (no IGST)", () => {
