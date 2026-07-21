@@ -72,6 +72,27 @@ export function isSafeLogoUrl(raw: string): boolean {
 // Best-effort logo embed: https public host only, PNG/JPG, no redirects, short
 // timeout, never throws. Exported so the quotation PDF reuses the same SSRF-guarded
 // fetch + embed path.
+// Resolve a logo to an INLINE data URL for the HTML→PDF path (which renders with the
+// network blocked, so a hosted URL would otherwise fail to load). A data: URL is returned
+// as-is; a hosted png/jpeg is fetched through the same SSRF guard + size cap as
+// tryEmbedLogo and re-encoded as base64; anything else → null. Never throws.
+export async function resolveLogoDataUrl(url: string | null | undefined): Promise<string | null> {
+  const s = (url ?? "").trim();
+  if (!s) return null;
+  if (/^data:image\/(png|jpe?g);base64,/i.test(s)) return s; // already inline
+  if (!/\.(png|jpe?g)(\?.*)?$/i.test(s) || !isSafeLogoUrl(s)) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2500);
+    const res = await fetch(s, { signal: ctrl.signal, redirect: "error" }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!bytes.byteLength || bytes.byteLength > 5_000_000) return null;
+    const mime = /\.png(\?.*)?$/i.test(s) ? "image/png" : "image/jpeg";
+    return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
+  } catch { return null; }
+}
+
 export async function tryEmbedLogo(doc: PDFDocument, url: string | null) {
   if (!url) return null;
   // Uploaded logo (Settings → Branding) arrives as an inline data URL. Decode + embed

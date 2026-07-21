@@ -750,6 +750,7 @@ export interface QuoteSeller {
   name?: string; address?: string; phone?: string; email?: string; gstin?: string; pan?: string;
   bankAccountName?: string; bankAccountNumber?: string; bankName?: string; bankBranch?: string; ifsc?: string; upi?: string;
   signatory?: string;
+  logo?: string; // seller company logo (data:image URL or hosted URL) shown on the quotation
 }
 export interface QuoteBillTo {
   name?: string; address?: string; pin?: string; phone?: string; gstin?: string; stateCode?: string;

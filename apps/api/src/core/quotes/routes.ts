@@ -14,6 +14,8 @@ import { loadReportBrand } from "../export/brand";
 import { renderBrandedReportPdf } from "../export/report-pdf";
 import { buildQuotationView, serializeSeller, serializeBillTo, serializeLineImages, serializeHsnByGroup, serializeQtyByGroup, serializeGstByGroup, parseGstByGroup } from "./quotation";
 import { renderQuotationPdf } from "../export/quote-pdf";
+import { renderQuotationPdfHtml } from "../export/quote-html";
+import { resolveLogoDataUrl } from "../export/report-pdf";
 import { resolveAiCredentials, aiConfigured, chooseProvider, providerKey } from "../research/ai-credentials";
 import { aiCompleteTiered, extractJson } from "../ai/intelligence";
 
@@ -456,7 +458,13 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           const token = await quotes.ensureImageToken(auth.context.tenantId, quoteId);
           if (token) imageLinkBase = `${publicBase}/api/public/quote-image/${token}`;
         }
-        const pdf = await renderQuotationPdf({
+        // Prefer the per-quote seller logo (letterhead) when set; otherwise the workspace
+        // branding logo. Resolve it to an inline data URL up front so the HTML→PDF path
+        // renders hermetically (network blocked) and the pdf-lib fallback reuses the same
+        // resolved logo. A data: URL passes through; a hosted URL is SSRF-guarded + fetched.
+        const rawLogo = (typeof quote.seller?.logo === "string" && quote.seller.logo.trim()) ? quote.seller.logo : brand.logoUrl;
+        const logoUrl = await resolveLogoDataUrl(rawLogo);
+        const pdfData = {
           number: String(quote.number),
           subject: String(quote.title),
           date: quote.sentAt ? new Date(quote.sentAt as unknown as string) : new Date(quote.createdAt as unknown as string),
@@ -468,9 +476,14 @@ export async function handleQuoteRoutes(req: IncomingMessage, res: ServerRespons
           validUntil: quote.validUntil ? new Date(quote.validUntil as unknown as string) : null,
           accentColor: brand.primaryColor,
           brandName: brand.brandName,
-          logoUrl: brand.logoUrl,
+          logoUrl,
           imageLinkBase,
-        });
+        };
+        // Primary path: render the exact HTML design to PDF via headless Chromium. If the
+        // browser is unavailable (or rendering fails), fall back to the pdf-lib renderer so
+        // the download endpoint never breaks. QUOTE_PDF_HTML=false forces the pdf-lib path.
+        const htmlPdf = process.env.QUOTE_PDF_HTML === "false" ? null : await renderQuotationPdfHtml(pdfData);
+        const pdf = htmlPdf ?? (await renderQuotationPdf(pdfData));
         sendBinary(res, "application/pdf", pdf, `quotation-${quote.number}.pdf`);
         return true;
       }

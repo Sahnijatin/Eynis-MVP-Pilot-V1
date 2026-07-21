@@ -218,7 +218,17 @@ export async function listQuotes(
     prisma.quote.findMany({ where, include: withLines, omit: { lineImagesJson: true }, orderBy: { createdAt: "desc" }, take: opts.limit, skip: opts.offset }),
     prisma.quote.count({ where }),
   ]);
-  return { items: rows.map((r) => serializeQuote(r as unknown as QuoteWithLines)), total };
+  // The list never renders the seller logo (only the editor + PDF do), so drop it from
+  // list rows — a per-quote logo would otherwise repeat a large data URL across every row.
+  // The editor re-fetches the full quote, so it still gets the logo.
+  return {
+    items: rows.map((r) => {
+      const it = serializeQuote(r as unknown as QuoteWithLines);
+      if (it.seller?.logo) it.seller = { ...it.seller, logo: undefined };
+      return it;
+    }),
+    total,
+  };
 }
 
 export async function getQuote(tenantId: string, id: string) {

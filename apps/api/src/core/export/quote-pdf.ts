@@ -114,7 +114,7 @@ const COLS = { item: 0.34, qty: 0.07, images: 0.14, price: 0.15, tax: 0.14, amou
 // Neutral, industry-agnostic boilerplate shown when the quote carries no terms of its
 // own, so the document is never blank there. Kept generic (no payment/advance terms) so
 // it's safe for any tenant; a tenant that sets its own terms overrides this entirely.
-const DEFAULT_TERMS = [
+export const DEFAULT_TERMS = [
   "This is a quotation and not a tax invoice.",
   "Prices are valid until the validity date shown above; if no validity is stated, this quotation is valid for 15 days from the date of issue.",
   "Applicable taxes are as shown above and subject to the prevailing rates at the time of billing.",
