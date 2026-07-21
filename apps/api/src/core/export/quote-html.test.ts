@@ -93,6 +93,15 @@ test("falls back to default terms and shows an em-dash when a piece has no image
   assert.match(html, /—/); // no-image placeholder (both pieces have none here)
 });
 
+test("terms render as one bullet per line, stripping any pasted list markers", () => {
+  const html = renderQuotationHtml(baseData({ terms: "- Pay 50% advance\n2) Balance before dispatch\n• Lead time 3 weeks" }));
+  assert.match(html, /<li>Pay 50% advance<\/li>/);
+  assert.match(html, /<li>Balance before dispatch<\/li>/);
+  assert.match(html, /<li>Lead time 3 weeks<\/li>/);
+  assert.doesNotMatch(html, /<li>-\s/);   // leading "-" marker stripped
+  assert.doesNotMatch(html, /<li>2\)/);   // leading "2)" marker stripped
+});
+
 test("uses the seller logo tile when a logo is provided", () => {
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   const html = renderQuotationHtml(baseData({ logoUrl: png }));

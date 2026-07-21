@@ -162,8 +162,12 @@ export function renderQuotationHtml(data: QuotationPdfData): string {
     ? `<div class="block"><h3>Notes</h3><div class="kv">${esc(data.notes)}</div></div>`
     : "";
 
+  // Terms render as bullet pointers — one per line. Any leading list marker the user
+  // pasted (-, *, •, "1.", "1)") is stripped so it isn't doubled with our own bullet.
   const termsText = (data.terms && data.terms.trim()) ? data.terms : DEFAULT_TERMS;
-  const termsHtml = termsText.split(/\r?\n/).map((t) => t.trim()).filter(Boolean)
+  const termsHtml = termsText.split(/\r?\n/)
+    .map((t) => t.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
+    .filter(Boolean)
     .map((t) => `<li>${esc(t)}</li>`).join("");
 
   const signatory = s.signatory || sellerName;
@@ -184,89 +188,90 @@ export function renderQuotationHtml(data: QuotationPdfData): string {
   @page{ size:A4; margin:10mm; }
   *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   html,body{ margin:0; padding:0; background:#fff; }
-  body{ font-family:var(--sans); color:var(--ink); font-size:12px; line-height:1.4; -webkit-font-smoothing:antialiased; }
+  body{ font-family:var(--sans); color:var(--ink); font-size:13.5px; line-height:1.45; -webkit-font-smoothing:antialiased; }
 
   .head{ display:grid; grid-template-columns:1.05fr 1px .95fr; gap:18px; }
   .head .rule{ background:var(--hair); }
-  .brand{ display:flex; gap:11px; align-items:flex-start; }
-  .brand .mark{ width:42px; height:42px; flex:none; border-radius:8px;
+  .brand{ display:flex; gap:14px; align-items:center; }
+  .brand .mark{ width:60px; height:60px; flex:none; border-radius:11px;
     background:linear-gradient(150deg,var(--accent),var(--accent-d)); display:flex; align-items:center; justify-content:center; }
-  .brand .mark span{ font-family:var(--serif); color:var(--on-accent); font-size:23px; line-height:1; font-weight:700; }
-  .brand .mark-img{ background:#fff; border:1px solid var(--hair); padding:4px; }
+  .brand .mark span{ font-family:var(--serif); color:var(--on-accent); font-size:34px; line-height:1; font-weight:700; }
+  .brand .mark-img{ background:#fff; border:1px solid var(--hair); padding:6px; }
   .brand .mark-img img{ max-width:100%; max-height:100%; object-fit:contain; }
-  .brand h1{ margin:0; font-family:var(--serif); font-weight:700; font-size:22px; letter-spacing:.01em; color:var(--accent); line-height:1.05; }
-  .seller-lines{ margin-top:10px; display:grid; gap:2px; font-size:11.5px; color:var(--muted); }
+  .brand h1{ margin:0; font-family:var(--serif); font-weight:700; font-size:31px; letter-spacing:.01em; color:var(--accent); line-height:1.04; }
+  .seller-lines{ margin-top:11px; display:grid; gap:2px; font-size:12.5px; color:var(--muted); }
   .seller-lines .k{ color:var(--ink); font-weight:600; }
-  .doc-title{ font-family:var(--serif); font-size:27px; letter-spacing:.14em; color:var(--ink); margin:0 0 10px; font-weight:700; }
-  .meta{ display:grid; grid-template-columns:auto 1fr; gap:5px 12px; font-size:11.5px; margin:0; }
+  .doc-title{ font-family:var(--serif); font-size:32px; letter-spacing:.14em; color:var(--ink); margin:0 0 11px; font-weight:700; }
+  .meta{ display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font-size:12.5px; margin:0; }
   .meta dt{ color:var(--muted); }
   .meta dd{ margin:0; text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
   .meta dd.pos{ color:var(--accent); }
 
   .banner{ background:linear-gradient(180deg,var(--accent),var(--accent-d)); color:var(--on-accent);
-    border-radius:5px; padding:6px 12px; font-size:11px; letter-spacing:.16em; text-transform:uppercase; font-weight:650; }
+    border-radius:5px; padding:9px 14px; font-size:14px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; }
   .billto{ margin-top:13px; }
-  .billto .who{ margin-top:7px; font-size:14px; font-weight:700; }
-  .billto .lines{ margin-top:3px; font-size:11.5px; color:var(--muted); }
+  .billto .who{ margin-top:8px; font-size:16px; font-weight:700; }
+  .billto .lines{ margin-top:3px; font-size:12.5px; color:var(--muted); }
   .sep{ color:var(--hair); margin:0 8px; }
 
   .items{ margin-top:13px; }
-  table{ width:100%; border-collapse:collapse; margin-top:8px; border:1px solid var(--hair); border-radius:6px; overflow:hidden; font-size:12px; }
+  table{ width:100%; border-collapse:collapse; margin-top:8px; border:1px solid var(--hair); border-radius:6px; overflow:hidden; font-size:13px; }
   thead{ display:table-header-group; }
   thead th{ background:linear-gradient(180deg,var(--accent),var(--accent-d)); color:var(--on-accent);
-    font-weight:600; letter-spacing:.04em; padding:6px 11px; text-align:right; white-space:nowrap; }
+    font-weight:700; font-size:13.5px; letter-spacing:.03em; padding:9px 11px; text-align:right; white-space:nowrap; }
   thead th.l{ text-align:left; }
-  tbody td{ padding:7px 11px; border-bottom:1px solid var(--hair-2); vertical-align:top; text-align:right; font-variant-numeric:tabular-nums; }
+  tbody td{ padding:8px 11px; border-bottom:1px solid var(--hair-2); vertical-align:top; text-align:right; font-variant-numeric:tabular-nums; }
   tbody td.l{ text-align:left; }
   tbody tr:last-child td{ border-bottom:none; }
   tr{ break-inside:avoid; }
-  .piece{ font-weight:700; font-size:12.5px; }
-  .sub{ color:var(--muted); font-size:11px; margin-top:2px; }
+  .piece{ font-weight:700; font-size:14px; }
+  .sub{ color:var(--muted); font-size:12px; margin-top:2px; }
   .u{ color:var(--muted); }
   .hsn{ display:inline-block; font-variant-numeric:tabular-nums; background:var(--panel); border:1px solid var(--hair);
-    border-radius:4px; padding:0 5px; color:var(--ink); font-size:10.5px; }
+    border-radius:4px; padding:1px 6px; color:var(--ink); font-size:11.5px; }
   .thumbs{ display:flex; flex-wrap:wrap; gap:5px; }
-  .thumb{ width:36px; height:28px; border-radius:4px; border:1px solid var(--hair); object-fit:cover; background:var(--panel); }
+  .thumb{ width:40px; height:31px; border-radius:4px; border:1px solid var(--hair); object-fit:cover; background:var(--panel); }
   .num-strong{ font-weight:700; }
 
   .subtotal-bar{ display:grid; grid-template-columns:1fr auto auto; gap:18px; align-items:center; margin-top:8px;
-    padding:7px 13px; border-radius:6px; background:linear-gradient(180deg,var(--accent),var(--accent-d));
-    color:var(--on-accent); font-size:12.5px; font-weight:650; font-variant-numeric:tabular-nums; break-inside:avoid; }
-  .subtotal-bar .lbl{ letter-spacing:.12em; text-transform:uppercase; font-size:11px; }
-  .note{ margin-top:5px; font-size:10px; color:var(--faint); font-style:italic; }
+    padding:10px 14px; border-radius:6px; background:linear-gradient(180deg,var(--accent),var(--accent-d));
+    color:var(--on-accent); font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; break-inside:avoid; }
+  .subtotal-bar .lbl{ letter-spacing:.1em; text-transform:uppercase; font-size:13.5px; }
+  .note{ margin-top:6px; font-size:11px; color:var(--faint); font-style:italic; }
 
   /* The footer flows across a page break when needed (no whole-block break-avoid), so the
      summary / terms / signatures always render instead of being pushed off as one unit. */
   .foot{ margin-top:14px; display:grid; grid-template-columns:1fr .82fr; gap:26px; }
-  .foot h3{ margin:0 0 5px; font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink); }
-  .block + .block{ margin-top:11px; }
-  .kv{ font-size:11.5px; color:var(--muted); line-height:1.5; }
+  .foot h3{ margin:0 0 6px; font-size:14px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink); }
+  .block{ break-inside:avoid; }
+  .block + .block{ margin-top:12px; }
+  .kv{ font-size:12.5px; color:var(--muted); line-height:1.55; }
   .kv b{ color:var(--ink); font-weight:600; }
-  .terms{ margin:0; padding:0; list-style:none; font-size:11px; color:var(--muted); line-height:1.4; }
-  .terms li{ position:relative; padding-left:15px; margin-bottom:3px; }
-  .terms li:before{ content:""; position:absolute; left:2px; top:6px; width:5px; height:5px; border-radius:50%; background:var(--accent); }
+  .terms{ margin:0; padding:0; list-style:none; font-size:12.5px; color:var(--muted); line-height:1.45; }
+  .terms li{ position:relative; padding-left:17px; margin-bottom:5px; }
+  .terms li:before{ content:""; position:absolute; left:2px; top:7px; width:6px; height:6px; border-radius:50%; background:var(--accent); }
 
-  .summary{ font-size:12px; }
-  .summary .row{ display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-variant-numeric:tabular-nums; }
+  .summary{ font-size:13.5px; break-inside:avoid; }
+  .summary .row{ display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-variant-numeric:tabular-nums; }
   .summary .row .lab{ color:var(--muted); }
-  .summary .row .on{ color:var(--faint); font-size:10.5px; }
+  .summary .row .on{ color:var(--faint); font-size:11px; }
   .summary .row .val{ font-weight:600; }
   .summary .row.disc .val{ color:var(--good); }
   .summary .row.gst .lab, .summary .row.gst .val{ color:var(--ink); font-weight:700; }
   .summary .divider{ height:1px; background:var(--hair); margin:4px 0; }
-  .summary .grand{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:6px;
-    padding:9px 12px; border-radius:6px; background:var(--panel); border:1px solid var(--hair); font-variant-numeric:tabular-nums; }
-  .summary .grand .lab{ font-family:var(--serif); font-size:13.5px; font-weight:700; }
-  .summary .grand .val{ font-family:var(--serif); font-size:18px; font-weight:700; color:var(--accent); }
-  .summary .words{ margin-top:5px; font-size:10.5px; color:var(--muted); font-style:italic; text-align:right; }
+  .summary .grand{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:7px;
+    padding:11px 13px; border-radius:6px; background:var(--panel); border:1px solid var(--hair); font-variant-numeric:tabular-nums; }
+  .summary .grand .lab{ font-family:var(--serif); font-size:16px; font-weight:700; }
+  .summary .grand .val{ font-family:var(--serif); font-size:22px; font-weight:700; color:var(--accent); }
+  .summary .words{ margin-top:6px; font-size:12px; color:var(--muted); font-style:italic; text-align:right; }
 
-  .signs{ margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:end; break-inside:avoid; }
-  .sign .line{ border-top:1px solid var(--hair); padding-top:6px; font-size:11px; color:var(--muted); }
+  .signs{ margin-top:20px; display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:end; break-inside:avoid; }
+  .sign .line{ border-top:1px solid var(--hair); padding-top:7px; font-size:12.5px; color:var(--muted); }
   .sign.right{ text-align:right; }
-  .sign.right .for{ font-size:11px; color:var(--muted); }
-  .sign.right .co{ font-family:var(--serif); font-weight:700; font-size:13px; color:var(--ink); margin-top:2px; letter-spacing:.04em; }
-  .footer-mark{ margin-top:12px; padding-top:8px; border-top:1px solid var(--hair-2); display:flex; justify-content:space-between;
-    font-size:10px; color:var(--faint); letter-spacing:.04em; }
+  .sign.right .for{ font-size:12.5px; color:var(--muted); }
+  .sign.right .co{ font-family:var(--serif); font-weight:700; font-size:15px; color:var(--ink); margin-top:2px; letter-spacing:.04em; }
+  .footer-mark{ margin-top:14px; padding-top:9px; border-top:1px solid var(--hair-2); display:flex; justify-content:space-between;
+    font-size:11px; color:var(--faint); letter-spacing:.04em; }
 </style>
 </head>
 <body><div class="sheet">
@@ -339,10 +344,27 @@ export async function renderQuotationPdfHtml(data: QuotationPdfData): Promise<Ui
   try {
     await page.emulateMedia?.({ media: "print" });
     await page.setContent(renderQuotationHtml(data), { waitUntil: "load", timeout: 20_000 });
-    // Natural pagination: content fills the page top-to-bottom and flows to the next page
-    // only when the page is actually full — no forced single-page scaling, and no
-    // whole-section "break-inside: avoid" that would leave a page half-empty.
-    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true });
+    // Always a single A4 page, at the largest legible size. Chromium lays a page out at
+    // width (printable/scale) and paginates every (printable/scale) of height, so the
+    // largest scale that fits one page is found by measuring the content height at the
+    // width each candidate scale would use. Binary-search that scale — keeps the type as
+    // large as possible — floored so an extreme quote stays legible rather than vanishing.
+    // A4 @ 96dpi minus 10mm margins ≈ 718×1047 px.
+    const PRINT_W = 718, PRINT_H = 1047, FLOOR = 0.2, SAFETY = 0.99;
+    let scale = 1;
+    try {
+      const fitsAt = async (s: number): Promise<boolean> => {
+        await page.setViewportSize?.({ width: Math.max(1, Math.round(PRINT_W / s)), height: Math.max(1, Math.round(PRINT_H / s)) });
+        const h = await page.evaluate?.(() => document.documentElement.scrollHeight);
+        return typeof h === "number" ? h <= (PRINT_H / s) * SAFETY : true;
+      };
+      if (!(await fitsAt(1))) {
+        let lo = FLOOR, hi = 1;
+        for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (await fitsAt(mid)) lo = mid; else hi = mid; }
+        scale = lo; // lo always fits
+      }
+    } catch { /* measurement is best-effort; fall back to scale 1 */ }
+    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, scale });
     return pdf?.length ? new Uint8Array(pdf) : null;
   } catch {
     return null;
