@@ -14,8 +14,6 @@ interface PwPage {
   setContent(html: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
   pdf(opts: Record<string, unknown>): Promise<Uint8Array>;
   emulateMedia?(opts: { media?: string }): Promise<unknown>;
-  setViewportSize?(size: { width: number; height: number }): Promise<unknown>;
-  evaluate?<T>(fn: () => T): Promise<T>;
 }
 interface PwBrowser { newPage(): Promise<PwPage>; close(): Promise<void>; }
 interface PwChromium { launch(opts: { headless?: boolean; executablePath?: string; args?: string[] }): Promise<PwBrowser>; }

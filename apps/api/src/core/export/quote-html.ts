@@ -8,9 +8,11 @@
 // all assets are inline data URLs and a strict CSP blocks any network fetch, so the page
 // renders hermetically (no SSRF surface). Money is integer paise throughout.
 //
-// Layout is tuned to keep a typical quote on a single A4 page — and, crucially, the footer
-// (tax summary + terms + signatures) is allowed to FLOW across a page break rather than
-// being forced whole onto page 2, so those sections always render on the document.
+// Pagination is natural: content fills each A4 page top-to-bottom and flows to the next
+// page only when the current one is full — no forced single-page scaling, and no
+// whole-section "break-inside: avoid" that would leave a page half-empty and push the tax
+// summary / terms / signature onto page 2. Only small atomic units (a table row, the total
+// card, the signature block, a single term) are kept from splitting across a page break.
 import type { QuotationPdfData } from "./quote-pdf";
 import { DEFAULT_TERMS } from "./quote-pdf";
 import { gstStateName, amountInWords } from "../quotes/quotation";
@@ -237,7 +239,6 @@ export function renderQuotationHtml(data: QuotationPdfData): string {
      summary / terms / signatures always render instead of being pushed off as one unit. */
   .foot{ margin-top:14px; display:grid; grid-template-columns:1fr .82fr; gap:26px; }
   .foot h3{ margin:0 0 5px; font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink); }
-  .block{ break-inside:avoid; }
   .block + .block{ margin-top:11px; }
   .kv{ font-size:11.5px; color:var(--muted); line-height:1.5; }
   .kv b{ color:var(--ink); font-weight:600; }
@@ -245,7 +246,7 @@ export function renderQuotationHtml(data: QuotationPdfData): string {
   .terms li{ position:relative; padding-left:15px; margin-bottom:3px; }
   .terms li:before{ content:""; position:absolute; left:2px; top:6px; width:5px; height:5px; border-radius:50%; background:var(--accent); }
 
-  .summary{ font-size:12px; break-inside:avoid; }
+  .summary{ font-size:12px; }
   .summary .row{ display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-variant-numeric:tabular-nums; }
   .summary .row .lab{ color:var(--muted); }
   .summary .row .on{ color:var(--faint); font-size:10.5px; }
@@ -338,19 +339,10 @@ export async function renderQuotationPdfHtml(data: QuotationPdfData): Promise<Ui
   try {
     await page.emulateMedia?.({ media: "print" });
     await page.setContent(renderQuotationHtml(data), { waitUntil: "load", timeout: 20_000 });
-    // Always a single A4 page: measure the print-media content height at the printable
-    // width and shrink-to-fit (never enlarge). Scaling down widens the CSS canvas, which
-    // only reduces height further, so a scale computed from the un-scaled height is a safe
-    // lower bound that guarantees one page. A4 @ 96dpi minus 10mm margins ≈ 718×1047 px.
-    // Floored so an extremely long quote stays legible rather than shrinking to nothing.
-    const PRINT_W = 718, PRINT_H = 1047;
-    let scale = 1;
-    try {
-      await page.setViewportSize?.({ width: PRINT_W, height: PRINT_H });
-      const h = await page.evaluate?.(() => document.documentElement.scrollHeight);
-      if (typeof h === "number" && h > PRINT_H) scale = Math.max(0.2, (PRINT_H / h) * 0.97);
-    } catch { /* measurement is best-effort; fall back to scale 1 */ }
-    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, scale });
+    // Natural pagination: content fills the page top-to-bottom and flows to the next page
+    // only when the page is actually full — no forced single-page scaling, and no
+    // whole-section "break-inside: avoid" that would leave a page half-empty.
+    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true });
     return pdf?.length ? new Uint8Array(pdf) : null;
   } catch {
     return null;
